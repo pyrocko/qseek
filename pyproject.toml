@@ -42,11 +42,12 @@ dependencies = [
     "numpy>=1.17.3",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
-    "pydantic",
+    "seisbench>=0.4.0",
+    "pydantic>=1.9",
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit"]
+dev = ["pre-commit", "black", "pytest"]
 
 [project.scripts]
 lassie = "lassie.apps.lassie:main"

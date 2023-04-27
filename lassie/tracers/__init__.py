@@ -1,14 +1,18 @@
-from typing import Annotated, Union
+from typing import Annotated, Iterator, Union
 
 from pydantic import BaseModel, Field
 
 from lassie.tracers.cake import CakeTracer
 from lassie.tracers.constant_velocity import ConstantVelocityTracer
 
-Tracer = Annotated[
-    Union[CakeTracer, ConstantVelocityTracer], Field(discriminator="tracer")
+RayTracer = Annotated[
+    Union[CakeTracer, ConstantVelocityTracer],
+    Field(discriminator="tracer"),
 ]
 
 
-class Tracers(BaseModel):
-    __root__: list[Tracer] = []
+class RayTracers(BaseModel):
+    __root__: list[RayTracer] = []
+
+    def __iter__(self) -> Iterator[RayTracer]:
+        yield from self.__root__

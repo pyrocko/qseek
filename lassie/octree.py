@@ -34,7 +34,7 @@ class Node(BaseModel):
 
         if not self._children_cached:
             half_size = self.size / 2
-            if half_size < self._tree.extent_limit:
+            if half_size < self._tree.size_limit:
                 raise ValueError("Cannot split node below limit.")
 
             self._children_cached = tuple(
@@ -70,7 +70,7 @@ class Node(BaseModel):
         return Location(
             lat=self._tree.center_lat,
             lon=self._tree.center_lon,
-            elevation=self._tree.center_elevation,
+            elevation=self._tree.surface_elevation,
             east_shift=self.east,
             north_shift=self.north,
         )
@@ -90,9 +90,9 @@ class Octree(BaseModel):
     _root_nodes: list[Node] = PrivateAttr([])
     center_lat: float = 0.0
     center_lon: float = 0.0
-    center_elevation: float = 0.0
-    extent_initial: float = 2 * km
-    extent_limit: float = 500
+    surface_elevation: float = 0.0
+    size_initial: float = 2 * km
+    size_limit: float = 500
     east_bounds: tuple[float, float] = (-10 * km, 10 * km)
     north_bounds: tuple[float, float] = (-10 * km, 10 * km)
     depth_bounds: tuple[float, float] = (0 * km, 20 * km)
@@ -106,12 +106,12 @@ class Octree(BaseModel):
         return (
             self.east_bounds[1] - self.east_bounds[0],
             self.north_bounds[1] - self.north_bounds[0],
-            self.depth_bounds[1] - self.depth_bounds[0] + self.center_elevation,
+            self.depth_bounds[1] - self.depth_bounds[0] + self.surface_elevation,
         )
 
     def init_nodes(self) -> None:
         logger.debug("initializing nodes")
-        ext = self.extent_initial
+        ext = self.size_initial
         ext_east, ext_north, ext_depth = self.extent()
         east_nodes = np.arange(ext_east // ext) * ext + ext / 2 + self.east_bounds[0]
         north_nodes = np.arange(ext_north // ext) * ext + ext / 2 + self.north_bounds[0]
@@ -119,7 +119,7 @@ class Octree(BaseModel):
             np.arange(ext_depth // ext) * ext
             + ext / 2
             + self.depth_bounds[0]
-            + self.center_elevation
+            + self.surface_elevation
         )
 
         Node._tree = self
@@ -187,4 +187,14 @@ class Octree(BaseModel):
             except ValueError:
                 break
         return tree
-        return tree
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.size_initial,
+                self.size_limit,
+                self.east_bounds,
+                self.north_bounds,
+                self.depth_bounds,
+            )
+        )

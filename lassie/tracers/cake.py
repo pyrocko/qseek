@@ -1,7 +1,7 @@
 from typing import Literal
 
-from lassie.tracers.base import Tracer
+from lassie.tracers.base import RayTracer
 
 
-class CakeTracer(Tracer):
+class CakeTracer(RayTracer):
     tracer: Literal["CakeTracer"] = "CakeTracer"

@@ -13,8 +13,8 @@ def octree():
         east_bounds=(-25 * km, 25 * km),
         north_bounds=(-25 * km, 25 * km),
         depth_bounds=(0, 40 * km),
-        extent_initial=5 * km,
-        extent_limit=0.2 * km,
+        size_initial=5 * km,
+        size_limit=0.2 * km,
     )
 
 
