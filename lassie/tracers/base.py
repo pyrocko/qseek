@@ -15,7 +15,10 @@ class RayTracer(BaseModel):
     _octree: Octree = PrivateAttr(None)
     _receivers: Receivers = PrivateAttr(None)
 
-    def get_shift(self, phase_name: str, node: Node, receiver: Receiver) -> float:
+    def available_phase(self) -> tuple[str]:
+        ...
+
+    def get_traveltime(self, phase: str, node: Node, receiver: Receiver) -> float:
         ...
 
     def set_octree(self, octree: Octree) -> None:

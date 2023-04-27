@@ -15,9 +15,13 @@ class ConstantVelocityTracer(RayTracer):
         "const.S": 2500.0,
     }
 
-    def get_shift(self, phase_name: str, node: Node, receiver: Receiver) -> float:
-        if phase_name not in self.velocities:
-            raise ValueError(f"Phase {phase_name} is not defined.")
+    def available_phase(self) -> tuple[str]:
+        return tuple(self.velocities.keys())
+
+    def get_traveltime(self, phase: str, node: Node, receiver: Receiver) -> float:
+        if phase not in self.velocities:
+            raise ValueError(f"Phase {phase} is not defined.")
+
         distance = node.distance_receiver(receiver)
-        velocity = self.velocities[phase_name]
+        velocity = self.velocities[phase]
         return distance / velocity
