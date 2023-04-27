@@ -1,0 +1,68 @@
+[build-system]
+requires = [
+    "wheel",
+    "setuptools >= 61.0.0",
+    "oldest-supported-numpy",
+    "setuptools_scm[toml]>=6.2",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lassie"
+requires-python = ">=3.7"
+license = { text = "GPLv3" }
+dynamic = ["version"]
+
+description = "Lassie - The friendly earthquake detector."
+readme = "README.md"
+authors = [
+    { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
+    { name = "Marius Kriegerowski", email = "mk@quakesaver.de" },
+    { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
+]
+maintainers = [
+    { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
+    { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
+]
+keywords = ["earthquake", "detection", "locatiosation", "stacking-migration"]
+
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: C",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "numpy>=1.17.3",
+    "scipy>=1.8.0",
+    "pyrocko>=2022.06.10",
+    "pydantic",
+]
+
+[project.optional-dependencies]
+dev = ["pre-commit"]
+
+[project.scripts]
+lassie = "lassie.apps.lassie:main"
+
+[tool.setuptools.packages.find]
+include = ["lassie*"]
+
+[project.urls]
+Home = "https://pyrocko.org"
+GitHub = "https://git.pyrocko.org/pyrocko/lassie"
+Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
+
+[tool.setuptools.package-data]
+"lassie.data" = ["*.wav"]
+
+[tool.setuptools_scm]
+
+[tool.ruff]
+select = ['E', 'F', 'W', 'N', 'DTZ']
