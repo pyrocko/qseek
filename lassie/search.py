@@ -5,36 +5,48 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from lassie.images import ImageFunction
 from lassie.octree import Octree
+from lassie.utils import to_datetime
 
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
-    from lassie.config import Config
-    from lassie.images.base import WaveformImages
+    from lassie.images import ImageFunctions, WaveformImages
     from lassie.models import Detection, Receivers
+    from lassie.tracers import RayTracers
 
 logger = logging.getLogger(__name__)
 
 
 class Search:
-    def __init__(self, config: Config) -> None:
-        self.config = config
-        self.squirrel = config.get_squirrel()
-        self.receivers = config.get_receivers()
+    def __init__(
+        self,
+        octree: Octree,
+        receivers: Receivers,
+        ray_tracers: RayTracers,
+        image_functions: ImageFunctions,
+    ) -> None:
+        self.octree = octree
+        self.receivers = receivers
+        self.ray_tracers = ray_tracers
+        self.image_functions = image_functions
 
-        for tracer in config.ray_tracers:
-            tracer.set_octree(config.octree)
-            tracer.set_receivers(config.get_receivers())
+    def scan_squirrel(
+        self,
+        squirrel: Squirrel,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> None:
+        time_span = squirrel.get_time_span()
+        start_time = start_time or to_datetime(time_span[0])
+        end_time = end_time or to_datetime(time_span[1])
 
-    def search(self) -> None:
-        config = self.config
-        for batch in self.squirrel.chopper_waveforms(
-            tmin=config.start_time.timestamp(),
-            tmax=config.end_time.timestamp(),
+        for batch in squirrel.chopper_waveforms(
+            tmin=start_time.timestamp(),
+            tmax=end_time.timestamp(),
             tinc=60,
             tpad=5,
             want_incomplete=True,
@@ -44,17 +56,18 @@ class Search:
             if not traces:
                 continue
 
-            block = SearchBlock(
+            block = SearchTraces(
                 traces,
-                config.octree.copy(),
+                self.octree.copy(),
                 self.receivers,
-                config.image_functions,
+                self.ray_tracers,
+                self.image_functions,
             )
-            block.calculate_images()
+            block.search()
 
 
-class SearchBlock:
-    waveform_images: list[WaveformImages]
+class SearchTraces:
+    waveform_images: WaveformImages | None
     detections: list[Detection]
 
     def __init__(
@@ -62,14 +75,16 @@ class SearchBlock:
         traces: list[Trace],
         octree: Octree,
         receivers: Receivers,
-        image_functions: list[ImageFunction],
+        ray_tracers: RayTracers,
+        image_functions: ImageFunctions,
     ) -> None:
         self.octree = octree
         self.traces = traces
         self.receivers = receivers
+        self.ray_tracers = ray_tracers
         self.image_functions = image_functions
 
-        self.waveform_images = []
+        self.waveform_images = None
         self.clean_traces()
 
     def clean_traces(self) -> None:
@@ -77,13 +92,6 @@ class SearchBlock:
             if tr.ydata.size == 0 or not np.all(np.isfinite(tr.ydata)):
                 logger.warn("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 self.traces.remove(tr)
-
-    def calculate_images(self) -> None:
-        logger.info("calculating images")
-        for image_func in self.image_functions:
-            logger.debug("calculating images from %s", image_func.__class__.__name__)
-            images = image_func.process_traces(self.traces)
-            self.waveform_images.append(images)
 
     def stack_window(
         self,
@@ -97,4 +105,4 @@ class SearchBlock:
         return self.octree
 
     def search(self) -> None:
-        self.calculate_images()
+        self.images = self.image_functions.process_traces(self.traces)

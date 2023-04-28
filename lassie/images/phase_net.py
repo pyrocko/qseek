@@ -7,7 +7,7 @@ from pydantic import PrivateAttr, conint
 from pyrocko import obspy_compat
 from seisbench.models import PhaseNet as PhaseNetSeisBench
 
-from lassie.images.base import ImageFunction, WaveformImage, WaveformImages
+from lassie.images.base import ImageFunction, WaveformImage
 
 obspy_compat.plant()
 
@@ -32,6 +32,7 @@ PhaseName = Literal["P", "S"]
 
 
 class PhaseNet(ImageFunction):
+    image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = "ethz"
     sampling_rate: float = 10.0
     overlap: conint(ge=100, le=3000) = 2000
@@ -51,7 +52,7 @@ class PhaseNet(ImageFunction):
             self._phase_net.cuda()
         self._phase_net.eval()
 
-    def process_traces(self, traces: list[Trace]) -> WaveformImages:
+    def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
         annotations: Stream = self._phase_net.annotate(stream)
 
@@ -61,19 +62,20 @@ class PhaseNet(ImageFunction):
             if not tr.stats.channel.endswith("N")
         ]
 
-        result = WaveformImages(
-            name=self.__class__.__name__,
-            images=[
-                WaveformImage(
-                    phase=self.phase_map["P"],
-                    traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
-                ),
-                WaveformImage(
-                    phase=self.phase_map["S"],
-                    traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],
-                ),
-            ],
+        annotation_p = WaveformImage(
+            image_function=self,
+            phase=self.phase_map["P"],
+            traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
         )
-        result.downsample(self.sampling_rate)
+        annotation_s = WaveformImage(
+            image_function=self,
+            phase=self.phase_map["S"],
+            traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],
+        )
+        annotation_s.downsample(self.sampling_rate)
+        annotation_p.downsample(self.sampling_rate)
 
-        return result
+        return [annotation_s, annotation_p]
+
+    def get_available_phases(self) -> tuple[str]:
+        return tuple(self.phase_map.keys())

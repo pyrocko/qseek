@@ -1,40 +1,34 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
 from lassie.utils import downsample, to_datetime
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from pyrocko.trace import Trace
 
 
 class ImageFunction(BaseModel):
-    def process_traces(self, traces: list[Trace]) -> WaveformImages:
+    image: Literal["base"] = "base"
+
+    def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
+        ...
+
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
+
+    def get_available_phases(self) -> tuple[str]:
         ...
 
 
 @dataclass
-class WaveformImages:
-    name: str
-    images: list[WaveformImage]
-
-    def downsample(self, sampling_rate: float) -> None:
-        """Downsample in-place.
-
-        Args:
-            sampling_rate (float): Sampling rate in Hz.
-        """
-        for image in self.images:
-            image.downsample(sampling_rate)
-
-
-@dataclass
 class WaveformImage:
+    image_function: ImageFunction
     phase: str
     traces: list[Trace]
 
@@ -48,7 +42,6 @@ class WaveformImage:
 
     def downsample(self, sampling_rate: float) -> None:
         """Downsample in-place.
-
         Args:
             sampling_rate (float): Sampling rate in Hz.
         """

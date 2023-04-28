@@ -21,9 +21,14 @@ def main():
 
     args = parser.parse_args()
     if args.command == "dump-config":
-        config = Config.construct()
-        print(config.json(indent=2))
+        config = Config.construct(
+            stations_file=Path("stations.yaml"),
+            waveform_data=[Path("data/")],
+            station_blacklist=["NE.STA.LOC"],
+        )
+        print(config.json(by_alias=False, indent=2))
         return
+
     elif args.command == "run":
         ...
     else:

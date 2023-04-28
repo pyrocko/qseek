@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 from pydantic import BaseModel
-from pyrocko.model import Station as PyrockoStation
+
+if TYPE_CHECKING:
+    from pyrocko.model import Station as PyrockoStation
 
 from lassie.models.location import Location
 
