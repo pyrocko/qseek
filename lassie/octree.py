@@ -186,6 +186,9 @@ class Octree(BaseModel):
                     node.split()
             except ValueError:
                 break
+
+        # Cut off parent nodes
+        tree._root_nodes = [node for node in tree]
         return tree
 
     def __hash__(self) -> int:

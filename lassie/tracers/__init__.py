@@ -29,5 +29,14 @@ class RayTracers(BaseModel):
         for tracer in self:
             tracer.set_receivers(receivers)
 
+    def get_available_phases(self) -> tuple[str]:
+        phases = []
+        for tracer in self:
+            phases.extend([*tracer.get_available_phases()])
+        if len(set(*phases)) != len(phases):
+            raise ValueError("A phase provided twice.")
+
+        return tuple(*phases)
+
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.__root__
