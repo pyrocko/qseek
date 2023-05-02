@@ -10,7 +10,7 @@ from pydantic import BaseModel, PrivateAttr
 from lassie.models.location import Location
 
 if TYPE_CHECKING:
-    from lassie.models.stations import Station
+    from lassie.models.station import Station
 
 logger = logging.getLogger(__name__)
 km = 1e3

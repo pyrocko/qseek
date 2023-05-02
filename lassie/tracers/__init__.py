@@ -8,7 +8,7 @@ from lassie.tracers.cake import CakeTracer
 from lassie.tracers.constant_velocity import ConstantVelocityTracer
 
 if TYPE_CHECKING:
-    from lassie.models.stations import Stations
+    from lassie.models.station import Stations
     from lassie.octree import Octree
     from lassie.tracers.base import RayTracer
 

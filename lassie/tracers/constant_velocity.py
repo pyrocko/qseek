@@ -6,7 +6,7 @@ from pydantic import PositiveFloat
 from lassie.tracers.base import RayTracer
 
 if TYPE_CHECKING:
-    from lassie.models.stations import Station, Stations
+    from lassie.models.station import Station, Stations
     from lassie.octree import Node
 
 

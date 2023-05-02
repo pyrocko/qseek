@@ -7,7 +7,7 @@ from pydantic import BaseModel, PrivateAttr
 if TYPE_CHECKING:
     import numpy as np
 
-    from lassie.models.stations import Station, Stations
+    from lassie.models.station import Station, Stations
     from lassie.octree import Node, Octree
 
 
