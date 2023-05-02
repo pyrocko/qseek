@@ -7,7 +7,7 @@ from pydantic import BaseModel, PrivateAttr
 if TYPE_CHECKING:
     import numpy as np
 
-    from lassie.models.receiver import Receiver, Receivers
+    from lassie.models.stations import Station, Stations
     from lassie.octree import Node, Octree
 
 
@@ -15,13 +15,13 @@ class RayTracer(BaseModel):
     tracer: str
 
     _octree: Octree = PrivateAttr(None)
-    _receivers: Receivers = PrivateAttr(None)
+    _stations: Stations = PrivateAttr(None)
 
     def set_octree(self, octree: Octree) -> None:
         self._octree = octree
 
-    def set_receivers(self, receivers: Receivers) -> None:
-        self._receivers = receivers
+    def set_stations(self, stations: Stations) -> None:
+        self._stations = stations
 
     def get_available_phases(self) -> tuple[str]:
         ...
@@ -29,10 +29,8 @@ class RayTracer(BaseModel):
     def get_traveltime_bounds(self) -> tuple[float, float]:
         ...
 
-    def get_traveltime(self, phase: str, node: Node, receiver: Receiver) -> float:
+    def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
         ...
 
-    def get_reveivers_traveltime(
-        self, phase: str, node: Node, receivers: Receivers
-    ) -> np.ndarray:
+    def get_traveltimes(self, phase: str, node: Node, stations: Stations) -> np.ndarray:
         ...

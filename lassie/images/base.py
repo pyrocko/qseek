@@ -40,6 +40,14 @@ class WaveformImage:
     def end_time(self) -> datetime:
         return to_datetime(max((tr.tmax for tr in self.traces)))
 
+    @property
+    def sampling_rate(self) -> float:
+        return 1.0 / self.delta_t
+
+    @property
+    def delta_t(self) -> float:
+        return self.traces[0].deltat
+
     def downsample(self, sampling_rate: float) -> None:
         """Downsample in-place.
         Args:

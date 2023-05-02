@@ -6,7 +6,7 @@ from pydantic import PositiveFloat
 from lassie.tracers.base import RayTracer
 
 if TYPE_CHECKING:
-    from lassie.models.receiver import Receiver, Receivers
+    from lassie.models.stations import Station, Stations
     from lassie.octree import Node
 
 
@@ -24,27 +24,26 @@ class ConstantVelocityTracer(RayTracer):
     def get_available_phases(self) -> tuple[str]:
         return tuple(self.velocities.keys())
 
-    def get_traveltime(self, phase: str, node: Node, receiver: Receiver) -> float:
+    def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
 
-        distance = node.distance_receiver(receiver)
+        distance = node.distance_station(station)
         velocity = self.velocities[phase]
         return distance / velocity
 
-    def get_receivers_traveltime(
+    def get_traveltimes(
         self,
         phase: str,
         node: Node,
-        receivers: Receivers,
+        stations: Stations,
     ) -> np.ndarray:
         return np.fromiter(
-            (self.get_traveltime(phase, node, receiver) for receiver in receivers),
-            float,
+            (self.get_traveltime(phase, node, station) for station in stations), float
         )
 
     def traveltime_bounds(self) -> tuple[float, float]:
-        if not self._octree or not self._receivers:
+        if not self._octree or not self._stations:
             raise AttributeError("Octree and receivers must be set.")
 
         octree = self._octree.finest_tree()
@@ -52,7 +51,7 @@ class ConstantVelocityTracer(RayTracer):
         for phase in self.get_available_phases():
             for node in octree:
                 all_traveltimes.append(
-                    self.get_receivers_traveltime(phase, node, self._receivers)
+                    self.get_traveltimes(phase, node, self._stations)
                 )
 
         all_traveltimes = np.ndarray(all_traveltimes)

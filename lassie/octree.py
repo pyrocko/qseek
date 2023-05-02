@@ -10,7 +10,7 @@ from pydantic import BaseModel, PrivateAttr
 from lassie.models.location import Location
 
 if TYPE_CHECKING:
-    from lassie.models.receiver import Receiver
+    from lassie.models.stations import Station
 
 logger = logging.getLogger(__name__)
 km = 1e3
@@ -61,8 +61,8 @@ class Node(BaseModel):
         self._children_cached = self.children
         self.semblance = 0.0
 
-    def distance_receiver(self, receiver: Receiver) -> float:
-        return receiver.distance_to(self.as_location())
+    def distance_station(self, station: Station) -> float:
+        return station.distance_to(self.as_location())
 
     def as_location(self) -> Location:
         if not self._tree:

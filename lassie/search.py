@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+from pyrocko import parstack
 
 from lassie.octree import Octree
 from lassie.utils import to_datetime
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from lassie.images import ImageFunctions, WaveformImages
-    from lassie.models import Detection, Receivers
+    from lassie.models import Detection, Stations
     from lassie.tracers import RayTracers
 
 logger = logging.getLogger(__name__)
@@ -25,12 +26,12 @@ class Search:
     def __init__(
         self,
         octree: Octree,
-        receivers: Receivers,
+        stations: Stations,
         ray_tracers: RayTracers,
         image_functions: ImageFunctions,
     ) -> None:
         self.octree = octree
-        self.receivers = receivers
+        self.stations = stations
         self.ray_tracers = ray_tracers
         self.image_functions = image_functions
 
@@ -50,7 +51,7 @@ class Search:
             tinc=60,
             tpad=5,
             want_incomplete=True,
-            codes=list((*nsl, "*") for nsl in self.receivers.all_nsl()),
+            codes=list((*nsl, "*") for nsl in self.stations.all_nsl()),
         ):
             traces: list[Trace] = batch.traces
             if not traces:
@@ -59,7 +60,7 @@ class Search:
             block = SearchTraces(
                 traces,
                 self.octree.copy(),
-                self.receivers,
+                self.stations,
                 self.ray_tracers,
                 self.image_functions,
             )
@@ -74,35 +75,49 @@ class SearchTraces:
         self,
         traces: list[Trace],
         octree: Octree,
-        receivers: Receivers,
+        stations: Stations,
         ray_tracers: RayTracers,
         image_functions: ImageFunctions,
     ) -> None:
         self.octree = octree
-        self.traces = traces
-        self.receivers = receivers
+        self.traces = self.clean_traces(traces)
+
+        self.stations = stations
         self.ray_tracers = ray_tracers
         self.image_functions = image_functions
 
-        self.waveform_images = None
-        self.clean_traces()
+        self.trace_data = np.array([tr.ydata for tr in traces])
+        self.offsets = np.zeros(self.n_traces)
 
-    def clean_traces(self) -> None:
-        for tr in self.traces.copy():
+    @property
+    def n_traces(self) -> int:
+        return len(self.traces)
+
+    @staticmethod
+    def clean_traces(traces: list[Trace]) -> list[Trace]:
+        for tr in traces.copy():
             if tr.ydata.size == 0 or not np.all(np.isfinite(tr.ydata)):
                 logger.warn("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
-                self.traces.remove(tr)
+                traces.remove(tr)
+        return traces
 
-    def stack_window(
+    def search(
         self,
-        start_time: datetime,
-        length: float,
-        padding: float,
     ) -> Octree:
-        if not self.waveform_images:
-            raise ValueError("Images have not been calculated.")
+        images = self.image_functions.process_traces(self.traces)
 
-        return self.octree
+        for image in images:
+            shifts = []
+            weights = []
+            ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
 
-    def search(self) -> None:
-        self.images = self.image_functions.process_traces(self.traces)
+            for node in self.octree:
+                traveltimes = ray_tracer.get_traveltimes(
+                    phase=image.phase,
+                    node=node,
+                    stations=self.stations,
+                )
+                shifts += np.round(traveltimes / image.sampling_rate).astype(np.int32)
+                weights += np.ones(self.n_traces)
+
+            parstack.parstack

@@ -8,7 +8,7 @@ from lassie.tracers.cake import CakeTracer
 from lassie.tracers.constant_velocity import ConstantVelocityTracer
 
 if TYPE_CHECKING:
-    from lassie.models.receiver import Receivers
+    from lassie.models.stations import Stations
     from lassie.octree import Octree
     from lassie.tracers.base import RayTracer
 
@@ -25,9 +25,9 @@ class RayTracers(BaseModel):
         for tracer in self:
             tracer.set_octree(octree)
 
-    def set_receivers(self, receivers: Receivers) -> None:
+    def set_receivers(self, stations: Stations) -> None:
         for tracer in self:
-            tracer.set_receivers(receivers)
+            tracer.set_stations(stations)
 
     def get_available_phases(self) -> tuple[str]:
         phases = []
@@ -37,6 +37,12 @@ class RayTracers(BaseModel):
             raise ValueError("A phase provided twice.")
 
         return tuple(*phases)
+
+    def get_phase_tracer(self, phase: str) -> RayTracer:
+        for tracer in self:
+            if phase in tracer.get_available_phases():
+                return tracer
+        raise ValueError(f"No tracer found for phase {phase}")
 
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.__root__
