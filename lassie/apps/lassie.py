@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 from lassie.config import Config
+from lassie.models import Stations
 
 
 def main():
@@ -22,8 +26,12 @@ def main():
     args = parser.parse_args()
     if args.command == "dump-config":
         config = Config.construct(
-            stations_file=Path("stations.yaml"),
+            stations=Stations(pyrocko_station_yamls=[Path("stations.yaml")]),
             waveform_data=[Path("data/")],
+            time_span=(
+                datetime.fromisoformat("2023-04-11T00:00:00+00:00"),
+                datetime.fromisoformat("2023-04-18T00:00:00+00:00"),
+            ),
             station_blacklist=["NE.STA.LOC"],
         )
         print(config.json(by_alias=False, indent=2))

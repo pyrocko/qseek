@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from lassie.config import Config
+from lassie.models.station import Stations
 
 DATA_PATH = Path(__file__).parent / "data"
 
@@ -24,6 +25,6 @@ def sample_config() -> Config:
             datetime.fromisoformat("2022-09-24T17:30:00Z"),
             datetime.fromisoformat("2022-09-24T17:45:00Z"),
         ),
-        stations_file=DATA_PATH / "6E-stations.yaml",
+        stations=Stations(pyrocko_station_yamls=[DATA_PATH / "6E-stations.yaml"]),
         waveform_data=[DATA_PATH],
     )

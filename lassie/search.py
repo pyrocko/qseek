@@ -48,9 +48,9 @@ class Search:
         for batch in squirrel.chopper_waveforms(
             tmin=start_time.timestamp(),
             tmax=end_time.timestamp(),
-            tinc=60,
-            tpad=5,
-            want_incomplete=True,
+            tinc=60.0,
+            tpad=0,
+            want_incomplete=False,
             codes=list((*nsl, "*") for nsl in self.stations.all_nsl()),
         ):
             traces: list[Trace] = batch.traces
@@ -117,7 +117,28 @@ class SearchTraces:
                     node=node,
                     stations=self.stations,
                 )
-                shifts += np.round(traveltimes / image.sampling_rate).astype(np.int32)
-                weights += np.ones(self.n_traces)
+                shifts.append(
+                    np.round(traveltimes / image.sampling_rate).astype(np.int32)
+                )
+                weights.append(np.ones(self.n_traces))
 
-            parstack.parstack
+            print(
+                "trace_data",
+                self.trace_data.shape,
+                "offsets",
+                self.offsets.shape,
+                "shifts",
+                np.array(shifts).T.shape,
+                "weights",
+                np.array(weights).shape,
+            )
+
+            result, offsets = parstack.parstack(
+                arrays=self.trace_data,
+                offsets=self.offsets,
+                shifts=np.array(shifts).T,
+                weights=np.array(weights),
+                dtype=np.float32,
+                method=0,
+            )
+            print(result)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -14,8 +16,8 @@ class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
     offset: float = 0.0
     velocities: dict[str, PositiveFloat] = {
-        "const.P": 5200.0,
-        "const.S": 2500.0,
+        "constant.P": 5200.0,
+        "constant.S": 2500.0,
     }
 
     def __init__(self, **data) -> None:

@@ -14,15 +14,12 @@ from lassie.tracers import ConstantVelocityTracer, RayTracers
 
 
 class Config(BaseModel):
-    stations: Stations = Stations()
+    stations: Stations
 
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
 
-    time_span: tuple[datetime, datetime] = (
-        datetime.fromisoformat("2023-04-11T00:00:00+00:00"),
-        datetime.fromisoformat("2023-04-18T00:00:00+00:00"),
-    )
+    time_span: tuple[datetime | None, datetime | None] = (None, None)
 
     ray_tracers: RayTracers = RayTracers(tracers=[ConstantVelocityTracer()])
     image_functions: ImageFunctions = ImageFunctions(functions=[PhaseNet()])
@@ -31,16 +28,16 @@ class Config(BaseModel):
 
     @validator("time_span")
     def _validate_time_span(cls, range):  # noqa: N805
-        if range[0] < range[1]:
-            raise ValueError(f"Time range is invalid {range[0]} - {range[1]}")
+        if range[0] >= range[1]:
+            raise ValueError(f"time range is invalid {range[0]} - {range[1]}")
         return range
 
     @property
-    def start_time(self) -> datetime:
+    def start_time(self) -> datetime | None:
         return self.time_span[0]
 
     @property
-    def end_time(self) -> datetime:
+    def end_time(self) -> datetime | None:
         return self.time_span[1]
 
     def get_squirrel(self) -> Squirrel:

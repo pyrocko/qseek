@@ -27,6 +27,7 @@ class Node(BaseModel):
 
     _children_cached: tuple[Node] = PrivateAttr(tuple())
     _tree: ClassVar[Octree | None] = None
+    _location: Location | None = PrivateAttr(None)
 
     def split(self) -> tuple[Node]:
         if not self._tree:
@@ -67,13 +68,15 @@ class Node(BaseModel):
     def as_location(self) -> Location:
         if not self._tree:
             raise ValueError("Parent tree not set.")
-        return Location(
-            lat=self._tree.center_lat,
-            lon=self._tree.center_lon,
-            elevation=self._tree.surface_elevation,
-            east_shift=self.east,
-            north_shift=self.north,
-        )
+        if not self._location:
+            self._location = Location.construct(
+                lat=self._tree.center_lat,
+                lon=self._tree.center_lon,
+                elevation=self._tree.surface_elevation,
+                east_shift=self.east,
+                north_shift=self.north,
+            )
+        return self._location
 
     def __iter__(self) -> Iterator[Node]:
         if self.children:

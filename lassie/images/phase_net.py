@@ -38,8 +38,8 @@ class PhaseNet(ImageFunction):
     overlap: conint(ge=100, le=3000) = 2000
     use_cuda: bool = False
     phase_map: dict[PhaseName, str] = {
-        "P": "default.P",
-        "S": "default.S",
+        "P": "constant.P",
+        "S": "constant.S",
     }
 
     _phase_net: PhaseNetSeisBench = PrivateAttr(None)

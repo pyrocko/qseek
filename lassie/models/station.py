@@ -63,4 +63,7 @@ class Stations(BaseModel):
         values.get("stations").extend(
             [Station.from_pyrocko_station(sta) for sta in loaded_stations]
         )
+        print(values)
+        if not values.get("stations"):
+            raise ValueError("no stations set")
         return values
