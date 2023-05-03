@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 from pydantic import BaseModel
 
 from lassie.utils import downsample, to_datetime
@@ -48,6 +49,13 @@ class WaveformImage:
     def delta_t(self) -> float:
         return self.traces[0].deltat
 
+    @property
+    def n_traces(self) -> int:
+        return len(self.traces)
+
+    def get_all_nsl(self) -> list[tuple[str, str, str]]:
+        return [(tr.network, tr.station, tr.location) for tr in self.traces]
+
     def downsample(self, sampling_rate: float) -> None:
         """Downsample in-place.
         Args:
@@ -55,6 +63,12 @@ class WaveformImage:
         """
         for tr in self.traces:
             downsample(tr, sampling_rate)
+
+    def get_trace_data(self) -> np.ndarray:
+        return np.array([tr.ydata for tr in self.traces])
+
+    def get_offsets(self) -> np.ndarray:
+        return np.zeros(self.n_traces, dtype=np.int32)
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle

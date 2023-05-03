@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from pyrocko import parstack
+from pyrocko.squirrel import StationGrouping
 
 from lassie.octree import Octree
 from lassie.utils import to_datetime
@@ -51,7 +52,8 @@ class Search:
             tinc=60.0,
             tpad=0,
             want_incomplete=False,
-            codes=list((*nsl, "*") for nsl in self.stations.all_nsl()),
+            codes=list((*nsl, "*") for nsl in self.stations.get_all_nsl()),
+            grouping=StationGrouping(),
         ):
             traces: list[Trace] = batch.traces
             if not traces:
@@ -86,9 +88,6 @@ class SearchTraces:
         self.ray_tracers = ray_tracers
         self.image_functions = image_functions
 
-        self.trace_data = np.array([tr.ydata for tr in traces])
-        self.offsets = np.zeros(self.n_traces)
-
     @property
     def n_traces(self) -> int:
         return len(self.traces)
@@ -109,34 +108,26 @@ class SearchTraces:
         for image in images:
             shifts = []
             weights = []
+
             ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
+            stations = self.stations.select(image.get_all_nsl())
 
             for node in self.octree:
                 traveltimes = ray_tracer.get_traveltimes(
                     phase=image.phase,
                     node=node,
-                    stations=self.stations,
+                    stations=stations,
                 )
+                print("trveltimes", traveltimes.shape, stations.n_stations)
                 shifts.append(
                     np.round(traveltimes / image.sampling_rate).astype(np.int32)
                 )
-                weights.append(np.ones(self.n_traces))
-
-            print(
-                "trace_data",
-                self.trace_data.shape,
-                "offsets",
-                self.offsets.shape,
-                "shifts",
-                np.array(shifts).T.shape,
-                "weights",
-                np.array(weights).shape,
-            )
+                weights.append(np.ones(image.n_traces))
 
             result, offsets = parstack.parstack(
-                arrays=self.trace_data,
-                offsets=self.offsets,
-                shifts=np.array(shifts).T,
+                arrays=image.get_trace_data(),
+                offsets=image.get_offsets(),
+                shifts=np.array(shifts),
                 weights=np.array(weights),
                 dtype=np.float32,
                 method=0,

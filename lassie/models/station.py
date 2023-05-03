@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 from pydantic import BaseModel, constr, root_validator
 from pyrocko.io.stationxml import load_xml
@@ -42,13 +42,32 @@ class Stations(BaseModel):
     pyrocko_station_yamls: list[Path] = []
 
     def __iter__(self) -> Iterator[Station]:
-        for station in self.stations:
-            if ".".join(station.nsl) in self.blacklist:
+        for sta in self.stations:
+            if ".".join(sta.nsl) in self.blacklist:
                 continue
-            yield station
+            yield sta
 
-    def all_nsl(self) -> tuple[tuple[str, str, str]]:
+    @property
+    def n_stations(self) -> int:
+        return len([sta for sta in self])
+
+    def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
         return tuple(recv.nsl for recv in self)
+
+    def select(self, nsls: Iterable[tuple[str, str, str]]) -> Stations:
+        """Select stations by NSL code.
+
+        Args:
+            selection (Iterable[tuple[str, str, str]]): NSL codes
+
+        Returns:
+            list[Station]: Selected stations from NSL.
+        """
+        selected = []
+        for sta in self:
+            if sta.nsl in nsls:
+                selected.append(sta)
+        return Stations.construct(stations=selected)
 
     @root_validator
     def _load_stations(cls, values) -> Any:  # noqa: N805
@@ -63,7 +82,6 @@ class Stations(BaseModel):
         values.get("stations").extend(
             [Station.from_pyrocko_station(sta) for sta in loaded_stations]
         )
-        print(values)
         if not values.get("stations"):
             raise ValueError("no stations set")
         return values

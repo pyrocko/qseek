@@ -67,7 +67,7 @@ class Node(BaseModel):
 
     def as_location(self) -> Location:
         if not self._tree:
-            raise ValueError("Parent tree not set.")
+            raise AttributeError("parent tree not set")
         if not self._location:
             self._location = Location.construct(
                 lat=self._tree.center_lat,
@@ -86,7 +86,18 @@ class Node(BaseModel):
             yield self
 
     def __hash__(self) -> int:
-        return hash((self.east, self.north, self.depth, self.size))
+        if not self._tree:
+            raise AttributeError("parent tree not set")
+        return hash(
+            (
+                self._tree.center_lat,
+                self._tree.center_lon,
+                self.east,
+                self.north,
+                self.depth,
+                self.size,
+            )
+        )
 
 
 class Octree(BaseModel):
