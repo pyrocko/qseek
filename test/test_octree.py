@@ -19,14 +19,14 @@ def octree():
 
 
 def test_octree(octree: Octree, plot: bool) -> None:
-    assert octree.nnodes > 0
+    assert octree.n_nodes > 0
 
-    nnodes = octree.nnodes
+    nnodes = octree.n_nodes
 
     for node in octree:
         node.split()
 
-    assert nnodes * 8 == octree.nnodes
+    assert nnodes * 8 == octree.n_nodes
 
     child, *_ = octree[80].split()
     child, *_ = child.split()
@@ -75,6 +75,9 @@ def test_refine(octree: Octree, plot: bool) -> None:
         ax = plt.figure().add_subplot(projection="3d")
         coords = octree.get_coordinates().T
         ax.scatter(coords[0], coords[1], coords[2], c=octree.semblance)
+        ax.set_xlabel("x [m]")
+        ax.set_ylabel("y [m]")
+        ax.set_zlabel("x [m]")
         plt.show()
 
 

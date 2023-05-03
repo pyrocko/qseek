@@ -53,8 +53,8 @@ class WaveformImage:
     def n_traces(self) -> int:
         return len(self.traces)
 
-    def get_all_nsl(self) -> list[tuple[str, str, str]]:
-        return [(tr.network, tr.station, tr.location) for tr in self.traces]
+    def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
+        return tuple((tr.network, tr.station, tr.location) for tr in self.traces)
 
     def downsample(self, sampling_rate: float) -> None:
         """Downsample in-place.

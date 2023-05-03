@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
+import numpy as np
 from pydantic import BaseModel, constr, root_validator
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import load_stations
@@ -61,13 +62,30 @@ class Stations(BaseModel):
             selection (Iterable[tuple[str, str, str]]): NSL codes
 
         Returns:
-            list[Station]: Selected stations from NSL.
+            Stations: Containing only selected stations.
         """
-        selected = []
-        for sta in self:
-            if sta.nsl in nsls:
-                selected.append(sta)
-        return Stations.construct(stations=selected)
+        stations = []
+        for nsl in nsls:
+            for sta in self:
+                if sta.nsl == nsl:
+                    stations.append(sta)
+        return Stations.construct(stations=stations)
+
+    def get_centroid(self) -> Location:
+        """Get centroid location from all stations.
+
+        Returns:
+            Location: Centroid Location.
+        """
+        centroid_lat, centroid_lon, centroid_elevation = np.mean(
+            [(*sta.effective_lat_lon, sta.elevation) for sta in self],
+            axis=0,
+        )
+        return Location(
+            lat=centroid_lat,
+            lon=centroid_lon,
+            elevation=centroid_elevation,
+        )
 
     @root_validator
     def _load_stations(cls, values) -> Any:  # noqa: N805

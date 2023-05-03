@@ -22,4 +22,3 @@ def downsample(trace: Trace, sampling_rate: float) -> None:
     except UnavailableDecimation:
         logging.warn("using resample instead of decimation")
         trace.resample(deltat)
-        trace.resample(deltat)

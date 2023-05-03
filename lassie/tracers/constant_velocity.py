@@ -30,9 +30,7 @@ class ConstantVelocityTracer(RayTracer):
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
 
-        distance = node.distance_station(station)
-        velocity = self.velocities[phase]
-        return distance / velocity
+        return node.distance_station(station) / self.velocities[phase]
 
     def get_traveltimes(
         self,

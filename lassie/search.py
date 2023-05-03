@@ -4,8 +4,8 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+from matplotlib import pyplot as plt
 from pyrocko import parstack
-from pyrocko.squirrel import StationGrouping
 
 from lassie.octree import Octree
 from lassie.utils import to_datetime
@@ -53,7 +53,6 @@ class Search:
             tpad=0,
             want_incomplete=False,
             codes=list((*nsl, "*") for nsl in self.stations.get_all_nsl()),
-            grouping=StationGrouping(),
         ):
             traces: list[Trace] = batch.traces
             if not traces:
@@ -104,8 +103,10 @@ class SearchTraces:
         self,
     ) -> Octree:
         images = self.image_functions.process_traces(self.traces)
+        self.octree.reset()
 
         for image in images:
+            logger.debug("stacking image %s", image.image_function.name)
             shifts = []
             weights = []
 
@@ -118,13 +119,10 @@ class SearchTraces:
                     node=node,
                     stations=stations,
                 )
-                print("trveltimes", traveltimes.shape, stations.n_stations)
-                shifts.append(
-                    np.round(traveltimes / image.sampling_rate).astype(np.int32)
-                )
+                shifts.append(np.round(traveltimes / image.delta_t).astype(np.int32))
                 weights.append(np.ones(image.n_traces))
 
-            result, offsets = parstack.parstack(
+            semblance, offsets = parstack.parstack(
                 arrays=image.get_trace_data(),
                 offsets=image.get_offsets(),
                 shifts=np.array(shifts),
@@ -132,4 +130,23 @@ class SearchTraces:
                 dtype=np.float32,
                 method=0,
             )
-            print(result)
+
+            semblance_argmax = parstack.argmax(
+                semblance.astype(np.float64), nparallel=2
+            )
+            semblance_max = semblance.max(axis=0)
+
+            time_idx = semblance_max.argmax()
+            node_idx = semblance_argmax[time_idx]
+
+            plt.plot(semblance[100], alpha=0.3)
+            plt.plot(semblance_max, alpha=0.5)
+            plt.scatter(time_idx, semblance_max[time_idx])
+            plt.show()
+            # plt.plot(semblance[:, time_idx])
+            # plt.show()
+
+            print(self.octree[node_idx].as_location())
+
+            self.octree.add_semblance(semblance[:, time_idx])
+            self.octree.plot()

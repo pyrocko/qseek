@@ -28,6 +28,10 @@ class Location(BaseModel):
                 self.lat, self.lon, self.north_shift, self.east_shift
             )
 
+    @property
+    def effective_elevation(self) -> float:
+        return self.elevation - self.depth
+
     def _same_origin(self, other: Location) -> bool:
         return bool(self.lat == other.lat and self.lon == other.lon)
 
@@ -50,15 +54,15 @@ class Location(BaseModel):
             return math.sqrt(
                 (self.north_shift - other.north_shift) ** 2
                 + (self.east_shift - other.east_shift) ** 2
-                + ((self.depth + self.elevation) - (other.depth + other.elevation) ** 2)
+                + (self.effective_elevation - other.effective_elevation) ** 2
             )
 
         else:
             sx, sy, sz = od.geodetic_to_ecef(
-                *self.effective_lat_lon, self.elevation - self.depth
+                *self.effective_lat_lon, self.effective_elevation
             )
             rx, ry, rz = od.geodetic_to_ecef(
-                *other.effective_lat_lon, other.elevation - other.depth
+                *other.effective_lat_lon, other.effective_elevation
             )
 
             return math.sqrt((sx - rx) ** 2 + (sy - ry) ** 2 + (sz - rz) ** 2)

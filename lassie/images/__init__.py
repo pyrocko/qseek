@@ -33,7 +33,7 @@ class ImageFunctions(BaseModel):
             logger.debug("calculating images from %s", function.name)
             images.extend(function.process_traces(traces))
 
-        return WaveformImages(images=images)
+        return WaveformImages(__root__=images)
 
     def __iter__(self) -> Iterator[ImageFunction]:
         yield from self.__root__
@@ -41,7 +41,7 @@ class ImageFunctions(BaseModel):
 
 @dataclass
 class WaveformImages:
-    images: list[WaveformImage]
+    __root__: list[WaveformImage] = Field([], alias="images")
 
     def downsample(self, sampling_rate: float) -> None:
         """Downsample in-place.
@@ -51,5 +51,9 @@ class WaveformImages:
         for image in self:
             image.downsample(sampling_rate)
 
+    @property
+    def n_images(self) -> int:
+        return len(self.__root__)
+
     def __iter__(self) -> Iterator[WaveformImage]:
-        yield from self.images
+        yield from self.__root__

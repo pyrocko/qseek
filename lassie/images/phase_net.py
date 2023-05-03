@@ -34,7 +34,7 @@ PhaseName = Literal["P", "S"]
 class PhaseNet(ImageFunction):
     image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = "ethz"
-    sampling_rate: float = 10.0
+    sampling_rate: float = 20.0
     overlap: conint(ge=100, le=3000) = 2000
     use_cuda: bool = False
     phase_map: dict[PhaseName, str] = {

@@ -58,8 +58,8 @@ class Node(BaseModel):
         return self.east, self.north, self.depth
 
     def reset(self) -> None:
-        self.children = tuple()
         self._children_cached = self.children
+        self.children = tuple()
         self.semblance = 0.0
 
     def distance_station(self, station: Station) -> float:
@@ -150,7 +150,7 @@ class Octree(BaseModel):
         ]
 
     @property
-    def nnodes(self) -> int:
+    def n_nodes(self) -> int:
         return sum(1 for _ in self)
 
     def __iter__(self) -> Iterator[Node]:
@@ -161,9 +161,10 @@ class Octree(BaseModel):
         for inode, node in enumerate(self):
             if inode == idx:
                 return node
-        raise IndexError(f"Unknown node {idx}")
+        raise IndexError(f"bad node index {idx}")
 
     def reset(self) -> None:
+        logger.debug("resetting tree")
         for node in self._root_nodes:
             node.reset()
 
@@ -180,6 +181,16 @@ class Octree(BaseModel):
     @property
     def semblance(self) -> np.ndarray:
         return np.fromiter((node.semblance for node in self), float)
+
+    def add_semblance(self, semblance: np.ndarray) -> None:
+        n_nodes = 0
+        for node, node_semblance in zip(self, semblance):
+            node.semblance = float(node_semblance)
+            n_nodes += 1
+        if n_nodes != semblance.size:
+            raise ValueError(
+                f"semblance is of bad shape {semblance.shape}, expected {n_nodes}"
+            )
 
     def get_coordinates(self) -> np.ndarray:
         return np.array([node.coordinates for node in self])
@@ -201,9 +212,16 @@ class Octree(BaseModel):
             except ValueError:
                 break
 
-        # Cut off parent nodes
-        tree._root_nodes = [node for node in tree]
+        tree._root_nodes = [node for node in tree]  # Cut off parent nodes
         return tree
+
+    def plot(self) -> None:
+        import matplotlib.pyplot as plt
+
+        ax = plt.figure().add_subplot(projection="3d")
+        coords = self.get_coordinates().T
+        ax.scatter(coords[0], coords[1], coords[2], c=self.semblance)
+        plt.show()
 
     def __hash__(self) -> int:
         return hash(

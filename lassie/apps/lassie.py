@@ -26,7 +26,7 @@ def main():
     args = parser.parse_args()
     if args.command == "dump-config":
         config = Config.construct(
-            stations=Stations(pyrocko_station_yamls=[Path("stations.yaml")]),
+            stations=Stations.construct(pyrocko_station_yamls=[Path("stations.yaml")]),
             waveform_data=[Path("data/")],
             time_span=(
                 datetime.fromisoformat("2023-04-11T00:00:00+00:00"),
