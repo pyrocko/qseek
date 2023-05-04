@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, ClassVar, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, PositiveFloat, PrivateAttr, validator
+from pydantic import BaseModel, PositiveFloat, PrivateAttr
+from pyrocko import orthodrome as od
 
-from lassie.models.location import Location
+from lassie.models.location import CoordSystem, Location
 
 if TYPE_CHECKING:
-    from lassie.models.station import Station
+    from lassie.models.station import Station, Stations
 
 logger = logging.getLogger(__name__)
 km = 1e3
@@ -21,21 +22,21 @@ class Node(BaseModel):
     north: float
     depth: float
     size: float
+    tree: Octree
     semblance: float = 0.0
 
     children: tuple[Node] = tuple()
 
     _children_cached: tuple[Node] = PrivateAttr(tuple())
-    _tree: ClassVar[Octree | None] = None
     _location: Location | None = PrivateAttr(None)
 
     def split(self) -> tuple[Node]:
-        if not self._tree:
+        if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
         if not self._children_cached:
             half_size = self.size / 2
-            if half_size < self._tree.size_limit:
+            if half_size < self.tree.size_limit:
                 raise ValueError("Cannot split node below limit.")
 
             self._children_cached = tuple(
@@ -44,6 +45,7 @@ class Node(BaseModel):
                     north=self.north + north * half_size / 2,
                     depth=self.depth + depth * half_size / 2,
                     size=half_size,
+                    tree=self.tree,
                 )
                 for east in (-1, 1)
                 for north in (-1, 1)
@@ -51,6 +53,8 @@ class Node(BaseModel):
             )
 
         self.children = self._children_cached
+        if self.tree:
+            self.tree._clear_cache()
         return self.children
 
     @property
@@ -66,13 +70,11 @@ class Node(BaseModel):
         return station.distance_to(self.as_location())
 
     def as_location(self) -> Location:
-        if not self._tree:
-            raise AttributeError("parent tree not set")
         if not self._location:
             self._location = Location.construct(
-                lat=self._tree.center_lat,
-                lon=self._tree.center_lon,
-                elevation=self._tree.surface_elevation,
+                lat=self.tree.center_lat,
+                lon=self.tree.center_lon,
+                elevation=self.tree.surface_elevation,
                 east_shift=self.east,
                 north_shift=self.north,
                 depth=self.depth,
@@ -87,12 +89,10 @@ class Node(BaseModel):
             yield self
 
     def __hash__(self) -> int:
-        if not self._tree:
-            raise AttributeError("parent tree not set")
         return hash(
             (
-                self._tree.center_lat,
-                self._tree.center_lon,
+                self.tree.center_lat,
+                self.tree.center_lon,
                 self.east,
                 self.north,
                 self.depth,
@@ -113,23 +113,26 @@ class Octree(BaseModel):
     nodes: list[Node] = []
 
     _root_nodes: list[Node] = PrivateAttr([])
+    _cached_coordinates: np.ndarray | None = PrivateAttr(None)
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
-        self.init_nodes()
 
-    @validator("east_bounds", "north_bounds", "depth_bounds")
-    def _check_bounds(cls, bounds):  # noqa: N805
-        for value in bounds:
-            if value[0] >= value[1]:
-                raise ValueError(f"invalid bounds {value}")
-        return bounds
+        logger.debug("initializing nodes")
+        self._root_nodes = self._get_root_nodes(self.size_initial)
 
-    @validator("size_initial", "size_limit")
-    def _check_limits(cls, limits):  # noqa: N805
-        if limits[0] < limits[1]:
-            raise ValueError(f"invalid octree size limits {limits}")
-        return limits
+    # @validator("east_bounds", "north_bounds", "depth_bounds", )
+    # def _check_bounds(cls, bounds):  # noqa: N805
+    #     for value in bounds:
+    #         if value[0] >= value[1]:
+    #             raise ValueError(f"invalid bounds {value}")
+    #     return bounds
+
+    # @validator("size_initial", "size_limit")
+    # def _check_limits(cls, limits):  # noqa: N805
+    #     if limits[0] < limits[1]:
+    #         raise ValueError(f"invalid octree size limits {limits}")
+    #     return limits
 
     def extent(self) -> tuple[float, float, float]:
         return (
@@ -138,22 +141,15 @@ class Octree(BaseModel):
             self.depth_bounds[1] - self.depth_bounds[0],
         )
 
-    def init_nodes(self) -> None:
-        logger.debug("initializing nodes")
-        ext = self.size_initial
+    def _get_root_nodes(self, size: float) -> list[Node]:
+        len = size
         ext_east, ext_north, ext_depth = self.extent()
-        east_nodes = np.arange(ext_east // ext) * ext + ext / 2 + self.east_bounds[0]
-        north_nodes = np.arange(ext_north // ext) * ext + ext / 2 + self.north_bounds[0]
-        depth_nodes = np.arange(ext_depth // ext) * ext + ext / 2 + self.depth_bounds[0]
+        east_nodes = np.arange(ext_east // len) * len + len / 2 + self.east_bounds[0]
+        north_nodes = np.arange(ext_north // len) * len + len / 2 + self.north_bounds[0]
+        depth_nodes = np.arange(ext_depth // len) * len + len / 2 + self.depth_bounds[0]
 
-        Node._tree = self
-        self._root_nodes = [
-            Node.construct(
-                east=east,
-                north=north,
-                depth=depth,
-                size=ext,
-            )
+        return [
+            Node.construct(east=east, north=north, depth=depth, size=len, tree=self)
             for east in east_nodes
             for north in north_nodes
             for depth in depth_nodes
@@ -173,10 +169,13 @@ class Octree(BaseModel):
                 return node
         raise IndexError(f"bad node index {idx}")
 
+    def _clear_cache(self) -> None:
+        self._cached_coordinates = None
+
     def reset(self) -> None:
         logger.debug("resetting tree")
-        for node in self._root_nodes:
-            node.reset()
+        self._clear_cache()
+        self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
         groups = defaultdict(list)
@@ -202,8 +201,32 @@ class Octree(BaseModel):
                 f"semblance is of bad shape {semblance.shape}, expected {n_nodes}"
             )
 
-    def get_coordinates(self) -> np.ndarray:
-        return np.array([node.coordinates for node in self])
+    def get_coordinates(self, system: CoordSystem = "cartesian") -> np.ndarray:
+        if self._cached_coordinates is None:
+            node_locations = [node.as_location() for node in self]
+            self._cached_coordinates = np.array(
+                [
+                    (*node.effective_lat_lon, node.effective_elevation)
+                    for node in node_locations
+                ]
+            )
+        return self._cached_coordinates
+
+    def distances_stations(self, stations: Stations) -> np.ndarray:
+        """Returns the distances from all nodes to all stations.
+
+        Args:
+            stations (Stations): Stations to calculate distance to.
+
+        Returns:
+            np.ndarray: Of shape n-nodes, n-stations.
+        """
+        node_coords = self.get_coordinates(system="cartesian")
+        sta_coords = stations.get_coordinates(system="cartesian")
+
+        sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
+        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
+        return np.linalg.norm(sta_coords - node_coords[:, np.newaxis], axis=2)
 
     def refine(self, semblance_threshold: float) -> list[Node]:
         new_nodes = []
@@ -215,14 +238,7 @@ class Octree(BaseModel):
     def finest_tree(self) -> Octree:
         tree = self.copy()
         tree.reset()
-        while True:
-            try:
-                for node in tree:
-                    node.split()
-            except ValueError:
-                break
-
-        tree._root_nodes = [node for node in tree]  # Cut off parent nodes
+        tree._root_nodes = tree._get_root_nodes(tree.size_limit)
         return tree
 
     def plot(self) -> None:

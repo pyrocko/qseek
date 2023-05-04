@@ -38,13 +38,7 @@ class Search:
         self.check_distances()
 
     def check_distances(self) -> None:
-        distances = np.array(
-            [
-                node.as_location().distance_to(station)
-                for node in self.octree
-                for station in self.stations
-            ]
-        )
+        distances = self.octree.distances_stations(self.stations)
         print(f"Distances {distances.min()} - {distances.max()}")
 
     def scan_squirrel(
@@ -119,20 +113,12 @@ class SearchTraces:
         for image in images:
             logger.debug("stacking image %s", image.image_function.name)
 
-            shifts = []
-            weights = []
-
             ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
             stations = self.stations.select(image.get_all_nsl())
 
-            for node in self.octree:
-                traveltimes = ray_tracer.get_traveltimes(
-                    phase=image.phase,
-                    node=node,
-                    stations=stations,
-                )
-                shifts.append(np.round(traveltimes / image.delta_t).astype(np.int32))
-                weights.append(np.ones(image.n_traces))
+            traveltimes = ray_tracer.get_traveltimes(image.phase, self.octree, stations)
+            shifts = np.round(traveltimes / image.delta_t).astype(np.int32)
+            weights = np.ones_like(shifts)
 
             semblance, offsets = parstack.parstack(
                 arrays=image.get_trace_data(),

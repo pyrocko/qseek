@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import math
 from functools import cached_property
+from typing import Literal
 
 from pydantic import BaseModel
 from pyrocko import orthodrome as od
+
+CoordSystem = Literal["cartesian"]
 
 
 class Location(BaseModel):

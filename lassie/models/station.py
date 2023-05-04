@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, constr, root_validator
+from pydantic import BaseModel, PrivateAttr, constr, root_validator
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import load_stations
 
 if TYPE_CHECKING:
     from pyrocko.model import Station as PyrockoStation
 
-from lassie.models.location import Location
+from lassie.models.location import CoordSystem, Location
 
 NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"
 
@@ -21,9 +21,6 @@ logger = logging.getLogger(__name__)
 
 class Station(Location):
     nsl: tuple[str, str, str]
-
-    def __hash__(self) -> int:
-        return super().__hash__() + hash(self.nsl)
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:
@@ -37,6 +34,9 @@ class Station(Location):
             depth=station.depth,
         )
 
+    def __hash__(self) -> int:
+        return hash((super().__hash__(), self.nsl))
+
 
 class Stations(BaseModel):
     stations: list[Station] = []
@@ -44,6 +44,8 @@ class Stations(BaseModel):
 
     station_xmls: list[Path] = []
     pyrocko_station_yamls: list[Path] = []
+
+    _cached_coordinates: np.ndarray | None = PrivateAttr(None)
 
     def __iter__(self) -> Iterator[Station]:
         for sta in self.stations:
@@ -94,6 +96,13 @@ class Stations(BaseModel):
             elevation=centroid_elevation,
         )
 
+    def get_coordinates(self, system: CoordSystem = "cartesian") -> np.ndarray:
+        if self._cached_coordinates is None:
+            self._cached_coordinates = np.array(
+                [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
+            )
+        return self._cached_coordinates
+
     @root_validator
     def _load_stations(cls, values) -> Any:  # noqa: N805
         loaded_stations = []
@@ -110,3 +119,6 @@ class Stations(BaseModel):
         if not values.get("stations"):
             raise ValueError("no stations set")
         return values
+
+    def __hash__(self) -> int:
+        return hash(sta for sta in self)

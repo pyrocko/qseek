@@ -26,11 +26,13 @@ class RayTracer(BaseModel):
     def get_available_phases(self) -> tuple[str]:
         ...
 
-    def get_traveltime_bounds(self) -> tuple[float, float]:
-        ...
-
     def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
         ...
 
-    def get_traveltimes(self, phase: str, node: Node, stations: Stations) -> np.ndarray:
+    def get_traveltimes(
+        self,
+        phase: str,
+        octree: Octree,
+        stations: Stations,
+    ) -> np.ndarray:
         ...

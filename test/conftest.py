@@ -5,8 +5,10 @@ import pytest
 
 from lassie.config import Config
 from lassie.models.station import Stations
+from lassie.octree import Octree
 
 DATA_PATH = Path(__file__).parent / "data"
+km = 1e3
 
 
 def pytest_addoption(parser) -> None:
@@ -24,6 +26,16 @@ def sample_config() -> Config:
         time_span=(
             datetime.fromisoformat("2022-09-24T17:30:00Z"),
             datetime.fromisoformat("2022-09-24T17:45:00Z"),
+        ),
+        # Laacher See
+        octree=Octree(
+            center_lat=50.41255,
+            center_lon=7.26816,
+            surface_elevation=0,
+            size_initial=5 * km,
+            east_bounds=(-20 * km, 20 * km),
+            north_bounds=(-20 * km, 20 * km),
+            depth_bounds=(0 * km, 15 * km),
         ),
         stations=Stations(pyrocko_station_yamls=[DATA_PATH / "6E-stations.yaml"]),
         waveform_data=[DATA_PATH],
