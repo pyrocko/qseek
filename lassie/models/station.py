@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
 from lassie.models.location import Location
 
 NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"
+
+logger = logging.getLogger(__name__)
 
 
 class Station(Location):
@@ -45,6 +48,10 @@ class Stations(BaseModel):
     def __iter__(self) -> Iterator[Station]:
         for sta in self.stations:
             if ".".join(sta.nsl) in self.blacklist:
+                continue
+            if not sta.lat or not sta.lon:
+                logger.warning("station has bad geographical coordinates: %s", sta)
+                self.blacklist.append(".".join(sta.nsl))
                 continue
             yield sta
 

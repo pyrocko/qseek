@@ -16,8 +16,8 @@ class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
     offset: float = 0.0
     velocities: dict[str, PositiveFloat] = {
-        "constant.P": 5200.0,
-        "constant.S": 2500.0,
+        "constant.P": 6000.0,
+        "constant.S": 3900.0,
     }
 
     def __init__(self, **data) -> None:
@@ -29,7 +29,6 @@ class ConstantVelocityTracer(RayTracer):
     def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
-
         return node.distance_station(station) / self.velocities[phase]
 
     def get_traveltimes(

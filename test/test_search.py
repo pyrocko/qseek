@@ -8,11 +8,14 @@ def test_search(sample_config: Config) -> None:
     config = sample_config
 
     centroid = config.stations.get_centroid()
-    config.octree.center_lat = centroid.lat
-    config.octree.center_lon = centroid.lon
+
+    # Laacher See
+    config.octree.center_lat = 50.41255
+    config.octree.center_lon = 7.26816
     config.octree.surface_elevation = centroid.elevation
-    config.octree.east_bounds = (-20 * km, 20 * km)
-    config.octree.north_bounds = (-20 * km, 20 * km)
+    config.octree.east_bounds = (-30 * km, 30 * km)
+    config.octree.north_bounds = (-30 * km, 30 * km)
+    config.octree.depth_bounds = (0 * km, 20 * km)
     config.octree.init_nodes()
 
     search = Search(
@@ -21,4 +24,5 @@ def test_search(sample_config: Config) -> None:
         image_functions=config.image_functions,
         ray_tracers=config.ray_tracers,
     )
+
     search.scan_squirrel(config.get_squirrel())

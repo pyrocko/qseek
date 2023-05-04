@@ -61,11 +61,11 @@ class Location(BaseModel):
             sx, sy, sz = od.geodetic_to_ecef(
                 *self.effective_lat_lon, self.effective_elevation
             )
-            rx, ry, rz = od.geodetic_to_ecef(
+            ox, oy, oz = od.geodetic_to_ecef(
                 *other.effective_lat_lon, other.effective_elevation
             )
 
-            return math.sqrt((sx - rx) ** 2 + (sy - ry) ** 2 + (sz - rz) ** 2)
+            return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
     def __hash__(self) -> int:
         return hash(
@@ -77,4 +77,4 @@ class Location(BaseModel):
                 self.elevation,
                 self.depth,
             )
-        )  # Model has to be hashable.
+        )

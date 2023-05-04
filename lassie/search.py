@@ -4,7 +4,6 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
-from matplotlib import pyplot as plt
 from pyrocko import parstack
 
 from lassie.octree import Octree
@@ -35,6 +34,18 @@ class Search:
         self.stations = stations
         self.ray_tracers = ray_tracers
         self.image_functions = image_functions
+
+        self.check_distances()
+
+    def check_distances(self) -> None:
+        distances = np.array(
+            [
+                node.as_location().distance_to(station)
+                for node in self.octree
+                for station in self.stations
+            ]
+        )
+        print(f"Distances {distances.min()} - {distances.max()}")
 
     def scan_squirrel(
         self,
@@ -107,6 +118,7 @@ class SearchTraces:
 
         for image in images:
             logger.debug("stacking image %s", image.image_function.name)
+
             shifts = []
             weights = []
 
@@ -138,11 +150,6 @@ class SearchTraces:
 
             time_idx = semblance_max.argmax()
             node_idx = semblance_argmax[time_idx]
-
-            plt.plot(semblance[100], alpha=0.3)
-            plt.plot(semblance_max, alpha=0.5)
-            plt.scatter(time_idx, semblance_max[time_idx])
-            plt.show()
             # plt.plot(semblance[:, time_idx])
             # plt.show()
 
@@ -150,3 +157,4 @@ class SearchTraces:
 
             self.octree.add_semblance(semblance[:, time_idx])
             self.octree.plot()
+            self.octree.plot_surface()

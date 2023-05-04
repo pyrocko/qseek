@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator
 
 import numpy as np
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PositiveFloat, PrivateAttr, validator
 
 from lassie.models.location import Location
 
@@ -75,6 +75,7 @@ class Node(BaseModel):
                 elevation=self._tree.surface_elevation,
                 east_shift=self.east,
                 north_shift=self.north,
+                depth=self.depth,
             )
         return self._location
 
@@ -101,26 +102,40 @@ class Node(BaseModel):
 
 
 class Octree(BaseModel):
-    _root_nodes: list[Node] = PrivateAttr([])
     center_lat: float = 0.0
     center_lon: float = 0.0
     surface_elevation: float = 0.0
-    size_initial: float = 2 * km
-    size_limit: float = 500
+    size_initial: PositiveFloat = 2 * km
+    size_limit: PositiveFloat = 500
     east_bounds: tuple[float, float] = (-10 * km, 10 * km)
     north_bounds: tuple[float, float] = (-10 * km, 10 * km)
     depth_bounds: tuple[float, float] = (0 * km, 20 * km)
     nodes: list[Node] = []
 
+    _root_nodes: list[Node] = PrivateAttr([])
+
     def __init__(self, **data) -> None:
         super().__init__(**data)
         self.init_nodes()
+
+    @validator("east_bounds", "north_bounds", "depth_bounds")
+    def _check_bounds(cls, bounds):  # noqa: N805
+        for value in bounds:
+            if value[0] >= value[1]:
+                raise ValueError(f"invalid bounds {value}")
+        return bounds
+
+    @validator("size_initial", "size_limit")
+    def _check_limits(cls, limits):  # noqa: N805
+        if limits[0] < limits[1]:
+            raise ValueError(f"invalid octree size limits {limits}")
+        return limits
 
     def extent(self) -> tuple[float, float, float]:
         return (
             self.east_bounds[1] - self.east_bounds[0],
             self.north_bounds[1] - self.north_bounds[0],
-            self.depth_bounds[1] - self.depth_bounds[0] + self.surface_elevation,
+            self.depth_bounds[1] - self.depth_bounds[0],
         )
 
     def init_nodes(self) -> None:
@@ -129,12 +144,7 @@ class Octree(BaseModel):
         ext_east, ext_north, ext_depth = self.extent()
         east_nodes = np.arange(ext_east // ext) * ext + ext / 2 + self.east_bounds[0]
         north_nodes = np.arange(ext_north // ext) * ext + ext / 2 + self.north_bounds[0]
-        depth_nodes = (
-            np.arange(ext_depth // ext) * ext
-            + ext / 2
-            + self.depth_bounds[0]
-            + self.surface_elevation
-        )
+        depth_nodes = np.arange(ext_depth // ext) * ext + ext / 2 + self.depth_bounds[0]
 
         Node._tree = self
         self._root_nodes = [
@@ -221,6 +231,14 @@ class Octree(BaseModel):
         ax = plt.figure().add_subplot(projection="3d")
         coords = self.get_coordinates().T
         ax.scatter(coords[0], coords[1], coords[2], c=self.semblance)
+        plt.show()
+
+    def plot_surface(self) -> None:
+        import matplotlib.pyplot as plt
+
+        surface = self.reduce_surface()
+        ax = plt.figure().gca()
+        ax.scatter(surface[:, 0], surface[:, 1], c=surface[:, 2])
         plt.show()
 
     def __hash__(self) -> int:
