@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +17,10 @@ from lassie.tracers.base import RayTracer
 
 if TYPE_CHECKING:
     from lmdb import _Database
+
+
+def hash_to_bytes(hash: int) -> bytes:
+    return struct.pack("q", hash)
 
 
 class Timing(BaseModel):
@@ -64,7 +69,7 @@ class CakeTracer(RayTracer):
             self._earthmodel.profile(param).dump(data)
         self._earthmodel_hash = sha1(data.getvalue()).hexdigest()
 
-        self._lmdb = Environment(str(self.cache), sync=False)
+        self._lmdb = Environment(str(self.cache), sync=False, max_dbs=32)
 
     def get_available_phases(self) -> tuple[str]:
         return tuple(self.timings.keys())
@@ -86,27 +91,27 @@ class CakeTracer(RayTracer):
 
     def get_traveltimes(
         self, phase: str, octree: Octree, stations: Stations
-    ) -> np.ndarray:
+    ) -> list[np.ndarray]:
         distances = octree.distances_stations(stations)
-        return np.array(
-            [
-                self._calculate_traveltimes(phase, node, distance)
-                for node, distance in zip(octree, distances)
-            ]
-        )
+        return [
+            self._retrieve_traveltimes(phase, node, distance)
+            for node, distance in zip(octree, distances)
+        ]
 
     def _get_database(self, phase: str) -> _Database:
-        return self._lmdb.open_db(hash((phase, self._earthmodel_hash)))
+        h = hash_to_bytes(hash((phase, self._earthmodel_hash)))
+        return self._lmdb.open_db(h)
 
     def _retrieve_traveltimes(
         self, phase: str, node: Node, distances: np.ndarray
     ) -> np.ndarray:
         database = self._get_database(phase)
-        key = hash((node, hash(distances.tobytes())))
+        key = hash_to_bytes(hash((node, hash(distances.tobytes()))))
 
         with self._lmdb.begin(write=False) as txn:
             traveltimes = txn.get(key, db=database)
             if traveltimes:
+                print("hitting cache")
                 return np.frombuffer(traveltimes, dtype=np.float32)
 
         traveltimes = self._calculate_traveltimes(phase, node, distances)
