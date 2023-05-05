@@ -262,10 +262,10 @@ class Octree(BaseModel):
         ax.set_zlabel("depth [m]")
         plt.show()
 
-    def plot_surface(self) -> None:
+    def plot_surface(self, accumulator: Callable = np.max) -> None:
         import matplotlib.pyplot as plt
 
-        surface = self.reduce_surface()
+        surface = self.reduce_surface(accumulator)
         ax = plt.figure().gca()
         ax.scatter(surface[:, 0], surface[:, 1], c=surface[:, 2], cmap="Oranges")
         ax.set_xlabel("east [m]")

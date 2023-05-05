@@ -193,7 +193,7 @@ class SearchTraces:
 
         semblance_argmax = parstack.argmax(semblance.astype(np.float64), nparallel=2)
         semblance_trace = semblance.max(axis=0)
-        peak_idx, _ = signal.find_peaks(semblance_trace, height=10.0, distance=20)
+        peak_idx, _ = signal.find_peaks(semblance_trace, height=10.0, distance=200)
 
         plt.plot(semblance_trace)
         plt.scatter(peak_idx, semblance_trace[peak_idx])
@@ -209,5 +209,5 @@ class SearchTraces:
             )
             detections.add_detection(detection)
             self.octree.add_semblance(semblance[:, idx])
-            self.octree.plot()
+            self.octree.plot_surface()
         return detections
