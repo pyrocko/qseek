@@ -151,7 +151,7 @@ class CakeTracer(RayTracer):
             raise ValueError(f"timing {phase} is not defined.")
         timing = self.timings[phase].as_phase_def()
 
-        distances = octree.distances_stations(stations)
+        distances = octree.distances_receivers(stations)
         return np.array(
             [
                 self._get_node_traveltimes(timing, node, distance)

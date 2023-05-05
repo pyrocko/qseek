@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import math
 from functools import cached_property
-from typing import Literal
+from pathlib import Path
+from typing import Iterable, Literal
 
 from pydantic import BaseModel
 from pyrocko import orthodrome as od
 
-CoordSystem = Literal["cartesian"]
+CoordSystem = Literal["cartesian", "geographic"]
 
 
 class Location(BaseModel):
@@ -81,3 +82,14 @@ class Location(BaseModel):
                 self.depth,
             )
         )
+
+
+def locations_to_csv(locations: Iterable[Location], filename: Path) -> Path:
+    lines = ["lat, lon, elevation, type"]
+    for loc in locations:
+        lines.append(
+            "%.4f, %.4f, %.4f, %s"
+            % (*loc.effective_lat_lon, loc.effective_elevation, loc.__class__.__name__)
+        )
+    filename.write_text("\n".join(lines))
+    return filename

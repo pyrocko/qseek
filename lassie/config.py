@@ -4,13 +4,14 @@ import glob
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.images import ImageFunctions, PhaseNet
 from lassie.models import Stations
 from lassie.octree import Octree
-from lassie.tracers import CakeTracer, RayTracers
+from lassie.tracers import RayTracers
+from lassie.tracers.constant_velocity import ConstantVelocityTracer
 
 
 class Config(BaseModel):
@@ -21,9 +22,7 @@ class Config(BaseModel):
 
     time_span: tuple[datetime | None, datetime | None] = (None, None)
 
-    ray_tracers: RayTracers = Field(
-        default_factory=lambda: RayTracers(tracers=[CakeTracer()])
-    )
+    ray_tracers: RayTracers = RayTracers(tracers=[ConstantVelocityTracer()])
     image_functions: ImageFunctions = ImageFunctions(functions=[PhaseNet()])
 
     octree: Octree = Octree()
@@ -47,7 +46,7 @@ class Config(BaseModel):
         paths = []
         for path in self.waveform_data:
             if "**" in str(path):
-                paths.extend(glob.glob(str(path)))
+                paths.extend(glob.glob(str(path), recursive=True))
             else:
                 paths.append(str(path))
         squirrel.add(paths, check=False)

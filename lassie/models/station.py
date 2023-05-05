@@ -96,7 +96,7 @@ class Stations(BaseModel):
             elevation=centroid_elevation,
         )
 
-    def get_coordinates(self, system: CoordSystem = "cartesian") -> np.ndarray:
+    def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if self._cached_coordinates is None:
             self._cached_coordinates = np.array(
                 [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]

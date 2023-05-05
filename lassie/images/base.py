@@ -64,11 +64,14 @@ class WaveformImage:
         for tr in self.traces:
             downsample(tr, sampling_rate)
 
-    def get_trace_data(self) -> np.ndarray:
-        return np.array([tr.ydata for tr in self.traces])
+    def get_trace_data(self) -> list[np.ndarray]:
+        return [tr.ydata for tr in self.traces]
 
-    def get_offsets(self) -> np.ndarray:
-        return np.zeros(self.n_traces, dtype=np.int32)
+    def get_offsets(self, reference: datetime) -> np.ndarray:
+        offsets = np.fromiter((tr.tmin for tr in self.traces), float)
+        return np.round((offsets - reference.timestamp()) / self.delta_t).astype(
+            np.int32
+        )
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle

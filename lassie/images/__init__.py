@@ -55,5 +55,13 @@ class WaveformImages:
     def n_images(self) -> int:
         return len(self.__root__)
 
+    def snuffle(self) -> None:
+        from pyrocko.trace import snuffle
+
+        traces = []
+        for img in self:
+            traces += img.traces
+        snuffle(traces)
+
     def __iter__(self) -> Iterator[WaveformImage]:
         yield from self.__root__

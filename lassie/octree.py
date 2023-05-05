@@ -113,7 +113,7 @@ class Octree(BaseModel):
     nodes: list[Node] = []
 
     _root_nodes: list[Node] = PrivateAttr([])
-    _cached_coordinates: np.ndarray | None = PrivateAttr(None)
+    _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
@@ -170,7 +170,7 @@ class Octree(BaseModel):
         raise IndexError(f"bad node index {idx}")
 
     def _clear_cache(self) -> None:
-        self._cached_coordinates = None
+        self._cached_coordinates.clear()
 
     def reset(self) -> None:
         logger.debug("resetting tree")
@@ -201,16 +201,25 @@ class Octree(BaseModel):
                 f"semblance is of bad shape {semblance.shape}, expected {n_nodes}"
             )
 
-    def get_coordinates(self, system: CoordSystem = "cartesian") -> np.ndarray:
-        if self._cached_coordinates is None:
+    def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
+        if self._cached_coordinates.get(system) is None:
             node_locations = [node.as_location() for node in self]
-            self._cached_coordinates = np.array(
-                [
-                    (*node.effective_lat_lon, node.effective_elevation)
-                    for node in node_locations
-                ]
-            )
-        return self._cached_coordinates
+
+            if system == "geographic":
+                self._cached_coordinates[system] = np.array(
+                    [
+                        (*node.effective_lat_lon, node.effective_elevation)
+                        for node in node_locations
+                    ]
+                )
+            elif system == "cartesian":
+                self._cached_coordinates[system] = np.array(
+                    [
+                        (node.east_shift, node.north_shift, node.effective_elevation)
+                        for node in node_locations
+                    ]
+                )
+        return self._cached_coordinates[system]
 
     def distances_stations(self, stations: Stations) -> np.ndarray:
         """Returns the distances from all nodes to all stations.
@@ -221,8 +230,8 @@ class Octree(BaseModel):
         Returns:
             np.ndarray: Of shape n-nodes, n-stations.
         """
-        node_coords = self.get_coordinates(system="cartesian")
-        sta_coords = stations.get_coordinates(system="cartesian")
+        node_coords = self.get_coordinates(system="geographic")
+        sta_coords = stations.get_coordinates(system="geographic")
 
         sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
@@ -245,8 +254,11 @@ class Octree(BaseModel):
         import matplotlib.pyplot as plt
 
         ax = plt.figure().add_subplot(projection="3d")
-        coords = self.get_coordinates().T
-        ax.scatter(coords[0], coords[1], coords[2], c=self.semblance)
+        coords = self.get_coordinates("cartesian").T
+        ax.scatter(coords[0], coords[1], coords[2], c=self.semblance, cmap="Oranges")
+        ax.set_xlabel("east [m]")
+        ax.set_ylabel("north [m]")
+        ax.set_zlabel("depth [m]")
         plt.show()
 
     def plot_surface(self) -> None:
@@ -254,7 +266,9 @@ class Octree(BaseModel):
 
         surface = self.reduce_surface()
         ax = plt.figure().gca()
-        ax.scatter(surface[:, 0], surface[:, 1], c=surface[:, 2])
+        ax.scatter(surface[:, 0], surface[:, 1], c=surface[:, 2], cmap="Oranges")
+        ax.set_xlabel("east [m]")
+        ax.set_ylabel("north [m]")
         plt.show()
 
     def __hash__(self) -> int:
