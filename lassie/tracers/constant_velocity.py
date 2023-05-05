@@ -6,6 +6,7 @@ import numpy as np
 from pydantic import PositiveFloat
 
 from lassie.tracers.base import RayTracer
+from lassie.utils import PhasePattern
 
 if TYPE_CHECKING:
     from lassie.models.station import Station, Stations
@@ -15,9 +16,9 @@ if TYPE_CHECKING:
 class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
     offset: float = 0.0
-    velocities: dict[str, PositiveFloat] = {
-        "constant.P": 6000.0,
-        "constant.S": 3900.0,
+    velocities: dict[PhasePattern, PositiveFloat] = {
+        "constant:P": 6000.0,
+        "constant:S": 3900.0,
     }
 
     def get_available_phases(self) -> tuple[str]:

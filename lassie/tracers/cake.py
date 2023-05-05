@@ -15,12 +15,44 @@ from pyrocko.cake import LayeredModel, PhaseDef, Ray, m2d, read_nd_model_str
 from lassie.models.station import Station, Stations
 from lassie.octree import Node, Octree
 from lassie.tracers.base import RayTracer
+from lassie.utils import PhasePattern
 
 if TYPE_CHECKING:
     from lmdb import _Database
 
-MAX_DBS = 16
 logger = logging.getLogger(__name__)
+
+MAX_DBS = 16
+EXAMPLE_MODEL = """
+   0.00      5.50    3.59    2.7
+   1.00      5.50    3.59    2.7
+   1.00      6.00    3.92    2.7
+   4.00      6.00    3.92    2.7
+   4.00      6.20    4.05    2.7
+   8.00      6.20    4.05    2.7
+   8.00      6.30    4.12    2.7
+   13.00     6.30    4.12    2.7
+   13.00     6.40    4.18    2.7
+   17.00     6.40    4.18    2.7
+   17.00     6.50    4.25    2.7
+   22.00     6.50    4.25    2.7
+   22.00     6.60    4.31    2.7
+   26.00     6.60    4.31    2.7
+   26.00     6.80    4.44    2.7
+   30.00     6.80    4.44    2.7
+   30.00     8.10    5.29    2.7
+   45.00     8.10    5.29    2.7
+   45.00     8.50    5.56    2.7
+   71.00     8.50    5.56    2.7
+   71.00     8.73    5.71    2.7
+   101.00    8.73    5.71    2.7
+   101.00    8.73    5.71    2.7
+   201.00    8.73    5.71    2.7
+   201.00    8.73    5.71    2.7
+   301.00    8.73    5.71    2.7
+   301.00    8.73    5.71    2.7
+   401.00    8.73    5.71    2.7
+"""
 
 
 def hash_to_bytes(hash: int) -> bytes:
@@ -36,11 +68,12 @@ class Timing(BaseModel):
 
 class CakeTracer(RayTracer):
     tracer: Literal["CakeTracer"] = "CakeTracer"
-    timings: dict[str, Timing] = {
+    timings: dict[PhasePattern, Timing] = {
         "cake:P": Timing(definition="P"),
         "cake:S": Timing(definition="S"),
     }
-    earthmodel: str
+    earthmodel: str = EXAMPLE_MODEL
+
     cache: Path = Path("/tmp/test-lmdb")
     cache_hits: int = 0
 
@@ -76,7 +109,13 @@ class CakeTracer(RayTracer):
 
     def _init_lmdb(self) -> None:
         logger.info("using lmdb cache %s", self.cache)
-        self._lmdb = Environment(str(self.cache), max_dbs=MAX_DBS, create=True)
+        self._lmdb = Environment(
+            str(self.cache),
+            max_dbs=MAX_DBS,
+            create=True,
+            map_size=10485760 * 128,
+            sync=False,
+        )
         with self._lmdb.begin(write=True) as txn:
             cursor = txn.cursor()
             for idx_db, db_hash in enumerate(cursor.iterprev(values=False)):
@@ -136,10 +175,11 @@ class CakeTracer(RayTracer):
         hash.update(hash_to_bytes(node.__hash__()))
         node_key = hash.digest()
 
-        with self._lmdb.begin(write=False) as txn:
+        with self._lmdb.begin() as txn:
             traveltimes = txn.get(node_key, db=database)
             if traveltimes:
                 self.cache_hits += 1
+                print(f"hit cache {self.cache_hits}")
                 return np.frombuffer(traveltimes, dtype=np.float32)
 
         traveltimes = self._calculate_node_traveltimes(timing, node, distances)
@@ -150,7 +190,7 @@ class CakeTracer(RayTracer):
     def _calculate_node_traveltimes(
         self, timing: PhaseDef, node: Node, distances: np.ndarray
     ) -> np.ndarray:
-        logger.debug("calculating traveltimes")
+        print("calculating traveltimes")
         traveltimes = np.full_like(distances, np.nan, dtype=np.float32)
         for idx, distance in enumerate(distances):
             rays: list[Ray] = self._earthmodel.arrivals(

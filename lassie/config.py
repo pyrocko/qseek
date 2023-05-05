@@ -4,13 +4,13 @@ import glob
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, Field, validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.images import ImageFunctions, PhaseNet
 from lassie.models import Stations
 from lassie.octree import Octree
-from lassie.tracers import ConstantVelocityTracer, RayTracers
+from lassie.tracers import CakeTracer, RayTracers
 
 
 class Config(BaseModel):
@@ -21,7 +21,9 @@ class Config(BaseModel):
 
     time_span: tuple[datetime | None, datetime | None] = (None, None)
 
-    ray_tracers: RayTracers = RayTracers(tracers=[ConstantVelocityTracer()])
+    ray_tracers: RayTracers = Field(
+        default_factory=lambda: RayTracers(tracers=[CakeTracer()])
+    )
     image_functions: ImageFunctions = ImageFunctions(functions=[PhaseNet()])
 
     octree: Octree = Octree()

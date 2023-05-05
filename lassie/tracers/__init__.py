@@ -33,16 +33,18 @@ class RayTracers(BaseModel):
         phases = []
         for tracer in self:
             phases.extend([*tracer.get_available_phases()])
-        if len(set(*phases)) != len(phases):
-            raise ValueError("A phase provided twice.")
-
-        return tuple(*phases)
+        if len(set(phases)) != len(phases):
+            raise ValueError("A phase provided twice")
+        return tuple(phases)
 
     def get_phase_tracer(self, phase: str) -> RayTracer:
         for tracer in self:
             if phase in tracer.get_available_phases():
                 return tracer
-        raise ValueError(f"No tracer found for phase {phase}")
+        raise ValueError(
+            f"No tracer found for phase {phase}."
+            f" Available phases: {', '.join(self.get_available_phases())}"
+        )
 
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.__root__

@@ -117,8 +117,13 @@ class SearchTraces:
             stations = self.stations.select(image.get_all_nsl())
 
             traveltimes = ray_tracer.get_traveltimes(image.phase, self.octree, stations)
+
+            bad_traveltimes = np.isnan(traveltimes)
+            traveltimes[bad_traveltimes] = 0.0
             shifts = np.round(traveltimes / image.delta_t).astype(np.int32)
+
             weights = np.ones_like(shifts)
+            weights[bad_traveltimes] = 0.0
 
             semblance, offsets = parstack.parstack(
                 arrays=image.get_trace_data(),
@@ -127,6 +132,7 @@ class SearchTraces:
                 weights=np.array(weights),
                 dtype=np.float32,
                 method=0,
+                nparallel=6,
             )
 
             semblance_argmax = parstack.argmax(

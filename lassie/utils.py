@@ -4,10 +4,18 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from pydantic import ConstrainedStr
 from pyrocko.util import UnavailableDecimation
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+
+    PhasePattern = str
+
+else:
+
+    class PhasePattern(ConstrainedStr):
+        regex = r"[a-zA-Z]*:[a-zA-Z]*"
 
 
 def to_datetime(time: float) -> datetime:

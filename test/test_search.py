@@ -13,5 +13,5 @@ def test_search(sample_config: Config) -> None:
         image_functions=config.image_functions,
         ray_tracers=config.ray_tracers,
     )
-
+    print(config.octree.n_nodes)
     search.scan_squirrel(config.get_squirrel())
