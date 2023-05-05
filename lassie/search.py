@@ -132,7 +132,7 @@ class SearchTraces:
         self.image_functions = image_functions
 
         self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
-        self.end_time = end_time or to_datetime(max(tr.max for tr in self.traces))
+        self.end_time = end_time or to_datetime(max(tr.tmax for tr in self.traces))
         self.padding_seconds = timedelta(seconds=padding_seconds)
 
         self.n_traces = len(self.traces)
@@ -145,7 +145,7 @@ class SearchTraces:
                 traces.remove(tr)
         return traces
 
-    def calculate_semblance(self, image: WaveformImage) -> np.ndarray:
+    def calculate_semblance(self, image: WaveformImage, lengthout: int) -> np.ndarray:
         logger.debug("stacking image %s", image.image_function.name)
 
         ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
@@ -165,6 +165,7 @@ class SearchTraces:
             offsets=image.get_offsets(self.start_time),
             shifts=shifts,
             weights=weights,
+            lengthout=lengthout,
             dtype=np.float32,
             method=0,
             nparallel=6,
@@ -175,14 +176,20 @@ class SearchTraces:
         self.octree.reset()
         detections = Detections()
 
+        images = []
         for image in self.image_functions.process_traces(self.traces):
             print(self.start_time, self.end_time)
             image.chop(
                 self.start_time + self.padding_seconds,
                 self.end_time - self.padding_seconds,
             )
-            semblance = self.calculate_semblance(image)
-            print(image.phase, semblance.shape)
+            images.append(image)
+
+        max_samples = max(image.max_samples() for image in images)
+        semblance = np.zeros((self.octree.n_nodes, max_samples), dtype=np.float32)
+
+        for image in images:
+            semblance += self.calculate_semblance(image, max_samples)
 
         semblance_argmax = parstack.argmax(semblance.astype(np.float64), nparallel=2)
         semblance_trace = semblance.max(axis=0)

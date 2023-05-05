@@ -34,7 +34,7 @@ class Detections(BaseModel):
         for det in self:
             lat, lon = det.effective_lat_lon
             lines.append(
-                f"{lat:.4f}, {lon:.4f}, {det.effective_elevation:.4f},"
+                f"{lat:.5f}, {lon:.5f}, {det.effective_elevation:.1f},"
                 f" {det.detection_peak}, {det.time}"
             )
         file.write_text("\n".join(lines))

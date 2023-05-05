@@ -70,13 +70,34 @@ class WaveformImage:
             tr.chop(start_time.timestamp(), end_time.timestamp())
 
     def get_trace_data(self) -> list[np.ndarray]:
+        """Get all trace data in a list.
+
+        Returns:
+            list[np.ndarray]: List of numpy arrays.
+        """
         return [tr.ydata for tr in self.traces]
 
     def get_offsets(self, reference: datetime) -> np.ndarray:
+        """Get traces timing offsets to a reference time in samples.
+
+        Args:
+            reference (datetime): Reference time.
+
+        Returns:
+            np.ndarray: Integer offset towards the reference for each trace.
+        """
         offsets = np.fromiter((tr.tmin for tr in self.traces), float)
         return np.round((offsets - reference.timestamp()) / self.delta_t).astype(
             np.int32
         )
+
+    def max_samples(self) -> int:
+        """Maximum samples in all traces.
+
+        Returns:
+            int: Maximum number of samples.
+        """
+        return max(tr.ydata.size for tr in self.traces)
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle

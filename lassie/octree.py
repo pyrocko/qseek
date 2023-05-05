@@ -155,6 +155,7 @@ class Octree(BaseModel):
             for depth in depth_nodes
         ]
 
+    # TODO: make cached_property
     @property
     def n_nodes(self) -> int:
         return sum(1 for _ in self)
