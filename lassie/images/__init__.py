@@ -43,14 +43,6 @@ class ImageFunctions(BaseModel):
 class WaveformImages:
     __root__: list[WaveformImage] = Field([], alias="images")
 
-    def downsample(self, sampling_rate: float) -> None:
-        """Downsample in-place.
-        Args:
-            sampling_rate (float): Sampling rate in Hz.
-        """
-        for image in self:
-            image.downsample(sampling_rate)
-
     @property
     def n_images(self) -> int:
         return len(self.__root__)

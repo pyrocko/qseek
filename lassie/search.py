@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import pprint
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -9,6 +10,7 @@ from matplotlib import pyplot as plt
 from pyrocko import parstack
 from scipy import signal
 
+from lassie.images.base import WaveformImage
 from lassie.models.detection import Detection, Detections
 from lassie.octree import Octree
 from lassie.utils import to_datetime
@@ -63,6 +65,7 @@ class Search:
 
         self.peak_search_prominence = shift_span
         self.window_padding = shift_span + self.peak_search_prominence / 2
+        self.window_padding = 1.0
         self.window_increment = shift_span * 10 + 3 * self.window_padding
 
         logger.info("source-station distances range: %s", self.distance_range)
@@ -96,11 +99,13 @@ class Search:
 
             block = SearchTraces(
                 traces,
-                self.octree.copy(),
+                self.octree,
                 self.stations,
                 self.ray_tracers,
                 self.image_functions,
-                to_datetime(batch.tmin),
+                start_time=to_datetime(batch.tmin),
+                end_time=to_datetime(batch.tmax),
+                padding_seconds=self.window_padding,
             )
             self.detections.append(block.search())
 
@@ -116,16 +121,21 @@ class SearchTraces:
         stations: Stations,
         ray_tracers: RayTracers,
         image_functions: ImageFunctions,
-        start_time: datetime,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        padding_seconds: float = 0.0,
     ) -> None:
         self.octree = octree
         self.traces = self.clean_traces(traces)
-        self.n_traces = len(self.traces)
-        self.start_time = start_time
-
         self.stations = stations
         self.ray_tracers = ray_tracers
         self.image_functions = image_functions
+
+        self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
+        self.end_time = end_time or to_datetime(max(tr.max for tr in self.traces))
+        self.padding_seconds = timedelta(seconds=padding_seconds)
+
+        self.n_traces = len(self.traces)
 
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
@@ -135,44 +145,48 @@ class SearchTraces:
                 traces.remove(tr)
         return traces
 
-    def calculate_semblance(self) -> np.ndarray:
-        images = self.image_functions.process_traces(self.traces)
+    def calculate_semblance(self, image: WaveformImage) -> np.ndarray:
+        logger.debug("stacking image %s", image.image_function.name)
 
-        for image in images:
-            logger.debug("stacking image %s", image.image_function.name)
+        ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
+        stations = self.stations.select(image.get_all_nsl())
 
-            ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
-            stations = self.stations.select(image.get_all_nsl())
+        traveltimes = ray_tracer.get_traveltimes(image.phase, self.octree, stations)
+        bad_traveltimes = np.isnan(traveltimes)
+        traveltimes[bad_traveltimes] = 0.0
 
-            traveltimes = ray_tracer.get_traveltimes(image.phase, self.octree, stations)
-            bad_traveltimes = np.isnan(traveltimes)
-            traveltimes[bad_traveltimes] = 0.0
+        shifts = -np.round(traveltimes / image.delta_t).astype(np.int32)
 
-            shifts = np.round(traveltimes / image.delta_t).astype(np.int32)
+        weights = np.ones_like(shifts)
+        weights[bad_traveltimes] = 0.0
 
-            weights = np.ones_like(shifts)
-            weights[bad_traveltimes] = 0.0
-
-            semblance, offsets = parstack.parstack(
-                arrays=image.get_trace_data(),
-                offsets=image.get_offsets(self.start_time),
-                shifts=np.array(shifts),
-                weights=np.array(weights),
-                dtype=np.float32,
-                method=0,
-                nparallel=6,
-            )
-            return semblance
+        semblance, offsets = parstack.parstack(
+            arrays=image.get_trace_data(),
+            offsets=image.get_offsets(self.start_time),
+            shifts=shifts,
+            weights=weights,
+            dtype=np.float32,
+            method=0,
+            nparallel=6,
+        )
+        return semblance
 
     def search(self) -> Detections:
         self.octree.reset()
         detections = Detections()
 
-        semblance = self.calculate_semblance()
+        for image in self.image_functions.process_traces(self.traces):
+            print(self.start_time, self.end_time)
+            image.chop(
+                self.start_time + self.padding_seconds,
+                self.end_time - self.padding_seconds,
+            )
+            semblance = self.calculate_semblance(image)
+            print(image.phase, semblance.shape)
 
         semblance_argmax = parstack.argmax(semblance.astype(np.float64), nparallel=2)
         semblance_trace = semblance.max(axis=0)
-        peak_idx, _ = signal.find_peaks(semblance_trace, height=10.0, distance=50)
+        peak_idx, _ = signal.find_peaks(semblance_trace, height=10.0, distance=20)
 
         plt.plot(semblance_trace)
         plt.scatter(peak_idx, semblance_trace[peak_idx])

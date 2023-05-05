@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -23,22 +22,22 @@ def plot(pytestconfig) -> bool:
 @pytest.fixture
 def sample_config() -> Config:
     return Config(
-        squirrel_environment=Path("/data/marius/eifel"),
-        waveform_data=[Path("/data/marius/eifel/**/*.267")],
-        time_span=(
-            datetime.fromisoformat("2022-09-24T17:30:00Z"),
-            datetime.fromisoformat("2022-09-24T17:45:00Z"),
-        ),
+        # squirrel_environment=Path("/data/marius/eifel"),
+        # waveform_data=[Path("/data/marius/eifel/**/*.267")],
+        # time_span=(
+        #     datetime.fromisoformat("2022-09-24T17:30:00Z"),
+        #     datetime.fromisoformat("2022-09-24T17:45:00Z"),
+        # ),
         # Laacher See
         octree=Octree(
             center_lat=50.41255,
             center_lon=7.26816,
             surface_elevation=0,
-            size_initial=1 * km,
+            size_initial=0.5 * km,
             east_bounds=(-15 * km, 15 * km),
             north_bounds=(-15 * km, 15 * km),
             depth_bounds=(0 * km, 15 * km),
         ),
         stations=Stations(pyrocko_station_yamls=[DATA_PATH / "6E-stations.yaml"]),
-        # waveform_data=[DATA_PATH],
+        waveform_data=[DATA_PATH],
     )

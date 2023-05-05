@@ -64,6 +64,11 @@ class WaveformImage:
         for tr in self.traces:
             downsample(tr, sampling_rate)
 
+    def chop(self, start_time: datetime, end_time: datetime) -> None:
+        """Trim traces to a given time span."""
+        for tr in self.traces:
+            tr.chop(start_time.timestamp(), end_time.timestamp())
+
     def get_trace_data(self) -> list[np.ndarray]:
         return [tr.ydata for tr in self.traces]
 
