@@ -110,7 +110,6 @@ class Octree(BaseModel):
     east_bounds: tuple[float, float] = (-10 * km, 10 * km)
     north_bounds: tuple[float, float] = (-10 * km, 10 * km)
     depth_bounds: tuple[float, float] = (0 * km, 20 * km)
-    nodes: list[Node] = []
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})

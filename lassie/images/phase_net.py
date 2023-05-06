@@ -36,6 +36,7 @@ class PhaseNet(ImageFunction):
     model: ModelName = "ethz"
     sampling_rate: float = 20.0
     overlap: conint(ge=100, le=3000) = 2000
+    blinding_samples: int = 250
     use_cuda: bool = False
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
@@ -51,6 +52,10 @@ class PhaseNet(ImageFunction):
         if self.use_cuda:
             self._phase_net.cuda()
         self._phase_net.eval()
+
+    @property
+    def blinding_seconds(self) -> float:
+        return self.blinding_samples / 100  # Hz PhaseNet sampling rate
 
     def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)

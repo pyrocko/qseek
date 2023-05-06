@@ -35,6 +35,9 @@ class ImageFunctions(BaseModel):
 
         return WaveformImages(__root__=images)
 
+    def get_max_blinding_seconds(self) -> float:
+        return max(image.blinding_seconds for image in self)
+
     def __iter__(self) -> Iterator[ImageFunction]:
         yield from self.__root__
 
@@ -46,6 +49,14 @@ class WaveformImages:
     @property
     def n_images(self) -> int:
         return len(self.__root__)
+
+    def get_max_samples(self) -> int:
+        """Get maximum number of samples of all images.
+
+        Returns:
+            int: Number of samples.
+        """
+        return max(image.get_max_samples() for image in self)
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle

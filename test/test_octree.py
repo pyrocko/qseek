@@ -79,10 +79,3 @@ def test_refine(octree: Octree, plot: bool) -> None:
         ax.set_ylabel("y [m]")
         ax.set_zlabel("x [m]")
         plt.show()
-
-
-def test_serialization(octree: Octree):
-    octree.nodes = [node for node in octree]
-    for node in octree:
-        node.split()
-    octree.json()

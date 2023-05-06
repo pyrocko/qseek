@@ -10,11 +10,11 @@ from pyrocko.util import UnavailableDecimation
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
-    PhasePattern = str
+    PhaseDescription = str
 
 else:
 
-    class PhasePattern(ConstrainedStr):
+    class PhaseDescription(ConstrainedStr):
         regex = r"[a-zA-Z]*:[a-zA-Z]*"
 
 

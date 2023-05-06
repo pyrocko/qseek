@@ -15,7 +15,7 @@ from pyrocko.cake import LayeredModel, PhaseDef, Ray, m2d, read_nd_model_str
 from lassie.models.station import Station, Stations
 from lassie.octree import Node, Octree
 from lassie.tracers.base import RayTracer
-from lassie.utils import PhasePattern
+from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
     from lmdb import _Database
@@ -68,7 +68,7 @@ class Timing(BaseModel):
 
 class CakeTracer(RayTracer):
     tracer: Literal["CakeTracer"] = "CakeTracer"
-    timings: dict[PhasePattern, Timing] = {
+    timings: dict[PhaseDescription, Timing] = {
         "cake:P": Timing(definition="P"),
         "cake:S": Timing(definition="S"),
     }

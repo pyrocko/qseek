@@ -11,6 +11,7 @@ from pyrocko.model import load_stations
 
 if TYPE_CHECKING:
     from pyrocko.model import Station as PyrockoStation
+    from pyrocko.trace import Trace
 
 from lassie.models.location import CoordSystem, Location
 
@@ -64,7 +65,7 @@ class Stations(BaseModel):
     def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
         return tuple(recv.nsl for recv in self)
 
-    def select(self, nsls: Iterable[tuple[str, str, str]]) -> Stations:
+    def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
         """Select stations by NSL code.
 
         Args:
@@ -74,7 +75,7 @@ class Stations(BaseModel):
             Stations: Containing only selected stations.
         """
         stations = []
-        for nsl in nsls:
+        for nsl in ((tr.network, tr.station, tr.location) for tr in traces):
             for sta in self:
                 if sta.nsl == nsl:
                     stations.append(sta)

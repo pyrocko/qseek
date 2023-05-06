@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from pydantic import BaseModel
 
-from lassie.utils import downsample, to_datetime
+from lassie.utils import PhaseDescription, downsample
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -23,6 +23,11 @@ class ImageFunction(BaseModel):
     def name(self) -> str:
         return self.__class__.__name__
 
+    @property
+    def blinding_seconds(self) -> float:
+        """Blinding duration for the image function. Added to padded waveforms."""
+        raise NotImplementedError("must be implemented by subclass")
+
     def get_available_phases(self) -> tuple[str]:
         ...
 
@@ -30,16 +35,8 @@ class ImageFunction(BaseModel):
 @dataclass
 class WaveformImage:
     image_function: ImageFunction
-    phase: str
+    phase: PhaseDescription
     traces: list[Trace]
-
-    @property
-    def start_time(self) -> datetime:
-        return to_datetime(min((tr.tmin for tr in self.traces)))
-
-    @property
-    def end_time(self) -> datetime:
-        return to_datetime(max((tr.tmax for tr in self.traces)))
 
     @property
     def sampling_rate(self) -> float:
@@ -52,9 +49,6 @@ class WaveformImage:
     @property
     def n_traces(self) -> int:
         return len(self.traces)
-
-    def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
-        return tuple((tr.network, tr.station, tr.location) for tr in self.traces)
 
     def downsample(self, sampling_rate: float) -> None:
         """Downsample in-place.
@@ -91,7 +85,7 @@ class WaveformImage:
             np.int32
         )
 
-    def max_samples(self) -> int:
+    def get_max_samples(self) -> int:
         """Maximum samples in all traces.
 
         Returns:

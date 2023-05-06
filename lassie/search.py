@@ -64,8 +64,13 @@ class Search:
         shift_span = shift_max - shift_min
 
         self.peak_search_prominence = shift_span
-        self.window_padding = shift_span + self.peak_search_prominence / 2
+        self.window_padding = (
+            shift_span
+            + self.peak_search_prominence / 2
+            + self.image_functions.get_max_blinding_seconds()
+        )
         self.window_padding = 1.0
+
         self.window_increment = shift_span * 10 + 3 * self.window_padding
 
         logger.info("source-station distances range: %s", self.distance_range)
@@ -148,17 +153,17 @@ class SearchTraces:
     def calculate_semblance(self, image: WaveformImage, lengthout: int) -> np.ndarray:
         logger.debug("stacking image %s", image.image_function.name)
 
+        stations = self.stations.select_from_traces(image.traces)
+
         ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
-        stations = self.stations.select(image.get_all_nsl())
-
         traveltimes = ray_tracer.get_traveltimes(image.phase, self.octree, stations)
-        bad_traveltimes = np.isnan(traveltimes)
-        traveltimes[bad_traveltimes] = 0.0
+        traveltimes_bad = np.isnan(traveltimes)
+        traveltimes[traveltimes_bad] = 0.0
 
-        shifts = -np.round(traveltimes / image.delta_t).astype(np.int32)
+        shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
 
         weights = np.ones_like(shifts)
-        weights[bad_traveltimes] = 0.0
+        weights[traveltimes_bad] = 0.0
 
         semblance, offsets = parstack.parstack(
             arrays=image.get_trace_data(),
@@ -176,38 +181,41 @@ class SearchTraces:
         self.octree.reset()
         detections = Detections()
 
-        images = []
-        for image in self.image_functions.process_traces(self.traces):
-            print(self.start_time, self.end_time)
+        images = self.image_functions.process_traces(self.traces)
+        for image in images:
             image.chop(
                 self.start_time + self.padding_seconds,
                 self.end_time - self.padding_seconds,
             )
-            images.append(image)
 
-        max_samples = max(image.max_samples() for image in images)
-        semblance = np.zeros((self.octree.n_nodes, max_samples), dtype=np.float32)
+        max_samples = images.get_max_samples()
+        semblance = np.zeros(
+            (self.octree.n_nodes, max_samples),
+            dtype=np.float32,
+        )
 
         for image in images:
             semblance += self.calculate_semblance(image, max_samples)
 
-        semblance_argmax = parstack.argmax(semblance.astype(np.float64), nparallel=2)
-        semblance_trace = semblance.max(axis=0)
-        peak_idx, _ = signal.find_peaks(semblance_trace, height=10.0, distance=200)
+        semblance_max = semblance.max(axis=0)
+        semblance_node_idx = parstack.argmax(semblance.astype(np.float64), nparallel=2)
 
-        plt.plot(semblance_trace)
-        plt.scatter(peak_idx, semblance_trace[peak_idx])
+        peak_idx, _ = signal.find_peaks(semblance_max, height=10.0, distance=200)
+
+        plt.plot(semblance_max)
+        plt.scatter(peak_idx, semblance_max[peak_idx])
         plt.show()
         for idx in peak_idx:
-            node_idx = semblance_argmax[idx]
+            node_idx = semblance_node_idx[idx]
 
             node = self.octree[node_idx].as_location()
             detection = Detection.construct(
                 time=self.start_time,
-                detection_peak=semblance_trace.max(),
+                detection_peak=semblance_max.max(),
                 **node.dict(),
             )
             detections.add_detection(detection)
             self.octree.add_semblance(semblance[:, idx])
             self.octree.plot_surface()
+
         return detections
