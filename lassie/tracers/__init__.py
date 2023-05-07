@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from lassie.tracers.cake import CakeTracer
 from lassie.tracers.constant_velocity import ConstantVelocityTracer
+from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
     from lassie.models.station import Stations
@@ -48,3 +49,8 @@ class RayTracers(BaseModel):
 
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.__root__
+
+    def iter_phase_tracer(self) -> Iterator[tuple[PhaseDescription, RayTracer]]:
+        for tracer in self:
+            for phase in tracer.get_available_phases():
+                yield (phase, tracer)

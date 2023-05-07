@@ -250,27 +250,6 @@ class Octree(BaseModel):
         tree._root_nodes = tree._get_root_nodes(tree.size_limit)
         return tree
 
-    def plot(self) -> None:
-        import matplotlib.pyplot as plt
-
-        ax = plt.figure().add_subplot(projection="3d")
-        coords = self.get_coordinates("cartesian").T
-        ax.scatter(coords[0], coords[1], coords[2], c=self.semblance, cmap="Oranges")
-        ax.set_xlabel("east [m]")
-        ax.set_ylabel("north [m]")
-        ax.set_zlabel("depth [m]")
-        plt.show()
-
-    def plot_surface(self, accumulator: Callable = np.max) -> None:
-        import matplotlib.pyplot as plt
-
-        surface = self.reduce_surface(accumulator)
-        ax = plt.figure().gca()
-        ax.scatter(surface[:, 0], surface[:, 1], c=surface[:, 2], cmap="Oranges")
-        ax.set_xlabel("east [m]")
-        ax.set_ylabel("north [m]")
-        plt.show()
-
     def __hash__(self) -> int:
         return hash(
             (

@@ -10,6 +10,8 @@ from lassie.images.base import ImageFunction
 from lassie.images.phase_net import PhaseNet
 
 if TYPE_CHECKING:
+    from datetime import timedelta
+
     from pyrocko.trace import Trace
 
     from lassie.images.base import WaveformImage
@@ -35,8 +37,8 @@ class ImageFunctions(BaseModel):
 
         return WaveformImages(__root__=images)
 
-    def get_max_blinding_seconds(self) -> float:
-        return max(image.blinding_seconds for image in self)
+    def get_blinding(self) -> timedelta:
+        return max(image.blinding for image in self)
 
     def __iter__(self) -> Iterator[ImageFunction]:
         yield from self.__root__
@@ -57,6 +59,14 @@ class WaveformImages:
             int: Number of samples.
         """
         return max(image.get_max_samples() for image in self)
+
+    def downsample(self, sampling_rate: float) -> None:
+        """Downsample traces in-place.
+        Args:
+            sampling_rate (float): Sampling rate in Hz.
+        """
+        for image in self:
+            image.downsample(sampling_rate)
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle

@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from matplotlib.patches import Rectangle
 from pydantic import ConstrainedStr
 from pyrocko.util import UnavailableDecimation
 
@@ -16,6 +17,12 @@ else:
 
     class PhaseDescription(ConstrainedStr):
         regex = r"[a-zA-Z]*:[a-zA-Z]*"
+
+
+class NodeTile(Rectangle):
+    def __init__(self, *args, semblance: float, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.semblance = semblance
 
 
 def to_datetime(time: float) -> datetime:

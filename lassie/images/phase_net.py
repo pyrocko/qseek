@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
 from obspy import Stream
@@ -34,9 +35,7 @@ PhaseName = Literal["P", "S"]
 class PhaseNet(ImageFunction):
     image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = "ethz"
-    sampling_rate: float = 20.0
     overlap: conint(ge=100, le=3000) = 2000
-    blinding_samples: int = 250
     use_cuda: bool = False
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
@@ -54,12 +53,13 @@ class PhaseNet(ImageFunction):
         self._phase_net.eval()
 
     @property
-    def blinding_seconds(self) -> float:
-        return self.blinding_samples / 100  # Hz PhaseNet sampling rate
+    def blinding(self) -> timedelta:
+        blinding_samples = max(self._phase_net.default_args["blinding"])
+        return timedelta(seconds=blinding_samples / 100)  # Hz PhaseNet sampling rate
 
     def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        annotations: Stream = self._phase_net.annotate(stream)
+        annotations: Stream = self._phase_net.annotate(stream, overlap=self.overlap)
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()
@@ -77,8 +77,6 @@ class PhaseNet(ImageFunction):
             phase=self.phase_map["S"],
             traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],
         )
-        annotation_s.downsample(self.sampling_rate)
-        annotation_p.downsample(self.sampling_rate)
 
         return [annotation_s, annotation_p]
 

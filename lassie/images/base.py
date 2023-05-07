@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -10,6 +9,8 @@ from pydantic import BaseModel
 from lassie.utils import PhaseDescription, downsample
 
 if TYPE_CHECKING:
+    from datetime import datetime, timedelta
+
     from pyrocko.trace import Trace
 
 
@@ -24,7 +25,7 @@ class ImageFunction(BaseModel):
         return self.__class__.__name__
 
     @property
-    def blinding_seconds(self) -> float:
+    def blinding(self) -> timedelta:
         """Blinding duration for the image function. Added to padded waveforms."""
         raise NotImplementedError("must be implemented by subclass")
 
@@ -51,17 +52,12 @@ class WaveformImage:
         return len(self.traces)
 
     def downsample(self, sampling_rate: float) -> None:
-        """Downsample in-place.
+        """Downsample traces in-place.
         Args:
             sampling_rate (float): Sampling rate in Hz.
         """
         for tr in self.traces:
             downsample(tr, sampling_rate)
-
-    def chop(self, start_time: datetime, end_time: datetime) -> None:
-        """Trim traces to a given time span."""
-        for tr in self.traces:
-            tr.chop(start_time.timestamp(), end_time.timestamp())
 
     def get_trace_data(self) -> list[np.ndarray]:
         """Get all trace data in a list.

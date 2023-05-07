@@ -63,7 +63,7 @@ class Stations(BaseModel):
         return len([sta for sta in self])
 
     def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
-        return tuple(recv.nsl for recv in self)
+        return tuple(sta.nsl for sta in self)
 
     def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
         """Select stations by NSL code.
@@ -79,6 +79,9 @@ class Stations(BaseModel):
             for sta in self:
                 if sta.nsl == nsl:
                     stations.append(sta)
+                    break
+            else:
+                raise ValueError(f"could not find a station for {nsl}")
         return Stations.construct(stations=stations)
 
     def get_centroid(self) -> Location:
