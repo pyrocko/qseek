@@ -15,8 +15,8 @@ from lassie.octree import Octree
 class Detection(Location):
     uid: UUID = Field(default_factory=uuid4)
     time: datetime
-    octree: Octree
     detection_peak: float
+    octree: Octree
 
     def plot(self) -> None:
         import matplotlib.pyplot as plt

@@ -15,17 +15,16 @@ from lassie.tracers.constant_velocity import ConstantVelocityTracer
 
 
 class Config(BaseModel):
-    stations: Stations
-
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
 
     time_span: tuple[datetime | None, datetime | None] = (None, None)
 
-    ray_tracers: RayTracers = RayTracers(tracers=[ConstantVelocityTracer()])
-    image_functions: ImageFunctions = ImageFunctions(functions=[PhaseNet()])
-
+    stations: Stations
     octree: Octree = Octree()
+
+    image_functions: ImageFunctions = ImageFunctions(__root__=[PhaseNet()])
+    ray_tracers: RayTracers = RayTracers(__root__=[ConstantVelocityTracer()])
 
     @validator("time_span")
     def _validate_time_span(cls, range):  # noqa: N805

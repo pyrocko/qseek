@@ -20,7 +20,7 @@ RayTracerType = Annotated[
 
 
 class RayTracers(BaseModel):
-    __root__: list[RayTracerType] = Field([], alias="tracers")
+    __root__: list[RayTracerType] = []
 
     def set_octree(self, octree: Octree) -> None:
         for tracer in self:

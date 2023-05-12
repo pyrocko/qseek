@@ -27,7 +27,7 @@ ImageFunctionType = Annotated[
 
 
 class ImageFunctions(BaseModel):
-    __root__: list[ImageFunctionType] = Field([], alias="functions")
+    __root__: list[ImageFunctionType] = []
 
     def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []

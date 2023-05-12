@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+import time
+from datetime import datetime, timedelta, timezone
+from functools import wraps
+from typing import TYPE_CHECKING, Callable, ParamSpec, TypeVar
 
 from matplotlib.patches import Rectangle
 from pydantic import ConstrainedStr
@@ -37,3 +39,19 @@ def downsample(trace: Trace, sampling_rate: float) -> None:
     except UnavailableDecimation:
         logging.warn("using resample instead of decimation")
         trace.resample(deltat)
+
+
+T = TypeVar("T")
+P = ParamSpec("P")
+
+
+def log_execution(func: Callable[P, T]) -> Callable[P, T]:
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        start = time.time()
+        ret = func(*args, **kwargs)
+        duration = timedelta(seconds=time.time() - start)
+        logging.info("executed %s in %s", func.__qualname__, duration)
+        return ret
+
+    return wrapper

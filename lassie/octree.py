@@ -75,9 +75,9 @@ class Node(BaseModel):
                 lat=self.tree.center_lat,
                 lon=self.tree.center_lon,
                 elevation=self.tree.surface_elevation,
-                east_shift=self.east,
-                north_shift=self.north,
-                depth=self.depth,
+                east_shift=float(self.east),
+                north_shift=float(self.north),
+                depth=float(self.depth),
             )
         return self._location
 

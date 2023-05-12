@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
-    offset: float = 0.0
     velocities: dict[PhaseDescription, PositiveFloat] = {
         "constant:P": 6000.0,
         "constant:S": 3900.0,

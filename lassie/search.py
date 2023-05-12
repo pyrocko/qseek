@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import pprint
 from datetime import timedelta
+from itertools import chain
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -14,7 +14,7 @@ from lassie.images.base import WaveformImage
 from lassie.models.detection import Detection, Detections
 from lassie.octree import Octree
 from lassie.tracers.base import RayTracer
-from lassie.utils import to_datetime
+from lassie.utils import log_execution, to_datetime
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class Search:
     distance_range: tuple[float, float]
-    travel_time_ranges: dict[str, tuple[float, float]]
+    travel_time_ranges: dict[str, tuple[timedelta, timedelta]]
 
     def __init__(
         self,
@@ -52,21 +52,26 @@ class Search:
         self.detection_threshold = detection_threshold
 
         self.travel_time_ranges = {}
-        for phase, tracer in self.ray_tracers.iter_phase_tracer():
-            traveltimes = tracer.get_traveltimes(phase, self.octree, self.stations)
-            self.travel_time_ranges[phase] = (traveltimes.min(), traveltimes.max())
-
         self.detections = Detections()
 
         self.check_ranges()
 
     def check_ranges(self) -> None:
+        # Grid/receiver distances
         self.distances = self.octree.distances_stations(self.stations)
         self.distance_range = (self.distances.min(), self.distances.max())
 
-        shift_ranges = np.array([times for times in self.travel_time_ranges.values()])
-        shift_min = timedelta(seconds=shift_ranges.min())
-        shift_max = timedelta(seconds=shift_ranges.max())
+        # Timing ranges
+        for phase, tracer in self.ray_tracers.iter_phase_tracer():
+            traveltimes = tracer.get_traveltimes(phase, self.octree, self.stations)
+            self.travel_time_ranges[phase] = (
+                timedelta(seconds=traveltimes.min()),
+                timedelta(seconds=traveltimes.max()),
+            )
+            logger.info("shifts: %s / %s - %s", phase, *self.travel_time_ranges[phase])
+
+        shift_min = min(chain.from_iterable(self.travel_time_ranges.values()))
+        shift_max = max(chain.from_iterable(self.travel_time_ranges.values()))
         self.shift_range = shift_max - shift_min
 
         self.window_padding = (
@@ -74,11 +79,9 @@ class Search:
             + self.detection_blinding
             + self.image_functions.get_blinding()
         )
-        self.window_padding = timedelta(seconds=1.0)
 
-        logger.info("source-station distances range: %s", self.distance_range)
-        logger.info("source shift ranges:\n%s", pprint.pformat(self.travel_time_ranges))
-        logger.info("window padding: %s s", self.window_padding)
+        logger.info("source-station distances range: %.1f - %.1f", *self.distance_range)
+        logger.info("window padding: %s", self.window_padding)
 
     @property
     def padding_samples(self) -> int:
@@ -94,11 +97,20 @@ class Search:
         window_increment = (
             window_increment or self.shift_range * 10 + 3 * self.window_padding
         )
+        sq_tmin, sq_tmax = squirrel.get_time_span(["waveform", "waveform_promise"])
+        start_time = start_time or to_datetime(sq_tmin)
+        end_time = end_time or to_datetime(sq_tmax)
+        logger.info(
+            "searching time window %s - %s (%s)",
+            start_time,
+            end_time,
+            end_time - start_time,
+        )
         logger.info("window increment: %s", window_increment)
 
         for batch in squirrel.chopper_waveforms(
-            tmin=start_time.timestamp() if start_time else None,
-            tmax=end_time.timestamp() if end_time else None,
+            tmin=start_time.timestamp(),
+            tmax=end_time.timestamp(),
             tinc=window_increment.total_seconds(),
             tpad=self.window_padding.total_seconds(),
             want_incomplete=False,
@@ -108,12 +120,11 @@ class Search:
             window_end = to_datetime(batch.tmax)
             window_length = window_end - window_start
             logger.info(
-                "searching time window %d/%d %s - %s (%s)",
+                "searching time window %d/%d %s - %s",
                 batch.i + 1,
                 batch.n,
                 window_start,
                 window_end,
-                window_length,
             )
 
             traces: list[Trace] = batch.traces
@@ -131,10 +142,15 @@ class Search:
                 start_time=window_start,
                 end_time=window_end,
             )
-            self.detections.append(block.search())
+            detections = block.search()
+            for detection in detections:
+                print(detection.json(indent=2))
+            self.detections.append(detections)
 
 
 class SearchTraces:
+    semblance_trace: Trace | None
+
     def __init__(
         self,
         parent: Search,
@@ -145,6 +161,7 @@ class SearchTraces:
         self.parent = parent
         self.octree = parent.octree.copy()
         self.traces = self.clean_traces(traces)
+        self.semblance_trace = None
 
         self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
         self.end_time = end_time or to_datetime(max(tr.tmax for tr in self.traces))
@@ -165,6 +182,7 @@ class SearchTraces:
         )
         return int(time_span.total_seconds() * self.parent.sampling_rate)
 
+    @log_execution
     def calculate_semblance(
         self,
         image: WaveformImage,
@@ -246,15 +264,13 @@ class SearchTraces:
 
             source_node = self.octree[node_idx].as_location()
 
-            detection = Detection.construct(
+            detection = Detection(
                 time=self.start_time,
-                detection_peak=semblance_max.max(),
+                detection_peak=float(semblance_max.max()),
                 octree=self.octree.copy(),
                 **source_node.dict(),
             )
             detections.add_detection(detection)
-
-            detection.plot_surface()
 
         self.semblance_trace = Trace(
             network="",

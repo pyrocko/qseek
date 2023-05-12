@@ -117,6 +117,7 @@ class Stations(BaseModel):
             station_xml = load_xml(filename=str(path))
             loaded_stations += station_xml.get_pyrocko_stations(path)
 
+        # TODO: Remove douplicates
         values.get("stations").extend(
             [Station.from_pyrocko_station(sta) for sta in loaded_stations]
         )
