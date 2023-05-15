@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class ImageFunction(BaseModel):
     image: Literal["base"] = "base"
 
-    def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
+    async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         ...
 
     @property

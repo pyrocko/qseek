@@ -1,65 +1,91 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import chain
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import Self
 
 import numpy as np
+from pydantic import BaseModel, PositiveFloat, PrivateAttr, confloat
 from pyrocko import parstack
 from pyrocko.trace import Trace
 from scipy import signal
 
+from lassie.images import ImageFunctions
 from lassie.images.base import WaveformImage
+from lassie.models import Stations
 from lassie.models.detection import Detection, Detections
 from lassie.octree import Octree
+from lassie.tracers import RayTracers
 from lassie.tracers.base import RayTracer
-from lassie.utils import log_execution, to_datetime
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from pyrocko.squirrel import Squirrel
-
-    from lassie.images import ImageFunctions
-    from lassie.models import Stations
-    from lassie.tracers import RayTracers
+from lassie.utils import PhaseDescription, to_datetime, to_path
 
 logger = logging.getLogger(__name__)
 
 
-class Search:
-    distance_range: tuple[float, float]
-    travel_time_ranges: dict[str, tuple[timedelta, timedelta]]
+class Search(BaseModel):
+    sampling_rate: confloat(ge=5.0, le=50.0) = 20.0
+    detection_threshold: PositiveFloat = 0.1
+    detection_blinding: timedelta = timedelta(seconds=2.0)
 
-    def __init__(
-        self,
-        octree: Octree,
-        stations: Stations,
-        ray_tracers: RayTracers,
-        image_functions: ImageFunctions,
-        sampling_rate: float = 20,
-        detection_threshold: float = 0.1,
-        detection_blinding: timedelta = timedelta(seconds=2.0),
-    ) -> None:
-        self.octree = octree
-        self.stations = stations
-        self.ray_tracers = ray_tracers
-        self.image_functions = image_functions
+    project_dir: Path = Path(".")
 
-        self.sampling_rate = sampling_rate
-        self.detection_blinding = detection_blinding
-        self.detection_threshold = detection_threshold
+    octree: Octree
+    stations: Stations
+    ray_tracers: RayTracers
+    image_functions: ImageFunctions
 
-        self.travel_time_ranges = {}
-        self.detections = Detections()
+    # Overwritten at initialisation
+    shift_range: timedelta = timedelta(seconds=0.0)
+    window_padding: timedelta = timedelta(seconds=0.0)
+    distance_range: tuple[float, float] = (0.0, 0.0)
+    travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = {}
 
-        self.check_ranges()
+    _created: datetime = PrivateAttr(
+        default_factory=lambda: datetime.now(tz=timezone.utc)
+    )
+    _detections: Detections = PrivateAttr()
+    _config_stem: str = PrivateAttr("")
+    _rundir: Path = PrivateAttr()
 
-    def check_ranges(self) -> None:
+    def __init__(self, **data) -> None:
+        super().__init__(**data)
+        self._init_ranges()
+
+    def init_rundir(self, force=False) -> None:
+        rundir = self.project_dir / self._config_stem or f"run-{to_path(self._created)}"
+        self._rundir = rundir
+
+        if rundir.exists() and not force:
+            raise EnvironmentError(f"Rundir {rundir} already exists")
+
+        elif rundir.exists() and force:
+            backup_time = to_path(datetime.now(tz=timezone.utc))
+            rundir_backup = rundir.with_name(f"{rundir.name}-bak-{backup_time}")
+            rundir.rename(rundir_backup)
+            logger.info("created backup of existing rundir to %s", rundir_backup)
+
+        if not rundir.exists():
+            rundir.mkdir()
+        search_config = rundir / "search.json"
+        search_config.write_text(self.json(indent=2))
+
+        self._detections = Detections(rundir=rundir)
+        logger.info("created new rundir %s", rundir)
+
+    @classmethod
+    def load_rundir(cls, path: Path) -> Self:
+        search = cls.parse_file(path / "search.json")
+        search._rundir = path
+        search._detections = Detections(rundir=path)
+        return search
+
+    def _init_ranges(self) -> None:
         # Grid/receiver distances
-        self.distances = self.octree.distances_stations(self.stations)
-        self.distance_range = (self.distances.min(), self.distances.max())
+        distances = self.octree.distances_stations(self.stations)
+        self.distance_range = (distances.min(), distances.max())
 
         # Timing ranges
         for phase, tracer in self.ray_tracers.iter_phase_tracer():
@@ -80,77 +106,33 @@ class Search:
             + self.image_functions.get_blinding()
         )
 
-        logger.info("source-station distances range: %.1f - %.1f", *self.distance_range)
+        logger.info(
+            "source-station distances range: %.1f - %.1f m", *self.distance_range
+        )
         logger.info("window padding: %s", self.window_padding)
 
     @property
     def padding_samples(self) -> int:
-        return int(self.window_padding.total_seconds() * self.sampling_rate)
+        return int(round(self.window_padding.total_seconds() * self.sampling_rate))
 
-    def scan_squirrel(
-        self,
-        squirrel: Squirrel,
-        start_time: datetime | None = None,
-        end_time: datetime | None = None,
-        window_increment: timedelta | None = None,
-    ) -> None:
-        window_increment = (
-            window_increment or self.shift_range * 10 + 3 * self.window_padding
-        )
-        sq_tmin, sq_tmax = squirrel.get_time_span(["waveform", "waveform_promise"])
-        start_time = start_time or to_datetime(sq_tmin)
-        end_time = end_time or to_datetime(sq_tmax)
-        logger.info(
-            "searching time window %s - %s (%s)",
-            start_time,
-            end_time,
-            end_time - start_time,
-        )
-        logger.info("window increment: %s", window_increment)
-
-        for batch in squirrel.chopper_waveforms(
-            tmin=start_time.timestamp(),
-            tmax=end_time.timestamp(),
-            tinc=window_increment.total_seconds(),
-            tpad=self.window_padding.total_seconds(),
-            want_incomplete=False,
-            codes=list((*nsl, "*") for nsl in self.stations.get_all_nsl()),
-        ):
-            window_start = to_datetime(batch.tmin)
-            window_end = to_datetime(batch.tmax)
-            window_length = window_end - window_start
-            logger.info(
-                "searching time window %d/%d %s - %s",
-                batch.i + 1,
-                batch.n,
-                window_start,
-                window_end,
-            )
-
-            traces: list[Trace] = batch.traces
-            if not traces:
-                logger.warning("window is empty")
-                continue
-
-            if window_start > window_end or window_length < 2 * self.window_padding:
-                logger.warning("window length is too short")
-                continue
-
-            block = SearchTraces(
-                parent=self,
-                traces=traces,
-                start_time=window_start,
-                end_time=window_end,
-            )
-            detections = block.search()
-            for detection in detections:
-                print(detection.json(indent=2))
-            self.detections.append(detections)
+    @classmethod
+    def parse_file(
+        cls,
+        path: str | Path,
+    ) -> Self:
+        model = super().parse_file(path)
+        # Make relative paths absolute
+        path = Path(path)
+        base_dir = path.absolute().parent
+        for name in model.__fields__:
+            value = getattr(model, name)
+            if isinstance(value, Path) and not value.absolute():
+                setattr(model, name, value.relative_to(base_dir))
+        model._config_stem = path.stem
+        return model
 
 
 class SearchTraces:
-    semblance_trace: Trace | None
-
     def __init__(
         self,
         parent: Search,
@@ -161,7 +143,6 @@ class SearchTraces:
         self.parent = parent
         self.octree = parent.octree.copy()
         self.traces = self.clean_traces(traces)
-        self.semblance_trace = None
 
         self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
         self.end_time = end_time or to_datetime(max(tr.tmax for tr in self.traces))
@@ -180,10 +161,9 @@ class SearchTraces:
         time_span = (self.end_time + window_padding) - (
             self.start_time - window_padding
         )
-        return int(time_span.total_seconds() * self.parent.sampling_rate)
+        return int(round(time_span.total_seconds() * self.parent.sampling_rate))
 
-    @log_execution
-    def calculate_semblance(
+    async def calculate_semblance(
         self,
         image: WaveformImage,
         ray_tracer: RayTracer,
@@ -202,7 +182,8 @@ class SearchTraces:
         weights = np.ones_like(shifts)
         weights[traveltimes_bad] = 0.0
 
-        semblance, offsets = parstack.parstack(
+        semblance, offsets = await asyncio.to_thread(
+            parstack.parstack,
             arrays=image.get_trace_data(),
             offsets=image.get_offsets(self.start_time - parent.window_padding),
             shifts=shifts,
@@ -218,10 +199,10 @@ class SearchTraces:
         semblance /= station_contribution[:, np.newaxis]
         return semblance
 
-    def search(self) -> Detections:
+    async def search(self) -> tuple[list[Detection], Trace]:
         parent = self.parent
 
-        images = parent.image_functions.process_traces(self.traces)
+        images = await parent.image_functions.process_traces(self.traces)
         images.downsample(parent.sampling_rate)
 
         semblance = np.zeros(
@@ -230,7 +211,7 @@ class SearchTraces:
         )
 
         for image in images:
-            semblance += self.calculate_semblance(
+            semblance += await self.calculate_semblance(
                 image=image,
                 ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
                 n_samples_semblance=self.n_samples_semblance,
@@ -238,9 +219,13 @@ class SearchTraces:
         semblance /= images.n_images
 
         semblance_max = semblance.max(axis=0)
-        semblance_node_idx = parstack.argmax(semblance.astype(np.float64), nparallel=2)
+        semblance_node_idx = await asyncio.to_thread(
+            parstack.argmax,
+            semblance.astype(np.float64),
+            nparallel=2,
+        )
 
-        peak_idx, _ = signal.find_peaks(
+        detection_idx, _ = signal.find_peaks(
             semblance_max,
             height=parent.detection_threshold,
             distance=parent.detection_blinding.total_seconds() * parent.sampling_rate,
@@ -249,30 +234,34 @@ class SearchTraces:
         # Remove padding and shift peak detections
         if parent.padding_samples:
             padding_samples = parent.padding_samples
+
             semblance = semblance[:, padding_samples:-padding_samples]
             semblance_max = semblance_max[padding_samples:-padding_samples]
             semblance_node_idx = semblance_node_idx[padding_samples:-padding_samples]
 
-            peak_idx -= padding_samples
-            peak_idx = peak_idx[peak_idx >= 0]
-            peak_idx = peak_idx[peak_idx < semblance_node_idx.size]
+            detection_idx -= padding_samples
+            detection_idx = detection_idx[detection_idx >= 0]
+            detection_idx = detection_idx[detection_idx < semblance_node_idx.size]
 
-        detections = Detections()
-        for idx in peak_idx:
+        detections = []
+        for idx in detection_idx:
             node_idx = semblance_node_idx[idx]
             self.octree.add_semblance(semblance[:, idx])
 
+            time = self.start_time + timedelta(seconds=idx * parent.sampling_rate)
+            semblance_detection = semblance_max[idx]
+
             source_node = self.octree[node_idx].as_location()
 
-            detection = Detection(
-                time=self.start_time,
-                detection_peak=float(semblance_max.max()),
+            detection = Detection.construct(
+                time=time,
+                semblance=float(semblance_detection),
                 octree=self.octree.copy(),
                 **source_node.dict(),
             )
-            detections.add_detection(detection)
+            detections.append(detection)
 
-        self.semblance_trace = Trace(
+        semblance_trace = Trace(
             network="",
             station="semblance",
             tmin=self.start_time.timestamp(),
@@ -280,4 +269,4 @@ class SearchTraces:
             ydata=semblance_max,
         )
 
-        return detections
+        return detections, semblance_trace

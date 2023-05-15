@@ -4,7 +4,7 @@ import glob
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, PositiveFloat, confloat, validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.images import ImageFunctions, PhaseNet
@@ -19,6 +19,8 @@ class Config(BaseModel):
     waveform_data: list[Path]
 
     time_span: tuple[datetime | None, datetime | None] = (None, None)
+    sampling_rate: confloat(ge=5.0, le=30) = 20.0
+    detection_threshold: PositiveFloat = 0.1
 
     stations: Stations
     octree: Octree = Octree()

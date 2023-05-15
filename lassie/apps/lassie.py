@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
 
 from pkg_resources import get_distribution
 
-from lassie.config import Config
 from lassie.models import Stations
-from lassie.search import Search
+from lassie.search import SquirrelSearch
+from lassie.server import WebServer
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         prog="lassie",
         description="The friendly earthquake detector - V2",
@@ -39,6 +40,14 @@ def main():
         type=Path,
         help="path to config file",
     )
+    run.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="backup old rundir and create a new",
+    )
+    serve = subparsers.add_parser("serve", help="serve a run")
+    serve.add_argument("rundir", type=Path, help="rundir to serve")
 
     subparsers.add_parser("dump-config", help="print a config template to terminal")
 
@@ -46,7 +55,7 @@ def main():
     logging.basicConfig(level=logging.INFO - args.verbose * 10)
 
     if args.command == "dump-config":
-        config = Config.construct(
+        config = SquirrelSearch.construct(
             stations=Stations.construct(
                 pyrocko_station_yamls=[Path("stations.yaml")],
                 blacklist=["NE.STA.LOC"],
@@ -61,17 +70,22 @@ def main():
         return
 
     elif args.command == "run":
-        config = Config.parse_file(args.config)
+        search = SquirrelSearch.parse_file(args.config)
+        search.init_rundir(force=args.force)
 
-        search = Search(
-            stations=config.stations,
-            octree=config.octree,
-            ray_tracers=config.ray_tracers,
-            image_functions=config.image_functions,
-        )
+        webserver = WebServer(search)
 
-        search.scan_squirrel(
-            config.get_squirrel(),
-            start_time=config.time_span[0],
-            end_time=config.time_span[1],
-        )
+        async def _run() -> None:
+            http = asyncio.create_task(webserver.start())
+            await search.scan_squirrel()
+            await http
+
+        asyncio.run(_run())
+
+    elif args.command == "serve":
+        search = SquirrelSearch.load_rundir(args.rundir)
+        webserver = WebServer(search)
+
+        loop = asyncio.get_event_loop()
+        loop.create_task(webserver.start())
+        loop.run_forever()

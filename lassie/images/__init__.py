@@ -29,11 +29,11 @@ ImageFunctionType = Annotated[
 class ImageFunctions(BaseModel):
     __root__: list[ImageFunctionType] = []
 
-    def process_traces(self, traces: list[Trace]) -> WaveformImages:
+    async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
         for function in self:
             logger.debug("calculating images from %s", function.name)
-            images.extend(function.process_traces(traces))
+            images.extend(await function.process_traces(traces))
 
         return WaveformImages(__root__=images)
 
