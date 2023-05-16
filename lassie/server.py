@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, AbstractSet, Any, Mapping, Type, TypeVar
 from uuid import UUID
 
+import aiohttp_cors
 from aiohttp import web
 from pkg_resources import get_distribution
 from pydantic import BaseModel, ValidationError
@@ -88,6 +89,26 @@ class WebServer:
         router.add_get("/api/v1/detections", self.get_detections)
         router.add_get("/api/v1/search", self.get_search)
         router.add_get(r"/api/v1/detection/{uid}", self.get_detection)
+
+        # Configure default CORS settings.
+        cors = aiohttp_cors.setup(
+            self.app,
+            defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_headers="*",
+                    allow_methods="*",
+                )
+            },
+        )
+
+        for route in list(router.routes()):
+            try:
+                cors.add(route)
+            except ValueError as exc:
+                logger.exception(exc)
+                continue
 
     async def get_index(self, request: web.Request) -> web.Response:
         version = get_distribution("lassie")

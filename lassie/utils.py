@@ -4,7 +4,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Awaitable, Callable, ParamSpec, TypeVar
 
 from pydantic import ConstrainedStr
 from pyrocko.util import UnavailableDecimation
@@ -47,6 +47,18 @@ def log_call(func: Callable[P, T]) -> Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         start = time.time()
         ret = func(*args, **kwargs)
+        duration = timedelta(seconds=time.time() - start)
+        logging.info("executed %s in %s", func.__qualname__, duration)
+        return ret
+
+    return wrapper
+
+
+def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+    @wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        start = time.time()
+        ret = await func(*args, **kwargs)
         duration = timedelta(seconds=time.time() - start)
         logging.info("executed %s in %s", func.__qualname__, duration)
         return ret

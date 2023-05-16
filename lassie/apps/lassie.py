@@ -50,6 +50,10 @@ def main() -> None:
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
     subparsers.add_parser("dump-config", help="print a config template to terminal")
+    dump_schemas = subparsers.add_parser(
+        "dump-schemas", help="dump models to json-schema (development)"
+    )
+    dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO - args.verbose * 10)
@@ -89,3 +93,16 @@ def main() -> None:
         loop = asyncio.get_event_loop()
         loop.create_task(webserver.start())
         loop.run_forever()
+
+    elif args.command == "dump-schemas":
+        from lassie.models.detection import Detections
+
+        if not args.folder.exists():
+            raise EnvironmentError(f"folder {args.folder} does not exist")
+
+        file = args.folder / "search.schema.json"
+        print(f"writing JSON schemas to {args.folder}")
+        file.write_text(SquirrelSearch.schema_json(indent=2))
+
+        file = args.folder / "detections.schema.json"
+        file.write_text(Detections.schema_json(indent=2))

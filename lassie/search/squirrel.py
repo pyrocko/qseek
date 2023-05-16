@@ -15,7 +15,7 @@ from pyrocko.trace import Trace
 from lassie.models.detection import Detection
 from lassie.search.base import Search, SearchTraces
 from lassie.signals import Signal
-from lassie.utils import to_datetime
+from lassie.utils import alog_call, to_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class SquirrelSearch(Search):
         window_increment = (
             window_increment or self.shift_range * 10 + 3 * self.window_padding
         )
-        logger.info("window increment: %s", window_increment)
+        logger.info("using window increment: %s", window_increment)
 
         iterator = squirrel.chopper_waveforms(
             tmin=self.start_time.timestamp(),
@@ -95,10 +95,14 @@ class SquirrelSearch(Search):
         )
 
         async def async_iterator() -> AsyncIterator[Batch]:
+            @alog_call  # to log the call
+            async def get_waveforms() -> Batch | None:
+                return await asyncio.to_thread(lambda: next(iterator, None))
+
             while True:
-                batch = await asyncio.to_thread(lambda: next(iterator, None))
+                batch = await get_waveforms()
                 if batch is None:
-                    raise StopAsyncIteration
+                    return
                 yield batch
 
         async for batch in async_iterator():

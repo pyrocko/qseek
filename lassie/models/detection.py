@@ -88,7 +88,9 @@ class Detections(BaseModel):
         return self.rundir / "detections"
 
     def add(self, detection: Detection) -> None:
+        detection.octree.make_concrete()
         self.detections.append(detection)
+
         filename = self.detections_dir / (str(detection.uid) + ".json")
         filename.write_text(detection.json())
         logger.info("new detection at %s", detection.time)

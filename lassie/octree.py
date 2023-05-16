@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, PositiveFloat, PrivateAttr
+from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
 from pyrocko import orthodrome as od
 
 from lassie.models.location import CoordSystem, Location
@@ -22,10 +22,10 @@ class Node(BaseModel):
     north: float
     depth: float
     size: float
-    tree: Octree
     semblance: float = 0.0
 
-    children: tuple[Node] = tuple()
+    tree: Octree | None = Field(None, exclude=True)
+    children: tuple[Node] = Field(tuple(), exclude=True)
 
     _children_cached: tuple[Node] = PrivateAttr(tuple())
     _location: Location | None = PrivateAttr(None)
@@ -111,14 +111,22 @@ class Octree(BaseModel):
     north_bounds: tuple[float, float] = (-10 * km, 10 * km)
     depth_bounds: tuple[float, float] = (0 * km, 20 * km)
 
+    nodes: list[Node] = []
+
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
 
-        logger.debug("initializing nodes")
-        self._root_nodes = self._get_root_nodes(self.size_initial)
+        if self.nodes:
+            logger.debug("loading existing nodes")
+            self._root_nodes = self.nodes
+            for node in self._root_nodes:
+                node.tree = self
+        else:
+            logger.debug("initializing root nodes")
+            self._root_nodes = self._get_root_nodes(self.size_initial)
 
     # @validator("east_bounds", "north_bounds", "depth_bounds", )
     # def _check_bounds(cls, bounds):  # noqa: N805
@@ -180,18 +188,16 @@ class Octree(BaseModel):
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
         groups = defaultdict(list)
         for node in self:
-            groups[(node.east, node.north)].append(node.semblance)
+            groups[(node.east, node.north, node.size)].append(node.semblance)
 
         values = (accumulator(values) for values in groups.values())
-        return np.array(
-            [(east, north, val) for (east, north), val in zip(groups.keys(), values)]
-        )
+        return np.array([(*node, val) for node, val in zip(groups.keys(), values)])
 
     @property
     def semblance(self) -> np.ndarray:
         return np.fromiter((node.semblance for node in self), float)
 
-    def add_semblance(self, semblance: np.ndarray) -> None:
+    def map_semblance(self, semblance: np.ndarray) -> None:
         n_nodes = 0
         for node, node_semblance in zip(self, semblance):
             node.semblance = float(node_semblance)
@@ -236,6 +242,23 @@ class Octree(BaseModel):
         sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
         return np.linalg.norm(sta_coords - node_coords[:, np.newaxis], axis=2)
+
+    def get_nodes(self, semblance_threshold: float = 0.0) -> list[Node]:
+        """Get all nodes with a semblance above a threshold.
+
+        Args:
+            semblance_threshold (float): Semblance threshold. Default is 0.0.
+
+        Returns:
+            list[Node]: List of nodes.
+        """
+        if not semblance_threshold:
+            return [node for node in self]
+        return [node for node in self if node.semblance >= semblance_threshold]
+
+    def make_concrete(self) -> None:
+        """Make octree concrete for serialisation."""
+        self.nodes = self.get_nodes()
 
     def refine(self, semblance_threshold: float) -> list[Node]:
         new_nodes = []

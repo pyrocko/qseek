@@ -5,10 +5,17 @@ import logging
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
-from pydantic import BaseModel, PositiveFloat, PrivateAttr, confloat
+from pydantic import (
+    BaseModel,
+    PositiveFloat,
+    PositiveInt,
+    PrivateAttr,
+    confloat,
+    conint,
+)
 from pyrocko import parstack
 from pyrocko.trace import Trace
 from scipy import signal
@@ -19,8 +26,12 @@ from lassie.models import Stations
 from lassie.models.detection import Detection, Detections
 from lassie.octree import Octree
 from lassie.tracers import RayTracers
-from lassie.tracers.base import RayTracer
-from lassie.utils import PhaseDescription, to_datetime, to_path
+from lassie.utils import PhaseDescription, alog_call, to_datetime, to_path
+
+if TYPE_CHECKING:
+    from lassie.images import WaveformImages
+    from lassie.octree import Node
+    from lassie.tracers.base import RayTracer
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +47,9 @@ class Search(BaseModel):
     stations: Stations
     ray_tracers: RayTracers
     image_functions: ImageFunctions
+
+    n_threads_parstack: conint(ge=0) = 0
+    n_threads_argmax: PositiveInt = 2
 
     # Overwritten at initialisation
     shift_range: timedelta = timedelta(seconds=0.0)
@@ -71,9 +85,9 @@ class Search(BaseModel):
             rundir.mkdir()
         search_config = rundir / "search.json"
         search_config.write_text(self.json(indent=2))
+        logger.info("created new rundir %s", rundir)
 
         self._detections = Detections(rundir=rundir)
-        logger.info("created new rundir %s", rundir)
 
     @classmethod
     def load_rundir(cls, path: Path) -> Self:
@@ -109,7 +123,7 @@ class Search(BaseModel):
         logger.info(
             "source-station distances range: %.1f - %.1f m", *self.distance_range
         )
-        logger.info("window padding: %s", self.window_padding)
+        logger.info("using window padding: %s", self.window_padding)
 
     @property
     def padding_samples(self) -> int:
@@ -133,6 +147,8 @@ class Search(BaseModel):
 
 
 class SearchTraces:
+    _images: WaveformImages | None
+
     def __init__(
         self,
         parent: Search,
@@ -141,11 +157,12 @@ class SearchTraces:
         end_time: datetime | None = None,
     ) -> None:
         self.parent = parent
-        self.octree = parent.octree.copy()
         self.traces = self.clean_traces(traces)
 
         self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
         self.end_time = end_time or to_datetime(max(tr.tmax for tr in self.traces))
+
+        self._images = None
 
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
@@ -163,8 +180,10 @@ class SearchTraces:
         )
         return int(round(time_span.total_seconds() * self.parent.sampling_rate))
 
+    @alog_call
     async def calculate_semblance(
         self,
+        octree: Octree,
         image: WaveformImage,
         ray_tracer: RayTracer,
         n_samples_semblance: int,
@@ -173,7 +192,7 @@ class SearchTraces:
         parent = self.parent
         stations = parent.stations.select_from_traces(image.traces)
 
-        traveltimes = ray_tracer.get_traveltimes(image.phase, parent.octree, stations)
+        traveltimes = ray_tracer.get_traveltimes(image.phase, octree, stations)
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
 
@@ -191,7 +210,7 @@ class SearchTraces:
             lengthout=n_samples_semblance,
             dtype=np.float32,
             method=0,
-            nparallel=6,
+            nparallel=parent.n_threads_parstack,
         )
 
         # Normalize by number of station contribution
@@ -199,19 +218,30 @@ class SearchTraces:
         semblance /= station_contribution[:, np.newaxis]
         return semblance
 
-    async def search(self) -> tuple[list[Detection], Trace]:
+    async def get_images(self) -> WaveformImages:
+        if not self._images:
+            images = await self.parent.image_functions.process_traces(self.traces)
+            images.downsample(self.parent.sampling_rate)
+            self._images = images
+        return self._images
+
+    async def search(
+        self,
+        octree: Octree | None = None,
+    ) -> tuple[list[Detection], Trace]:
         parent = self.parent
 
-        images = await parent.image_functions.process_traces(self.traces)
-        images.downsample(parent.sampling_rate)
+        octree = octree or parent.octree.copy()
+        images = await self.get_images()
 
         semblance = np.zeros(
-            (self.octree.n_nodes, self.n_samples_semblance),
+            (octree.n_nodes, self.n_samples_semblance),
             dtype=np.float32,
         )
 
         for image in images:
             semblance += await self.calculate_semblance(
+                octree=octree,
                 image=image,
                 ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
                 n_samples_semblance=self.n_samples_semblance,
@@ -222,7 +252,7 @@ class SearchTraces:
         semblance_node_idx = await asyncio.to_thread(
             parstack.argmax,
             semblance.astype(np.float64),
-            nparallel=2,
+            nparallel=parent.n_threads_argmax,
         )
 
         detection_idx, _ = signal.find_peaks(
@@ -243,24 +273,6 @@ class SearchTraces:
             detection_idx = detection_idx[detection_idx >= 0]
             detection_idx = detection_idx[detection_idx < semblance_node_idx.size]
 
-        detections = []
-        for idx in detection_idx:
-            node_idx = semblance_node_idx[idx]
-            self.octree.add_semblance(semblance[:, idx])
-
-            time = self.start_time + timedelta(seconds=idx * parent.sampling_rate)
-            semblance_detection = semblance_max[idx]
-
-            source_node = self.octree[node_idx].as_location()
-
-            detection = Detection.construct(
-                time=time,
-                semblance=float(semblance_detection),
-                octree=self.octree.copy(),
-                **source_node.dict(),
-            )
-            detections.append(detection)
-
         semblance_trace = Trace(
             network="",
             station="semblance",
@@ -268,5 +280,43 @@ class SearchTraces:
             deltat=1.0 / parent.sampling_rate,
             ydata=semblance_max,
         )
+
+        if detection_idx.size == 0:
+            return [], semblance_trace
+
+        # Split Octree nodes above a semblance threshold. Once octree for all detections
+        # in frame
+        split_nodes: set[Node] = set()
+        for idx in detection_idx:
+            semblance_detection = semblance_max[idx]
+            octree.map_semblance(semblance[:, idx])
+            split_nodes.update(octree.get_nodes(semblance_detection * 0.8))
+
+        try:
+            logger.info("detected event, splitting %d octree nodes", len(split_nodes))
+            for node in split_nodes:
+                node.split()
+            return await self.search(octree)
+        except ValueError:
+            ...
+
+        logger.info("detected events")
+
+        detections = []
+        for idx in detection_idx:
+            time = self.start_time + timedelta(seconds=idx / parent.sampling_rate)
+            semblance_detection = semblance_max[idx]
+
+            node_idx = semblance_node_idx[idx]
+            source_node = octree[node_idx].as_location()
+
+            detection = Detection.construct(
+                time=time,
+                semblance=float(semblance_detection),
+                octree=octree.copy(),
+                **source_node.dict(),
+            )
+            detection.plot()
+            detections.append(detection)
 
         return detections, semblance_trace

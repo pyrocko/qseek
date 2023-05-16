@@ -9,6 +9,7 @@ from pyrocko import obspy_compat
 from seisbench.models import PhaseNet as PhaseNetSeisBench
 
 from lassie.images.base import ImageFunction, WaveformImage
+from lassie.utils import alog_call
 
 obspy_compat.plant()
 
@@ -57,6 +58,7 @@ class PhaseNet(ImageFunction):
         blinding_samples = max(self._phase_net.default_args["blinding"])
         return timedelta(seconds=blinding_samples / 100)  # Hz PhaseNet sampling rate
 
+    @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
         annotations: Stream = self._phase_net.annotate(stream, overlap=self.overlap)
