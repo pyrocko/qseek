@@ -36,7 +36,7 @@ PhaseName = Literal["P", "S"]
 class PhaseNet(ImageFunction):
     image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = "ethz"
-    overlap: conint(ge=100, le=3000) = 2000
+    window_overlap_samples: conint(ge=1000, le=3000) = 2000
     use_cuda: bool = False
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
@@ -61,7 +61,9 @@ class PhaseNet(ImageFunction):
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        annotations: Stream = self._phase_net.annotate(stream, overlap=self.overlap)
+        annotations: Stream = self._phase_net.annotate(
+            stream, overlap=self.window_overlap_samples
+        )
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()

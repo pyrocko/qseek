@@ -76,6 +76,7 @@ class Search(BaseModel):
             raise EnvironmentError(f"Rundir {rundir} already exists")
 
         elif rundir.exists() and force:
+            # TODO: use folder ctime
             backup_time = to_path(datetime.now(tz=timezone.utc))
             rundir_backup = rundir.with_name(f"{rundir.name}-bak-{backup_time}")
             rundir.rename(rundir_backup)
@@ -86,6 +87,9 @@ class Search(BaseModel):
         search_config = rundir / "search.json"
         search_config.write_text(self.json(indent=2))
         logger.info("created new rundir %s", rundir)
+
+        file_logger = logging.FileHandler(rundir / "lassie.log")
+        logging.root.addHandler(file_logger)
 
         self._detections = Detections(rundir=rundir)
 
@@ -293,14 +297,17 @@ class SearchTraces:
             split_nodes.update(octree.get_nodes(semblance_detection * 0.8))
 
         try:
-            logger.info("detected event, splitting %d octree nodes", len(split_nodes))
-            for node in split_nodes:
-                node.split()
+            new_nodes = [node.split() for node in split_nodes]
+            sizes = set(node.size for node in chain(*new_nodes))
+            logger.info(
+                "event detected - splitting %d octree nodes to %s m",
+                len(split_nodes),
+                ", ".join(f"{s:.1f}" for s in sizes),
+            )
             return await self.search(octree)
-        except ValueError:
-            ...
 
-        logger.info("detected events")
+        except ValueError:
+            logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
 
         detections = []
         for idx in detection_idx:
@@ -316,7 +323,6 @@ class SearchTraces:
                 octree=octree.copy(),
                 **source_node.dict(),
             )
-            detection.plot()
             detections.append(detection)
 
         return detections, semblance_trace
