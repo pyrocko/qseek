@@ -24,7 +24,7 @@ from lassie.images import ImageFunctions
 from lassie.images.base import WaveformImage
 from lassie.models import Stations
 from lassie.models.detection import Detection, Detections
-from lassie.octree import Octree
+from lassie.octree import NodeSplitError, Octree
 from lassie.tracers import RayTracers
 from lassie.utils import PhaseDescription, alog_call, to_datetime, to_path
 
@@ -76,9 +76,10 @@ class Search(BaseModel):
             raise FileExistsError(f"Rundir {rundir} already exists")
 
         elif rundir.exists() and force:
-            # TODO: use folder ctime
-            backup_time = to_path(datetime.now(tz=timezone.utc))
-            rundir_backup = rundir.with_name(f"{rundir.name}-bak-{backup_time}")
+            create_time = to_path(
+                datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
+            )
+            rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
             logger.info("created backup of existing rundir to %s", rundir_backup)
 
@@ -235,7 +236,7 @@ class SearchTraces:
     ) -> tuple[list[Detection], Trace]:
         parent = self.parent
 
-        octree = octree or parent.octree.copy()
+        octree = octree or parent.octree.copy(deep=True)
         images = await self.get_images()
 
         semblance = np.zeros(
@@ -262,6 +263,7 @@ class SearchTraces:
         detection_idx, _ = signal.find_peaks(
             semblance_max,
             height=parent.detection_threshold,
+            prominence=parent.detection_threshold / 2,
             distance=parent.detection_blinding.total_seconds() * parent.sampling_rate,
         )
 
@@ -291,38 +293,44 @@ class SearchTraces:
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
         split_nodes: set[Node] = set()
-        for idx in detection_idx:
-            semblance_detection = semblance_max[idx]
-            octree.map_semblance(semblance[:, idx])
-            split_nodes.update(octree.get_nodes(semblance_detection * 0.8))
+        for node_idx in detection_idx:
+            semblance_detection = semblance_max[node_idx]
+            octree.map_semblance(semblance[:, node_idx])
+            split_nodes.update(octree.get_nodes(semblance_detection * 0.9))
 
         try:
             new_nodes = [node.split() for node in split_nodes]
-            sizes = set(node.size for node in chain(*new_nodes))
+            sizes = set(node.size for node in chain.from_iterable(new_nodes))
             logger.info(
-                "event detected - splitting %d octree nodes to %s m",
+                "event detected - splitted %d octree nodes to %s m",
                 len(split_nodes),
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
             return await self.search(octree)
 
-        except ValueError:
+        except NodeSplitError:
+            logger.debug("reverting partial split")
+            for node in split_nodes:
+                node.reset()
             logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
 
         detections = []
-        for idx in detection_idx:
-            time = self.start_time + timedelta(seconds=idx / parent.sampling_rate)
-            semblance_detection = semblance_max[idx]
+        for node_idx in detection_idx:
+            time = self.start_time + timedelta(seconds=node_idx / parent.sampling_rate)
+            semblance_detection = semblance_max[node_idx]
 
-            node_idx = semblance_node_idx[idx]
+            octree.map_semblance(semblance[:, node_idx])
+
+            node_idx = semblance_node_idx[node_idx]
             source_node = octree[node_idx].as_location()
 
             detection = Detection.construct(
                 time=time,
                 semblance=float(semblance_detection),
-                octree=octree.copy(),
+                octree=octree.copy(deep=True),
                 **source_node.dict(),
             )
+            detection.plot()
             detections.append(detection)
 
         return detections, semblance_trace

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator, Self
 
 import numpy as np
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
@@ -15,6 +15,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 km = 1e3
+
+
+class NodeSplitError(Exception):
+    ...
 
 
 class Node(BaseModel):
@@ -37,7 +41,7 @@ class Node(BaseModel):
         if not self._children_cached:
             half_size = self.size / 2
             if half_size < self.tree.size_limit:
-                raise ValueError("Cannot split node below limit.")
+                raise NodeSplitError("Cannot split node below limit.")
 
             self._children_cached = tuple(
                 Node.construct(
@@ -65,6 +69,11 @@ class Node(BaseModel):
         self._children_cached = self.children
         self.children = tuple()
         self.semblance = 0.0
+
+    def set_parent(self, tree: Octree) -> None:
+        self.tree = tree
+        for child in self.children:
+            child.set_parent(tree)
 
     def distance_station(self, station: Station) -> float:
         return station.distance_to(self.as_location())
@@ -111,7 +120,7 @@ class Octree(BaseModel):
     north_bounds: tuple[float, float] = (-10 * km, 10 * km)
     depth_bounds: tuple[float, float] = (0 * km, 20 * km)
 
-    nodes: list[Node] = []
+    nodes: list[Node] | None = None
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
@@ -258,7 +267,8 @@ class Octree(BaseModel):
 
     def make_concrete(self) -> None:
         """Make octree concrete for serialisation."""
-        self.nodes = self.get_nodes()
+        self._root_nodes = self.get_nodes()
+        self.nodes = self._root_nodes
 
     def refine(self, semblance_threshold: float) -> list[Node]:
         new_nodes = []
@@ -271,6 +281,13 @@ class Octree(BaseModel):
         tree = self.copy()
         tree.reset()
         tree._root_nodes = tree._get_root_nodes(tree.size_limit)
+        return tree
+
+    def copy(self, deep=False) -> Self:
+        tree = super().copy(deep=deep)
+        tree._clear_cache()
+        for node in tree._root_nodes:
+            node.set_parent(tree)
         return tree
 
     def __hash__(self) -> int:

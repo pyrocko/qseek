@@ -124,11 +124,11 @@ class Detections(BaseModel):
         return len(self.detections)
 
     def save_csv(self, file: Path) -> None:
-        lines = ["lat, lon, elevation, detection_peak, time"]
+        lines = ["lat, lon, depth, detection_peak, time"]
         for det in self:
             lat, lon = det.effective_lat_lon
             lines.append(
-                f"{lat:.5f}, {lon:.5f}, {det.effective_elevation:.1f},"
+                f"{lat:.5f}, {lon:.5f}, {-det.effective_elevation:.1f},"
                 f" {det.semblance}, {det.time}"
             )
         file.write_text("\n".join(lines))

@@ -34,7 +34,7 @@ def main() -> None:
 
     subparsers = parser.add_subparsers(title="commands", required=True, dest="command")
 
-    run = subparsers.add_parser("run", help="start a run")
+    run = subparsers.add_parser("run", help="start a new detection run")
     run.add_argument(
         "config",
         type=Path,
@@ -46,7 +46,7 @@ def main() -> None:
         default=False,
         help="backup old rundir and create a new",
     )
-    serve = subparsers.add_parser("serve", help="serve a run")
+    serve = subparsers.add_parser("serve", help="serve results from an existing run")
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
     subparsers.add_parser("dump-config", help="print a config template to terminal")

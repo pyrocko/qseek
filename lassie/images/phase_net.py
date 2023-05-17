@@ -68,7 +68,7 @@ class PhaseNet(ImageFunction):
         annotations: Stream = self._phase_net.annotate(
             stream,
             overlap=self.window_overlap_samples,
-            parallelism=self.seisbench_subprocesses,
+            # parallelism=self.seisbench_subprocesses,
         )
 
         annotated_traces: list[Trace] = [
