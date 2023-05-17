@@ -73,7 +73,7 @@ class Search(BaseModel):
         self._rundir = rundir
 
         if rundir.exists() and not force:
-            raise EnvironmentError(f"Rundir {rundir} already exists")
+            raise FileExistsError(f"Rundir {rundir} already exists")
 
         elif rundir.exists() and force:
             # TODO: use folder ctime

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
+import torch
 from obspy import Stream
 from pydantic import PrivateAttr, conint
 from pyrocko import obspy_compat
@@ -37,7 +38,9 @@ class PhaseNet(ImageFunction):
     image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = "ethz"
     window_overlap_samples: conint(ge=1000, le=3000) = 2000
-    use_cuda: bool = False
+    torch_use_cuda: bool = False
+    torch_cpu_threads: conint(ge=0) = 0
+    seisbench_subprocesses: conint(ge=0) = 0
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
         "S": "constant:S",
@@ -48,8 +51,9 @@ class PhaseNet(ImageFunction):
     def __init__(self, **data) -> None:
         super().__init__(**data)
 
+        torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
-        if self.use_cuda:
+        if self.torch_use_cuda:
             self._phase_net.cuda()
         self._phase_net.eval()
 
@@ -62,7 +66,9 @@ class PhaseNet(ImageFunction):
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
         annotations: Stream = self._phase_net.annotate(
-            stream, overlap=self.window_overlap_samples
+            stream,
+            overlap=self.window_overlap_samples,
+            parallelism=self.seisbench_subprocesses,
         )
 
         annotated_traces: list[Trace] = [
