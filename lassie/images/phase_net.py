@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 
 import torch
 from obspy import Stream
-from pydantic import PrivateAttr, conint
+from pydantic import PositiveInt, PrivateAttr, conint
 from pyrocko import obspy_compat
 from seisbench.models import PhaseNet as PhaseNetSeisBench
 
@@ -39,7 +39,7 @@ class PhaseNet(ImageFunction):
     model: ModelName = "ethz"
     window_overlap_samples: conint(ge=1000, le=3000) = 2000
     torch_use_cuda: bool = False
-    torch_cpu_threads: conint(ge=0) = 0
+    torch_cpu_threads: PositiveInt = 4
     seisbench_subprocesses: conint(ge=0) = 0
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
