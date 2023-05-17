@@ -93,7 +93,6 @@ class Detections(BaseModel):
 
         filename = self.detections_dir / (str(detection.uid) + ".json")
         filename.write_text(detection.json())
-        logger.info("new detection at %s", detection.time)
 
         self.save_csv(self.rundir / "detections.csv")
         self.save_pyrocko_events(self.rundir / "events.list")

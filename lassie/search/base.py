@@ -330,7 +330,13 @@ class SearchTraces:
                 octree=octree.copy(deep=True),
                 **source_node.dict(),
             )
-            detection.plot()
             detections.append(detection)
+            logger.info(
+                "new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
+                detection.time,
+                *detection.effective_lat_lon,
+                detection.effective_depth,
+                detection.semblance,
+            )
 
         return detections, semblance_trace
