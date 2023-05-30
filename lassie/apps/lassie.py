@@ -12,6 +12,8 @@ from lassie.models import Stations
 from lassie.search import SquirrelSearch
 from lassie.server import WebServer
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -34,31 +36,46 @@ def main() -> None:
 
     subparsers = parser.add_subparsers(title="commands", required=True, dest="command")
 
-    run = subparsers.add_parser("run", help="start a new detection run")
-    run.add_argument(
-        "config",
-        type=Path,
-        help="path to config file",
+    run = subparsers.add_parser(
+        "run",
+        help="start a new detection run",
     )
+    run.add_argument("config", type=Path, help="path to config file")
     run.add_argument(
         "--force",
         action="store_true",
         default=False,
         help="backup old rundir and create a new",
     )
-    serve = subparsers.add_parser("serve", help="serve results from an existing run")
+
+    serve = subparsers.add_parser(
+        "serve",
+        help="serve results from an existing run",
+    )
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
-    subparsers.add_parser("dump-config", help="print a config template to terminal")
+    init = subparsers.add_parser(
+        "init-project",
+        help="initialize a new project",
+    )
+    init.add_argument("folder", type=Path, help="folder to initialize project in")
+
     dump_schemas = subparsers.add_parser(
-        "dump-schemas", help="dump models to json-schema (development)"
+        "dump-schemas",
+        help="dump models to json-schema (development)",
     )
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO - args.verbose * 10)
 
-    if args.command == "dump-config":
+    if args.command == "init-project":
+        folder: Path = args.folder
+        if folder.exists():
+            raise FileExistsError(f"Folder {folder} already exists")
+
+        folder.mkdir(exist_ok=True)
+
         config = SquirrelSearch.construct(
             stations=Stations.construct(
                 pyrocko_station_yamls=[Path("stations.yaml")],
@@ -70,7 +87,9 @@ def main() -> None:
                 datetime.fromisoformat("2023-04-18T00:00:00+00:00"),
             ),
         )
-        print(config.json(by_alias=False, indent=2))
+        config_file = folder / "config.json"
+        config_file.write_text(config.json(by_alias=False, indent=2))
+        logger.info("initialized project in folder %s", folder)
         return
 
     elif args.command == "run":

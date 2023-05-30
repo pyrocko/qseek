@@ -12,9 +12,7 @@ from pyrocko.squirrel import Squirrel
 from pyrocko.squirrel.base import Batch
 from pyrocko.trace import Trace
 
-from lassie.models.detection import Detection
 from lassie.search.base import Search, SearchTraces
-from lassie.signals import Signal
 from lassie.utils import alog_call, to_datetime
 
 logger = logging.getLogger(__name__)
@@ -26,7 +24,6 @@ class SquirrelSearch(Search):
     waveform_data: list[Path]
 
     _squirrel: Squirrel | None = PrivateAttr(None)
-    _new_detection: Signal[Detection] = PrivateAttr(Signal())
 
     def __init__(self, **data) -> None:
         super().__init__(**data)

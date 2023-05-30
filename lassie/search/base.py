@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Self
 import numpy as np
 from pydantic import (
     BaseModel,
+    Field,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
@@ -23,8 +24,9 @@ from scipy import signal
 from lassie.images import ImageFunctions
 from lassie.images.base import WaveformImage
 from lassie.models import Stations
-from lassie.models.detection import Detection, Detections
+from lassie.models.detection import Detections, EventDetection
 from lassie.octree import NodeSplitError, Octree
+from lassie.signals import Signal
 from lassie.tracers import RayTracers
 from lassie.utils import PhaseDescription, alog_call, to_datetime, to_path
 
@@ -34,6 +36,9 @@ if TYPE_CHECKING:
     from lassie.tracers.base import RayTracer
 
 logger = logging.getLogger(__name__)
+
+
+MUTE_MEDIAN_LEVEL = 3.0
 
 
 class Search(BaseModel):
@@ -56,20 +61,22 @@ class Search(BaseModel):
     window_padding: timedelta = timedelta(seconds=0.0)
     distance_range: tuple[float, float] = (0.0, 0.0)
     travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = {}
+    semblance_stats: tuple[float, float, int] = (0.0, 0.0, 0)
 
-    _created: datetime = PrivateAttr(
-        default_factory=lambda: datetime.now(tz=timezone.utc)
-    )
+    created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+
     _detections: Detections = PrivateAttr()
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
+
+    _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
         self._init_ranges()
 
     def init_rundir(self, force=False) -> None:
-        rundir = self.project_dir / self._config_stem or f"run-{to_path(self._created)}"
+        rundir = self.project_dir / self._config_stem or f"run-{to_path(self.created)}"
         self._rundir = rundir
 
         if rundir.exists() and not force:
@@ -87,6 +94,8 @@ class Search(BaseModel):
             rundir.mkdir()
         search_config = rundir / "search.json"
         search_config.write_text(self.json(indent=2))
+        self.stations.dump_pyrocko_stations(rundir / "stations.yaml")
+
         logger.info("created new rundir %s", rundir)
 
         file_logger = logging.FileHandler(rundir / "lassie.log")
@@ -100,6 +109,15 @@ class Search(BaseModel):
         search._rundir = path
         search._detections = Detections(rundir=path)
         return search
+
+    def new_semblance_stats(self, mean: float, std: float) -> tuple[float, float]:
+        prev_mean, prev_std, prev_count = self.semblance_stats
+        count = prev_count + 1
+
+        mean = (prev_mean * prev_count + mean) / count
+        std = (prev_std * prev_count + std) / count
+        self.semblance_stats = (mean, std, count)
+        return self.semblance_stats[:2]
 
     def _init_ranges(self) -> None:
         # Grid/receiver distances
@@ -233,7 +251,7 @@ class SearchTraces:
     async def search(
         self,
         octree: Octree | None = None,
-    ) -> tuple[list[Detection], Trace]:
+    ) -> tuple[list[EventDetection], Trace]:
         parent = self.parent
 
         octree = octree or parent.octree.copy(deep=True)
@@ -260,10 +278,18 @@ class SearchTraces:
             nparallel=parent.n_threads_argmax,
         )
 
+        # mask peaks by median muting and get mean/std
+        semblance_median = np.median(semblance_max)
+        peak_mask = semblance_max < (semblance_median * MUTE_MEDIAN_LEVEL)
+        semblance_mean = float(np.mean(semblance_max[peak_mask]))
+        semblance_std = float(np.std(semblance_max[peak_mask]))
+        run_mean, run_std = parent.new_semblance_stats(semblance_mean, semblance_std)
+        logger.info("semblance stats: mean %g, std %g", run_mean, run_std)
+
         detection_idx, _ = signal.find_peaks(
             semblance_max,
-            height=parent.detection_threshold,
-            prominence=parent.detection_threshold / 2,
+            height=run_mean + run_std * 9,
+            prominence=run_std,
             distance=parent.detection_blinding.total_seconds() * parent.sampling_rate,
         )
 
@@ -293,9 +319,9 @@ class SearchTraces:
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
         split_nodes: set[Node] = set()
-        for node_idx in detection_idx:
-            semblance_detection = semblance_max[node_idx]
-            octree.map_semblance(semblance[:, node_idx])
+        for idx in detection_idx:
+            semblance_detection = semblance_max[idx]
+            octree.map_semblance(semblance[:, idx])
             split_nodes.update(octree.get_nodes(semblance_detection * 0.9))
 
         try:
@@ -315,16 +341,16 @@ class SearchTraces:
             logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
 
         detections = []
-        for node_idx in detection_idx:
-            time = self.start_time + timedelta(seconds=node_idx / parent.sampling_rate)
-            semblance_detection = semblance_max[node_idx]
+        for idx in detection_idx:
+            time = self.start_time + timedelta(seconds=idx / parent.sampling_rate)
+            semblance_detection = semblance_max[idx]
 
-            octree.map_semblance(semblance[:, node_idx])
+            octree.map_semblance(semblance[:, idx])
 
-            node_idx = semblance_node_idx[node_idx]
-            source_node = octree[node_idx].as_location()
+            idx = semblance_node_idx[idx]
+            source_node = octree[idx].as_location()
 
-            detection = Detection.construct(
+            detection = EventDetection.construct(
                 time=time,
                 semblance=float(semblance_detection),
                 octree=octree.copy(deep=True),

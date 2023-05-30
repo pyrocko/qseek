@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Any, Iterable, Iterator
 import numpy as np
 from pydantic import BaseModel, PrivateAttr, constr, root_validator
 from pyrocko.io.stationxml import load_xml
-from pyrocko.model import load_stations
+from pyrocko.model import Station as PyrockoStation
+from pyrocko.model import dump_stations_yaml, load_stations
 
 if TYPE_CHECKING:
-    from pyrocko.model import Station as PyrockoStation
     from pyrocko.trace import Trace
 
 from lassie.models.location import CoordSystem, Location
@@ -21,12 +21,16 @@ logger = logging.getLogger(__name__)
 
 
 class Station(Location):
-    nsl: tuple[str, str, str]
+    network: str
+    station: str
+    location: str
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:
         return cls(
-            nsl=station.nsl(),
+            network=station.network,
+            station=station.station,
+            location=station.location,
             lat=station.lat,
             lon=station.lon,
             east_shift=station.east_shift,
@@ -34,6 +38,17 @@ class Station(Location):
             elevation=station.elevation,
             depth=station.depth,
         )
+
+    def to_pyrocko_station(self) -> PyrockoStation:
+        return PyrockoStation(**self.dict(exclude={"effective_lat_lon"}))
+
+    @property
+    def pretty_nsl(self) -> str:
+        return ".".join(self.nsl)
+
+    @property
+    def nsl(self) -> tuple[str, str, str]:
+        return self.network, self.station, self.location
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.nsl))
@@ -50,11 +65,7 @@ class Stations(BaseModel):
 
     def __iter__(self) -> Iterator[Station]:
         for sta in self.stations:
-            if ".".join(sta.nsl) in self.blacklist:
-                continue
-            if not sta.lat or not sta.lon:
-                logger.warning("station has bad geographical coordinates: %s", sta)
-                self.blacklist.append(".".join(sta.nsl))
+            if sta.nsl in self.blacklist:
                 continue
             yield sta
 
@@ -117,13 +128,40 @@ class Stations(BaseModel):
             station_xml = load_xml(filename=str(path))
             loaded_stations += station_xml.get_pyrocko_stations(path)
 
-        # TODO: Remove douplicates
-        values.get("stations").extend(
-            [Station.from_pyrocko_station(sta) for sta in loaded_stations]
-        )
+        for sta in loaded_stations:
+            sta = Station.from_pyrocko_station(sta)
+            if sta not in values.get("stations"):
+                values.get("stations").append(sta)
+
+        # Check stations
+        seen_nsls = set()
+        for sta in values.get("stations").copy():
+            if not sta.lat or not sta.lon:
+                logger.warning(
+                    "blacklisting station %s: bad geographical coordinates",
+                    sta.pretty_nsl,
+                )
+                values.get("blacklist").append(sta.nsl)
+                continue
+
+            if sta.pretty_nsl in seen_nsls:
+                logger.warning("removing doublicate station: %s", sta.pretty_nsl)
+                values.get("stations").remove(sta)
+                continue
+            seen_nsls.add(sta.pretty_nsl)
+
         if not values.get("stations"):
-            raise ValueError("no stations set")
+            raise AttributeError(
+                "no stations available, add stations to start detection"
+            )
+
         return values
+
+    def dump_pyrocko_stations(self, filename: Path) -> None:
+        dump_stations_yaml(
+            [sta.to_pyrocko_station() for sta in self],
+            filename=str(filename),
+        )
 
     def __hash__(self) -> int:
         return hash(sta for sta in self)

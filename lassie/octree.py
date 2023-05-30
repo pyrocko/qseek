@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from functools import cached_property
 from typing import TYPE_CHECKING, Callable, Iterator, Self
 
 import numpy as np
@@ -125,6 +126,9 @@ class Octree(BaseModel):
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
 
+    class Config:
+        keep_untouched = (cached_property,)
+
     def __init__(self, **data) -> None:
         super().__init__(**data)
 
@@ -171,8 +175,7 @@ class Octree(BaseModel):
             for depth in depth_nodes
         ]
 
-    # TODO: make cached_property
-    @property
+    @cached_property
     def n_nodes(self) -> int:
         return sum(1 for _ in self)
 
@@ -188,6 +191,10 @@ class Octree(BaseModel):
 
     def _clear_cache(self) -> None:
         self._cached_coordinates.clear()
+        try:
+            del self.n_nodes
+        except AttributeError:
+            ...
 
     def reset(self) -> None:
         logger.debug("resetting tree")

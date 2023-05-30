@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Detection(Location):
+class EventDetection(Location):
     uid: UUID = Field(default_factory=uuid4)
     time: datetime
     semblance: float
@@ -39,6 +39,10 @@ class Detection(Location):
             north_shift=self.north_shift,
             depth=self.depth,
             elevation=self.elevation,
+            magnitude=self.semblance,
+            magnitude_type="semblance",
+            tags=["lassie-detection"],
+            extras={"semblance": self.semblance},
         )
 
     def plot(self) -> None:
@@ -72,7 +76,7 @@ class Detection(Location):
 class Detections(BaseModel):
     rundir: Path
 
-    detections: list[Detection] = []
+    detections: list[EventDetection] = []
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
@@ -87,7 +91,7 @@ class Detections(BaseModel):
     def detections_dir(self) -> Path:
         return self.rundir / "detections"
 
-    def add(self, detection: Detection) -> None:
+    def add(self, detection: EventDetection) -> None:
         detection.octree.make_concrete()
         self.detections.append(detection)
 
@@ -110,10 +114,10 @@ class Detections(BaseModel):
 
     def load_detections(self) -> None:
         for file in self.detections_dir.glob("*.json"):
-            detection = Detection.parse_file(file)
+            detection = EventDetection.parse_file(file)
             self.detections.append(detection)
 
-    def get(self, uid: UUID) -> Detection:
+    def get(self, uid: UUID) -> EventDetection:
         for detection in self:
             if detection.uid == uid:
                 return detection
@@ -138,5 +142,5 @@ class Detections(BaseModel):
             filename=str(filename),
         )
 
-    def __iter__(self) -> Iterator[Detection]:
+    def __iter__(self) -> Iterator[EventDetection]:
         return iter(self.detections)

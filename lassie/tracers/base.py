@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     import numpy as np
@@ -12,21 +12,17 @@ if TYPE_CHECKING:
 
 
 class RayTracer(BaseModel):
-    tracer: str
-
-    _octree: Octree = PrivateAttr(None)
-    _stations: Stations = PrivateAttr(None)
-
-    def set_octree(self, octree: Octree) -> None:
-        self._octree = octree
-
-    def set_stations(self, stations: Stations) -> None:
-        self._stations = stations
+    tracer: Literal["RayTracer"] = "RayTracer"
 
     def get_available_phases(self) -> tuple[str]:
         ...
 
-    def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
+    def get_traveltime(
+        self,
+        phase: str,
+        node: Node,
+        station: Station,
+    ) -> float:
         ...
 
     def get_traveltimes(

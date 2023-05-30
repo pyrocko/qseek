@@ -10,7 +10,7 @@ from matplotlib.colors import Colormap
 from matplotlib.patches import Rectangle
 
 if TYPE_CHECKING:
-    from lassie.models import Detection
+    from lassie.models import EventDetection
     from lassie.octree import Octree
 
 
@@ -45,7 +45,7 @@ def octree_to_rectangles(
     return PatchCollection(patches=rectangles, facecolors=colors, edgecolors="k")
 
 
-def plot_detection(detection: Detection, axes: plt.Axes | None = None) -> None:
+def plot_detection(detection: EventDetection, axes: plt.Axes | None = None) -> None:
     if axes is None:
         fig = plt.figure()
         ax = fig.gca()
