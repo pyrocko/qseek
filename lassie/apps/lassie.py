@@ -11,6 +11,7 @@ from pkg_resources import get_distribution
 from lassie.models import Stations
 from lassie.search import SquirrelSearch
 from lassie.server import WebServer
+from lassie.tracers import CakeTracer, RayTracers
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ def main() -> None:
                 blacklist=["NE.STA.LOC"],
             ),
             waveform_data=[Path("/data/")],
+            ray_tracers=RayTracers(__root__=[CakeTracer()]),
             time_span=(
                 datetime.fromisoformat("2023-04-11T00:00:00+00:00"),
                 datetime.fromisoformat("2023-04-18T00:00:00+00:00"),
