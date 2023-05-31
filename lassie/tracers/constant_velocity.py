@@ -6,7 +6,7 @@ import numpy as np
 from pydantic import PositiveFloat
 
 from lassie.tracers.base import RayTracer
-from lassie.utils import PhaseDescription
+from lassie.utils import PhaseDescription, log_call
 
 if TYPE_CHECKING:
     from lassie.models.location import Location
@@ -29,6 +29,7 @@ class ConstantVelocityTracer(RayTracer):
             raise ValueError(f"Phase {phase} is not defined.")
         return source.distance_to(receiver) / self.velocities[phase]
 
+    @log_call
     def get_traveltimes(
         self,
         phase: str,

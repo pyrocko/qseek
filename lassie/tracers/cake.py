@@ -4,6 +4,7 @@ import logging
 import re
 import struct
 import zipfile
+from datetime import datetime, timezone
 from functools import cached_property
 from hashlib import sha1
 from io import BytesIO
@@ -12,13 +13,13 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
-from pydantic import BaseModel, PositiveFloat, PrivateAttr, constr
+from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
 from pyrocko.gf import meta
 
 from lassie.tracers.base import RayTracer
-from lassie.utils import PhaseDescription
+from lassie.utils import CACHE_DIR, PhaseDescription, log_call
 
 if TYPE_CHECKING:
     from lassie.models.location import Location
@@ -102,6 +103,8 @@ class SPTreeModel(BaseModel):
     time_tolerance: float
     spatial_tolerance: float
 
+    created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
 
@@ -164,24 +167,45 @@ class SPTreeModel(BaseModel):
 
     @classmethod
     def new(cls, **data) -> Self:
+        """Create new SPTree and calculate traveltime table.
+
+        Takes all input arguments as the __init__.
+        """
         model = cls(**data)
         model._sptree = model.calculate_tree()
         return model
 
-    def save(self, folder: Path) -> Path:
-        file = folder / self.filename
+    def save(self, path: Path) -> Path:
+        """Save the model and traveltimes to an .sptree archive.
+
+        Args:
+            folder (Path): Folder or file to save tree into. If path is a folder a
+                native name from the model's hash is used
+
+        Returns:
+            Path: Path to the saved archive.
+        """
+        file = path / self.filename if path.is_dir() else path
         logger.debug("saving traveltimes to %s", file)
 
         with zipfile.ZipFile(file, "w") as archive:
             archive.writestr("model.json", self.json(indent=2))
             with NamedTemporaryFile() as tmpfile:
-                self.get_sptree().dump(tmpfile.name)
+                self._get_sptree().dump(tmpfile.name)
                 archive.write(tmpfile.name, "model.sptree")
         return file
 
     @classmethod
     def load(cls, file: Path) -> Self:
-        logger.debug("loading model from %s", file)
+        """Load model from archive file.
+
+        Args:
+            file (Path): Path to archive file.
+
+        Returns:
+            Self: Loaded SPTreeModel
+        """
+        logger.debug("loading traveltimes from from %s", file)
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model = cls.parse_raw((path / "model.json").read_bytes())
@@ -197,13 +221,13 @@ class SPTreeModel(BaseModel):
                 archive.extract("model.sptree", path=temp_dir)
                 return spit.SPTree(filename=str(Path(temp_dir) / "model.sptree"))
 
-    def get_sptree(self) -> spit.SPTree:
+    def _get_sptree(self) -> spit.SPTree:
         if self._sptree is None:
             self._sptree = self._load_tree()
         return self._sptree
 
     def get_traveltime(self, source: Location, receiver: Location) -> float:
-        tree = self.get_sptree()
+        tree = self._get_sptree()
         timing = self.timing.as_pyrocko_timing()
         coords = [
             receiver.effective_depth,
@@ -217,7 +241,7 @@ class SPTreeModel(BaseModel):
         return float(traveltime)
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
-        tree = self.get_sptree()
+        tree = self._get_sptree()
         timing = self.timing.as_pyrocko_timing()
 
         receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
@@ -259,11 +283,12 @@ class CakeTracer(RayTracer):
 
     @property
     def cache_dir(self) -> Path:
-        cache_dir = Path.home() / ".cache" / "lassie" / "cake"
-        cache_dir.mkdir(exist_ok=True, parents=True)
-        return cache_dir
+        path = CACHE_DIR / "cake"
+        path.mkdir(exist_ok=True)
+        return path
 
     def clear_cache(self) -> None:
+        """Clear cached SPTreeModels from user's cache."""
         logging.info("clearing traveltime cache %s", self.cache_dir)
         for file in self.cache_dir.glob("*.sptree"):
             file.unlink()
@@ -309,21 +334,23 @@ class CakeTracer(RayTracer):
                 logger.info("pre-calculating traveltimes for %s", phase_description)
                 tree = SPTreeModel.new(timing=timing, **tree_args)
                 tree.save(self.cache_dir)
+
             self._trees[phase_description] = tree
 
-    def get_sptree(self, phase: str) -> SPTreeModel:
+    def _get_sptree(self, phase: str) -> SPTreeModel:
         return self._trees[phase]
 
     def get_traveltime(self, phase: str, source: Location, receiver: Location) -> float:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
-        tree = self.get_sptree(phase)
+        tree = self._get_sptree(phase)
         return tree.get_traveltime(source, receiver)
 
+    @log_call
     def get_traveltimes(
         self, phase: str, octree: Octree, stations: Stations
     ) -> np.ndarray:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
-        tree = self.get_sptree(phase)
+        tree = self._get_sptree(phase)
         return tree.get_traveltimes(octree, stations)

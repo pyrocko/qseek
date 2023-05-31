@@ -24,7 +24,7 @@ def test_sptree_model(sample_config: Config):
         file = model.save(tmp)
 
         model2 = SPTreeModel.load(file)
-        model2.get_sptree()
+        model2._get_sptree()
 
     source = Location(
         lat=0.0,
