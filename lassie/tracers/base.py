@@ -7,12 +7,16 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     import numpy as np
 
-    from lassie.models.station import Station, Stations
-    from lassie.octree import Node, Octree
+    from lassie.models.location import Location
+    from lassie.models.station import Stations
+    from lassie.octree import Octree
 
 
 class RayTracer(BaseModel):
     tracer: Literal["RayTracer"] = "RayTracer"
+
+    def prepare(self, octree: Octree, stations: Stations):
+        ...
 
     def get_available_phases(self) -> tuple[str]:
         ...
@@ -20,8 +24,8 @@ class RayTracer(BaseModel):
     def get_traveltime(
         self,
         phase: str,
-        node: Node,
-        station: Station,
+        source: Location,
+        receiver: Location,
     ) -> float:
         ...
 

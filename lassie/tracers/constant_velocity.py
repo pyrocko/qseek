@@ -9,8 +9,9 @@ from lassie.tracers.base import RayTracer
 from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
-    from lassie.models.station import Station, Stations
-    from lassie.octree import Node, Octree
+    from lassie.models.location import Location
+    from lassie.models.station import Stations
+    from lassie.octree import Octree
 
 
 class ConstantVelocityTracer(RayTracer):
@@ -23,10 +24,10 @@ class ConstantVelocityTracer(RayTracer):
     def get_available_phases(self) -> tuple[str]:
         return tuple(self.velocities.keys())
 
-    def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
+    def get_traveltime(self, phase: str, source: Location, receiver: Location) -> float:
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
-        return node.distance_station(station) / self.velocities[phase]
+        return source.distance_to(receiver) / self.velocities[phase]
 
     def get_traveltimes(
         self,

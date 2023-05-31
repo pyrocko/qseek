@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import struct
 import zipfile
 from functools import cached_property
@@ -11,21 +12,18 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
-from lmdb import Environment
-from pydantic import BaseModel, PositiveFloat, PrivateAttr, root_validator
+from pydantic import BaseModel, PositiveFloat, PrivateAttr, constr
 from pyrocko import spit
-from pyrocko.cake import LayeredModel, PhaseDef, Ray, m2d, read_nd_model_str
+from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
 from pyrocko.gf import meta
 
 from lassie.tracers.base import RayTracer
 from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
-    from lmdb import _Database
-
     from lassie.models.location import Location
-    from lassie.models.station import Station, Stations
-    from lassie.octree import Node, Octree
+    from lassie.models.station import Stations
+    from lassie.octree import Octree
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +55,15 @@ class EarthModel(BaseModel):
     class Config:
         keep_untouched = (cached_property,)
 
+    def _as_array(self) -> np.ndarray:
+        return np.asarray(self.__root__)
+
+    def get_profile_vp(self) -> np.ndarray:
+        return self._as_array()[:, 1]
+
+    def get_profile_vs(self) -> np.ndarray:
+        return self._as_array()[:, 2]
+
     def as_layered_model(self) -> LayeredModel:
         line_tpl = "{} {} {} {}"
         earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.__root__)
@@ -72,7 +79,7 @@ class EarthModel(BaseModel):
 
 
 class Timing(BaseModel):
-    definition: str = "P,p"
+    definition: constr(strip_whitespace=True) = "P,p"
 
     def as_phase_defs(self) -> list[PhaseDef]:
         return [PhaseDef(definition=phase) for phase in self.definition.split(",")]
@@ -82,8 +89,7 @@ class Timing(BaseModel):
 
     @property
     def id(self) -> str:
-        # TODO: use regex
-        return self.definition.replace(",", "")
+        return re.sub(r"[\,\s\;]", "", self.definition)
 
 
 class SPTreeModel(BaseModel):
@@ -111,7 +117,6 @@ class SPTreeModel(BaseModel):
                 zstop=receiver_depth,
             )
             times = np.fromiter((ray.t for ray in rays), float)
-            print(args, times)
             return times.min() if times.size else None
 
         spatial_bounds = [
@@ -132,8 +137,8 @@ class SPTreeModel(BaseModel):
 
     def is_suited(
         self,
-        earthmodel: EarthModel,
         timing: Timing,
+        earthmodel: EarthModel,
         distance_bounds: tuple[float, float],
         source_depth_bounds: tuple[float, float],
         receiver_depth_bounds: tuple[float, float],
@@ -155,7 +160,7 @@ class SPTreeModel(BaseModel):
 
     @property
     def filename(self) -> Path:
-        return Path(f"{self.timing.id}-{self.earthmodel.hash}")
+        return Path(f"{self.timing.id}-{self.earthmodel.hash}.sptree")
 
     @classmethod
     def new(cls, **data) -> Self:
@@ -165,7 +170,8 @@ class SPTreeModel(BaseModel):
 
     def save(self, folder: Path) -> Path:
         file = folder / self.filename
-        logger.debug("saving model to %s", file)
+        logger.debug("saving traveltimes to %s", file)
+
         with zipfile.ZipFile(file, "w") as archive:
             archive.writestr("model.json", self.json(indent=2))
             with NamedTemporaryFile() as tmpfile:
@@ -197,21 +203,44 @@ class SPTreeModel(BaseModel):
         return self._sptree
 
     def get_traveltime(self, source: Location, receiver: Location) -> float:
+        tree = self.get_sptree()
+        timing = self.timing.as_pyrocko_timing()
         coords = [
             receiver.effective_depth,
             source.effective_depth,
             receiver.distance_to(source),
         ]
-        print(coords)
-        tree = self.get_sptree()
-        timing = self.timing.as_pyrocko_timing()
         traveltime = timing.evaluate(
-            lambda phase: tree.interpolate_many, np.array([coords])
+            lambda phase: tree.interpolate_many,
+            np.array([coords]),
         )
         return float(traveltime)
 
-    def get_traveltimes(self, octree: Octree, stations: Stations):
-        ...
+    def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
+        tree = self.get_sptree()
+        timing = self.timing.as_pyrocko_timing()
+
+        receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
+        source_depths = np.fromiter((node.depth for node in octree), float)
+        receiver_distances = octree.distances_stations(stations)
+
+        coordinates = []
+        for distances, source_depth in zip(receiver_distances, source_depths):
+            node_receivers_distances = (
+                receiver_depths,
+                np.full_like(distances, source_depth),
+                distances,
+            )
+            coordinates.append(np.asarray(node_receivers_distances).T)
+
+        traveltimes = (
+            timing.evaluate(
+                lambda phase: tree.interpolate_many,
+                coords,
+            )
+            for coords in coordinates
+        )
+        return np.asarray(traveltimes)
 
 
 def hash_to_bytes(hash: int) -> bytes:
@@ -226,170 +255,75 @@ class CakeTracer(RayTracer):
     }
     earthmodel: EarthModel = EarthModel()
 
-    _earthmodel: LayeredModel = PrivateAttr()
-    _earthmodl_hash: bytes = PrivateAttr()
-    _lmdb: Environment = PrivateAttr()
+    _trees: dict[PhaseDescription, SPTreeModel] = PrivateAttr({})
 
-    @root_validator
-    def _read_earthmodel(cls, values):  # noqa N805
-        try:
-            LayeredModel.from_scanlines(read_nd_model_str(values.get("earthmodel")))
-        except Exception as exc:
-            raise ValueError("bad earthmodel") from exc
-        return values
+    @property
+    def cache_dir(self) -> Path:
+        cache_dir = Path.home() / ".cache" / "lassie" / "cake"
+        cache_dir.mkdir(exist_ok=True, parents=True)
+        return cache_dir
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
-
-        self._earthmodel = LayeredModel.from_scanlines(
-            read_nd_model_str(self.earthmodel)
-        )
-        data = BytesIO()
-        for param in ("z", "vp", "vs", "rho"):
-            self._earthmodel.profile(param).dump(data)
-        self._earthmodel_hash = sha1(data.getvalue()).digest()
+    def clear_cache(self) -> None:
+        logging.info("clearing traveltime cache %s", self.cache_dir)
+        for file in self.cache_dir.glob("*.sptree"):
+            file.unlink()
 
     def get_available_phases(self) -> tuple[str]:
         return tuple(self.timings.keys())
 
     def get_vmin(self) -> float:
-        earthmodel = self._earthmodel
-        vs = np.concatenate((earthmodel.profile("vp"), earthmodel.profile("vs")))
-        return float((vs[vs != 0.0]).min())
-
-    def get_filename_hash(self, phase: PhaseDescription) -> str:
-        return f"{phase}-{self._earthmodel_hash}.dat"
+        earthmodel = self.earthmodel
+        vel = np.concatenate((earthmodel.get_profile_vp(), earthmodel.get_profile_vs()))
+        return float((vel[vel != 0.0]).min())
 
     def prepare(self, octree: Octree, stations: Stations) -> None:
-        for phase in self.get_available_phases():
-            try:
-                self.get_traveltime_tree(phase)
-            except KeyError:
-                self.precalculate_traveltimes(phase, octree, stations)
-
-    def precalculate_traveltimes(
-        self,
-        phase: str,
-        octree: Octree,
-        stations: Stations,
-    ) -> None:
-        if phase not in self.timings:
-            raise ValueError(f"timing {phase} is not defined")
-        phase_def = self.timings[phase].as_phase_def()
-
-        logger.info("pre-calculating traveltimes for phase %s", phase)
+        cached_trees = [
+            SPTreeModel.load(file) for file in self.cache_dir.glob("*.sptree")
+        ]
 
         distances = octree.distances_stations(stations)
-        source_depths = np.array(octree.depth_bounds)
+        source_depths = np.asarray(octree.depth_bounds)
         receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
 
-        spatial_bounds = [
-            [receiver_depths.min(), receiver_depths.max()],
-            [source_depths.min(), source_depths.max()],
-            [distances.min(), distances.max()],
-        ]
-        spatial_tolerance = [octree.size_limit, octree.size_limit, octree.size_limit]
+        receiver_depths_bounds = (receiver_depths.min(), receiver_depths.max())
+        source_depth_bounds = (source_depths.min(), source_depths.max())
+        distance_bounds = (distances.min(), distances.max())
         # TODO: Time tolerance is too hardcoded
         time_tolerance = octree.size_initial / (self.get_vmin() * 5.0)
 
-        def evaluate(args) -> float | None:
-            receiver_depth, source_depth, distances = args
-            rays = self._earthmodel.arrivals(
-                phases=phase_def,
-                distances=[distances * m2d],
-                zstart=source_depth,
-                zstop=receiver_depth,
-            )
-            times = np.fromiter((ray.t for ray in rays), float)
-            return times.min() if times.size else None
-
-        traveltime_tree = spit.SPTree(
-            f=evaluate,
-            ftol=np.array(time_tolerance),
-            xbounds=np.array(spatial_bounds),
-            xtols=spatial_tolerance,
+        tree_args = dict(
+            earthmodel=self.earthmodel,
+            distance_bounds=distance_bounds,
+            source_depth_bounds=source_depth_bounds,
+            receiver_depth_bounds=receiver_depths_bounds,
+            spatial_tolerance=octree.size_limit,
+            time_tolerance=time_tolerance,
         )
-        filename = self.get_filename_hash(phase)
-        logger.debug("writing SPTree to %s", filename)
-        traveltime_tree.dump(filename)
 
-    def get_traveltime_tree(
-        self,
-        phase: str,
-        octree: Octree,
-        stations: Stations,
-    ) -> spit.SPTree:
-        ...
+        for phase_description, timing in self.timings.items():
+            for tree in cached_trees:
+                if tree.is_suited(timing=timing, **tree_args):
+                    logger.info("using cached traveltimes for %s", phase_description)
+                    break
+            else:
+                logger.info("pre-calculating traveltimes for %s", phase_description)
+                tree = SPTreeModel.new(timing=timing, **tree_args)
+                tree.save(self.cache_dir)
+            self._trees[phase_description] = tree
 
-    def get_traveltime(self, phase: str, node: Node, station: Station) -> float:
+    def get_sptree(self, phase: str) -> SPTreeModel:
+        return self._trees[phase]
+
+    def get_traveltime(self, phase: str, source: Location, receiver: Location) -> float:
         if phase not in self.timings:
-            raise ValueError(f"timing {phase} is not defined.")
-        phase_def = self.timings[phase].as_phase_def()
-
-        distance = node.distance_station(station)
-        rays: list[Ray] = self._earthmodel.arrivals(
-            distances=[distance * m2d],
-            phases=phase_def,
-            zstart=node.depth,
-        )
-        if not rays:
-            return np.nan
-        return rays[0].t
+            raise ValueError(f"Timing {phase} is not defined.")
+        tree = self.get_sptree(phase)
+        return tree.get_traveltime(source, receiver)
 
     def get_traveltimes(
         self, phase: str, octree: Octree, stations: Stations
     ) -> np.ndarray:
         if phase not in self.timings:
-            raise ValueError(f"timing {phase} is not defined.")
-        timing = self.timings[phase].as_phase_def()
-
-        distances = octree.distances_receivers(stations)
-        return np.array(
-            [
-                self._get_node_traveltimes(timing, node, distance)
-                for node, distance in zip(octree, distances)
-            ]
-        )
-
-    def _get_lmdb_database(self, timing: PhaseDef) -> _Database:
-        hash = sha1(self._earthmodel_hash)
-        if not timing._definition:
-            raise AttributeError("PhaseDef has no definition")
-        hash.update(timing._definition.encode())
-        return self._lmdb.open_db(hash.digest())
-
-    def _get_node_traveltimes(
-        self, timing: PhaseDef, node: Node, distances: np.ndarray
-    ) -> np.ndarray:
-        database = self._get_lmdb_database(timing)
-
-        hash = sha1(distances.tobytes())
-        hash.update(hash_to_bytes(node.__hash__()))
-        node_key = hash.digest()
-
-        with self._lmdb.begin() as txn:
-            traveltimes = txn.get(node_key, db=database)
-            if traveltimes:
-                self.cache_hits += 1
-                print(f"hit cache {self.cache_hits}")
-                return np.frombuffer(traveltimes, dtype=np.float32)
-
-        traveltimes = self._calculate_node_traveltimes(timing, node, distances)
-        with self._lmdb.begin(write=True) as txn:
-            txn.put(node_key, traveltimes.tobytes(), db=database)
-        return traveltimes
-
-    def _calculate_node_traveltimes(
-        self, timing: PhaseDef, node: Node, distances: np.ndarray
-    ) -> np.ndarray:
-        print("calculating traveltimes")
-        traveltimes = np.full_like(distances, np.nan, dtype=np.float32)
-        for idx, distance in enumerate(distances):
-            rays: list[Ray] = self._earthmodel.arrivals(
-                distances=[distance * m2d],
-                phases=timing,
-                zstart=node.depth,
-            )
-            if rays:
-                traveltimes[idx] = rays[0].t
-        return traveltimes
+            raise ValueError(f"Timing {phase} is not defined.")
+        tree = self.get_sptree(phase)
+        return tree.get_traveltimes(octree, stations)

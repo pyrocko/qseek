@@ -44,7 +44,6 @@ dependencies = [
     "pyrocko>=2022.06.10",
     "seisbench>=0.4.0",
     "pydantic>=1.9",
-    "lmdb>=1.4",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
 ]

@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 
 from lassie.config import Config
 from lassie.models.location import Location
-from lassie.tracers.cake import EarthModel, SPTreeModel, Timing
+from lassie.tracers.cake import CakeTracer, EarthModel, SPTreeModel, Timing
 
 km = 1e3
 
@@ -42,3 +42,9 @@ def test_sptree_model(sample_config: Config):
     )
 
     model.get_traveltime(source, receiver)
+    model.get_traveltimes(sample_config.octree, sample_config.stations)
+
+
+def test_cake_tracer(sample_config: Config):
+    tracer = CakeTracer()
+    tracer.prepare(sample_config.octree, sample_config.stations)

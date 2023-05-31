@@ -143,6 +143,8 @@ class Search(BaseModel):
             + self.image_functions.get_blinding()
         )
 
+        self.ray_tracers.prepare(self.octree, self.stations)
+
         logger.info(
             "source-station distances range: %.1f - %.1f m", *self.distance_range
         )

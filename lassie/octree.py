@@ -12,7 +12,7 @@ from pyrocko import orthodrome as od
 from lassie.models.location import CoordSystem, Location
 
 if TYPE_CHECKING:
-    from lassie.models.station import Station, Stations
+    from lassie.models.station import Stations
 
 logger = logging.getLogger(__name__)
 km = 1e3
@@ -76,8 +76,8 @@ class Node(BaseModel):
         for child in self.children:
             child.set_parent(tree)
 
-    def distance_station(self, station: Station) -> float:
-        return station.distance_to(self.as_location())
+    def distance_to_location(self, location: Location) -> float:
+        return location.distance_to(self.as_location())
 
     def as_location(self) -> Location:
         if not self._location:
@@ -250,7 +250,7 @@ class Octree(BaseModel):
             stations (Stations): Stations to calculate distance to.
 
         Returns:
-            np.ndarray: Of shape n-nodes, n-stations.
+            np.ndarray: Of shape (n-nodes, n-stations).
         """
         node_coords = self.get_coordinates(system="geographic")
         sta_coords = stations.get_coordinates(system="geographic")
