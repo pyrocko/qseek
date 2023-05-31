@@ -1,51 +1,44 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from lassie.config import Config
-from lassie.tracers import CakeTracer
+from lassie.models.location import Location
+from lassie.tracers.cake import EarthModel, SPTreeModel, Timing
+
+km = 1e3
 
 
-def test_cake_tracer(sample_config: Config):
-    config = sample_config
-    tracer = CakeTracer(
-        earthmodel="""
-   0.00      5.50    3.59    2.7
-   1.00      5.50    3.59    2.7
-   1.00      6.00    3.92    2.7
-   4.00      6.00    3.92    2.7
-   4.00      6.20    4.05    2.7
-   8.00      6.20    4.05    2.7
-   8.00      6.30    4.12    2.7
-   13.00     6.30    4.12    2.7
-   13.00     6.40    4.18    2.7
-   17.00     6.40    4.18    2.7
-   17.00     6.50    4.25    2.7
-   22.00     6.50    4.25    2.7
-   22.00     6.60    4.31    2.7
-   26.00     6.60    4.31    2.7
-   26.00     6.80    4.44    2.7
-   30.00     6.80    4.44    2.7
-   30.00     8.10    5.29    2.7
-   45.00     8.10    5.29    2.7
-   45.00     8.50    5.56    2.7
-   71.00     8.50    5.56    2.7
-   71.00     8.73    5.71    2.7
-   101.00    8.73    5.71    2.7
-   101.00    8.73    5.71    2.7
-   201.00    8.73    5.71    2.7
-   201.00    8.73    5.71    2.7
-   301.00    8.73    5.71    2.7
-   301.00    8.73    5.71    2.7
-   401.00    8.73    5.71    2.7
-    """
+def test_sptree_model(sample_config: Config):
+    model = SPTreeModel.new(
+        earthmodel=EarthModel(),
+        distance_bounds=(0 * km, 10 * km),
+        receiver_depth_bounds=(0 * km, 0 * km),
+        source_depth_bounds=(0 * km, 10 * km),
+        spatial_tolerance=200,
+        time_tolerance=0.05,
+        timing=Timing(definition="P,p"),
     )
 
-    traveltime = tracer.get_traveltime(
-        "cake:P", node=config.octree[0], station=config.stations.stations[0]
-    )
-    print(traveltime)
+    with TemporaryDirectory() as d:
+        tmp = Path(d)
+        file = model.save(tmp)
 
-    traveltimes = tracer.get_traveltimes(
-        "cake:P", octree=config.octree, stations=config.stations
+        model2 = SPTreeModel.load(file)
+        model2.get_sptree()
+
+    source = Location(
+        lat=0.0,
+        lon=0.0,
+        north_shift=1 * km,
+        east_shift=1 * km,
+        depth=5.0 * km,
     )
-    print(traveltimes)
-    traveltimes = tracer.get_traveltimes(
-        "cake:P", octree=config.octree, stations=config.stations
+    receiver = Location(
+        lat=0.0,
+        lon=0.0,
+        north_shift=0 * km,
+        east_shift=0 * km,
+        depth=0,
     )
+
+    model.get_traveltime(source, receiver)
