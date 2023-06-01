@@ -14,6 +14,7 @@ from pyrocko.model import Event, dump_events
 from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.octree import Octree
+from lassie.plot.octree import plot_octree, plot_octree_surface
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -43,32 +44,13 @@ class EventDetection(Location):
             magnitude_type="semblance",
         )
 
-    def plot(self) -> None:
-        import matplotlib.pyplot as plt
+    def plot(self, cmap: str = "Oranges") -> None:
+        plot_octree(self.octree, cmap=cmap)
 
-        ax = plt.figure().add_subplot(projection="3d")
-        coords = self.octree.get_coordinates("cartesian").T
-        ax.scatter(
-            coords[0],
-            coords[1],
-            coords[2],
-            c=self.octree.semblance,
-            cmap="Oranges",
-        )
-        ax.set_xlabel("east [m]")
-        ax.set_ylabel("north [m]")
-        ax.set_zlabel("depth [m]")
-        plt.show()
-
-    def plot_surface(self, accumulator: Callable = np.max) -> None:
-        import matplotlib.pyplot as plt
-
-        surface = self.octree.reduce_surface(accumulator)
-        ax = plt.figure().gca()
-        ax.scatter(surface[:, 0], surface[:, 1], c=surface[:, 2], cmap="Oranges")
-        ax.set_xlabel("east [m]")
-        ax.set_ylabel("north [m]")
-        plt.show()
+    def plot_surface(
+        self, accumulator: Callable = np.max, cmap: str = "Oranges"
+    ) -> None:
+        plot_octree_surface(self.octree, accumulator=accumulator, cmap=cmap)
 
 
 class Detections(BaseModel):
@@ -97,7 +79,7 @@ class Detections(BaseModel):
         filename.write_text(detection.json())
 
         self.save_csv(self.rundir / "detections.csv")
-        self.save_pyrocko_events(self.rundir / "pyrocko-events.yaml")
+        self.save_pyrocko_events(self.rundir / "pyrocko-events.list")
 
     def add_semblance(self, trace: Trace) -> None:
         trace.set_station("SEMBL")
@@ -136,7 +118,8 @@ class Detections(BaseModel):
 
     def save_pyrocko_events(self, filename: Path) -> None:
         dump_events(
-            [detection.as_pyrocko_event() for detection in self], filename=str(filename)
+            [detection.as_pyrocko_event() for detection in self],
+            filename=str(filename),
         )
 
     def __iter__(self) -> Iterator[EventDetection]:

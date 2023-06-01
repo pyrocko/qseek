@@ -19,7 +19,7 @@ from pydantic import (
 )
 from pyrocko import parstack
 from pyrocko.trace import Trace
-from scipy import signal
+from scipy import signal, stats
 
 from lassie.images import ImageFunctions
 from lassie.images.base import WaveformImage
@@ -61,7 +61,7 @@ class Search(BaseModel):
     window_padding: timedelta = timedelta(seconds=0.0)
     distance_range: tuple[float, float] = (0.0, 0.0)
     travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = {}
-    semblance_stats: tuple[float, float, int] = (0.0, 0.0, 0)
+    semblance_stats: tuple[float, float, float, int] = (0.0, 0.0, 0.0, 0)
 
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
@@ -96,7 +96,7 @@ class Search(BaseModel):
             rundir.mkdir()
         search_config = rundir / "search.json"
         search_config.write_text(self.json(indent=2))
-        self.stations.dump_pyrocko_stations(rundir / "stations.yaml")
+        self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
 
         logger.info("created new rundir %s", rundir)
 
@@ -112,14 +112,17 @@ class Search(BaseModel):
         search._detections = Detections(rundir=path)
         return search
 
-    def new_semblance_stats(self, mean: float, std: float) -> tuple[float, float]:
-        prev_mean, prev_std, prev_count = self.semblance_stats
+    def new_semblance_stats(
+        self, mean: float, std: float, mad: float
+    ) -> tuple[float, float, float]:
+        prev_mean, prev_std, prev_mad, prev_count = self.semblance_stats
         count = prev_count + 1
 
         mean = (prev_mean * prev_count + mean) / count
         std = (prev_std * prev_count + std) / count
-        self.semblance_stats = (mean, std, count)
-        return self.semblance_stats[:2]
+        mad = (prev_mad * prev_count + mad) / count
+        self.semblance_stats = (mean, std, mad, count)
+        return self.semblance_stats[:3]
 
     def _init_ranges(self) -> None:
         # Grid/receiver distances
@@ -285,14 +288,21 @@ class SearchTraces:
         peak_mask = semblance_max < (semblance_median * MUTE_MEDIAN_LEVEL)
         semblance_mean = float(np.mean(semblance_max[peak_mask]))
         semblance_std = float(np.std(semblance_max[peak_mask]))
-        run_mean, run_std = parent.new_semblance_stats(semblance_mean, semblance_std)
-        logger.info("semblance stats: mean %g, std %g", run_mean, run_std)
+        semblance_mad = float(stats.median_abs_deviation(semblance_max))
+        run_mean, run_std, run_mad = parent.new_semblance_stats(
+            semblance_mean, semblance_std, semblance_mad
+        )
+        logger.info(
+            "semblance stats: mean %g, std %g, mad: %g", run_mean, run_std, run_mad
+        )
 
         detection_idx, _ = signal.find_peaks(
             semblance_max,
             height=run_mean + run_std * 9,
-            prominence=run_std,
-            distance=parent.detection_blinding.total_seconds() * parent.sampling_rate,
+            prominence=run_std * 9,
+            distance=round(
+                parent.detection_blinding.total_seconds() * parent.sampling_rate
+            ),
         )
 
         # Remove padding and shift peak detections
@@ -367,6 +377,8 @@ class SearchTraces:
                 detection.semblance,
             )
 
-            detection.plot()
+            # detection.plot()
+
+        # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
         return detections, semblance_trace
