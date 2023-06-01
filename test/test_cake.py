@@ -3,13 +3,13 @@ from tempfile import TemporaryDirectory
 
 from lassie.config import Config
 from lassie.models.location import Location
-from lassie.tracers.cake import CakeTracer, EarthModel, SPTreeModel, Timing
+from lassie.tracers.cake import CakeTracer, EarthModel, Timing, TraveltimeTree
 
 km = 1e3
 
 
 def test_sptree_model(sample_config: Config):
-    model = SPTreeModel.new(
+    model = TraveltimeTree.new(
         earthmodel=EarthModel(),
         distance_bounds=(0 * km, 10 * km),
         receiver_depth_bounds=(0 * km, 0 * km),
@@ -23,8 +23,8 @@ def test_sptree_model(sample_config: Config):
         tmp = Path(d)
         file = model.save(tmp)
 
-        model2 = SPTreeModel.load(file)
-        model2._get_sptree()
+        model2 = TraveltimeTree.load(file)
+        model2._get_sptree_model()
 
     source = Location(
         lat=0.0,

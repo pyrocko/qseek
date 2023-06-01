@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-import struct
 import zipfile
 from datetime import datetime, timezone
 from functools import cached_property
@@ -93,7 +92,7 @@ class Timing(BaseModel):
         return re.sub(r"[\,\s\;]", "", self.definition)
 
 
-class SPTreeModel(BaseModel):
+class TraveltimeTree(BaseModel):
     earthmodel: EarthModel
     timing: Timing
 
@@ -107,6 +106,7 @@ class SPTreeModel(BaseModel):
 
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
+    _cache: dict[bytes, np.ndarray] = PrivateAttr({})
 
     def calculate_tree(self) -> spit.SPTree:
         layered_model = self.earthmodel.as_layered_model()
@@ -186,7 +186,7 @@ class SPTreeModel(BaseModel):
             Path: Path to the saved archive.
         """
         file = path / self.filename if path.is_dir() else path
-        logger.debug("saving traveltimes to %s", file)
+        logger.info("saving traveltimes to %s", file)
 
         with zipfile.ZipFile(file, "w") as archive:
             archive.writestr("model.json", self.json(indent=2))
@@ -212,7 +212,7 @@ class SPTreeModel(BaseModel):
         model._file = file
         return model
 
-    def _load_tree(self) -> spit.SPTree:
+    def _load_sptree(self) -> spit.SPTree:
         if not self._file or not self._file.exists():
             raise FileNotFoundError(f"file {self._file} not found")
 
@@ -223,27 +223,36 @@ class SPTreeModel(BaseModel):
 
     def _get_sptree(self) -> spit.SPTree:
         if self._sptree is None:
-            self._sptree = self._load_tree()
+            self._sptree = self._load_sptree()
         return self._sptree
 
-    def get_traveltime(self, source: Location, receiver: Location) -> float:
-        tree = self._get_sptree()
+    def _get_traveltime_sptree(
+        self,
+        coordinates: np.ndarray | list[float],
+    ) -> np.ndarray:
+        sptree = self._get_sptree()
         timing = self.timing.as_pyrocko_timing()
-        coords = [
+
+        coordinates = np.atleast_2d(np.ascontiguousarray(coordinates))
+        hash = sha1(coordinates.data).digest()
+        if hash not in self._cache:
+            traveltimes = timing.evaluate(
+                lambda phase: sptree.interpolate_many,
+                coordinates,
+            )
+            self._cache[hash] = traveltimes
+        return self._cache[hash]
+
+    def get_traveltime(self, source: Location, receiver: Location) -> float:
+        coordinates = [
             receiver.effective_depth,
             source.effective_depth,
             receiver.distance_to(source),
         ]
-        traveltime = timing.evaluate(
-            lambda phase: tree.interpolate_many,
-            np.array([coords]),
-        )
+        traveltime = self._get_traveltime_sptree(coordinates)
         return float(traveltime)
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
-        tree = self._get_sptree()
-        timing = self.timing.as_pyrocko_timing()
-
         receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
         source_depths = np.fromiter((node.depth for node in octree), float)
         receiver_distances = octree.distances_stations(stations)
@@ -257,18 +266,8 @@ class SPTreeModel(BaseModel):
             )
             coordinates.append(np.asarray(node_receivers_distances).T)
 
-        traveltimes = (
-            timing.evaluate(
-                lambda phase: tree.interpolate_many,
-                coords,
-            )
-            for coords in coordinates
-        )
-        return np.asarray(traveltimes)
-
-
-def hash_to_bytes(hash: int) -> bytes:
-    return struct.pack("q", hash)
+        traveltimes = [self._get_traveltime_sptree(coords) for coords in coordinates]
+        return np.array(traveltimes)
 
 
 class CakeTracer(RayTracer):
@@ -279,7 +278,7 @@ class CakeTracer(RayTracer):
     }
     earthmodel: EarthModel = EarthModel()
 
-    _trees: dict[PhaseDescription, SPTreeModel] = PrivateAttr({})
+    _traveltime_trees: dict[PhaseDescription, TraveltimeTree] = PrivateAttr({})
 
     @property
     def cache_dir(self) -> Path:
@@ -303,7 +302,7 @@ class CakeTracer(RayTracer):
 
     def prepare(self, octree: Octree, stations: Stations) -> None:
         cached_trees = [
-            SPTreeModel.load(file) for file in self.cache_dir.glob("*.sptree")
+            TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
         ]
 
         distances = octree.distances_stations(stations)
@@ -314,36 +313,36 @@ class CakeTracer(RayTracer):
         source_depth_bounds = (source_depths.min(), source_depths.max())
         distance_bounds = (distances.min(), distances.max())
         # TODO: Time tolerance is too hardcoded
-        time_tolerance = octree.size_initial / (self.get_vmin() * 5.0)
+        time_tolerance = octree.size_limit / (self.get_vmin() * 5.0)
 
-        tree_args = dict(
+        traveltime_tree_args = dict(
             earthmodel=self.earthmodel,
             distance_bounds=distance_bounds,
             source_depth_bounds=source_depth_bounds,
             receiver_depth_bounds=receiver_depths_bounds,
-            spatial_tolerance=octree.size_limit,
+            spatial_tolerance=octree.size_limit / 2,
             time_tolerance=time_tolerance,
         )
 
-        for phase_description, timing in self.timings.items():
+        for phase_descr, timing in self.timings.items():
             for tree in cached_trees:
-                if tree.is_suited(timing=timing, **tree_args):
-                    logger.info("using cached traveltimes for %s", phase_description)
+                if tree.is_suited(timing=timing, **traveltime_tree_args):
+                    logger.info("using cached traveltime tree for %s", phase_descr)
                     break
             else:
-                logger.info("pre-calculating traveltimes for %s", phase_description)
-                tree = SPTreeModel.new(timing=timing, **tree_args)
+                logger.info("pre-calculating traveltime tree for %s", phase_descr)
+                tree = TraveltimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
-            self._trees[phase_description] = tree
+            self._traveltime_trees[phase_descr] = tree
 
-    def _get_sptree(self, phase: str) -> SPTreeModel:
-        return self._trees[phase]
+    def _get_sptree_model(self, phase: str) -> TraveltimeTree:
+        return self._traveltime_trees[phase]
 
     def get_traveltime(self, phase: str, source: Location, receiver: Location) -> float:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
-        tree = self._get_sptree(phase)
+        tree = self._get_sptree_model(phase)
         return tree.get_traveltime(source, receiver)
 
     @log_call
@@ -352,5 +351,5 @@ class CakeTracer(RayTracer):
     ) -> np.ndarray:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
-        tree = self._get_sptree(phase)
+        tree = self._get_sptree_model(phase)
         return tree.get_traveltimes(octree, stations)

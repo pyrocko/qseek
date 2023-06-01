@@ -23,10 +23,10 @@ else:
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path.home() / ".cache"
+CACHE_DIR = Path.home() / ".cache" / "lassie"
 if not CACHE_DIR.exists():
     logger.info("creating cache dir %s", CACHE_DIR)
-    CACHE_DIR.mkdir()
+    CACHE_DIR.mkdir(parents=True)
 
 
 def to_path(datetime: datetime) -> str:

@@ -41,8 +41,6 @@ class EventDetection(Location):
             elevation=self.elevation,
             magnitude=self.semblance,
             magnitude_type="semblance",
-            tags=["lassie-detection"],
-            extras={"semblance": self.semblance},
         )
 
     def plot(self) -> None:
@@ -99,7 +97,7 @@ class Detections(BaseModel):
         filename.write_text(detection.json())
 
         self.save_csv(self.rundir / "detections.csv")
-        self.save_pyrocko_events(self.rundir / "events.list")
+        self.save_pyrocko_events(self.rundir / "pyrocko-events.yaml")
 
     def add_semblance(self, trace: Trace) -> None:
         trace.set_station("SEMBL")
@@ -138,8 +136,7 @@ class Detections(BaseModel):
 
     def save_pyrocko_events(self, filename: Path) -> None:
         dump_events(
-            [detection.as_pyrocko_event() for detection in self],
-            filename=str(filename),
+            [detection.as_pyrocko_event() for detection in self], filename=str(filename)
         )
 
     def __iter__(self) -> Iterator[EventDetection]:

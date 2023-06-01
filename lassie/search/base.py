@@ -73,6 +73,8 @@ class Search(BaseModel):
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
+        self.ray_tracers.prepare(self.octree, self.stations)
+
         self._init_ranges()
 
     def init_rundir(self, force=False) -> None:
@@ -142,8 +144,6 @@ class Search(BaseModel):
             + self.detection_blinding
             + self.image_functions.get_blinding()
         )
-
-        self.ray_tracers.prepare(self.octree, self.stations)
 
         logger.info(
             "source-station distances range: %.1f - %.1f m", *self.distance_range
@@ -366,5 +366,7 @@ class SearchTraces:
                 detection.effective_depth,
                 detection.semblance,
             )
+
+            detection.plot()
 
         return detections, semblance_trace
