@@ -88,7 +88,7 @@ class SquirrelSearch(Search):
             tinc=window_increment.total_seconds(),
             tpad=self.window_padding.total_seconds(),
             want_incomplete=False,
-            codes=list((*nsl, "*") for nsl in self.stations.get_all_nsl()),
+            codes=[(*nsl, "*") for nsl in self.stations.get_all_nsl()],
         )
 
         async def async_iterator() -> AsyncIterator[Batch]:

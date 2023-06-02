@@ -19,6 +19,7 @@ from lassie.plot.octree import plot_octree, plot_octree_surface
 from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
+    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
     from lassie.images.base import WaveformImage
@@ -62,6 +63,27 @@ class PhaseReceiver(Station):
             )
         return pick_markers
 
+    def get_waveforms(
+        self,
+        squirrel: Squirrel,
+        window_length_seconds: float | tuple[float, float],
+    ) -> list[Trace]:
+        window_length_seconds = (
+            (window_length_seconds, window_length_seconds)
+            if isinstance(window_length_seconds, float)
+            else window_length_seconds
+        )
+        arrival = self.arrival_observed or self.arrival_model
+        traces = squirrel.get_waveforms(
+            codes=[(*self.nsl, "*")],
+            tmin=(arrival - timedelta(seconds=window_length_seconds[0])).timestamp(),
+            tmax=(arrival + timedelta(seconds=window_length_seconds[1])).timestamp(),
+            want_incomplete=False,
+        )
+        if not traces:
+            raise KeyError
+        return traces
+
 
 class PhaseArrival(BaseModel):
     phase: PhaseDescription
@@ -92,6 +114,14 @@ class PhaseArrival(BaseModel):
                 pick.set_phasename(f"{self.phase[-1]}{pick.get_phasename()}")
                 pick_markers.append(pick)
         return pick_markers
+
+    def save_csv(self, filename: Path) -> None:
+        with filename.open("w") as file:
+            file.write("lat, lon, elevation, traveltime_delay")
+            for receiver in self:
+                file.write(
+                    f"{receiver.effective_lat}, {receiver.effective_lon}, {receiver.effective_elevation}, {receiver.traveltime_delay or 'nan'}"  # noqa
+                )
 
     def __iter__(self) -> Iterator[PhaseReceiver]:
         return iter(self.receivers)

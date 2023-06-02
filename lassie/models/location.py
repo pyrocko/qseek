@@ -22,6 +22,14 @@ class Location(BaseModel):
     class Config:
         keep_untouched = (cached_property,)
 
+    @property
+    def effective_lat(self) -> float:
+        return self.effective_lat_lon[0]
+
+    @property
+    def effective_lon(self) -> float:
+        return self.effective_lat_lon[1]
+
     @cached_property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
