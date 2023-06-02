@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator, Self
 from uuid import UUID, uuid4
@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko import io
+from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 
 from lassie.models.location import Location
@@ -26,16 +27,40 @@ logger = logging.getLogger(__name__)
 
 
 class PhaseReceiver(Station):
-    traveltime_model: float = float("nan")
-    traveltime_observed: float = float("nan")
+    arrival_model: datetime
+    arrival_observed: datetime | None = None
 
     @property
-    def traveltime_delay(self) -> float:
-        return self.traveltime_model - self.traveltime_observed
+    def traveltime_delay(self) -> timedelta | None:
+        if self.arrival_observed:
+            return self.arrival_model - self.arrival_observed
 
     @classmethod
-    def from_station(cls, station: Station) -> Self:
-        return cls.parse_obj(station)
+    def from_station(cls, station: Station, arrival_model: datetime) -> Self:
+        return cls(arrival_model=arrival_model, **station.dict())
+
+    def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+        pick_markers = [
+            marker.PhaseMarker(
+                nslc_ids=[(*self.nsl, "*")],
+                tmax=self.arrival_model.timestamp(),
+                tmin=self.arrival_model.timestamp(),
+                kind=0,
+                phasename="mod",
+            )
+        ]
+        if self.arrival_observed:
+            pick_markers.append(
+                marker.PhaseMarker(
+                    nslc_ids=[(*self.nsl, "*")],
+                    tmax=self.arrival_observed.timestamp(),
+                    tmin=self.arrival_observed.timestamp(),
+                    automatic=True,
+                    kind=1,
+                    phasename="obs",
+                )
+            )
+        return pick_markers
 
 
 class PhaseArrival(BaseModel):
@@ -43,28 +68,33 @@ class PhaseArrival(BaseModel):
     receivers: list[PhaseReceiver] = []
 
     @classmethod
-    def from_image(cls, image: WaveformImage) -> Self:
-        receivers = []
-        if image.stations:
-            receivers = [
-                PhaseReceiver.from_station(sta) for sta in image.stations.stations
-            ]
+    def from_image(
+        cls, image: WaveformImage, traveltimes_model: list[datetime]
+    ) -> Self:
+        if image.stations.n_stations != len(traveltimes_model):
+            raise ValueError("Number of receivers and traveltimes missmatch.")
         return cls(
             phase=image.phase,
-            receivers=receivers,
+            receivers=[
+                PhaseReceiver.from_station(sta, traveltime)
+                for sta, traveltime in zip(image.stations, traveltimes_model)
+            ],
         )
 
-    def set_traveltimes_model(self, traveltimes: np.ndarray) -> None:
-        if len(self.receivers) != traveltimes.size:
-            raise ValueError("Number of receivers and traveltimes missmatch.")
-        for receiver, traveltime in zip(self.receivers, traveltimes):
-            receiver.traveltime_model = traveltime
+    def set_arrivals_observed(self, traveltimes: list[datetime | None]) -> None:
+        for receiver, arrival in zip(self.receivers, traveltimes, strict=True):
+            receiver.arrival_observed = arrival
 
-    def set_traveltimes_observed(self, traveltimes: np.ndarray) -> None:
-        if len(self.receivers) != traveltimes.size:
-            raise ValueError("Number of receivers and traveltimes missmatch.")
-        for receiver, traveltime in zip(self.receivers, traveltimes):
-            receiver.traveltime_observed = traveltime
+    def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+        pick_markers = []
+        for receiver in self:
+            for pick in receiver.as_pyrocko_markers():
+                pick.set_phasename(f"{self.phase[-1]}{pick.get_phasename()}")
+                pick_markers.append(pick)
+        return pick_markers
+
+    def __iter__(self) -> Iterator[PhaseReceiver]:
+        return iter(self.receivers)
 
 
 class EventDetection(Location):
@@ -89,6 +119,22 @@ class EventDetection(Location):
             magnitude_type="semblance",
         )
 
+    def as_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:
+        event = self.as_pyrocko_event()
+
+        pyrocko_markers: list[marker.EventMarker | marker.PhaseMarker] = [
+            marker.EventMarker(event)
+        ]
+        for arrival in self.arrivals:
+            for pick in arrival.as_pyrocko_markers():
+                pick.set_event(event)
+                pyrocko_markers.append(pick)
+        return pyrocko_markers
+
+    def save_pyrocko_markers(self, filename: Path) -> None:
+        logger.info("saving detection's Pyrocko markers to %s", filename)
+        marker.save_markers(self.as_pyrocko_markers(), str(filename))
+
     def plot(self, cmap: str = "Oranges") -> None:
         plot_octree(self.octree, cmap=cmap)
 
@@ -100,7 +146,6 @@ class EventDetection(Location):
 
 class Detections(BaseModel):
     rundir: Path
-
     detections: list[EventDetection] = []
 
     def __init__(self, **data) -> None:
@@ -125,6 +170,7 @@ class Detections(BaseModel):
 
         self.save_csv(self.rundir / "detections.csv")
         self.save_pyrocko_events(self.rundir / "pyrocko-events.list")
+        self.save_pyrocko_markers(self.rundir / "pyrocko-markers.list")
 
     def add_semblance(self, trace: Trace) -> None:
         trace.set_station("SEMBL")
@@ -133,9 +179,6 @@ class Detections(BaseModel):
             str(self.rundir / "semblance.mseed"),
             append=True,
         )
-
-    def get_semblance(self, start_time: datetime, end_time: datetime) -> Trace:
-        ...
 
     def load_detections(self) -> None:
         for file in self.detections_dir.glob("*.json"):
@@ -162,10 +205,18 @@ class Detections(BaseModel):
         file.write_text("\n".join(lines))
 
     def save_pyrocko_events(self, filename: Path) -> None:
+        logger.info("saving Pyrocko events to %s", filename)
         dump_events(
             [detection.as_pyrocko_event() for detection in self],
             filename=str(filename),
         )
+
+    def save_pyrocko_markers(self, filename: Path) -> None:
+        logger.info("saving Pyrocko markers to %s", filename)
+        pyrocko_markers = []
+        for detection in self:
+            pyrocko_markers.extend(detection.as_pyrocko_markers())
+        marker.save_markers(pyrocko_markers, str(filename))
 
     def __iter__(self) -> Iterator[EventDetection]:
         return iter(self.detections)

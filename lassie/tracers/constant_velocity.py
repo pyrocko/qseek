@@ -24,7 +24,12 @@ class ConstantVelocityTracer(RayTracer):
     def get_available_phases(self) -> tuple[str]:
         return tuple(self.velocities.keys())
 
-    def get_traveltime(self, phase: str, source: Location, receiver: Location) -> float:
+    def get_traveltime_location(
+        self,
+        phase: str,
+        source: Location,
+        receiver: Location,
+    ) -> float:
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
         return source.distance_to(receiver) / self.velocities[phase]
@@ -33,10 +38,10 @@ class ConstantVelocityTracer(RayTracer):
     def get_traveltimes(
         self,
         phase: str,
-        octree: Octree,
+        source: Octree,
         stations: Stations,
     ) -> np.ndarray:
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
-        distances = octree.distances_stations(stations)
+        distances = source.distances_stations(stations)
         return distances / self.velocities[phase]

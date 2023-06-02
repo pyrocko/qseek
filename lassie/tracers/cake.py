@@ -258,7 +258,11 @@ class TraveltimeTree(BaseModel):
         receiver_distances = octree.distances_stations(stations)
 
         coordinates = []
-        for distances, source_depth in zip(receiver_distances, source_depths):
+        for distances, source_depth in zip(
+            receiver_distances,
+            source_depths,
+            strict=True,
+        ):
             node_receivers_distances = (
                 receiver_depths,
                 np.full_like(distances, source_depth),
@@ -339,7 +343,12 @@ class CakeTracer(RayTracer):
     def _get_sptree_model(self, phase: str) -> TraveltimeTree:
         return self._traveltime_trees[phase]
 
-    def get_traveltime(self, phase: str, source: Location, receiver: Location) -> float:
+    def get_traveltime_location(
+        self,
+        phase: str,
+        source: Location,
+        receiver: Location,
+    ) -> float:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
         tree = self._get_sptree_model(phase)
@@ -347,7 +356,10 @@ class CakeTracer(RayTracer):
 
     @log_call
     def get_traveltimes(
-        self, phase: str, octree: Octree, stations: Stations
+        self,
+        phase: str,
+        octree: Octree,
+        stations: Stations,
     ) -> np.ndarray:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")

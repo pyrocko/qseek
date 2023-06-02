@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pydantic import BaseModel
 
 from lassie.models.station import Stations
-from lassie.utils import PhaseDescription, downsample
+from lassie.utils import PhaseDescription, downsample, to_datetime
 
 if TYPE_CHECKING:
-    from datetime import datetime, timedelta
-
     from pyrocko.trace import Trace
 
 
@@ -39,7 +38,7 @@ class WaveformImage:
     image_function: ImageFunction
     phase: PhaseDescription
     traces: list[Trace]
-    stations: Stations | None = None
+    stations: Stations = Stations.construct()
 
     @property
     def sampling_rate(self) -> float:
@@ -86,6 +85,68 @@ class WaveformImage:
         return np.round((offsets - reference.timestamp()) / self.delta_t).astype(
             np.int32
         )
+
+    def search_phase_arrival(
+        self,
+        trace_idx: int,
+        modelled_arrival: datetime,
+        search_length_seconds: float = 5,
+        threshold: float = 0.1,
+    ) -> datetime | None:
+        """Search for a peak in all station's image functions.
+
+        Args:
+            trace_idx (int): Index of the trace.
+            modelled_arrival (datetime): Time to search around.
+            search_length_seconds (float, optional): Total search length in seconds
+                around modelled arrival time. Defaults to 5.
+            threshold (float, optional): Threshold for detection. Defaults to 0.1.
+
+        Returns:
+            datetime | None: Time of arrival, None is none found.
+        """
+        trace = self.traces[trace_idx]
+        window_length = timedelta(seconds=search_length_seconds)
+        search_trace = trace.chop(
+            tmin=(modelled_arrival - window_length / 2).timestamp(),
+            tmax=(modelled_arrival + window_length / 2).timestamp(),
+            inplace=False,
+        )
+        time_seconds, value = search_trace.max()
+        if value < threshold:
+            return
+        return to_datetime(time_seconds)
+
+    def search_phase_arrivals(
+        self,
+        modelled_arrivals: list[datetime],
+        search_length_seconds: float = 5,
+        threshold: float = 0.1,
+    ) -> list[datetime | None]:
+        """Search for a peak in all station's image functions.
+
+        Args:
+            modelled_arrivals (list[datetime]): Time to search around.
+            search_length_seconds (float, optional): Total search length in seconds
+                around modelled arrival time. Defaults to 5.
+            threshold (float, optional): Threshold for detection. Defaults to 0.1.
+
+        Returns:
+            list[datetime | None]: List of arrivals, None is none found.
+        """
+        return [
+            self.search_phase_arrival(
+                idx,
+                modelled_arrival,
+                search_length_seconds=search_length_seconds,
+                threshold=threshold,
+            )
+            for idx, modelled_arrival in zip(
+                range(self.n_traces),
+                modelled_arrivals,
+                strict=True,
+            )
+        ]
 
     def get_max_samples(self) -> int:
         """Maximum samples in all traces.

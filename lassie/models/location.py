@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Iterable, Literal, TypeVar
 
 from pydantic import BaseModel
 from pyrocko import orthodrome as od
@@ -97,3 +97,6 @@ def locations_to_csv(locations: Iterable[Location], filename: Path) -> Path:
         )
     filename.write_text("\n".join(lines))
     return filename
+
+
+LocationType = TypeVar("LocationType", bound=Location)

@@ -124,7 +124,9 @@ class Search(BaseModel):
                 timedelta(seconds=traveltimes.min()),
                 timedelta(seconds=traveltimes.max()),
             )
-            logger.info("shifts: %s / %s - %s", phase, *self.travel_time_ranges[phase])
+            logger.info(
+                "shift ranges: %s / %s - %s", phase, *self.travel_time_ranges[phase]
+            )
 
         shift_min = min(chain.from_iterable(self.travel_time_ranges.values()))
         shift_max = max(chain.from_iterable(self.travel_time_ranges.values()))
@@ -204,9 +206,6 @@ class SearchTraces:
         ray_tracer: RayTracer,
         n_samples_semblance: int,
     ) -> np.ndarray:
-        if not image.stations:
-            raise AttributeError("image has no stations set.")
-
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
@@ -304,7 +303,6 @@ class SearchTraces:
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
             return await self.search(octree)
-
         except NodeSplitError:
             logger.debug("reverting partial split")
             for node in split_nodes:
@@ -320,18 +318,29 @@ class SearchTraces:
             idx = (await semblance.maximum_node_idx())[idx]
             source_node = octree[idx].as_location()
 
+            # Attach modelled arrivals
+            arrivals = []
             for image in images:
-                arrival = PhaseArrival.from_image(image)
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
-                traveltimes_model = ray_tracer.get_traveltimes(
-                    phase=image.phase, octree=octree, stations=image.stations
-                )
-                arrival.set_traveltimes_model(traveltimes_model)
+                arrivals_model = [
+                    time + timedelta(seconds=traveltime)
+                    for traveltime in ray_tracer.get_traveltimes_locations(
+                        phase=image.phase,
+                        source=source_node,
+                        receivers=image.stations.stations,
+                    )
+                ]
+                arrivals_observed = image.search_phase_arrivals(arrivals_model)
 
-            detection = EventDetection(
+                arrival = PhaseArrival.from_image(image, arrivals_model)
+                arrival.set_arrivals_observed(arrivals_observed)
+                arrivals.append(arrival)
+
+            detection = EventDetection.construct(
                 time=time,
                 semblance=float(semblance_detection),
                 octree=octree.copy(deep=True),
+                arrivals=arrivals,
                 **source_node.dict(),
             )
             detections.append(detection)

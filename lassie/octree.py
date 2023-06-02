@@ -207,7 +207,9 @@ class Octree(BaseModel):
             groups[(node.east, node.north, node.size)].append(node.semblance)
 
         values = (accumulator(values) for values in groups.values())
-        return np.array([(*node, val) for node, val in zip(groups.keys(), values)])
+        return np.array(
+            [(*node, val) for node, val in zip(groups.keys(), values, strict=True)]
+        )
 
     @property
     def semblance(self) -> np.ndarray:
@@ -215,7 +217,7 @@ class Octree(BaseModel):
 
     def map_semblance(self, semblance: np.ndarray) -> None:
         n_nodes = 0
-        for node, node_semblance in zip(self, semblance):
+        for node, node_semblance in zip(self, semblance, strict=True):
             node.semblance = float(node_semblance)
             n_nodes += 1
         if n_nodes != semblance.size:
