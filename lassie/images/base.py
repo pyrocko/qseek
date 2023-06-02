@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from pydantic import BaseModel
 
+from lassie.models.station import Stations
 from lassie.utils import PhaseDescription, downsample
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ class WaveformImage:
     image_function: ImageFunction
     phase: PhaseDescription
     traces: list[Trace]
+    stations: Stations | None = None
 
     @property
     def sampling_rate(self) -> float:
@@ -50,6 +52,10 @@ class WaveformImage:
     @property
     def n_traces(self) -> int:
         return len(self.traces)
+
+    def set_stations(self, stations: Stations) -> None:
+        """Set stations from the image's available traces."""
+        self.stations = stations.select_from_traces(self.traces)
 
     def downsample(self, sampling_rate: float) -> None:
         """Downsample traces in-place.

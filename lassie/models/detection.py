@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator, Self
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -15,11 +15,56 @@ from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.octree import Octree
 from lassie.plot.octree import plot_octree, plot_octree_surface
+from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
+    from lassie.images.base import WaveformImage
+
 logger = logging.getLogger(__name__)
+
+
+class PhaseReceiver(Station):
+    traveltime_model: float = float("nan")
+    traveltime_observed: float = float("nan")
+
+    @property
+    def traveltime_delay(self) -> float:
+        return self.traveltime_model - self.traveltime_observed
+
+    @classmethod
+    def from_station(cls, station: Station) -> Self:
+        return cls.parse_obj(station)
+
+
+class PhaseArrival(BaseModel):
+    phase: PhaseDescription
+    receivers: list[PhaseReceiver] = []
+
+    @classmethod
+    def from_image(cls, image: WaveformImage) -> Self:
+        receivers = []
+        if image.stations:
+            receivers = [
+                PhaseReceiver.from_station(sta) for sta in image.stations.stations
+            ]
+        return cls(
+            phase=image.phase,
+            receivers=receivers,
+        )
+
+    def set_traveltimes_model(self, traveltimes: np.ndarray) -> None:
+        if len(self.receivers) != traveltimes.size:
+            raise ValueError("Number of receivers and traveltimes missmatch.")
+        for receiver, traveltime in zip(self.receivers, traveltimes):
+            receiver.traveltime_model = traveltime
+
+    def set_traveltimes_observed(self, traveltimes: np.ndarray) -> None:
+        if len(self.receivers) != traveltimes.size:
+            raise ValueError("Number of receivers and traveltimes missmatch.")
+        for receiver, traveltime in zip(self.receivers, traveltimes):
+            receiver.traveltime_observed = traveltime
 
 
 class EventDetection(Location):
@@ -28,7 +73,7 @@ class EventDetection(Location):
     semblance: float
     octree: Octree
 
-    stations: list[Station] = []
+    arrivals: list[PhaseArrival]
 
     def as_pyrocko_event(self) -> Event:
         return Event(

@@ -19,12 +19,12 @@ from pydantic import (
 )
 from pyrocko import parstack
 from pyrocko.trace import Trace
-from scipy import signal, stats
 
 from lassie.images import ImageFunctions
 from lassie.images.base import WaveformImage
 from lassie.models import Stations
-from lassie.models.detection import Detections, EventDetection
+from lassie.models.detection import Detections, EventDetection, PhaseArrival
+from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.tracers import RayTracers
@@ -61,7 +61,7 @@ class Search(BaseModel):
     window_padding: timedelta = timedelta(seconds=0.0)
     distance_range: tuple[float, float] = (0.0, 0.0)
     travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = {}
-    semblance_stats: tuple[float, float, float, int] = (0.0, 0.0, 0.0, 0)
+    semblance_stats: SemblanceStats = SemblanceStats()
 
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
@@ -111,18 +111,6 @@ class Search(BaseModel):
         search._rundir = path
         search._detections = Detections(rundir=path)
         return search
-
-    def new_semblance_stats(
-        self, mean: float, std: float, mad: float
-    ) -> tuple[float, float, float]:
-        prev_mean, prev_std, prev_mad, prev_count = self.semblance_stats
-        count = prev_count + 1
-
-        mean = (prev_mean * prev_count + mean) / count
-        std = (prev_std * prev_count + std) / count
-        mad = (prev_mad * prev_count + mad) / count
-        self.semblance_stats = (mean, std, mad, count)
-        return self.semblance_stats[:3]
 
     def _init_ranges(self) -> None:
         # Grid/receiver distances
@@ -216,11 +204,13 @@ class SearchTraces:
         ray_tracer: RayTracer,
         n_samples_semblance: int,
     ) -> np.ndarray:
+        if not image.stations:
+            raise AttributeError("image has no stations set.")
+
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
-        stations = parent.stations.select_from_traces(image.traces)
 
-        traveltimes = ray_tracer.get_traveltimes(image.phase, octree, stations)
+        traveltimes = ray_tracer.get_traveltimes(image.phase, octree, image.stations)
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
 
@@ -250,6 +240,8 @@ class SearchTraces:
         if not self._images:
             images = await self.parent.image_functions.process_traces(self.traces)
             images.downsample(self.parent.sampling_rate)
+            images.set_stations(self.parent.stations)
+
             self._images = images
         return self._images
 
@@ -262,78 +254,45 @@ class SearchTraces:
         octree = octree or parent.octree.copy(deep=True)
         images = await self.get_images()
 
-        semblance = np.zeros(
-            (octree.n_nodes, self.n_samples_semblance),
-            dtype=np.float32,
+        semblance = Semblance(
+            n_nodes=octree.n_nodes,
+            n_samples=self.n_samples_semblance,
+            start_time=self.start_time,
+            sampling_rate=parent.sampling_rate,
+            padding_samples=parent.padding_samples,
         )
 
         for image in images:
-            semblance += await self.calculate_semblance(
-                octree=octree,
-                image=image,
-                ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                n_samples_semblance=self.n_samples_semblance,
+            semblance.add(
+                await self.calculate_semblance(
+                    octree=octree,
+                    image=image,
+                    ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
+                    n_samples_semblance=self.n_samples_semblance,
+                )
             )
-        semblance /= images.n_images
+        semblance.normalize(images.n_images)
 
-        semblance_max = semblance.max(axis=0)
-        semblance_node_idx = await asyncio.to_thread(
-            parstack.argmax,
-            semblance.astype(np.float64),
-            nparallel=parent.n_threads_argmax,
-        )
+        parent.semblance_stats.update(semblance.get_stats())
+        semblance_stats = parent.semblance_stats
+        logger.info("semblance stats: %s", parent.semblance_stats)
 
-        # mask peaks by median muting and get mean/std
-        semblance_median = np.median(semblance_max)
-        peak_mask = semblance_max < (semblance_median * MUTE_MEDIAN_LEVEL)
-        semblance_mean = float(np.mean(semblance_max[peak_mask]))
-        semblance_std = float(np.std(semblance_max[peak_mask]))
-        semblance_mad = float(stats.median_abs_deviation(semblance_max))
-        run_mean, run_std, run_mad = parent.new_semblance_stats(
-            semblance_mean, semblance_std, semblance_mad
-        )
-        logger.info(
-            "semblance stats: mean %g, std %g, mad: %g", run_mean, run_std, run_mad
-        )
-
-        detection_idx, _ = signal.find_peaks(
-            semblance_max,
-            height=run_mean + run_std * 9,
-            prominence=run_std * 9,
+        detection_idx, detection_semblance = semblance.find_peaks(
+            height=semblance_stats.mean + semblance_stats.std * 9,
+            prominence=semblance_stats.std * 9,
             distance=round(
                 parent.detection_blinding.total_seconds() * parent.sampling_rate
             ),
         )
 
-        # Remove padding and shift peak detections
-        if parent.padding_samples:
-            padding_samples = parent.padding_samples
-
-            semblance = semblance[:, padding_samples:-padding_samples]
-            semblance_max = semblance_max[padding_samples:-padding_samples]
-            semblance_node_idx = semblance_node_idx[padding_samples:-padding_samples]
-
-            detection_idx -= padding_samples
-            detection_idx = detection_idx[detection_idx >= 0]
-            detection_idx = detection_idx[detection_idx < semblance_node_idx.size]
-
-        semblance_trace = Trace(
-            network="",
-            station="semblance",
-            tmin=self.start_time.timestamp(),
-            deltat=1.0 / parent.sampling_rate,
-            ydata=semblance_max,
-        )
-
         if detection_idx.size == 0:
-            return [], semblance_trace
+            return [], semblance.get_trace()
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
         split_nodes: set[Node] = set()
-        for idx in detection_idx:
-            semblance_detection = semblance_max[idx]
-            octree.map_semblance(semblance[:, idx])
+        for idx, semblance_detection in zip(detection_idx, detection_semblance):
+            octree.map_semblance(semblance.semblance[:, idx])
             split_nodes.update(octree.get_nodes(semblance_detection * 0.9))
 
         try:
@@ -353,16 +312,23 @@ class SearchTraces:
             logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
 
         detections = []
-        for idx in detection_idx:
+        for idx, semblance_detection in zip(detection_idx, detection_semblance):
             time = self.start_time + timedelta(seconds=idx / parent.sampling_rate)
-            semblance_detection = semblance_max[idx]
 
-            octree.map_semblance(semblance[:, idx])
+            octree.map_semblance(semblance.semblance[:, idx])
 
-            idx = semblance_node_idx[idx]
+            idx = (await semblance.maximum_node_idx())[idx]
             source_node = octree[idx].as_location()
 
-            detection = EventDetection.construct(
+            for image in images:
+                arrival = PhaseArrival.from_image(image)
+                ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
+                traveltimes_model = ray_tracer.get_traveltimes(
+                    phase=image.phase, octree=octree, stations=image.stations
+                )
+                arrival.set_traveltimes_model(traveltimes_model)
+
+            detection = EventDetection(
                 time=time,
                 semblance=float(semblance_detection),
                 octree=octree.copy(deep=True),
@@ -381,4 +347,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance_trace
+        return detections, semblance.get_trace()

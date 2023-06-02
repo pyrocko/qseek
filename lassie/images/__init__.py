@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from lassie.images.base import WaveformImage
+    from lassie.models.station import Stations
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ class ImageFunctions(BaseModel):
         return max(image.blinding for image in self)
 
     def __iter__(self) -> Iterator[ImageFunction]:
-        yield from self.__root__
+        return iter(self.__root__)
 
 
 @dataclass
@@ -62,11 +63,17 @@ class WaveformImages:
 
     def downsample(self, sampling_rate: float) -> None:
         """Downsample traces in-place.
+
         Args:
             sampling_rate (float): Sampling rate in Hz.
         """
         for image in self:
             image.downsample(sampling_rate)
+
+    def set_stations(self, stations: Stations) -> None:
+        """Set the images stations."""
+        for image in self:
+            image.set_stations(stations)
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle
