@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
@@ -165,7 +166,7 @@ class Search(BaseModel):
 
 
 class SearchTraces:
-    _images: WaveformImages | None
+    _images: dict[bool, WaveformImages]
 
     def __init__(
         self,
@@ -180,7 +181,7 @@ class SearchTraces:
         self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
         self.end_time = end_time or to_datetime(max(tr.tmax for tr in self.traces))
 
-        self._images = None
+        self._images = {}
 
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
@@ -235,14 +236,15 @@ class SearchTraces:
         semblance /= station_contribution[:, np.newaxis]
         return semblance
 
-    async def get_images(self) -> WaveformImages:
+    async def get_images(self, downsample: bool = True) -> WaveformImages:
         if not self._images:
             images = await self.parent.image_functions.process_traces(self.traces)
-            images.downsample(self.parent.sampling_rate)
             images.set_stations(self.parent.stations)
+            self._images[False] = deepcopy(images)
 
-            self._images = images
-        return self._images
+            images.downsample(self.parent.sampling_rate)
+            self._images[True] = images
+        return self._images[downsample]
 
     async def search(
         self,
@@ -318,9 +320,9 @@ class SearchTraces:
             idx = (await semblance.maximum_node_idx())[idx]
             source_node = octree[idx].as_location()
 
-            # Attach modelled arrivals
+            # Attach modelled and observed arrivals
             arrivals = []
-            for image in images:
+            for image in await self.get_images(downsample=False):
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = [
                     time + timedelta(seconds=traveltime)
