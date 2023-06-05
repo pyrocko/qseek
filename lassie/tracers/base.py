@@ -5,10 +5,18 @@ from typing import TYPE_CHECKING, Literal, Sequence
 import numpy as np
 from pydantic import BaseModel
 
+from lassie.models.phase_arrival import PhaseArrival
+
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from lassie.models.location import Location
     from lassie.models.station import Stations
     from lassie.octree import Octree
+
+
+class ModelledArrival(PhaseArrival):
+    tracer: Literal["ModelledArrival"] = "ModelledArrival"
 
 
 class RayTracer(BaseModel):
@@ -26,7 +34,7 @@ class RayTracer(BaseModel):
         source: Location,
         receiver: Location,
     ) -> float:
-        ...
+        raise NotImplementedError
 
     def get_traveltimes_locations(
         self,
@@ -44,4 +52,13 @@ class RayTracer(BaseModel):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        ...
+        raise NotImplementedError
+
+    def get_arrivals(
+        self,
+        phase: str,
+        event_time: datetime,
+        source: Location,
+        receivers: Sequence[Location],
+    ) -> list[ModelledArrival]:
+        raise NotImplementedError

@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Literal, Self, Sequence
 
 import numpy as np
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
@@ -17,7 +17,7 @@ from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
 from pyrocko.gf import meta
 
-from lassie.tracers.base import RayTracer
+from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.utils import CACHE_DIR, PhaseDescription, log_call
 
 if TYPE_CHECKING:
@@ -28,6 +28,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_DBS = 16
+
+
+class CakeArrival(ModelledArrival):
+    tracer: Literal["CakeArrival"] = "CakeArrival"
+    phase: str
 
 
 class EarthModel(BaseModel):
@@ -365,3 +370,22 @@ class CakeTracer(RayTracer):
             raise ValueError(f"Timing {phase} is not defined.")
         tree = self._get_sptree_model(phase)
         return tree.get_traveltimes(octree, stations)
+
+    def get_arrivals(
+        self,
+        phase: str,
+        event_time: datetime,
+        source: Location,
+        receivers: Sequence[Location],
+    ) -> list[CakeArrival]:
+        traveltimes = self.get_traveltimes_locations(
+            phase,
+            source=source,
+            receivers=receivers,
+        )
+        arrivals = []
+        for traveltime in traveltimes:
+            arrivaltime = event_time + timedelta(seconds=traveltime)
+            arrival = CakeArrival(time=arrivaltime, phase=phase)
+            arrivals.append(arrival)
+        return arrivals

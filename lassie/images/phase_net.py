@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 import torch
@@ -9,9 +9,8 @@ from pydantic import PositiveInt, PrivateAttr, conint
 from pyrocko import obspy_compat
 from seisbench.models import PhaseNet as PhaseNetSeisBench
 
-from lassie.images.base import ImageFunction, WaveformImage
-from lassie.models.arrival import PhaseArrival
-from lassie.utils import alog_call
+from lassie.images.base import ImageFunction, PickedArrival, WaveformImage
+from lassie.utils import alog_call, to_datetime
 
 obspy_compat.plant()
 
@@ -35,9 +34,47 @@ ModelName = Literal[
 PhaseName = Literal["P", "S"]
 
 
-class PhaseNetPick(PhaseArrival):
-    name: Literal["PhaseNetPick"] = "PhaseNetPick"
-    value: float
+class PhaseNetPick(PickedArrival):
+    provider: Literal["PhaseNetPick"] = "PhaseNetPick"
+    phase: str
+    detection_value: float
+
+
+class PhaseNetImage(WaveformImage):
+    def search_phase_arrival(
+        self,
+        trace_idx: int,
+        modelled_arrival: datetime,
+        search_length_seconds: float = 5,
+        threshold: float = 0.1,
+    ) -> PhaseNetPick | None:
+        """Search for a peak in all station's image functions.
+
+        Args:
+            trace_idx (int): Index of the trace.
+            modelled_arrival (datetime): Time to search around.
+            search_length_seconds (float, optional): Total search length in seconds
+                around modelled arrival time. Defaults to 5.
+            threshold (float, optional): Threshold for detection. Defaults to 0.1.
+
+        Returns:
+            datetime | None: Time of arrival, None is none found.
+        """
+        trace = self.traces[trace_idx]
+        window_length = timedelta(seconds=search_length_seconds)
+        search_trace = trace.chop(
+            tmin=(modelled_arrival - window_length / 2).timestamp(),
+            tmax=(modelled_arrival + window_length / 2).timestamp(),
+            inplace=False,
+        )
+        time_seconds, value = search_trace.max()
+        if value < threshold:
+            return
+        return PhaseNetPick(
+            time=to_datetime(time_seconds),
+            detection_value=float(value),
+            phase=self.phase,
+        )
 
 
 class PhaseNet(ImageFunction):
@@ -69,7 +106,7 @@ class PhaseNet(ImageFunction):
         return timedelta(seconds=blinding_samples / 100)  # Hz PhaseNet sampling rate
 
     @alog_call
-    async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
+    async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
         annotations: Stream = self._phase_net.annotate(
             stream,
@@ -83,12 +120,12 @@ class PhaseNet(ImageFunction):
             if not tr.stats.channel.endswith("N")
         ]
 
-        annotation_p = WaveformImage(
+        annotation_p = PhaseNetImage(
             image_function=self,
             phase=self.phase_map["P"],
             traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
         )
-        annotation_s = WaveformImage(
+        annotation_s = PhaseNetImage(
             image_function=self,
             phase=self.phase_map["S"],
             traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],

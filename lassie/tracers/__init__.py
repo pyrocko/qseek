@@ -5,8 +5,12 @@ from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
 from pydantic import BaseModel, Field
 
-from lassie.tracers.cake import CakeTracer
-from lassie.tracers.constant_velocity import ConstantVelocityTracer
+from lassie.tracers.base import ModelledArrival
+from lassie.tracers.cake import CakeArrival, CakeTracer
+from lassie.tracers.constant_velocity import (
+    ConstantVelocityArrival,
+    ConstantVelocityTracer,
+)
 from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
@@ -16,8 +20,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 RayTracerType = Annotated[
     Union[CakeTracer, ConstantVelocityTracer],
+    Field(discriminator="tracer"),
+]
+
+RayTracerArrival = Annotated[
+    Union[CakeArrival, ConstantVelocityArrival, ModelledArrival],
     Field(discriminator="tracer"),
 ]
 

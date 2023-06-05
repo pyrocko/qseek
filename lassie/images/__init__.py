@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
 from pydantic import BaseModel, Field
 
-from lassie.images.base import ImageFunction
-from lassie.images.phase_net import PhaseNet
+from lassie.images.base import ImageFunction, PickedArrival
+from lassie.images.phase_net import PhaseNet, PhaseNetPick
 
 if TYPE_CHECKING:
     from datetime import timedelta
@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 ImageFunctionType = Annotated[
     Union[PhaseNet, ImageFunction],
     Field(discriminator="image"),
+]
+
+# Make this a Union when more picks are implemented
+ImageFunctionPick = Annotated[
+    Union[PhaseNetPick, PickedArrival],
+    Field(discriminator="provider"),
 ]
 
 
@@ -61,14 +67,16 @@ class WaveformImages:
         """
         return max(image.get_max_samples() for image in self)
 
-    def downsample(self, sampling_rate: float) -> None:
+    def downsample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Downsample traces in-place.
 
         Args:
-            sampling_rate (float): Sampling rate in Hz.
+            sampling_rate (float): Desired sampling rate in Hz.
+            max_normalize (bool): Normalize by maximum value to keep the scale of the
+                maximum detection. Defaults to False
         """
         for image in self:
-            image.downsample(sampling_rate)
+            image.downsample(sampling_rate, max_normalize)
 
     def set_stations(self, stations: Stations) -> None:
         """Set the images stations."""

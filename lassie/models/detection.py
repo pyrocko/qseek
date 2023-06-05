@@ -12,40 +12,42 @@ from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 
+from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.octree import Octree
 from lassie.plot.octree import plot_octree, plot_octree_surface
+from lassie.tracers import RayTracerArrival
 from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
-    from lassie.images.base import WaveformImage
+    from lassie.images.base import PickedArrival, WaveformImage
 
 logger = logging.getLogger(__name__)
 
 
 class PhaseReceiver(Station):
-    arrival_model: datetime
-    arrival_observed: datetime | None = None
+    arrival_model: RayTracerArrival
+    arrival_observed: ImageFunctionPick | None = None
 
     @property
     def traveltime_delay(self) -> timedelta | None:
         if self.arrival_observed:
-            return self.arrival_model - self.arrival_observed
+            return self.arrival_model.time - self.arrival_observed.time
 
     @classmethod
-    def from_station(cls, station: Station, arrival_model: datetime) -> Self:
+    def from_station(cls, station: Station, arrival_model: RayTracerArrival) -> Self:
         return cls(arrival_model=arrival_model, **station.dict())
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         pick_markers = [
             marker.PhaseMarker(
                 nslc_ids=[(*self.nsl, "*")],
-                tmax=self.arrival_model.timestamp(),
-                tmin=self.arrival_model.timestamp(),
+                tmax=self.arrival_model.time.timestamp(),
+                tmin=self.arrival_model.time.timestamp(),
                 kind=0,
                 phasename="mod",
             )
@@ -54,8 +56,8 @@ class PhaseReceiver(Station):
             pick_markers.append(
                 marker.PhaseMarker(
                     nslc_ids=[(*self.nsl, "*")],
-                    tmax=self.arrival_observed.timestamp(),
-                    tmin=self.arrival_observed.timestamp(),
+                    tmax=self.arrival_observed.time.timestamp(),
+                    tmin=self.arrival_observed.time.timestamp(),
                     automatic=True,
                     kind=1,
                     phasename="obs",
@@ -66,18 +68,14 @@ class PhaseReceiver(Station):
     def get_waveforms(
         self,
         squirrel: Squirrel,
-        window_length_seconds: float | tuple[float, float],
+        seconds_after: float = 5.0,
+        seconds_before: float = 0.0,
     ) -> list[Trace]:
-        window_length_seconds = (
-            (window_length_seconds, window_length_seconds)
-            if isinstance(window_length_seconds, float)
-            else window_length_seconds
-        )
         arrival = self.arrival_observed or self.arrival_model
         traces = squirrel.get_waveforms(
             codes=[(*self.nsl, "*")],
-            tmin=(arrival - timedelta(seconds=window_length_seconds[0])).timestamp(),
-            tmax=(arrival + timedelta(seconds=window_length_seconds[1])).timestamp(),
+            tmin=(arrival.time - timedelta(seconds=seconds_before)).timestamp(),
+            tmax=(arrival.time + timedelta(seconds=seconds_after)).timestamp(),
             want_incomplete=False,
         )
         if not traces:
@@ -91,20 +89,27 @@ class PhaseDetection(BaseModel):
 
     @classmethod
     def from_image(
-        cls, image: WaveformImage, traveltimes_model: list[datetime]
+        cls,
+        image: WaveformImage,
+        arrivals_model: list[RayTracerArrival],
+        arrivals_observed: list[PickedArrival | None] | None = None,
     ) -> Self:
-        if image.stations.n_stations != len(traveltimes_model):
+        if image.stations.n_stations != len(arrivals_model):
             raise ValueError("Number of receivers and traveltimes missmatch.")
-        return cls(
+
+        detections = cls(
             phase=image.phase,
             receivers=[
                 PhaseReceiver.from_station(sta, traveltime)
-                for sta, traveltime in zip(image.stations, traveltimes_model)
+                for sta, traveltime in zip(image.stations, arrivals_model)
             ],
         )
+        if arrivals_observed is not None:
+            detections.set_arrivals_observed(arrivals_observed)
+        return detections
 
-    def set_arrivals_observed(self, traveltimes: list[datetime | None]) -> None:
-        for receiver, arrival in zip(self.receivers, traveltimes, strict=True):
+    def set_arrivals_observed(self, arrivals: list[PickedArrival | None]) -> None:
+        for receiver, arrival in zip(self.receivers, arrivals, strict=True):
             receiver.arrival_observed = arrival
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
@@ -133,7 +138,7 @@ class EventDetection(Location):
     semblance: float
     octree: Octree
 
-    arrivals: list[PhaseDetection]
+    detections: list[PhaseDetection]
 
     def as_pyrocko_event(self) -> Event:
         return Event(
@@ -155,8 +160,8 @@ class EventDetection(Location):
         pyrocko_markers: list[marker.EventMarker | marker.PhaseMarker] = [
             marker.EventMarker(event)
         ]
-        for arrival in self.arrivals:
-            for pick in arrival.as_pyrocko_markers():
+        for detection in self.detections:
+            for pick in detection.as_pyrocko_markers():
                 pick.set_event(event)
                 pyrocko_markers.append(pick)
         return pyrocko_markers
@@ -164,6 +169,26 @@ class EventDetection(Location):
     def save_pyrocko_markers(self, filename: Path) -> None:
         logger.info("saving detection's Pyrocko markers to %s", filename)
         marker.save_markers(self.as_pyrocko_markers(), str(filename))
+
+    def get_detection(self, phase: str) -> PhaseDetection:
+        """Get detecion ending with phase name.
+
+        Args:
+            phase (str): Detection phase name, e.g. 'P' for P phase
+
+        Raises:
+            ValueError: Raised when the phase cannot be found.
+
+        Returns:
+            PhaseDetection: The requested phase detection.
+        """
+        for detection in self.detections:
+            if detection.phase.endswith(phase):
+                return detection
+        raise ValueError(
+            f"No phase ending with {phase} found. "
+            f"Select from {', '.join(det.phase for det in self.detections)}."
+        )
 
     def plot(self, cmap: str = "Oranges") -> None:
         plot_octree(self.octree, cmap=cmap)

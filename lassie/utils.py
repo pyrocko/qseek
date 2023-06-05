@@ -29,6 +29,12 @@ if not CACHE_DIR.exists():
     CACHE_DIR.mkdir(parents=True)
 
 
+class Symbols:
+    Target = "🞋"
+    Check = "✓"
+    CheckerBoard = "🙾"
+
+
 def to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="minutes").replace(":", "")
 

@@ -29,7 +29,7 @@ from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.tracers import RayTracers
-from lassie.utils import PhaseDescription, alog_call, to_datetime, to_path
+from lassie.utils import PhaseDescription, Symbols, alog_call, to_datetime, to_path
 
 if TYPE_CHECKING:
     from lassie.images import WaveformImages
@@ -242,7 +242,7 @@ class SearchTraces:
             images.set_stations(self.parent.stations)
             self._images[False] = deepcopy(images)
 
-            images.downsample(self.parent.sampling_rate)
+            images.downsample(self.parent.sampling_rate, max_normalize=True)
             self._images[True] = images
         return self._images[downsample]
 
@@ -275,12 +275,11 @@ class SearchTraces:
         semblance.normalize(images.n_images)
 
         parent.semblance_stats.update(semblance.get_stats())
-        semblance_stats = parent.semblance_stats
         logger.info("semblance stats: %s", parent.semblance_stats)
 
         detection_idx, detection_semblance = semblance.find_peaks(
-            height=semblance_stats.mean + semblance_stats.std * 9,
-            prominence=semblance_stats.std * 9,
+            height=0.1,
+            prominence=0.1,
             distance=round(
                 parent.detection_blinding.total_seconds() * parent.sampling_rate
             ),
@@ -324,18 +323,20 @@ class SearchTraces:
             arrivals = []
             for image in await self.get_images(downsample=False):
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
-                arrivals_model = [
-                    time + timedelta(seconds=traveltime)
-                    for traveltime in ray_tracer.get_traveltimes_locations(
-                        phase=image.phase,
-                        source=source_node,
-                        receivers=image.stations.stations,
-                    )
-                ]
-                arrivals_observed = image.search_phase_arrivals(arrivals_model)
-
-                arrival = PhaseDetection.from_image(image, arrivals_model)
-                arrival.set_arrivals_observed(arrivals_observed)
+                arrivals_model = ray_tracer.get_arrivals(
+                    phase=image.phase,
+                    event_time=time,
+                    source=source_node,
+                    receivers=image.stations.stations,
+                )
+                arrivals_observed = image.search_phase_arrivals(
+                    modelled_arrivals=[arr.time for arr in arrivals_model]
+                )
+                arrival = PhaseDetection.from_image(
+                    image,
+                    arrivals_model=arrivals_model,
+                    arrivals_observed=arrivals_observed,
+                )
                 arrivals.append(arrival)
 
             detection = EventDetection.construct(
@@ -347,7 +348,8 @@ class SearchTraces:
             )
             detections.append(detection)
             logger.info(
-                "new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
+                "%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
+                Symbols.Target,
                 detection.time,
                 *detection.effective_lat_lon,
                 detection.effective_depth,
