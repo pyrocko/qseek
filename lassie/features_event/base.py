@@ -8,12 +8,16 @@ if TYPE_CHECKING:
     from lassie.models.detection import EventDetection
 
 
-class Feature(BaseModel):
-    name: Literal["Feature"] = "Feature"
+class EventFeature(BaseModel):
+    feature: Literal["Feature"] = "Feature"
 
 
-class ReceiverFeatureExtractor(BaseModel):
+class EventFeatureExtractor(BaseModel):
     name: Literal["FeatureExtractor"] = "FeatureExtractor"
 
-    def get_features(self, squirrel: Squirrel, detection: EventDetection) -> Feature:
+    async def get_features(
+        self,
+        squirrel: Squirrel,
+        event: EventDetection,
+    ) -> EventFeature:
         raise NotImplementedError

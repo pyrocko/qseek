@@ -5,15 +5,21 @@ import glob
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator
 
 from pydantic import PrivateAttr, validator
 from pyrocko.squirrel import Squirrel
 from pyrocko.squirrel.base import Batch
-from pyrocko.trace import Trace
 
+from lassie.features_receiver import ReceiverFeatures
+from lassie.features_receiver.waveform_amplitudes import WaveformAmplitudes
 from lassie.search.base import Search, SearchTraces
 from lassie.utils import alog_call, to_datetime
+
+if TYPE_CHECKING:
+    from pyrocko.trace import Trace
+
+    from lassie.models.detection import EventDetection
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,8 @@ class SquirrelSearch(Search):
     time_span: tuple[datetime | None, datetime | None] = (None, None)
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
+
+    receiver_features: list[ReceiverFeatures] = [WaveformAmplitudes()]
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 
@@ -133,4 +141,14 @@ class SquirrelSearch(Search):
             self._detections.add_semblance(semblance_trace)
             for detection in detections:
                 self._detections.add(detection)
-                # await self._new_detection.emit(detection)
+                await self.add_receiver_features(self, detection)
+                await self._new_detection.emit(detection)
+
+        async def add_receiver_features(self, detection: EventDetection) -> None:
+            squirrel = self.get_squirrel()
+
+            for extractor in self.receiver_features:
+                logger.debug("adding features from %s", extractor.name)
+                for phase_detection in detection.detections:
+                    features = await extractor.get_features(squirrel, phase_detection)
+                    phase_detection.add_features(features)

@@ -12,6 +12,7 @@ from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 
+from lassie.features_receiver.base import ReceiverFeature
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 class PhaseReceiver(Station):
     arrival_model: RayTracerArrival
     arrival_observed: ImageFunctionPick | None = None
+    features: list[ReceiverFeature]
 
     @property
     def traveltime_delay(self) -> timedelta | None:
@@ -82,6 +84,9 @@ class PhaseReceiver(Station):
             raise KeyError
         return traces
 
+    def add_feature(self, feature: ReceiverFeature) -> None:
+        self.features.append(feature)
+
 
 class PhaseDetection(BaseModel):
     phase: PhaseDescription
@@ -111,6 +116,11 @@ class PhaseDetection(BaseModel):
     def set_arrivals_observed(self, arrivals: list[PickedArrival | None]) -> None:
         for receiver, arrival in zip(self.receivers, arrivals, strict=True):
             receiver.arrival_observed = arrival
+
+    def add_features(self, features: list[ReceiverFeature | None]) -> None:
+        for receiver, feature in zip(self.receivers, features, strict=True):
+            if feature:
+                receiver.add_feature(feature)
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         pick_markers = []
@@ -170,11 +180,11 @@ class EventDetection(Location):
         logger.info("saving detection's Pyrocko markers to %s", filename)
         marker.save_markers(self.as_pyrocko_markers(), str(filename))
 
-    def get_detection(self, phase: str) -> PhaseDetection:
+    def get_detection(self, phase: PhaseDescription) -> PhaseDetection:
         """Get detecion ending with phase name.
 
         Args:
-            phase (str): Detection phase name, e.g. 'P' for P phase
+            phase (str): Detection phase name, e.g. 'cake:P'.
 
         Raises:
             ValueError: Raised when the phase cannot be found.
@@ -183,7 +193,7 @@ class EventDetection(Location):
             PhaseDetection: The requested phase detection.
         """
         for detection in self.detections:
-            if detection.phase.endswith(phase):
+            if detection.phase == phase:
                 return detection
         raise ValueError(
             f"No phase ending with {phase} found. "
