@@ -24,7 +24,7 @@ from pyrocko.trace import Trace
 from lassie.images import ImageFunctions
 from lassie.images.base import WaveformImage
 from lassie.models import Stations
-from lassie.models.detection import Detections, EventDetection, PhaseArrival
+from lassie.models.detection import Detections, EventDetection, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
@@ -334,7 +334,7 @@ class SearchTraces:
                 ]
                 arrivals_observed = image.search_phase_arrivals(arrivals_model)
 
-                arrival = PhaseArrival.from_image(image, arrivals_model)
+                arrival = PhaseDetection.from_image(image, arrivals_model)
                 arrival.set_arrivals_observed(arrivals_observed)
                 arrivals.append(arrival)
 

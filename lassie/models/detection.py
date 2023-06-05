@@ -85,7 +85,7 @@ class PhaseReceiver(Station):
         return traces
 
 
-class PhaseArrival(BaseModel):
+class PhaseDetection(BaseModel):
     phase: PhaseDescription
     receivers: list[PhaseReceiver] = []
 
@@ -133,7 +133,7 @@ class EventDetection(Location):
     semblance: float
     octree: Octree
 
-    arrivals: list[PhaseArrival]
+    arrivals: list[PhaseDetection]
 
     def as_pyrocko_event(self) -> Event:
         return Event(

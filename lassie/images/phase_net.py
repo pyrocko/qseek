@@ -10,6 +10,7 @@ from pyrocko import obspy_compat
 from seisbench.models import PhaseNet as PhaseNetSeisBench
 
 from lassie.images.base import ImageFunction, WaveformImage
+from lassie.models.arrival import PhaseArrival
 from lassie.utils import alog_call
 
 obspy_compat.plant()
@@ -32,6 +33,11 @@ ModelName = Literal[
 ]
 
 PhaseName = Literal["P", "S"]
+
+
+class PhaseNetPick(PhaseArrival):
+    name: Literal["PhaseNetPick"] = "PhaseNetPick"
+    value: float
 
 
 class PhaseNet(ImageFunction):
