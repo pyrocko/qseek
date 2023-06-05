@@ -150,5 +150,10 @@ class SquirrelSearch(Search):
             for extractor in self.receiver_features:
                 logger.debug("adding features from %s", extractor.name)
                 for phase_detection in detection.detections:
-                    features = await extractor.get_features(squirrel, phase_detection)
+                    try:
+                        features = await extractor.get_features(
+                            squirrel, phase_detection
+                        )
+                    except KeyError:
+                        continue
                     phase_detection.add_features(features)
