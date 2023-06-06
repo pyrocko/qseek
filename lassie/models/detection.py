@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class PhaseReceiver(Station):
     arrival_model: RayTracerArrival
     arrival_observed: ImageFunctionPick | None = None
-    features: list[ReceiverFeature]
+    features: list[ReceiverFeature] = []
 
     @property
     def traveltime_delay(self) -> timedelta | None:
@@ -148,7 +148,7 @@ class EventDetection(Location):
     semblance: float
     octree: Octree
 
-    detections: list[PhaseDetection]
+    arrivals: list[PhaseDetection]
 
     def as_pyrocko_event(self) -> Event:
         return Event(
@@ -170,7 +170,7 @@ class EventDetection(Location):
         pyrocko_markers: list[marker.EventMarker | marker.PhaseMarker] = [
             marker.EventMarker(event)
         ]
-        for detection in self.detections:
+        for detection in self.arrivals:
             for pick in detection.as_pyrocko_markers():
                 pick.set_event(event)
                 pyrocko_markers.append(pick)
@@ -192,12 +192,12 @@ class EventDetection(Location):
         Returns:
             PhaseDetection: The requested phase detection.
         """
-        for detection in self.detections:
+        for detection in self.arrivals:
             if detection.phase == phase:
                 return detection
         raise ValueError(
             f"No phase ending with {phase} found. "
-            f"Select from {', '.join(det.phase for det in self.detections)}."
+            f"Select from {', '.join(det.phase for det in self.arrivals)}."
         )
 
     def plot(self, cmap: str = "Oranges") -> None:

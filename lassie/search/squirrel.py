@@ -141,19 +141,17 @@ class SquirrelSearch(Search):
             self._detections.add_semblance(semblance_trace)
             for detection in detections:
                 self._detections.add(detection)
-                await self.add_receiver_features(self, detection)
+                # await self.add_receiver_features(detection)
                 await self._new_detection.emit(detection)
 
-        async def add_receiver_features(self, detection: EventDetection) -> None:
-            squirrel = self.get_squirrel()
+    async def add_receiver_features(self, detection: EventDetection) -> None:
+        squirrel = self.get_squirrel()
 
-            for extractor in self.receiver_features:
-                logger.debug("adding features from %s", extractor.name)
-                for phase_detection in detection.detections:
-                    try:
-                        features = await extractor.get_features(
-                            squirrel, phase_detection
-                        )
-                    except KeyError:
-                        continue
-                    phase_detection.add_features(features)
+        for extractor in self.receiver_features:
+            logger.debug("adding features from %s", extractor.feature)
+            for phase_detection in detection.arrivals:
+                try:
+                    features = await extractor.get_features(squirrel, phase_detection)
+                except KeyError:
+                    continue
+                phase_detection.add_features(features)

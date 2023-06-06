@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 
 class AmplitudeMeasurement(ReceiverFeature):
+    feature: Literal["AmplitudeMeasurement"] = "AmplitudeMeasurement"
     seconds_before: float
     seconds_after: float
     vertical_counts: int
@@ -34,7 +35,7 @@ class Selectors:
 
 
 class WaveformAmplitudes(ReceiverFeatureExtractor):
-    name: Literal["WaveformAmplitudes"] = "WaveformAmplitudes"
+    feature: Literal["WaveformAmplitudes"] = "WaveformAmplitudes"
     phase: PhaseDescription = "cake:S"
     seconds_before: float = 3.0
     seconds_after: float = 3.0

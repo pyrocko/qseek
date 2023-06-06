@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
@@ -13,7 +15,7 @@ class ReceiverFeature(BaseModel):
 
 
 class ReceiverFeatureExtractor(BaseModel):
-    name: Literal["FeatureExtractor"] = "FeatureExtractor"
+    feature: Literal["FeatureExtractor"] = "FeatureExtractor"
 
     async def get_features(
         self,
