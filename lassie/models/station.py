@@ -126,7 +126,7 @@ class Stations(BaseModel):
 
         for path in values.get("station_xmls"):
             station_xml = load_xml(filename=str(path))
-            loaded_stations += station_xml.get_pyrocko_stations(path)
+            loaded_stations += station_xml.get_pyrocko_stations()
 
         for sta in loaded_stations:
             sta = Station.from_pyrocko_station(sta)

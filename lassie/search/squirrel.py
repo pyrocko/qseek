@@ -11,8 +11,8 @@ from pydantic import PrivateAttr, validator
 from pyrocko.squirrel import Squirrel
 from pyrocko.squirrel.base import Batch
 
-from lassie.features_receiver import ReceiverFeatures
-from lassie.features_receiver.waveform_amplitudes import WaveformAmplitudes
+from lassie.features import FeatureExtractors
+from lassie.features.ground_motion import GroundMotionExtractor
 from lassie.search.base import Search, SearchTraces
 from lassie.utils import alog_call, to_datetime
 
@@ -29,7 +29,7 @@ class SquirrelSearch(Search):
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
 
-    receiver_features: list[ReceiverFeatures] = [WaveformAmplitudes()]
+    features: list[FeatureExtractors] = [GroundMotionExtractor()]
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 
@@ -74,6 +74,8 @@ class SquirrelSearch(Search):
                     paths.extend(glob.glob(str(path), recursive=True))
                 else:
                     paths.append(str(path))
+            paths.extend(map(str, self.stations.station_xmls))
+
             squirrel.add(paths, check=False)
             self._squirrel = squirrel
         return self._squirrel
@@ -140,18 +142,13 @@ class SquirrelSearch(Search):
             detections, semblance_trace = await block.search()
             self._detections.add_semblance(semblance_trace)
             for detection in detections:
+                await self.add_features(detection)
                 self._detections.add(detection)
-                # await self.add_receiver_features(detection)
                 await self._new_detection.emit(detection)
 
-    async def add_receiver_features(self, detection: EventDetection) -> None:
+    async def add_features(self, event: EventDetection) -> None:
         squirrel = self.get_squirrel()
 
-        for extractor in self.receiver_features:
-            logger.debug("adding features from %s", extractor.feature)
-            for phase_detection in detection.arrivals:
-                try:
-                    features = await extractor.get_features(squirrel, phase_detection)
-                except KeyError:
-                    continue
-                phase_detection.add_features(features)
+        for extractor in self.features:
+            logger.info("adding features from %s", extractor.feature)
+            await extractor.add_features(squirrel, event)

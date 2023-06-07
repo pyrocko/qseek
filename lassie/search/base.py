@@ -319,8 +319,14 @@ class SearchTraces:
             idx = (await semblance.maximum_node_idx())[idx]
             source_node = octree[idx].as_location()
 
+            detection = EventDetection.construct(
+                time=time,
+                semblance=float(semblance_detection),
+                octree=octree.copy(deep=True),
+                **source_node.dict(),
+            )
+
             # Attach modelled and observed arrivals
-            arrivals = []
             for image in await self.get_images(downsample=False):
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = ray_tracer.get_arrivals(
@@ -332,20 +338,17 @@ class SearchTraces:
                 arrivals_observed = image.search_phase_arrivals(
                     modelled_arrivals=[arr.time for arr in arrivals_model]
                 )
-                arrival = PhaseDetection.from_image(
-                    image,
-                    arrivals_model=arrivals_model,
-                    arrivals_observed=arrivals_observed,
+                phase_detections = [
+                    PhaseDetection(phase=image.phase, model=model, observed=observed)
+                    for model, observed in zip(
+                        arrivals_model, arrivals_observed, strict=True
+                    )
+                ]
+                detection.receivers.add_receivers(
+                    stations=image.stations.stations,
+                    phase_arrivals=phase_detections,
                 )
-                arrivals.append(arrival)
 
-            detection = EventDetection.construct(
-                time=time,
-                semblance=float(semblance_detection),
-                octree=octree.copy(deep=True),
-                arrivals=arrivals,
-                **source_node.dict(),
-            )
             detections.append(detection)
             logger.info(
                 "%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
