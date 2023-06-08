@@ -37,18 +37,18 @@ class EventGroundMotion(EventFeature):
 
 
 @dataclass
-class Selector:
+class ChannelSelector:
     channels: str
     number_channels: int
 
 
-class Selectors:
-    Horizontal = Selector("EN23", 2)
-    Vertical = Selector("Z0", 1)
-    All = Selector("ENZ0123", 3)
+class ChannelSelectors:
+    Horizontal = ChannelSelector("EN23", 2)
+    Vertical = ChannelSelector("Z0", 1)
+    All = ChannelSelector("ENZ0123", 3)
 
 
-def _get_maximum(traces: list[Trace], selector: Selector) -> float:
+def _get_maximum(traces: list[Trace], selector: ChannelSelector) -> float:
     traces = [tr for tr in traces if tr.channel[-1] in selector.channels]
     if len(traces) != selector.number_channels:
         raise KeyError(
@@ -94,9 +94,9 @@ class GroundMotionExtractor(FeatureExtractor):
                 quantity="velocity",
             )
             try:
-                pga = _get_maximum(traces_acc, Selectors.All)
-                pha = _get_maximum(traces_acc, Selectors.Horizontal)
-                pgv = _get_maximum(traces_vel, Selectors.All)
+                pga = _get_maximum(traces_acc, ChannelSelectors.All)
+                pha = _get_maximum(traces_acc, ChannelSelectors.Horizontal)
+                pgv = _get_maximum(traces_vel, ChannelSelectors.All)
 
                 ground_motion = ReceiverGroundMotion(
                     phase=self.phase,
