@@ -193,7 +193,7 @@ class Receivers(BaseModel):
                 self.__root__.append(receiver)
             receiver.add_phase_detection(arrival)
 
-    def get_by_nsl(self, nsl) -> Receiver:
+    def get_by_nsl(self, nsl: tuple[str, str, str]) -> Receiver:
         for receiver in self:
             if receiver.nsl == nsl:
                 return receiver
