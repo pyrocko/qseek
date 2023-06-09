@@ -42,7 +42,7 @@ class ANSI:
     Reset = "\033[0m"
 
 
-def to_path(datetime: datetime) -> str:
+def time_to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="minutes").replace(":", "")
 
 

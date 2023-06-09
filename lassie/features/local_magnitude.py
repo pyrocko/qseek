@@ -6,6 +6,7 @@ import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko import trace
 from pyrocko.squirrel import Squirrel
+from pyrocko.squirrel.model import MultiplyResponse, Response
 
 from lassie.features.base import EventFeature, FeatureExtractor, ReceiverFeature
 from lassie.features.utils import ChannelSelector, ChannelSelectors
@@ -23,15 +24,12 @@ WOOD_ANDERSON = trace.PoleZeroResponse(
         -5.49779 + 5.60886j,
     ],
     zeros=[0.0, 0.0],
+    # constant=1.0,
 )
 
 
 KM = 1e3
-
-
-def _get_max_amplitude_mm(traces: list[Trace]) -> float:
-    amplitudes = [trace.ydata.max() - trace.ydata.min() for trace in traces]
-    return max(amplitudes) / 2 * 1e3  # Half-Amplitude, converted to mm
+MM = 1e3
 
 
 class StationMagnitude(ReceiverFeature):
@@ -52,6 +50,11 @@ class LocalMagnitude(EventFeature):
     n_stations: int
 
 
+def _get_max_amplitude_mm(traces: list[Trace]) -> float:
+    max_amplitude = max(np.abs(trace.ydata).max() for trace in traces)
+    return max_amplitude * MM
+
+
 class LocalMagnitudeModel(BaseModel):
     name: Literal["local-magnitude-estimator"] = "local-magnitude-estimator"
 
@@ -63,18 +66,12 @@ class LocalMagnitudeModel(BaseModel):
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
         raise NotImplementedError
 
-    def _is_distance_valid(self, event: EventDetection, receiver: Receiver) -> bool:
-        dist_hypo = event.distance_to(receiver)
-        dist_epi = event.surface_distance_to(receiver)
-        if (
-            self.epicentral_range
-            and self.epicentral_range[0] <= dist_epi <= self.epicentral_range[1]
-        ):
+    def _is_distance_valid(self, dist_hypo: float, dist_epi: float) -> bool:
+        epi_range = self.epicentral_range
+        hypo_range = self.hypocentral_range
+        if epi_range and epi_range[0] <= dist_epi <= epi_range[1]:
             return True
-        if (
-            self.hypocentral_range
-            and self.hypocentral_range[0] <= dist_hypo <= self.hypocentral_range[1]
-        ):
+        if hypo_range and hypo_range[0] <= dist_hypo <= hypo_range[1]:
             return True
         return False
 
@@ -84,13 +81,12 @@ class LocalMagnitudeModel(BaseModel):
         receiver: Receiver,
         traces: list[Trace],
     ) -> StationMagnitude | None:
-        if not self._is_distance_valid(event, receiver):
+        dist_hypo = event.distance_to(receiver)
+        dist_epi = event.surface_distance_to(receiver)
+        if not self._is_distance_valid(dist_hypo, dist_epi):
             return None
 
-        log_amp_0 = self.get_amp_0(
-            event.distance_to(receiver) / KM,
-            event.surface_distance_to(receiver) / KM,
-        )
+        log_amp_0 = self.get_amp_0(dist_hypo / KM, dist_epi / KM)
         amp_max = _get_max_amplitude_mm(self.trace_selector(traces))
         return StationMagnitude(
             estimator=self.name,
@@ -209,16 +205,33 @@ class LocalMagnitudeExtractor(FeatureExtractor):
     async def add_features(self, squirrel: Squirrel, event: EventDetection) -> None:
         local_magnitudes: list[StationMagnitude] = []
         for receiver in event.receivers:
-            traces = receiver.get_waveforms_restituted(
+            traces = receiver.get_waveforms(
                 squirrel,
                 seconds_before=self.seconds_before,
                 seconds_after=self.seconds_after,
-                quantity="velocity",
-                # freqlimits=(0.1, 0.5, 12.0, 16.0),
-                additional_responses=[WOOD_ANDERSON],
             )
+            restituded_traces = []
+            for tr in traces:
+                response: Response = squirrel.get_response(
+                    tmin=tr.tmin, tmax=tr.tmax, codes=[tr.nslc_id]
+                )
+                response = MultiplyResponse(
+                    responses=[response.get_effective(), WOOD_ANDERSON]
+                )
+                tr.bandpass(4, 1.0, 20.0)
+                tr_restituded = tr.transfer(
+                    transfer_function=response,
+                    demean=True,
+                    invert=True,
+                    freqlimits=(0.001, 0.01, 30.0, 35.0),
+                )
+                # tr_restituded.ydata /= np.abs(response.evaluate(np.array([5.0])))
+                # tr_restituded.ydata *= 2080
+                restituded_traces.append(tr_restituded)
 
-            magnitude = self.estimator.calculate_magnitude(event, receiver, traces)
+            magnitude = self.estimator.calculate_magnitude(
+                event, receiver, restituded_traces
+            )
             if magnitude is None:
                 continue
 
@@ -236,7 +249,7 @@ class LocalMagnitudeExtractor(FeatureExtractor):
             std=float(np.std(magnitudes)),
             n_stations=len(magnitudes),
         )
-        print(local_magnitude)
+        print(event.time, local_magnitude)
         event.magnitude = local_magnitude.median
         event.magnitude_type = "local"
         event.add_feature(local_magnitude)

@@ -56,7 +56,7 @@ class Station(Location):
 
 class Stations(BaseModel):
     stations: list[Station] = []
-    blacklist: list[constr(regex=NSL_RE)] = []
+    blacklist: set[constr(regex=NSL_RE)] = set()
 
     station_xmls: list[Path] = []
     pyrocko_station_yamls: list[Path] = []
@@ -65,7 +65,7 @@ class Stations(BaseModel):
 
     def __iter__(self) -> Iterator[Station]:
         for sta in self.stations:
-            if sta.nsl in self.blacklist:
+            if sta.pretty_nsl in self.blacklist:
                 continue
             yield sta
 
@@ -141,7 +141,7 @@ class Stations(BaseModel):
                     "blacklisting station %s: bad geographical coordinates",
                     sta.pretty_nsl,
                 )
-                values.get("blacklist").append(sta.nsl)
+                values.get("blacklist").add(sta.pretty_nsl)
                 continue
 
             if sta.pretty_nsl in seen_nsls:

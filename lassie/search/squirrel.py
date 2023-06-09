@@ -88,6 +88,7 @@ class SquirrelSearch(Search):
         self,
         window_increment: timedelta | None = None,
     ) -> None:
+        self._init_ranges()
         squirrel = self.get_squirrel()
 
         # TODO: too hardcoded

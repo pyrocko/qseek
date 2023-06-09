@@ -49,6 +49,13 @@ def main() -> None:
         help="backup old rundir and create a new",
     )
 
+    features = subparsers.add_parser(
+        "feature-extraction",
+        help="extract features from an existing run",
+        description="modify the search.json for re-evaluation of the event's features",
+    )
+    features.add_argument("rundir", type=Path, help="path of existing run")
+
     serve = subparsers.add_parser(
         "serve",
         help="serve results from an existing run",
@@ -79,7 +86,7 @@ def main() -> None:
 
         config = SquirrelSearch.construct(
             stations=Stations.construct(
-                pyrocko_station_yamls=[Path("stations.yaml")],
+                pyrocko_station_yamls=[Path("pyrocko-stations.yaml")],
                 blacklist=["NE.STA.LOC"],
             ),
             waveform_data=[Path("/data/")],
@@ -91,6 +98,7 @@ def main() -> None:
         )
         config_file = folder / "config.json"
         config_file.write_text(config.json(by_alias=False, indent=2))
+        (folder / "pyrocko-stations.yaml").touch()
         logger.info("initialized project in folder %s", folder)
         return
 
@@ -106,6 +114,15 @@ def main() -> None:
             await http
 
         asyncio.run(_run())
+
+    elif args.command == "feature-extraction":
+        search = SquirrelSearch.load_rundir(args.rundir)
+
+        async def extract() -> None:
+            for detection in search._detections.detections:
+                await search.add_features(detection)
+
+        asyncio.run(extract())
 
     elif args.command == "serve":
         search = SquirrelSearch.load_rundir(args.rundir)

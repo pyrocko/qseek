@@ -12,16 +12,14 @@ from pydantic import BaseModel, Field
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
-from pyrocko.response import FrequencyResponse, MultiplyResponse
 
 from lassie.features import EventFeatures, ReceiverFeatures
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station
-from lassie.octree import Octree
 from lassie.plot.octree import plot_octree, plot_octree_surface
 from lassie.tracers import RayTracerArrival
-from lassie.utils import PhaseDescription
+from lassie.utils import PhaseDescription, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Response, Squirrel
@@ -123,7 +121,13 @@ class Receiver(Station):
             picks.append(pick)
         return picks
 
-    def get_arrival_time_range(self) -> tuple[datetime, datetime]:
+    def get_arrival_time_range(
+        self, phase: PhaseDescription | None = None
+    ) -> tuple[datetime, datetime]:
+        if phase:
+            arrival = self.phase_arrivals[phase]
+            start_time = arrival.get_arrival_time()
+            return start_time, start_time
         times = [arrival.get_arrival_time() for arrival in self.phase_arrivals.values()]
         return min(times), max(times)
 
@@ -161,15 +165,7 @@ class Receiver(Station):
         demean: bool = True,
         # TODO: Make freqlimits better
         freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 25.0, 35.0),
-        additional_responses: list[FrequencyResponse] = [],
     ) -> list[Trace]:
-        if phase:
-            arrival = self.phase_arrivals[phase]
-            start_time = arrival.get_arrival_time()
-            end_time = start_time
-        else:
-            start_time, end_time = self.get_arrival_time_range()
-
         traces = self.get_waveforms(
             squirrel,
             phase=phase,
@@ -180,22 +176,14 @@ class Receiver(Station):
         restituted_traces = []
         for tr in traces:
             response: Response = squirrel.get_response(
-                tmin=(start_time - timedelta(seconds=seconds_before)).timestamp(),
-                tmax=(end_time + timedelta(seconds=seconds_after)).timestamp(),
-                codes=[tr.nslc_id],
+                tmin=tr.tmin, tmax=tr.tmax, codes=[tr.nslc_id]
             )
 
             # TODO: Add more padding when displacement is requested, use Trace.tfade
             # Get waveforms provides more data
-            effective_response = MultiplyResponse(
-                responses=[
-                    response.get_effective(input_quantity=quantity),
-                    *additional_responses,
-                ]
-            )
             restituted_traces.append(
                 tr.transfer(
-                    transfer_function=effective_response,
+                    transfer_function=response.get_effective(input_quantity=quantity),
                     freqlimits=freqlimits,
                     invert=True,
                     demean=demean,
@@ -255,7 +243,6 @@ class EventDetection(Location):
     uid: UUID = Field(default_factory=uuid4)
     time: datetime
     semblance: float
-    octree: Octree
 
     magnitude: float | None = None
     magnitude_type: str | None = None
@@ -333,10 +320,10 @@ class Detections(BaseModel):
         return self.rundir / "detections"
 
     def add(self, detection: EventDetection) -> None:
-        detection.octree.make_concrete()
+        # detection.octree.make_concrete()
         self.detections.append(detection)
 
-        filename = self.detections_dir / (str(detection.uid) + ".json")
+        filename = self.detections_dir / (time_to_path(detection.time) + ".json")
         filename.write_text(detection.json())
 
         self.save_csv(self.rundir / "detections.csv")
@@ -352,7 +339,8 @@ class Detections(BaseModel):
         )
 
     def load_detections(self) -> None:
-        for file in self.detections_dir.glob("*.json"):
+        logger.info("loading detections from %s", self.detections_dir)
+        for file in sorted(self.detections_dir.glob("*.json")):
             detection = EventDetection.parse_file(file)
             self.detections.append(detection)
 

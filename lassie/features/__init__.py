@@ -8,7 +8,11 @@ from lassie.features.ground_motion import (
     GroundMotionExtractor,
     ReceiverGroundMotion,
 )
-from lassie.features.local_magnitude import LocalMagnitudeExtractor, StationMagnitude
+from lassie.features.local_magnitude import (
+    LocalMagnitude,
+    LocalMagnitudeExtractor,
+    StationMagnitude,
+)
 
 FeatureExtractors = Annotated[
     Union[GroundMotionExtractor, LocalMagnitudeExtractor, FeatureExtractor],
@@ -22,6 +26,6 @@ ReceiverFeatures = Annotated[
 ]
 
 EventFeatures = Annotated[
-    Union[EventGroundMotion, EventFeature],
+    Union[EventGroundMotion, LocalMagnitude, EventFeature],
     Field(discriminator="feature"),
 ]

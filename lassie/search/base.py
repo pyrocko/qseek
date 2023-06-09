@@ -34,8 +34,8 @@ from lassie.utils import (
     PhaseDescription,
     Symbols,
     alog_call,
+    time_to_path,
     to_datetime,
-    to_path,
 )
 
 if TYPE_CHECKING:
@@ -83,17 +83,17 @@ class Search(BaseModel):
         super().__init__(**data)
         self.ray_tracers.prepare(self.octree, self.stations)
 
-        self._init_ranges()
-
     def init_rundir(self, force=False) -> None:
-        rundir = self.project_dir / self._config_stem or f"run-{to_path(self.created)}"
+        rundir = (
+            self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
+        )
         self._rundir = rundir
 
         if rundir.exists() and not force:
             raise FileExistsError(f"Rundir {rundir} already exists")
 
         elif rundir.exists() and force:
-            create_time = to_path(
+            create_time = time_to_path(
                 datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
             )
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
@@ -326,14 +326,13 @@ class SearchTraces:
             idx = (await semblance.maximum_node_idx())[idx]
             source_node = octree[idx].as_location()
 
-            detection = EventDetection.construct(
+            detection = EventDetection(
                 time=time,
                 semblance=float(semblance_detection),
-                octree=octree.copy(deep=True),
                 **source_node.dict(),
             )
 
-            # Attach modelled and observed arrivals
+            # Attach receivers with modelled and picked arrivals
             for image in await self.get_images(downsample=False):
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = ray_tracer.get_arrivals(
