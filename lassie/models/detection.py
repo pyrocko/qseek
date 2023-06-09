@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Self
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Self, Type, TypeVar
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
+from pyrocko.response import FrequencyResponse, MultiplyResponse
 
 from lassie.features import EventFeatures, ReceiverFeatures
 from lassie.images import ImageFunctionPick
@@ -26,11 +27,14 @@ if TYPE_CHECKING:
     from pyrocko.squirrel import Response, Squirrel
     from pyrocko.trace import Trace
 
+
+_ReceiverFeature = TypeVar("_ReceiverFeature", bound=ReceiverFeatures)
+_EventFeature = TypeVar("_EventFeature", bound=EventFeatures)
 logger = logging.getLogger(__name__)
 
 
 MeasurementUnit = Literal[
-    "displacement",
+    # "displacement",
     "velocity",
     "acceleration",
 ]
@@ -97,7 +101,18 @@ class Receiver(Station):
         self.phase_arrivals[arrival.phase] = arrival
 
     def add_feature(self, feature: ReceiverFeatures) -> None:
+        for existing_feature in self.features.copy():
+            if isinstance(feature, existing_feature.__class__):
+                logger.debug("replacing existing feature %s", feature.feature)
+                self.features.remove(existing_feature)
+                break
         self.features.append(feature)
+
+    def get_feature(self, feature_type: Type[_ReceiverFeature]) -> _ReceiverFeature:
+        for feature in self.features:
+            if isinstance(feature, feature_type):
+                return feature
+        raise TypeError(f"cannot find feature of type {feature_type.__class__}")
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         picks = []
@@ -108,20 +123,28 @@ class Receiver(Station):
             picks.append(pick)
         return picks
 
+    def get_arrival_time_range(self) -> tuple[datetime, datetime]:
+        times = [arrival.get_arrival_time() for arrival in self.phase_arrivals.values()]
+        return min(times), max(times)
+
     def get_waveforms(
         self,
         squirrel: Squirrel,
-        phase: PhaseDescription,
         seconds_after: float = 5.0,
-        seconds_before: float = 0.0,
+        seconds_before: float = 3.0,
+        phase: PhaseDescription | None = None,
     ) -> list[Trace]:
-        arrival = self.phase_arrivals[phase]
-        time = arrival.get_arrival_time()
+        if phase:
+            arrival = self.phase_arrivals[phase]
+            start_time = arrival.get_arrival_time()
+            end_time = start_time
+        else:
+            start_time, end_time = self.get_arrival_time_range()
 
         traces = squirrel.get_waveforms(
             codes=[(*self.nsl, "*")],
-            tmin=(time - timedelta(seconds=seconds_before)).timestamp(),
-            tmax=(time + timedelta(seconds=seconds_after)).timestamp(),
+            tmin=(start_time - timedelta(seconds=seconds_before)).timestamp(),
+            tmax=(end_time + timedelta(seconds=seconds_after)).timestamp(),
             want_incomplete=False,
         )
         if not traces:
@@ -131,35 +154,51 @@ class Receiver(Station):
     def get_waveforms_restituted(
         self,
         squirrel: Squirrel,
-        phase: PhaseDescription,
         seconds_after: float = 5.0,
-        seconds_before: float = 0.0,
-        # TODO: Make freqlimits better
-        freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 20.0, 30.0),
+        seconds_before: float = 2.0,
+        phase: PhaseDescription | None = None,
         quantity: MeasurementUnit = "velocity",
+        demean: bool = True,
+        # TODO: Make freqlimits better
+        freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 25.0, 35.0),
+        additional_responses: list[FrequencyResponse] = [],
     ) -> list[Trace]:
+        if phase:
+            arrival = self.phase_arrivals[phase]
+            start_time = arrival.get_arrival_time()
+            end_time = start_time
+        else:
+            start_time, end_time = self.get_arrival_time_range()
+
         traces = self.get_waveforms(
             squirrel,
             phase=phase,
             seconds_after=seconds_after,
             seconds_before=seconds_before,
         )
-        arrival = self.phase_arrivals[phase]
-        time = arrival.get_arrival_time()
-        tmin = (time - timedelta(seconds=seconds_before)).timestamp()
-        tmax = (time + timedelta(seconds=seconds_after)).timestamp()
 
         restituted_traces = []
         for tr in traces:
             response: Response = squirrel.get_response(
-                tmin=tmin, tmax=tmax, codes=[tr.nslc_id]
+                tmin=(start_time - timedelta(seconds=seconds_before)).timestamp(),
+                tmax=(end_time + timedelta(seconds=seconds_after)).timestamp(),
+                codes=[tr.nslc_id],
+            )
+
+            # TODO: Add more padding when displacement is requested, use Trace.tfade
+            # Get waveforms provides more data
+            effective_response = MultiplyResponse(
+                responses=[
+                    response.get_effective(input_quantity=quantity),
+                    *additional_responses,
+                ]
             )
             restituted_traces.append(
                 tr.transfer(
-                    transfer_function=response.get_effective(input_quantity=quantity),
+                    transfer_function=effective_response,
                     freqlimits=freqlimits,
                     invert=True,
-                    demean=True,
+                    demean=demean,
                 )
             )
         return restituted_traces
@@ -218,11 +257,25 @@ class EventDetection(Location):
     semblance: float
     octree: Octree
 
+    magnitude: float | None = None
+    magnitude_type: str | None = None
+
     receivers: Receivers = Receivers()
     features: list[EventFeatures] = []
 
     def add_feature(self, feature: EventFeatures) -> None:
+        for existing_feature in self.features.copy():
+            if isinstance(feature, existing_feature.__class__):
+                logger.debug("replacing existing feature %s", feature.feature)
+                self.features.remove(existing_feature)
+                break
         self.features.append(feature)
+
+    def get_feature(self, feature_type: Type[_EventFeature]) -> _EventFeature:
+        for feature in self.features:
+            if isinstance(feature, feature_type):
+                return feature
+        raise TypeError(f"cannot find feature of type {feature_type.__class__}")
 
     def as_pyrocko_event(self) -> Event:
         return Event(
@@ -234,8 +287,8 @@ class EventDetection(Location):
             north_shift=self.north_shift,
             depth=self.depth,
             elevation=self.elevation,
-            magnitude=self.semblance,
-            magnitude_type="semblance",
+            magnitude=self.magnitude,
+            magnitude_type=self.magnitude_type,
         )
 
     def as_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:

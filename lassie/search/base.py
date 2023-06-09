@@ -29,7 +29,14 @@ from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.tracers import RayTracers
-from lassie.utils import PhaseDescription, Symbols, alog_call, to_datetime, to_path
+from lassie.utils import (
+    ANSI,
+    PhaseDescription,
+    Symbols,
+    alog_call,
+    to_datetime,
+    to_path,
+)
 
 if TYPE_CHECKING:
     from lassie.images import WaveformImages
@@ -351,12 +358,14 @@ class SearchTraces:
 
             detections.append(detection)
             logger.info(
-                "%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
+                "%s%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f%s",
+                ANSI.Bold,
                 Symbols.Target,
                 detection.time,
                 *detection.effective_lat_lon,
                 detection.effective_depth,
                 detection.semblance,
+                ANSI.Reset,
             )
 
             # detection.plot()

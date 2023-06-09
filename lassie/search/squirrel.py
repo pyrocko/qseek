@@ -13,6 +13,7 @@ from pyrocko.squirrel.base import Batch
 
 from lassie.features import FeatureExtractors
 from lassie.features.ground_motion import GroundMotionExtractor
+from lassie.features.local_magnitude import LocalMagnitudeExtractor
 from lassie.search.base import Search, SearchTraces
 from lassie.utils import alog_call, to_datetime
 
@@ -29,7 +30,10 @@ class SquirrelSearch(Search):
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
 
-    features: list[FeatureExtractors] = [GroundMotionExtractor()]
+    features: list[FeatureExtractors] = [
+        GroundMotionExtractor(),
+        LocalMagnitudeExtractor(),
+    ]
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 

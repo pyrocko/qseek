@@ -35,6 +35,13 @@ class Symbols:
     CheckerBoard = "🙾"
 
 
+class ANSI:
+    Bold = "\033[1m"
+    Italic = "\033[3m"
+    Underline = "\033[4m"
+    Reset = "\033[0m"
+
+
 def to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="minutes").replace(":", "")
 
