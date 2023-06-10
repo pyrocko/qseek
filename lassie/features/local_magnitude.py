@@ -6,7 +6,6 @@ import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko import trace
 from pyrocko.squirrel import Squirrel
-from pyrocko.squirrel.model import MultiplyResponse, Response
 
 from lassie.features.base import EventFeature, FeatureExtractor, ReceiverFeature
 from lassie.features.utils import ChannelSelector, ChannelSelectors
@@ -23,8 +22,8 @@ WOOD_ANDERSON = trace.PoleZeroResponse(
         -5.49779 - 5.60886j,
         -5.49779 + 5.60886j,
     ],
-    zeros=[0.0, 0.0],
-    # constant=1.0,
+    zeros=[0.0 + 0.0j, 0.0 + 0.0j],
+    constant=2080.0,
 )
 
 
@@ -52,7 +51,7 @@ class LocalMagnitude(EventFeature):
 
 def _get_max_amplitude_mm(traces: list[Trace]) -> float:
     max_amplitude = max(np.abs(trace.ydata).max() for trace in traces)
-    return max_amplitude * MM
+    return max_amplitude
 
 
 class LocalMagnitudeModel(BaseModel):
@@ -156,7 +155,7 @@ class SouthWestGermany(LocalMagnitudeModel):
 
     name: Literal["south-west-germany"] = "south-west-germany"
     hypocentral_range = (10.0 * KM, 1000.0 * KM)
-    trace_selector = ChannelSelectors.Horizontal
+    trace_selector = ChannelSelectors.Vertical
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
         return 1.11 * np.log(dist_hypo_km) + 0.95 * dist_hypo_km * 1e-3 + 0.69
@@ -205,29 +204,14 @@ class LocalMagnitudeExtractor(FeatureExtractor):
     async def add_features(self, squirrel: Squirrel, event: EventDetection) -> None:
         local_magnitudes: list[StationMagnitude] = []
         for receiver in event.receivers:
-            traces = receiver.get_waveforms(
+            traces = receiver.get_waveforms_restituted(
                 squirrel,
                 seconds_before=self.seconds_before,
                 seconds_after=self.seconds_after,
             )
-            restituded_traces = []
-            for tr in traces:
-                response: Response = squirrel.get_response(
-                    tmin=tr.tmin, tmax=tr.tmax, codes=[tr.nslc_id]
-                )
-                response = MultiplyResponse(
-                    responses=[response.get_effective(), WOOD_ANDERSON]
-                )
-                tr.bandpass(4, 1.0, 20.0)
-                tr_restituded = tr.transfer(
-                    transfer_function=response,
-                    demean=True,
-                    invert=True,
-                    freqlimits=(0.001, 0.01, 30.0, 35.0),
-                )
-                # tr_restituded.ydata /= np.abs(response.evaluate(np.array([5.0])))
-                # tr_restituded.ydata *= 2080
-                restituded_traces.append(tr_restituded)
+            restituded_traces = [
+                tr.transfer(transfer_function=WOOD_ANDERSON) for tr in traces
+            ]
 
             magnitude = self.estimator.calculate_magnitude(
                 event, receiver, restituded_traces

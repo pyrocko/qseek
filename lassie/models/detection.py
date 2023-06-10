@@ -235,6 +235,15 @@ class Receivers(BaseModel):
         for receiver in self:
             receiver._get_csv_dict()
 
+    def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:
+        from pyrocko.trace import snuffle
+
+        if restituted:
+            traces = (receiver.get_waveforms_restituted(squirrel) for receiver in self)
+        else:
+            traces = (receiver.get_waveforms(squirrel) for receiver in self)
+        snuffle([*chain.from_iterable(traces)])
+
     def __iter__(self) -> Iterator[Receiver]:
         return iter(self.__root__)
 
