@@ -59,14 +59,6 @@ class WaveformImages:
     def n_images(self) -> int:
         return len(self.__root__)
 
-    def get_max_samples(self) -> int:
-        """Get maximum number of samples of all images.
-
-        Returns:
-            int: Number of samples.
-        """
-        return max(image.get_max_samples() for image in self)
-
     def downsample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Downsample traces in-place.
 
@@ -76,6 +68,8 @@ class WaveformImages:
                 maximum detection. Defaults to False
         """
         for image in self:
+            if sampling_rate >= image.sampling_rate:
+                continue
             image.downsample(sampling_rate, max_normalize)
 
     def set_stations(self, stations: Stations) -> None:

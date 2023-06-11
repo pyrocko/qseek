@@ -66,6 +66,20 @@ class Node(BaseModel):
     def coordinates(self) -> tuple[float, float, float]:
         return self.east, self.north, self.depth
 
+    @property
+    def distance_border(self) -> float:
+        if not self.tree:
+            raise AttributeError("parent tree not set")
+        tree = self.tree
+        return min(
+            self.north - tree.north_bounds[0],
+            tree.north_bounds[1] - self.north,
+            self.east - tree.east_bounds[0],
+            tree.east_bounds[1] - self.east,
+            self.depth - tree.depth_bounds[0],
+            tree.depth_bounds[1] - self.depth,
+        )
+
     def reset(self) -> None:
         self._children_cached = self.children
         self.children = tuple()
@@ -120,6 +134,7 @@ class Octree(BaseModel):
     east_bounds: tuple[float, float] = (-10 * km, 10 * km)
     north_bounds: tuple[float, float] = (-10 * km, 10 * km)
     depth_bounds: tuple[float, float] = (0 * km, 20 * km)
+    absorbing_boundary: float = 1 * km
 
     nodes: list[Node] | None = None
 
@@ -274,6 +289,17 @@ class Octree(BaseModel):
             return [node for node in self]
         return [node for node in self if node.semblance >= semblance_threshold]
 
+    def is_node_absorbed(self, node: Node) -> bool:
+        """Check if node is inside the absorbing boundary.
+
+        Args:
+            node (Node): Node to check.
+
+        Returns:
+            bool: Check if node is absorbed.
+        """
+        return node.distance_border <= self.absorbing_boundary
+
     def make_concrete(self) -> None:
         """Make octree concrete for serialisation."""
         self._root_nodes = self.get_nodes()
@@ -291,6 +317,9 @@ class Octree(BaseModel):
         tree.reset()
         tree._root_nodes = tree._get_root_nodes(tree.size_limit)
         return tree
+
+    def get_smallest_node_size(self) -> float:
+        return min(node.size for node in self)
 
     def copy(self, deep=False) -> Self:
         tree = super().copy(deep=deep)

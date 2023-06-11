@@ -252,6 +252,7 @@ class EventDetection(Location):
     uid: UUID = Field(default_factory=uuid4)
     time: datetime
     semblance: float
+    distance_border: float
 
     magnitude: float | None = None
     magnitude_type: str | None = None

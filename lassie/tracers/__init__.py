@@ -64,3 +64,6 @@ class RayTracers(BaseModel):
         for tracer in self:
             for phase in tracer.get_available_phases():
                 yield (phase, tracer)
+
+    def get_velocity_max(self) -> float:
+        return max(tracer.get_velocity_max() for tracer in self)

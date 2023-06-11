@@ -62,3 +62,6 @@ class RayTracer(BaseModel):
         receivers: Sequence[Location],
     ) -> list[ModelledArrival]:
         raise NotImplementedError
+
+    def get_velocity_max(self) -> float:
+        raise NotImplementedError

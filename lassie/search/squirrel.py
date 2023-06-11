@@ -49,7 +49,7 @@ class SquirrelSearch(Search):
             )
 
         logger.info(
-            "time span %s - %s (%s)",
+            "searching time span from %s to %s (%s)",
             self.start_time,
             self.end_time,
             self.end_time - self.start_time,
@@ -95,7 +95,7 @@ class SquirrelSearch(Search):
         window_increment = (
             window_increment or self.shift_range * 10 + 3 * self.window_padding
         )
-        logger.info("using window increment: %s", window_increment)
+        logger.info("using trace window increment: %s", window_increment)
 
         iterator = squirrel.chopper_waveforms(
             tmin=self.start_time.timestamp(),

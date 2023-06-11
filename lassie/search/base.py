@@ -50,8 +50,8 @@ MUTE_MEDIAN_LEVEL = 3.0
 
 
 class Search(BaseModel):
-    sampling_rate: confloat(ge=5.0, le=50.0) = 20.0
-    detection_threshold: PositiveFloat = 0.1
+    sampling_rate: confloat(ge=5.0, le=50.0) | None = None
+    detection_threshold: PositiveFloat = 0.05
     detection_blinding: timedelta = timedelta(seconds=2.0)
 
     project_dir: Path = Path(".")
@@ -62,7 +62,7 @@ class Search(BaseModel):
     image_functions: ImageFunctions
 
     n_threads_parstack: conint(ge=0) = 0
-    n_threads_argmax: PositiveInt = 2
+    n_threads_argmax: PositiveInt = 4
 
     # Overwritten at initialisation
     shift_range: timedelta = timedelta(seconds=0.0)
@@ -149,11 +149,7 @@ class Search(BaseModel):
         logger.info(
             "source-station distances range: %.1f - %.1f m", *self.distance_range
         )
-        logger.info("using window padding: %s", self.window_padding)
-
-    @property
-    def padding_samples(self) -> int:
-        return int(round(self.window_padding.total_seconds() * self.sampling_rate))
+        logger.info("using trace window padding: %s", self.window_padding)
 
     @classmethod
     def parse_file(
@@ -173,7 +169,7 @@ class Search(BaseModel):
 
 
 class SearchTraces:
-    _images: dict[bool, WaveformImages]
+    _images: dict[float | None, WaveformImages]
 
     def __init__(
         self,
@@ -198,13 +194,12 @@ class SearchTraces:
                 traces.remove(tr)
         return traces
 
-    @property
-    def n_samples_semblance(self) -> int:
+    def get_n_samples_semblance(self, sampling_rate) -> int:
         window_padding = self.parent.window_padding
         time_span = (self.end_time + window_padding) - (
             self.start_time - window_padding
         )
-        return int(round(time_span.total_seconds() * self.parent.sampling_rate))
+        return int(round(time_span.total_seconds() * sampling_rate))
 
     @alog_call
     async def calculate_semblance(
@@ -243,15 +238,33 @@ class SearchTraces:
         semblance /= station_contribution[:, np.newaxis]
         return semblance
 
-    async def get_images(self, downsample: bool = True) -> WaveformImages:
-        if not self._images:
+    async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
+        """
+        Retrieves waveform images for the specified sampling rate.
+
+        Args:
+            sampling_rate (float | None, optional): The desired sampling rate in Hz.
+                Defaults to None.
+
+        Returns:
+            WaveformImages: The waveform images for the specified sampling rate.
+        """
+
+        if None not in self._images:
             images = await self.parent.image_functions.process_traces(self.traces)
             images.set_stations(self.parent.stations)
-            self._images[False] = deepcopy(images)
+            self._images[None] = images
 
-            images.downsample(self.parent.sampling_rate, max_normalize=True)
-            self._images[True] = images
-        return self._images[downsample]
+        if sampling_rate not in self._images:
+            if not isinstance(sampling_rate, float):
+                raise TypeError("sampling rate has to be a float")
+            images_resampled = deepcopy(self._images[None])
+
+            logger.debug("downsampling images to %g Hz", sampling_rate)
+            images_resampled.downsample(sampling_rate, max_normalize=True)
+            self._images[sampling_rate] = images_resampled
+
+        return self._images[sampling_rate]
 
     async def search(
         self,
@@ -260,14 +273,33 @@ class SearchTraces:
         parent = self.parent
 
         octree = octree or parent.octree.copy(deep=True)
-        images = await self.get_images()
+
+        sampling_rate = parent.sampling_rate
+        if not sampling_rate:
+            max_velocity = parent.ray_tracers.get_velocity_max()
+            smallest_node = octree.get_smallest_node_size()
+            sampling_rate = round(max_velocity / (smallest_node / 2), ndigits=-1)
+            sampling_rate = min(sampling_rate, 100.0)
+            logger.info(
+                "fastest velocity %g m/s, smallest node %g m, sampling rate %g Hz",
+                max_velocity,
+                smallest_node,
+                sampling_rate,
+            )
+
+        images = await self.get_images(sampling_rate=sampling_rate)
+        logger.info("stacking traces at sampling rate %.1f Hz", sampling_rate)
+
+        padding_samples = int(
+            round(parent.window_padding.total_seconds() * sampling_rate)
+        )
 
         semblance = Semblance(
             n_nodes=octree.n_nodes,
-            n_samples=self.n_samples_semblance,
+            n_samples=self.get_n_samples_semblance(sampling_rate),
             start_time=self.start_time,
-            sampling_rate=parent.sampling_rate,
-            padding_samples=parent.padding_samples,
+            sampling_rate=sampling_rate,
+            padding_samples=padding_samples,
         )
 
         for image in images:
@@ -276,7 +308,7 @@ class SearchTraces:
                     octree=octree,
                     image=image,
                     ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                    n_samples_semblance=self.n_samples_semblance,
+                    n_samples_semblance=self.get_n_samples_semblance(sampling_rate),
                 )
             )
         semblance.normalize(images.n_images)
@@ -285,11 +317,9 @@ class SearchTraces:
         logger.info("semblance stats: %s", parent.semblance_stats)
 
         detection_idx, detection_semblance = semblance.find_peaks(
-            height=0.1,
-            prominence=0.1,
-            distance=round(
-                parent.detection_blinding.total_seconds() * parent.sampling_rate
-            ),
+            height=parent.detection_threshold,
+            prominence=parent.detection_threshold,
+            distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
         )
 
         if detection_idx.size == 0:
@@ -319,21 +349,30 @@ class SearchTraces:
 
         detections = []
         for idx, semblance_detection in zip(detection_idx, detection_semblance):
-            time = self.start_time + timedelta(seconds=idx / parent.sampling_rate)
+            time = self.start_time + timedelta(seconds=idx / sampling_rate)
 
             octree.map_semblance(semblance.semblance[:, idx])
 
             idx = (await semblance.maximum_node_idx())[idx]
-            source_node = octree[idx].as_location()
+            node = octree[idx]
+            if octree.is_node_absorbed(node):
+                logger.info(
+                    "source node is inside octree's absorbing boundary (%.1f m)",
+                    node.distance_border,
+                )
+                continue
+
+            source_node = node.as_location()
 
             detection = EventDetection(
                 time=time,
                 semblance=float(semblance_detection),
+                distance_border=node.distance_border,
                 **source_node.dict(),
             )
 
             # Attach receivers with modelled and picked arrivals
-            for image in await self.get_images(downsample=False):
+            for image in await self.get_images(sampling_rate=None):
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = ray_tracer.get_arrivals(
                     phase=image.phase,

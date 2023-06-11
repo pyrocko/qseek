@@ -68,6 +68,9 @@ class WaveformImage:
             max_normalize (bool): Normalize by maximum value to keep the scale of the
                 maximum detection. Defaults to False.
         """
+        if sampling_rate >= self.sampling_rate:
+            return
+
         for tr in self.traces:
             if max_normalize:
                 # We can use maximum here since the PhaseNet output is single-sided
@@ -151,14 +154,6 @@ class WaveformImage:
                 strict=True,
             )
         ]
-
-    def get_max_samples(self) -> int:
-        """Maximum samples in all traces.
-
-        Returns:
-            int: Maximum number of samples.
-        """
-        return max(tr.ydata.size for tr in self.traces)
 
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle

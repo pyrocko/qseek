@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+KM = 1e3
 MAX_DBS = 16
 
 
@@ -64,10 +65,14 @@ class EarthModel(BaseModel):
         return np.asarray(self.__root__)
 
     def get_profile_vp(self) -> np.ndarray:
-        return self._as_array()[:, 1]
+        # TODO: reduce to relevant layers
+        return self._as_array()[:, 1] * KM
 
     def get_profile_vs(self) -> np.ndarray:
-        return self._as_array()[:, 2]
+        return self._as_array()[:, 2] * KM
+
+    def max_velocity(self) -> float:
+        return np.max([self.get_profile_vp(), self.get_profile_vs()])
 
     def as_layered_model(self) -> LayeredModel:
         line_tpl = "{} {} {} {}"
@@ -322,7 +327,7 @@ class CakeTracer(RayTracer):
         source_depth_bounds = (source_depths.min(), source_depths.max())
         distance_bounds = (distances.min(), distances.max())
         # TODO: Time tolerance is too hardcoded
-        time_tolerance = octree.size_limit / (self.get_vmin() * 5.0)
+        time_tolerance = octree.size_limit / (self.get_vmin() * 3.0)
 
         traveltime_tree_args = dict(
             earthmodel=self.earthmodel,
@@ -389,3 +394,8 @@ class CakeTracer(RayTracer):
             arrival = CakeArrival(time=arrivaltime, phase=phase)
             arrivals.append(arrival)
         return arrivals
+
+    def get_velocity_max(self) -> float:
+        return max(
+            tree.earthmodel.max_velocity() for tree in self._traveltime_trees.values()
+        )

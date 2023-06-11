@@ -197,7 +197,7 @@ class LocalMagnitudeExtractor(FeatureExtractor):
         SouthAustralia,
         NorwayFennoscandia,
     ] = Field(
-        default=SouthernCalifornia(),
+        default=IASPEISouthernCalifornia(),
         discriminator="name",
     )
 

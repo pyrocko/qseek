@@ -70,3 +70,6 @@ class ConstantVelocityTracer(RayTracer):
             arrival = ConstantVelocityArrival(time=arrivaltime, phase=phase)
             arrivals.append(arrival)
         return arrivals
+
+    def get_velocity_max(self) -> float:
+        return max(self.velocities.values())
