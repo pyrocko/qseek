@@ -71,9 +71,6 @@ class EarthModel(BaseModel):
     def get_profile_vs(self) -> np.ndarray:
         return self._as_array()[:, 2] * KM
 
-    def max_velocity(self) -> float:
-        return np.max([self.get_profile_vp(), self.get_profile_vs()])
-
     def as_layered_model(self) -> LayeredModel:
         line_tpl = "{} {} {} {}"
         earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.__root__)
@@ -245,14 +242,14 @@ class TraveltimeTree(BaseModel):
         timing = self.timing.as_pyrocko_timing()
 
         coordinates = np.atleast_2d(np.ascontiguousarray(coordinates))
-        hash = sha1(coordinates.data).digest()
-        if hash not in self._cache:
+        coord_hash = sha1(coordinates.data).digest()
+        if coord_hash not in self._cache:
             traveltimes = timing.evaluate(
                 lambda phase: sptree.interpolate_many,
                 coordinates,
             )
-            self._cache[hash] = traveltimes
-        return self._cache[hash]
+            self._cache[coord_hash] = traveltimes
+        return self._cache[coord_hash]
 
     def get_traveltime(self, source: Location, receiver: Location) -> float:
         coordinates = [
@@ -395,8 +392,3 @@ class CakeTracer(RayTracer):
             arrival = CakeArrival(time=arrivaltime, phase=phase)
             arrivals.append(arrival)
         return arrivals
-
-    def get_velocity_max(self) -> float:
-        return max(
-            tree.earthmodel.max_velocity() for tree in self._traveltime_trees.values()
-        )

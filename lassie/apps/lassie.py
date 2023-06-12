@@ -11,6 +11,7 @@ from pkg_resources import get_distribution
 from lassie.models import Stations
 from lassie.search import SquirrelSearch
 from lassie.server import WebServer
+from lassie.station_corrections import StationCorrections
 from lassie.tracers import CakeTracer, RayTracers
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,13 @@ def main() -> None:
         description="modify the search.json for re-evaluation of the event's features",
     )
     features.add_argument("rundir", type=Path, help="path of existing run")
+
+    station_corrections = subparsers.add_parser(
+        "station-corrections",
+        help="analyse station corrections from existing run",
+        description="analyze and plot station corrections from a finished run",
+    )
+    station_corrections.add_argument("rundir", type=Path, help="path of existing run")
 
     serve = subparsers.add_parser(
         "serve",
@@ -122,6 +130,11 @@ def main() -> None:
                 await search.add_features(detection)
 
         asyncio.run(extract())
+
+    elif args.command == "station-corrections":
+        search = SquirrelSearch.load_rundir(args.rundir)
+        station_corrections = StationCorrections.from_detections(search._detections)
+        station_corrections.save_plots(folder=args.rundir / "station_corrections")
 
     elif args.command == "serve":
         search = SquirrelSearch.load_rundir(args.rundir)

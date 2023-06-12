@@ -13,10 +13,10 @@ from lassie.tracers.constant_velocity import (
 )
 
 if TYPE_CHECKING:
-    from lassie.utils import PhaseDescription
     from lassie.models.station import Stations
     from lassie.octree import Octree
     from lassie.tracers.base import RayTracer
+    from lassie.utils import PhaseDescription
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,3 @@ class RayTracers(BaseModel):
         for tracer in self:
             for phase in tracer.get_available_phases():
                 yield (phase, tracer)
-
-    def get_velocity_max(self) -> float:
-        return max(tracer.get_velocity_max() for tracer in self)

@@ -50,7 +50,7 @@ MUTE_MEDIAN_LEVEL = 3.0
 
 
 class Search(BaseModel):
-    sampling_rate: confloat(ge=5.0, le=50.0) | None = None
+    sampling_rate: confloat(ge=10.0, le=20.0) = 10.0
     detection_threshold: PositiveFloat = 0.05
     detection_blinding: timedelta = timedelta(seconds=2.0)
 
@@ -224,7 +224,7 @@ class SearchTraces:
         weights[traveltimes_bad] = 0.0
 
         # Normalize by number of station contribution
-        weights /= station_contribution
+        weights /= station_contribution.astype(float)
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
@@ -278,21 +278,8 @@ class SearchTraces:
         octree = octree or parent.octree.copy(deep=True)
 
         sampling_rate = parent.sampling_rate
-        if not sampling_rate:
-            max_velocity = parent.ray_tracers.get_velocity_max()
-            smallest_node = octree.get_smallest_node_size()
-            sampling_rate = round(max_velocity / smallest_node, ndigits=-1)
-            sampling_rate = min(sampling_rate, 50.0)
-            sampling_rate = max(sampling_rate, 5.0)
-            logger.info(
-                "fastest velocity %g m/s, smallest node %g m, sampling rate %g Hz",
-                max_velocity,
-                smallest_node,
-                sampling_rate,
-            )
 
         images = await self.get_images(sampling_rate=sampling_rate)
-        logger.info("stacking traces at sampling rate %.1f Hz", sampling_rate)
 
         padding_samples = int(
             round(parent.window_padding.total_seconds() * sampling_rate)
@@ -371,6 +358,7 @@ class SearchTraces:
                 time=time,
                 semblance=float(semblance_detection),
                 distance_border=node.distance_border,
+                in_bounds=octree.is_node_absorbed(node),
                 **source_node.dict(),
             )
 

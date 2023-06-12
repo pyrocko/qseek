@@ -260,6 +260,7 @@ class EventDetection(Location):
 
     receivers: Receivers = Receivers()
     features: list[EventFeatures] = []
+    in_bounds: bool = True
 
     def add_feature(self, feature: EventFeatures) -> None:
         for existing_feature in self.features.copy():

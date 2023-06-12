@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Sequence
 
-
 from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.utils import PhaseDescription, log_call
 
 if TYPE_CHECKING:
     import numpy as np
     from pydantic import PositiveFloat
+
     from lassie.models.location import Location
     from lassie.models.station import Stations
     from lassie.octree import Octree
@@ -70,6 +70,3 @@ class ConstantVelocityTracer(RayTracer):
             arrival = ConstantVelocityArrival(time=arrivaltime, phase=phase)
             arrivals.append(arrival)
         return arrivals
-
-    def get_velocity_max(self) -> float:
-        return max(self.velocities.values())
