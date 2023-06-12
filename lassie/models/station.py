@@ -8,9 +8,9 @@ from pydantic import BaseModel, PrivateAttr, constr, root_validator
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
+from pathlib import Path
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from pyrocko.trace import Trace
 
 from lassie.models.location import CoordSystem, Location

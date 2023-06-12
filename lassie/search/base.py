@@ -20,10 +20,13 @@ from pydantic import (
 )
 from pyrocko import parstack
 
+from lassie.images import ImageFunctions, WaveformImages
+from lassie.models import Stations
 from lassie.models.detection import Detections, EventDetection, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
+from lassie.tracers import RayTracers
 from lassie.utils import (
     ANSI,
     PhaseDescription,
@@ -36,11 +39,8 @@ from lassie.utils import (
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
-    from lassie.images import ImageFunctions, WaveformImages
     from lassie.images.base import WaveformImage
-    from lassie.models import Stations
     from lassie.octree import Node
-    from lassie.tracers import RayTracers
     from lassie.tracers.base import RayTracer
 
 logger = logging.getLogger(__name__)
@@ -208,6 +208,7 @@ class SearchTraces:
         image: WaveformImage,
         ray_tracer: RayTracer,
         n_samples_semblance: int,
+        semblance_data: np.ndarray,
     ) -> np.ndarray:
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
@@ -215,28 +216,30 @@ class SearchTraces:
         traveltimes = ray_tracer.get_traveltimes(image.phase, octree, image.stations)
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
+        station_contribution = (~traveltimes_bad).sum(axis=1)
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
 
         weights = np.ones_like(shifts)
         weights[traveltimes_bad] = 0.0
 
-        semblance, offsets = await asyncio.to_thread(
+        # Normalize by number of station contribution
+        weights /= station_contribution
+
+        semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
             arrays=image.get_trace_data(),
             offsets=image.get_offsets(self.start_time - parent.window_padding),
             shifts=shifts,
             weights=weights,
             lengthout=n_samples_semblance,
+            result=semblance_data,
             dtype=np.float32,
             method=0,
             nparallel=parent.n_threads_parstack,
         )
-
-        # Normalize by number of station contribution
-        station_contribution = (~traveltimes_bad).sum(axis=1)
-        semblance /= station_contribution[:, np.newaxis]
-        return semblance
+        # semblance_data /= station_contribution[:, np.newaxis]
+        return semblance_data
 
     async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
         """
@@ -278,8 +281,9 @@ class SearchTraces:
         if not sampling_rate:
             max_velocity = parent.ray_tracers.get_velocity_max()
             smallest_node = octree.get_smallest_node_size()
-            sampling_rate = round(max_velocity / (smallest_node / 2), ndigits=-1)
-            sampling_rate = min(sampling_rate, 100.0)
+            sampling_rate = round(max_velocity / smallest_node, ndigits=-1)
+            sampling_rate = min(sampling_rate, 50.0)
+            sampling_rate = max(sampling_rate, 5.0)
             logger.info(
                 "fastest velocity %g m/s, smallest node %g m, sampling rate %g Hz",
                 max_velocity,
@@ -303,13 +307,12 @@ class SearchTraces:
         )
 
         for image in images:
-            semblance.add(
-                await self.calculate_semblance(
-                    octree=octree,
-                    image=image,
-                    ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                    n_samples_semblance=self.get_n_samples_semblance(sampling_rate),
-                )
+            await self.calculate_semblance(
+                octree=octree,
+                image=image,
+                ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
+                semblance_data=semblance._semblance_unpadded,
+                n_samples_semblance=self.get_n_samples_semblance(sampling_rate),
             )
         semblance.normalize(images.n_images)
 

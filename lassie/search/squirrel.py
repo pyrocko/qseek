@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import glob
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
 
 from pydantic import PrivateAttr, validator
 from pyrocko.squirrel import Squirrel
 
+from lassie.features import FeatureExtractors
 from lassie.features.ground_motion import GroundMotionExtractor
 from lassie.features.local_magnitude import LocalMagnitudeExtractor
 from lassie.search.base import Search, SearchTraces
@@ -16,8 +18,6 @@ from lassie.utils import alog_call, to_datetime
 
 if TYPE_CHECKING:
     from pyrocko.squirrel.base import Batch
-    from lassie.features import FeatureExtractors
-    from datetime import datetime, timedelta
     from pyrocko.trace import Trace
 
     from lassie.models.detection import EventDetection

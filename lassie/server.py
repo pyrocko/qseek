@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:
     from uuid import UUID
+
     from lassie.search.base import Search
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,9 @@ async def parse_pydantic_request(
                 request.method, allowed_methods=("GET", "POST", "PUT")
             )
     except ValidationError as exc:
-        raise web.HTTPBadRequest(text=exc.json(), content_type="application/json")
+        raise web.HTTPBadRequest(
+            text=exc.json(), content_type="application/json"
+        ) from exc
     except Exception as exc:
         raise web.HTTPError(text="Cannot parse request") from exc
     return data
