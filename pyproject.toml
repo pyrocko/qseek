@@ -68,4 +68,4 @@ Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
 [tool.setuptools_scm]
 
 [tool.ruff]
-select = ['E', 'F', 'W', 'N', 'DTZ', 'TCH', 'FA']
+select = ['E', 'F', 'W', 'N', 'DTZ', 'TCH', 'FA', 'G']
