@@ -134,7 +134,10 @@ def main() -> None:
     elif args.command == "station-corrections":
         search = SquirrelSearch.load_rundir(args.rundir)
         station_corrections = StationCorrections.from_detections(search._detections)
-        station_corrections.save_plots(folder=args.rundir / "station_corrections")
+        # station_corrections.save_plots(folder=args.rundir / "station_corrections")
+        station_corrections.save_csv(
+            filename=args.rundir / "station-corrections-stats.csv"
+        )
 
     elif args.command == "serve":
         search = SquirrelSearch.load_rundir(args.rundir)

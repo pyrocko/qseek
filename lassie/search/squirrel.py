@@ -92,8 +92,8 @@ class SquirrelSearch(Search):
         squirrel = self.get_squirrel()
 
         # TODO: too hardcoded
-        window_increment = (
-            window_increment or self.shift_range * 10 + 3 * self.window_padding
+        window_increment = window_increment or (
+            self.shift_range * 10 + 3 * self.window_padding
         )
         logger.info("using trace window increment: %s", window_increment)
 

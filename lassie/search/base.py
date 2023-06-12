@@ -27,14 +27,7 @@ from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.tracers import RayTracers
-from lassie.utils import (
-    ANSI,
-    PhaseDescription,
-    Symbols,
-    alog_call,
-    time_to_path,
-    to_datetime,
-)
+from lassie.utils import ANSI, PhaseDescription, Symbols, alog_call, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -175,31 +168,32 @@ class SearchTraces:
         self,
         parent: Search,
         traces: list[Trace],
-        start_time: datetime | None = None,
-        end_time: datetime | None = None,
+        start_time: datetime,
+        end_time: datetime,
     ) -> None:
         self.parent = parent
         self.traces = self.clean_traces(traces)
 
-        self.start_time = start_time or to_datetime(min(tr.tmin for tr in self.traces))
-        self.end_time = end_time or to_datetime(max(tr.tmax for tr in self.traces))
+        self.start_time = start_time
+        self.end_time = end_time
 
         self._images = {}
 
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
         for tr in traces.copy():
-            if tr.ydata.size == 0 or not np.all(np.isfinite(tr.ydata)):
+            if not tr.ydata.size or not np.all(np.isfinite(tr.ydata)):
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 traces.remove(tr)
         return traces
 
-    def get_n_samples_semblance(self, sampling_rate) -> int:
-        window_padding = self.parent.window_padding
+    def _get_n_samples_semblance(self) -> int:
+        parent = self.parent
+        window_padding = parent.window_padding
         time_span = (self.end_time + window_padding) - (
             self.start_time - window_padding
         )
-        return int(round(time_span.total_seconds() * sampling_rate))
+        return int(round(time_span.total_seconds() * parent.sampling_rate))
 
     @alog_call
     async def calculate_semblance(
@@ -216,15 +210,15 @@ class SearchTraces:
         traveltimes = ray_tracer.get_traveltimes(image.phase, octree, image.stations)
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
-        station_contribution = (~traveltimes_bad).sum(axis=1)
+        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=float)
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
 
-        weights = np.ones_like(shifts)
+        weights = np.ones_like(shifts, dtype=float)
         weights[traveltimes_bad] = 0.0
 
         # Normalize by number of station contribution
-        weights /= station_contribution.astype(float)
+        weights /= station_contribution[:, np.newaxis]
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
@@ -274,11 +268,9 @@ class SearchTraces:
         octree: Octree | None = None,
     ) -> tuple[list[EventDetection], Trace]:
         parent = self.parent
-
-        octree = octree or parent.octree.copy(deep=True)
-
         sampling_rate = parent.sampling_rate
 
+        octree = octree or parent.octree.copy(deep=True)
         images = await self.get_images(sampling_rate=sampling_rate)
 
         padding_samples = int(
@@ -287,7 +279,7 @@ class SearchTraces:
 
         semblance = Semblance(
             n_nodes=octree.n_nodes,
-            n_samples=self.get_n_samples_semblance(sampling_rate),
+            n_samples=self._get_n_samples_semblance(),
             start_time=self.start_time,
             sampling_rate=sampling_rate,
             padding_samples=padding_samples,
@@ -298,8 +290,8 @@ class SearchTraces:
                 octree=octree,
                 image=image,
                 ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                semblance_data=semblance._semblance_unpadded,
-                n_samples_semblance=self.get_n_samples_semblance(sampling_rate),
+                semblance_data=semblance.semblance_unpadded,
+                n_samples_semblance=semblance.n_samples_unpadded,
             )
         semblance.normalize(images.n_images)
 
@@ -313,7 +305,7 @@ class SearchTraces:
         )
 
         if detection_idx.size == 0:
-            return [], semblance.get_trace()
+            return [], semblance.get_trace(padded=False)
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
@@ -401,4 +393,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance.get_trace()
+        return detections, semblance.get_trace(padded=False)

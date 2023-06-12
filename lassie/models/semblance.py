@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import numpy as np
 from pydantic import BaseModel, PrivateAttr
 from pyrocko import parstack
 from pyrocko.trace import Trace
 from scipy import signal, stats
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -51,8 +52,9 @@ class Semblance:
         self.start_time = start_time
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
+        self.n_samples_unpadded = n_samples
 
-        self._semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
+        self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
 
     @property
     def n_nodes(self) -> int:
@@ -68,8 +70,8 @@ class Semblance:
     def semblance(self) -> np.ndarray:
         padding_samples = self.padding_samples
         if padding_samples:
-            return self._semblance_unpadded[:, padding_samples:-padding_samples]
-        return self._semblance_unpadded
+            return self.semblance_unpadded[:, padding_samples : -padding_samples - 1]
+        return self.semblance_unpadded
 
     @property
     def maximum_semblance(self) -> np.ndarray:
@@ -150,7 +152,7 @@ class Semblance:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
         """
         detection_idx, _ = signal.find_peaks(
-            self._semblance_unpadded.max(axis=0),
+            self.semblance_unpadded.max(axis=0),
             height=height,
             prominence=prominence,
             distance=distance,
@@ -158,10 +160,10 @@ class Semblance:
         if trim_padding:
             detection_idx -= self.padding_samples
             detection_idx = detection_idx[detection_idx >= 0]
-            detection_idx = detection_idx[detection_idx < self.semblance.size]
+            detection_idx = detection_idx[detection_idx < self.maximum_semblance.size]
             semblance = self.maximum_semblance[detection_idx]
         else:
-            maximum_semblance = self._semblance_unpadded.max(axis=0)
+            maximum_semblance = self.semblance_unpadded.max(axis=0)
             semblance = maximum_semblance[detection_idx]
 
         return detection_idx, semblance
@@ -179,18 +181,27 @@ class Semblance:
             median_abs_deviation=self.median_abs_deviation(),
         )
 
-    def get_trace(self) -> Trace:
+    def get_trace(self, padded: bool = True) -> Trace:
         """Get aggregated maximum semblance as a Pyrocko trace.
 
         Returns:
             Trace: Holding the semblance
         """
+        if padded:
+            data = self.maximum_semblance
+            start_time = self.start_time
+        else:
+            data = self.semblance_unpadded.max(axis=0)
+            start_time = self.start_time - timedelta(
+                seconds=int(round(self.padding_samples * self.sampling_rate))
+            )
+
         return Trace(
             network="",
             station="semblance",
-            tmin=self.start_time.timestamp(),
+            tmin=start_time.timestamp(),
             deltat=1.0 / self.sampling_rate,
-            ydata=self.maximum_semblance,
+            ydata=data,
         )
 
     def _clear_cache(self) -> None:
@@ -203,7 +214,7 @@ class Semblance:
         Args:
             data (np.ndarray): Incoming semblance
         """
-        self._semblance_unpadded += data
+        self.semblance_unpadded += data
         self._clear_cache()
 
     def normalize(self, factor: int | float) -> None:
@@ -212,5 +223,5 @@ class Semblance:
         Args:
             factor (int | float): Normalization factor.
         """
-        self._semblance_unpadded /= factor
+        self.semblance_unpadded /= factor
         self._clear_cache()

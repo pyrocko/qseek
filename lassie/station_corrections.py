@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterable, Self, cast
+from typing import TYPE_CHECKING, Iterable, Iterator, Literal, Self, cast
 from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from lassie.models.detection import Detections
 
 logger = logging.getLogger(__name__)
+
+ArrivalWeighting = Literal[
+    "none", "PhaseNet", "EventSemblance", "PhaseNet+EventSemblance"
+]
 
 
 class EventCorrection(Location):
@@ -41,22 +45,15 @@ class StationCorrection(BaseModel):
     class Config:
         extra = Extra.ignore
 
-    def phases(self) -> set[PhaseDescription]:
-        return set(chain.from_iterable(event.phases() for event in self.events))
+    def add_event(self, event: EventCorrection) -> None:
+        self.events.append(event)
 
     @property
     def n_events(self) -> int:
         return len(self.events)
 
-    def aggregate_traveltimes(
-        self,
-        phase: PhaseDescription,
-        aggregator: Callable[[np.ndarray], float] = np.average,
-    ) -> float:
-        return aggregator(self.get_traveltime_delays(phase=phase))
-
-    def add_event(self, event: EventCorrection) -> None:
-        self.events.append(event)
+    def has_corrections(self) -> bool:
+        return bool(self.n_events)
 
     def iter_events(
         self, phase: PhaseDescription, observed_only: bool = True
@@ -69,21 +66,94 @@ class StationCorrection(BaseModel):
                 continue
             yield event
 
+    def phases(self) -> set[PhaseDescription]:
+        return set(chain.from_iterable(event.phases() for event in self.events))
+
     def get_traveltime_delays(self, phase: PhaseDescription) -> np.ndarray:
         return np.fromiter(
             (
                 phase.traveltime_delay.total_seconds()
-                for phase in self.iter_phase_detection(phase=phase)
+                for phase in self.iter_phase_arrivals(phase=phase)
                 if phase.traveltime_delay is not None
             ),
             float,
         )
 
-    def iter_phase_detection(
+    def get_event_semblances(
+        self, phase: PhaseDescription, normalize: bool = False
+    ) -> np.ndarray:
+        values = np.fromiter(
+            (event.semblance for event in self.iter_events(phase=phase)),
+            float,
+        )
+        if normalize:
+            values /= values.max()
+        return values
+
+    def get_detection_values(
+        self, phase: PhaseDescription, normalize: bool = False
+    ) -> np.ndarray:
+        values = np.fromiter(
+            (
+                phase.observed.detection_value
+                for phase in self.iter_phase_arrivals(phase=phase)
+            ),
+            float,
+        )
+        if normalize:
+            values /= values.max()
+        return values
+
+    def get_average_delay(
+        self,
+        phase: PhaseDescription,
+        weighted: ArrivalWeighting = "none",
+    ) -> float:
+        """Average delay times. Weighted and unweighted.
+
+        Args:
+            phase (PhaseDescription): Name of the phase
+            weighted (ArrivalWeighting, optional): Weights, choose from "none",
+                "PhaseNet" and "PhaseNet+EventSemblance". Defaults to "none".
+
+        Returns:
+            float: Delay time.
+        """
+        weights = None
+        traveltime_delays = self.get_traveltime_delays(phase)
+        if not traveltime_delays.size:
+            return 0.0
+
+        if weighted == "PhaseNet":
+            weights = self.get_detection_values(phase)
+        elif weighted == "EventSemblance":
+            weights = self.get_event_semblances(phase)
+        elif weighted == "PhaseNet+EventSemblance":
+            weights = self.get_detection_values(phase, normalize=True)
+            weights += self.get_event_semblances(phase, normalize=True)
+        return float(np.average(traveltime_delays, weights=weights))
+
+    def get_delays_std(self, phase: PhaseDescription) -> float:
+        return float(np.std(self.get_traveltime_delays(phase)))
+
+    def iter_phase_arrivals(
         self, phase: PhaseDescription, observed_only: bool = True
     ) -> Iterable[PhaseDetection]:
         for event in self.iter_events(phase, observed_only=observed_only):
             yield event.phase_arrivals[phase]
+
+    def get_csv_data(self) -> dict[str, float]:
+        station = self.station
+        data = {"lat": station.effective_lat, "lon": station.effective_lon}
+        avg_delay = self.get_average_delay
+        for phase in self.phases():
+            data[f"{phase}:delay"] = avg_delay(phase)
+            data[f"{phase}:delay_phasenet"] = avg_delay(phase, "PhaseNet")
+            data[f"{phase}:delay_semblance"] = avg_delay(phase, "EventSemblance")
+            data[f"{phase}:delay_phasenet_semblance"] = avg_delay(
+                phase, "PhaseNet+EventSemblance"
+            )
+        return data
 
     @classmethod
     def from_receiver(cls, receiver: Receiver) -> Self:
@@ -103,75 +173,44 @@ class StationCorrection(BaseModel):
             if not events:
                 continue
 
-            event_semblance = np.array([event.semblance for event in events])
-            try:
-                event_semblance /= event_semblance.max()
-            except ValueError:
-                print(event_semblance, [event for event in self.iter_events(phase)])
-            phase_net_detection_values = np.array(
-                [
-                    event.phase_arrivals[phase].observed.detection_value
-                    for event in events
-                ]
-            )
-            phase_net_detection_values /= phase_net_detection_values.max()
-
             ax_raw = ax_col[0]
             ax_raw.set_title(f"{phase} ({n_delays} picks)")
             ax_raw.hist(delays)
             ax_raw.axvline(
-                np.average(delays),
+                self.get_average_delay(phase),
                 ls="--",
                 c="k",
             )
 
             ax_phase_net = ax_col[1]
             ax_phase_net.set_title("PhaseNet", fontsize="small")
-            ax_phase_net.hist(
-                delays,
-                weights=phase_net_detection_values,
-                bins=8,
+            ax_phase_net.hist(delays, weights=self.get_detection_values(phase), bins=8)
+            ax_phase_net.axvline(
+                self.get_average_delay(phase, weighted="PhaseNet"), ls="--", c="k"
             )
-            try:
-                ax_phase_net.axvline(
-                    np.average(delays, weights=phase_net_detection_values),
-                    ls="--",
-                    c="k",
-                )
-            except ZeroDivisionError:
-                print(phase_net_detection_values)
-                print(self)
 
             ax_event_semblance = ax_col[2]
             ax_event_semblance.set_title("Event Semblance", fontsize="small")
             ax_event_semblance.hist(
-                delays,
-                weights=event_semblance,
-                bins=8,
+                delays, weights=self.get_event_semblances(phase), bins=8
             )
             ax_event_semblance.axvline(
-                np.average(delays, weights=event_semblance),
-                ls="--",
-                c="k",
+                self.get_average_delay(phase, weighted="EventSemblance"), ls="--", c="k"
             )
 
             ax_pn_es = ax_col[3]
             ax_pn_es.set_title("PhaseNet + Event Semblance", fontsize="small")
             ax_pn_es.hist(
                 delays,
-                weights=phase_net_detection_values + event_semblance,
+                weights=self.get_detection_values(phase, normalize=True)
+                + self.get_event_semblances(phase, normalize=True),
                 bins=8,
             )
-            try:
-                ax_pn_es.axvline(
-                    np.average(
-                        delays, weights=phase_net_detection_values + event_semblance
-                    ),
-                    ls="--",
-                    c="k",
-                )
-            except ZeroDivisionError:
-                print(self)
+            ax_pn_es.axvline(
+                self.get_average_delay(phase, weighted="PhaseNet+EventSemblance"),
+                ls="--",
+                c="k",
+            )
 
             for ax in ax_col:
                 ax = cast(plt.Axes, ax)
@@ -228,16 +267,19 @@ class StationCorrections(BaseModel):
                 filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
             )
 
-    def plot_map(self, filename: Path) -> None:
-        fig = plt.figure()
-        ax = fig.gca()
+    def save_csv(self, filename: Path) -> None:
+        logger.info("writing corrections to %s", filename)
+        csv_data = [correction.get_csv_data() for correction in self]
+        columns = set(chain.from_iterable(data.keys() for data in csv_data))
+        with filename.open("w") as file:
+            file.write(f"{', '.join(columns)}\n")
+            for data in csv_data:
+                file.write(
+                    f"{', '.join(str(data.get(key, -9999.9)) for key in columns)}\n"
+                )
 
-        lat_lon = [
-            corr.station.effective_lat_lon for corr in self.station_corrections.values()
-        ]
-        ax.scatter(*lat_lon)
-        fig.savefig(str(filename))
-        plt.close()
+    def __iter__(self) -> Iterator[StationCorrection]:
+        return iter(self.station_corrections.values())
 
     @classmethod
     def from_detections(cls, detections: Detections) -> Self:
