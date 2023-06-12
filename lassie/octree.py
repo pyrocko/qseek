@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections import defaultdict
 from functools import cached_property
@@ -206,10 +207,8 @@ class Octree(BaseModel):
 
     def _clear_cache(self) -> None:
         self._cached_coordinates.clear()
-        try:
+        with contextlib.suppress(AttributeError):
             del self.n_nodes
-        except AttributeError:
-            ...
 
     def reset(self) -> None:
         logger.debug("resetting tree")

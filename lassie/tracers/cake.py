@@ -226,10 +226,11 @@ class TraveltimeTree(BaseModel):
         if not self._file or not self._file.exists():
             raise FileNotFoundError(f"file {self._file} not found")
 
-        with zipfile.ZipFile(self._file, "r") as archive:
-            with TemporaryDirectory() as temp_dir:
-                archive.extract("model.sptree", path=temp_dir)
-                return spit.SPTree(filename=str(Path(temp_dir) / "model.sptree"))
+        with zipfile.ZipFile(
+            self._file, "r"
+        ) as archive, TemporaryDirectory() as temp_dir:
+            archive.extract("model.sptree", path=temp_dir)
+            return spit.SPTree(filename=str(Path(temp_dir) / "model.sptree"))
 
     def _get_sptree(self) -> spit.SPTree:
         if self._sptree is None:
