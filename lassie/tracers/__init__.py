@@ -11,9 +11,9 @@ from lassie.tracers.constant_velocity import (
     ConstantVelocityArrival,
     ConstantVelocityTracer,
 )
-from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
+    from lassie.utils import PhaseDescription
     from lassie.models.station import Stations
     from lassie.octree import Octree
     from lassie.tracers.base import RayTracer

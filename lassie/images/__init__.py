@@ -68,8 +68,6 @@ class WaveformImages:
                 maximum detection. Defaults to False
         """
         for image in self:
-            if sampling_rate >= image.sampling_rate:
-                continue
             image.downsample(sampling_rate, max_normalize)
 
     def set_stations(self, stations: Stations) -> None:

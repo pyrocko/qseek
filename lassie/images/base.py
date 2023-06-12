@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -12,6 +11,7 @@ from lassie.models.station import Stations
 from lassie.utils import PhaseDescription, downsample
 
 if TYPE_CHECKING:
+    from datetime import datetime, timedelta
     from pyrocko.trace import Trace
 
 

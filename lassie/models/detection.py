@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from itertools import chain
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Self, Type, TypeVar
 from uuid import UUID, uuid4
 
@@ -14,14 +13,15 @@ from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 
 from lassie.features import EventFeatures, ReceiverFeatures
-from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.plot.octree import plot_octree, plot_octree_surface
-from lassie.tracers import RayTracerArrival
 from lassie.utils import PhaseDescription, time_to_path
 
 if TYPE_CHECKING:
+    from lassie.images import ImageFunctionPick
+    from lassie.tracers import RayTracerArrival
+    from pathlib import Path
     from pyrocko.squirrel import Response, Squirrel
     from pyrocko.trace import Trace
 

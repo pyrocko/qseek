@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Union
 import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko import trace
-from pyrocko.squirrel import Squirrel
 
 from lassie.features.base import EventFeature, FeatureExtractor, ReceiverFeature
 from lassie.features.utils import ChannelSelector, ChannelSelectors
 
 if TYPE_CHECKING:
+    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
     from lassie.models.detection import EventDetection, Receiver

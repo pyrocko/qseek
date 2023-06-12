@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
@@ -11,6 +10,7 @@ from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from pyrocko.trace import Trace
 
 from lassie.models.location import CoordSystem, Location

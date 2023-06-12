@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, AbstractSet, Any, Mapping, Type, TypeVar
-from uuid import UUID
 
 import aiohttp_cors
 from aiohttp import web
@@ -10,6 +9,7 @@ from pkg_resources import get_distribution
 from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:
+    from uuid import UUID
     from lassie.search.base import Search
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 import matplotlib.pyplot as plt
@@ -10,6 +9,7 @@ from matplotlib.animation import FFMpegFileWriter, FuncAnimation
 from matplotlib.cm import get_cmap
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from lassie.octree import Octree
 
 logger = logging.getLogger(__name__)

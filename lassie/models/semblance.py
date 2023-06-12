@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 
 import numpy as np
 from pydantic import BaseModel, PrivateAttr
 from pyrocko import parstack
 from pyrocko.trace import Trace
 from scipy import signal, stats
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class SemblanceStats(BaseModel):

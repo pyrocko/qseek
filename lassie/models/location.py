@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import math
 from functools import cached_property
-from pathlib import Path
-from typing import Iterable, Literal, TypeVar
+from typing import Iterable, Literal, TypeVar, TYPE_CHECKING
 
 from pydantic import BaseModel
 from pyrocko import orthodrome as od
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CoordSystem = Literal["cartesian", "geographic"]
 

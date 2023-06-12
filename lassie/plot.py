@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
 from matplotlib.collections import PatchCollection
-from matplotlib.colors import Colormap
 from matplotlib.patches import Rectangle
 
 if TYPE_CHECKING:
+    from matplotlib.colors import Colormap
     from lassie.models import EventDetection
     from lassie.octree import Octree
 

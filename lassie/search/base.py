@@ -19,16 +19,11 @@ from pydantic import (
     conint,
 )
 from pyrocko import parstack
-from pyrocko.trace import Trace
 
-from lassie.images import ImageFunctions
-from lassie.images.base import WaveformImage
-from lassie.models import Stations
 from lassie.models.detection import Detections, EventDetection, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
-from lassie.tracers import RayTracers
 from lassie.utils import (
     ANSI,
     PhaseDescription,
@@ -39,6 +34,11 @@ from lassie.utils import (
 )
 
 if TYPE_CHECKING:
+    from pyrocko.trace import Trace
+    from lassie.tracers import RayTracers
+    from lassie.images.base import WaveformImage
+    from lassie.images import ImageFunctions
+    from lassie.models import Stations
     from lassie.images import WaveformImages
     from lassie.octree import Node
     from lassie.tracers.base import RayTracer
