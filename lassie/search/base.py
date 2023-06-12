@@ -35,12 +35,12 @@ from lassie.utils import (
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
-    from lassie.tracers import RayTracers
+
+    from lassie.images import ImageFunctions, WaveformImages
     from lassie.images.base import WaveformImage
-    from lassie.images import ImageFunctions
     from lassie.models import Stations
-    from lassie.images import WaveformImages
     from lassie.octree import Node
+    from lassie.tracers import RayTracers
     from lassie.tracers.base import RayTracer
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ class Search(BaseModel):
         if rundir.exists() and not force:
             raise FileExistsError(f"Rundir {rundir} already exists")
 
-        elif rundir.exists() and force:
+        if rundir.exists() and force:
             create_time = time_to_path(
                 datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
             )
@@ -190,7 +190,7 @@ class SearchTraces:
     def clean_traces(traces: list[Trace]) -> list[Trace]:
         for tr in traces.copy():
             if tr.ydata.size == 0 or not np.all(np.isfinite(tr.ydata)):
-                logger.warn("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
+                logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 traces.remove(tr)
         return traces
 

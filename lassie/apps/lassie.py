@@ -100,7 +100,6 @@ def main() -> None:
         config_file.write_text(config.json(by_alias=False, indent=2))
         (folder / "pyrocko-stations.yaml").touch()
         logger.info("initialized project in folder %s", folder)
-        return
 
     elif args.command == "run":
         search = SquirrelSearch.parse_file(args.config)

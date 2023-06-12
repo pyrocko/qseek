@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from functools import cached_property
-from typing import Iterable, Literal, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
 
 from pydantic import BaseModel
 from pyrocko import orthodrome as od
@@ -37,10 +37,7 @@ class Location(BaseModel):
         """Shift-corrected lat/lon pair of the location."""
         if self.north_shift == 0.0 and self.east_shift == 0.0:
             return self.lat, self.lon
-        else:
-            return od.ne_to_latlon(
-                self.lat, self.lon, self.north_shift, self.east_shift
-            )
+        return od.ne_to_latlon(self.lat, self.lon, self.north_shift, self.east_shift)
 
     @property
     def effective_elevation(self) -> float:
@@ -75,15 +72,14 @@ class Location(BaseModel):
                 + (self.effective_elevation - other.effective_elevation) ** 2
             )
 
-        else:
-            sx, sy, sz = od.geodetic_to_ecef(
-                *self.effective_lat_lon, self.effective_elevation
-            )
-            ox, oy, oz = od.geodetic_to_ecef(
-                *other.effective_lat_lon, other.effective_elevation
-            )
+        sx, sy, sz = od.geodetic_to_ecef(
+            *self.effective_lat_lon, self.effective_elevation
+        )
+        ox, oy, oz = od.geodetic_to_ecef(
+            *other.effective_lat_lon, other.effective_elevation
+        )
 
-            return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
+        return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
     def __hash__(self) -> int:
         return hash(

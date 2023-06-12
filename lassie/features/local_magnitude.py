@@ -50,8 +50,7 @@ class LocalMagnitude(EventFeature):
 
 
 def _get_max_amplitude_mm(traces: list[Trace]) -> float:
-    max_amplitude = max(np.abs(trace.ydata).max() for trace in traces)
-    return max_amplitude
+    return max(np.abs(trace.ydata).max() for trace in traces)
 
 
 class LocalMagnitudeModel(BaseModel):

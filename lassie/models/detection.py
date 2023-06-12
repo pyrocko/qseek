@@ -47,6 +47,7 @@ class PhaseDetection(BaseModel):
     def traveltime_delay(self) -> timedelta | None:
         if self.observed:
             return self.model.time - self.observed.time
+        return None
 
     def get_arrival_time(self) -> datetime:
         """Return observed time or modelled time, if observed is not set.

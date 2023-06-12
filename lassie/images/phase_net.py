@@ -69,7 +69,7 @@ class PhaseNetImage(WaveformImage):
         )
         time_seconds, value = search_trace.max()
         if value < threshold:
-            return
+            return None
         return PhaseNetPick(
             time=to_datetime(time_seconds),
             detection_value=float(value),
