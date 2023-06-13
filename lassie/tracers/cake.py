@@ -9,7 +9,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, Self, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
@@ -21,6 +21,8 @@ from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.utils import CACHE_DIR, PhaseDescription, log_call
 
 if TYPE_CHECKING:
+    from typing_extensions import Self
+
     from lassie.models.location import Location
     from lassie.models.station import Stations
     from lassie.octree import Octree

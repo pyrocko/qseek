@@ -6,7 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
 import numpy as np
 from pydantic import (
@@ -31,6 +31,7 @@ from lassie.utils import ANSI, PhaseDescription, Symbols, alog_call, time_to_pat
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from typing_extensions import Self
 
     from lassie.images.base import WaveformImage
     from lassie.octree import Node
@@ -310,7 +311,9 @@ class SearchTraces:
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
         split_nodes: set[Node] = set()
-        for idx, semblance_detection in zip(detection_idx, detection_semblance):
+        for idx, semblance_detection in zip(
+            detection_idx, detection_semblance, strict=True
+        ):
             octree.map_semblance(semblance.semblance[:, idx])
             split_nodes.update(octree.get_nodes(semblance_detection * 0.9))
 
@@ -330,19 +333,20 @@ class SearchTraces:
             logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
 
         detections = []
-        for idx, semblance_detection in zip(detection_idx, detection_semblance):
+        for idx, semblance_detection in zip(
+            detection_idx, detection_semblance, strict=True
+        ):
             time = self.start_time + timedelta(seconds=idx / sampling_rate)
 
             octree.map_semblance(semblance.semblance[:, idx])
 
             idx = (await semblance.maximum_node_idx())[idx]
             node = octree[idx]
-            if octree.is_node_absorbed(node):
+            if not octree.is_node_in_bounds(node):
                 logger.info(
                     "source node is inside octree's absorbing boundary (%.1f m)",
                     node.distance_border,
                 )
-                continue
 
             source_node = node.as_location()
 
@@ -350,7 +354,7 @@ class SearchTraces:
                 time=time,
                 semblance=float(semblance_detection),
                 distance_border=node.distance_border,
-                in_bounds=octree.is_node_absorbed(node),
+                in_bounds=octree.is_node_in_bounds(node),
                 **source_node.dict(),
             )
 

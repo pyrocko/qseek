@@ -41,6 +41,7 @@ def main() -> None:
     run = subparsers.add_parser(
         "run",
         help="start a new detection run",
+        description="detect, localize and characterize earthquakes in a dataset",
     )
     run.add_argument("config", type=Path, help="path to config file")
     run.add_argument(
@@ -49,6 +50,13 @@ def main() -> None:
         default=False,
         help="backup old rundir and create a new",
     )
+
+    continue_run = subparsers.add_parser(
+        "continue",
+        help="continue an aborted run",
+        description="continue a run from an existing rundir",
+    )
+    continue_run.add_argument("rundir", type=Path, help="existing runding to continue")
 
     features = subparsers.add_parser(
         "feature-extraction",
@@ -67,6 +75,7 @@ def main() -> None:
     serve = subparsers.add_parser(
         "serve",
         help="serve results from an existing run",
+        description="start a webserver and serve detections and results from a run",
     )
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
@@ -122,6 +131,18 @@ def main() -> None:
 
         asyncio.run(_run())
 
+    elif args.command == "continue":
+        search = SquirrelSearch.load_rundir(args.rundir)
+
+        webserver = WebServer(search)
+
+        async def _run() -> None:
+            http = asyncio.create_task(webserver.start())
+            await search.scan_squirrel()
+            await http
+
+        asyncio.run(_run())
+
     elif args.command == "feature-extraction":
         search = SquirrelSearch.load_rundir(args.rundir)
 
@@ -134,7 +155,7 @@ def main() -> None:
     elif args.command == "station-corrections":
         search = SquirrelSearch.load_rundir(args.rundir)
         station_corrections = StationCorrections.from_detections(search._detections)
-        # station_corrections.save_plots(folder=args.rundir / "station_corrections")
+        station_corrections.save_plots(folder=args.rundir / "station_corrections")
         station_corrections.save_csv(
             filename=args.rundir / "station-corrections-stats.csv"
         )

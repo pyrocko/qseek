@@ -4,7 +4,7 @@ import contextlib
 import logging
 from collections import defaultdict
 from functools import cached_property
-from typing import TYPE_CHECKING, Callable, Iterator, Self
+from typing import TYPE_CHECKING, Callable, Iterator
 
 import numpy as np
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
@@ -13,6 +13,8 @@ from pyrocko import orthodrome as od
 from lassie.models.location import CoordSystem, Location
 
 if TYPE_CHECKING:
+    from typing_extensions import Self
+
     from lassie.models.station import Stations
 
 logger = logging.getLogger(__name__)
@@ -288,7 +290,7 @@ class Octree(BaseModel):
             return [node for node in self]
         return [node for node in self if node.semblance >= semblance_threshold]
 
-    def is_node_absorbed(self, node: Node) -> bool:
+    def is_node_in_bounds(self, node: Node) -> bool:
         """Check if node is inside the absorbing boundary.
 
         Args:
@@ -297,7 +299,7 @@ class Octree(BaseModel):
         Returns:
             bool: Check if node is absorbed.
         """
-        return node.distance_border <= self.absorbing_boundary
+        return node.distance_border > self.absorbing_boundary
 
     def make_concrete(self) -> None:
         """Make octree concrete for serialisation."""

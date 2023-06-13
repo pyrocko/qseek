@@ -34,6 +34,7 @@ class SquirrelSearch(Search):
         GroundMotionExtractor(),
         LocalMagnitudeExtractor(),
     ]
+    search_progress_time: datetime | None = None
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 
@@ -97,8 +98,13 @@ class SquirrelSearch(Search):
         )
         logger.info("using trace window increment: %s", window_increment)
 
+        start_time = self.start_time
+        if self.search_progress_time:
+            start_time = self.search_progress_time
+            logger.info("continuing search from %s", start_time)
+
         iterator = squirrel.chopper_waveforms(
-            tmin=self.start_time.timestamp(),
+            tmin=start_time.timestamp(),
             tmax=self.end_time.timestamp(),
             tinc=window_increment.total_seconds(),
             tpad=self.window_padding.total_seconds(),
@@ -147,9 +153,13 @@ class SquirrelSearch(Search):
             detections, semblance_trace = await block.search()
             self._detections.add_semblance(semblance_trace)
             for detection in detections:
-                await self.add_features(detection)
+                if detection.in_bounds:
+                    await self.add_features(detection)
+
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
+
+            self.search_progress_time = window_end
 
     async def add_features(self, event: EventDetection) -> None:
         squirrel = self.get_squirrel()

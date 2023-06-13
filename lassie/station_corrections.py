@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator, Literal, Self, cast
+from typing import TYPE_CHECKING, Iterable, Iterator, Literal, cast
 from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
@@ -17,6 +17,8 @@ from lassie.models.station import Station
 from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
+    from typing_extensions import Self
+
     from lassie.models.detection import Detections
 
 logger = logging.getLogger(__name__)
@@ -166,7 +168,7 @@ class StationCorrection(BaseModel):
         axes = axes.T
         fig.set_size_inches(8, 12)
 
-        for ax_col, phase in zip(axes, phases):
+        for ax_col, phase in zip(axes, phases, strict=True):
             delays = self.get_traveltime_delays(phase=phase)
             n_delays = len(delays)
             events = [event for event in self.iter_events(phase)]
@@ -234,7 +236,7 @@ class StationCorrections(BaseModel):
             self.add_event(event)
 
     def add_event(self, event: EventDetection) -> None:
-        if not event.in_bounds:
+        if event.in_bounds:
             return
 
         logger.info("loading event %s", event.time)

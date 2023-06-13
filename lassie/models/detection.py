@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Self, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Type, TypeVar
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
+from typing_extensions import Self
 
 from lassie.features import EventFeatures, ReceiverFeatures
 from lassie.images import ImageFunctionPick
@@ -324,8 +325,11 @@ class Detections(BaseModel):
             self.detections_dir.mkdir()
             logger.info("created directory %s", self.detections_dir)
         else:
-            logger.info("loading detections from %s", self.detections_dir)
             self.load_detections()
+
+    @property
+    def n_detections(self) -> int:
+        return len(self.detections)
 
     @property
     def detections_dir(self) -> Path:
@@ -354,16 +358,15 @@ class Detections(BaseModel):
         logger.info("loading detections from %s", self.detections_dir)
         for file in sorted(self.detections_dir.glob("*.json")):
             detection = EventDetection.parse_file(file)
+            logger.debug("loaded %s", detection.time)
             self.detections.append(detection)
+        logger.info("loaded %d detections", self.n_detections)
 
     def get(self, uid: UUID) -> EventDetection:
         for detection in self:
             if detection.uid == uid:
                 return detection
         raise KeyError("detection not found")
-
-    def n_detections(self) -> int:
-        return len(self.detections)
 
     def save_csv(self, file: Path) -> None:
         lines = ["lat, lon, depth, detection_peak, time"]
