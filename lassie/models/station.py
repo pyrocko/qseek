@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
@@ -8,7 +9,6 @@ from pydantic import BaseModel, PrivateAttr, constr, root_validator
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
-from pathlib import Path
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -122,10 +122,10 @@ class Stations(BaseModel):
     def _load_stations(cls, values) -> Any:  # noqa: N805
         loaded_stations = []
         for path in values.get("pyrocko_station_yamls"):
-            loaded_stations += load_stations(filename=str(path))
+            loaded_stations += load_stations(filename=str(path.expanduser()))
 
         for path in values.get("station_xmls"):
-            station_xml = load_xml(filename=str(path))
+            station_xml = load_xml(filename=str(path.expanduser()))
             loaded_stations += station_xml.get_pyrocko_stations()
 
         for sta in loaded_stations:
@@ -160,7 +160,7 @@ class Stations(BaseModel):
     def dump_pyrocko_stations(self, filename: Path) -> None:
         dump_stations_yaml(
             [sta.to_pyrocko_station() for sta in self],
-            filename=str(filename),
+            filename=str(filename.expanduser()),
         )
 
     def __hash__(self) -> int:

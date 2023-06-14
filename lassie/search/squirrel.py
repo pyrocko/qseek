@@ -72,14 +72,14 @@ class SquirrelSearch(Search):
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
-            squirrel = Squirrel(str(self.squirrel_environment))
+            squirrel = Squirrel(str(self.squirrel_environment.expanduser()))
             paths = []
             for path in self.waveform_data:
                 if "**" in str(path):
-                    paths.extend(glob.glob(str(path), recursive=True))
+                    paths.extend(glob.glob(str(path.expanduser()), recursive=True))
                 else:
-                    paths.append(str(path))
-            paths.extend(map(str, self.stations.station_xmls))
+                    paths.append(str(path.expanduser()))
+            paths.extend(map(lambda p: str(p.expanduser()), self.stations.station_xmls))
 
             squirrel.add(paths, check=False)
             self._squirrel = squirrel

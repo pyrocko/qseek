@@ -13,6 +13,7 @@ from lassie.search import SquirrelSearch
 from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import CakeTracer, RayTracers
+from lassie.utils import ANSI
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,10 @@ def main() -> None:
         config_file = folder / "config.json"
         config_file.write_text(config.json(by_alias=False, indent=2))
         (folder / "pyrocko-stations.yaml").touch()
-        logger.info("initialized project in folder %s", folder)
+        logger.info("initialized new project in folder %s", folder)
+        logger.info(
+            "start detecting with:\n\t%slassie run config.json%s", ANSI.Bold, ANSI.Reset
+        )
 
     elif args.command == "run":
         search = SquirrelSearch.parse_file(args.config)
