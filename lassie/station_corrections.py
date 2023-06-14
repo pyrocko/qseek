@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from datetime import datetime
 from itertools import chain
 from pathlib import Path
@@ -28,9 +27,9 @@ KM = 1e3
 ArrivalWeighting = Literal[
     "none",
     "PhaseNet",
-    "EventSemblance",
-    "PhaseNet+EventSemblance",
-    "EventSemblance*PhaseNet",
+    "semblance",
+    "add-PhaseNet-semblance",
+    "mul-PhaseNet-semblance",
 ]
 
 
@@ -48,28 +47,24 @@ class EventCorrection(Location):
 
 def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> float:
     """Calculate the weighted median of an array/list using numpy."""
-    if weights is None:
-        return float(np.median(np.array(data).flatten()))
-    data, weights = np.array(data).flatten(), np.array(weights).flatten()
-    if any(weights > 0):
-        sorted_data, sorted_weights = map(
-            np.array, zip(*sorted(zip(data, weights, strict=True)), strict=True)
-        )
-        midpoint = 0.5 * sum(sorted_weights)
-        if any(weights > midpoint):
-            return (data[weights == np.max(weights)])[0]
+    if not weights:
+        return float(np.median(data))
 
-        cumulative_weight = np.cumsum(sorted_weights)
-        below_midpoint_index = np.where(cumulative_weight <= midpoint)[0][-1]
-        if (
-            np.abs(cumulative_weight[below_midpoint_index] - midpoint)
-            < sys.float_info.epsilon
-        ):
-            return float(
-                np.mean(sorted_data[below_midpoint_index : below_midpoint_index + 2])
-            )
-        return float(sorted_data[below_midpoint_index + 1])
-    return None
+    data, weights = np.array(data).squeeze(), np.array(weights).squeeze()
+    s_data, s_weights = map(
+        np.array, zip(*sorted(zip(data, weights, strict=True)), strict=True)
+    )
+    midpoint = 0.5 * sum(s_weights)
+    if any(weights > midpoint):
+        w_median = (data[weights == np.max(weights)])[0]
+    else:
+        cs_weights = np.cumsum(s_weights)
+        idx = np.where(cs_weights <= midpoint)[0][-1]
+        if cs_weights[idx] == midpoint:
+            w_median = np.mean(s_data[idx : idx + 2])
+        else:
+            w_median = s_data[idx + 1]
+    return float(w_median)
 
 
 class StationCorrection(BaseModel):
@@ -86,22 +81,12 @@ class StationCorrection(BaseModel):
     def n_events(self) -> int:
         return len(self.events)
 
-    def has_corrections(self) -> bool:
-        return bool(self.n_events)
-
-    def iter_events(
-        self, phase: PhaseDescription, observed_only: bool = True
-    ) -> Iterable[EventCorrection]:
-        for event in self.events:
-            phase_detection = event.phase_arrivals.get(phase)
-            if not phase_detection:
-                continue
-            if observed_only and not phase_detection.observed:
-                continue
-            yield event
-
+    @property
     def phases(self) -> set[PhaseDescription]:
         return set(chain.from_iterable(event.phases() for event in self.events))
+
+    def get_num_picks(self, phase: PhaseDescription) -> int:
+        return sum(1 for _ in self.iter_phase_arrivals(phase=phase))
 
     def get_traveltime_delays(self, phase: PhaseDescription) -> np.ndarray:
         return np.fromiter(
@@ -110,33 +95,23 @@ class StationCorrection(BaseModel):
                 for phase in self.iter_phase_arrivals(phase=phase)
                 if phase.traveltime_delay is not None
             ),
-            float,
+            dtype=float,
         )
 
-    def get_event_semblances(
-        self, phase: PhaseDescription, normalize: bool = False
-    ) -> np.ndarray:
-        values = np.fromiter(
+    def get_event_semblances(self, phase: PhaseDescription) -> np.ndarray:
+        return np.fromiter(
             (event.semblance for event in self.iter_events(phase=phase)),
-            float,
+            dtype=float,
         )
-        if normalize:
-            values /= values.max()
-        return values
 
-    def get_detection_values(
-        self, phase: PhaseDescription, normalize: bool = False
-    ) -> np.ndarray:
-        values = np.fromiter(
+    def get_detection_values(self, phase: PhaseDescription) -> np.ndarray:
+        return np.fromiter(
             (
                 phase.observed.detection_value
                 for phase in self.iter_phase_arrivals(phase=phase)
             ),
-            float,
+            dtype=float,
         )
-        if normalize:
-            values /= values.max()
-        return values
 
     def get_arrival_weights(
         self, phase: PhaseDescription, weight: ArrivalWeighting = "none"
@@ -144,14 +119,16 @@ class StationCorrection(BaseModel):
         weights = None
         if weight == "PhaseNet":
             weights = self.get_detection_values(phase)
-        elif weight == "EventSemblance":
+        elif weight == "semblance":
             weights = self.get_event_semblances(phase)
-        elif weight == "PhaseNet+EventSemblance":
-            weights = self.get_detection_values(phase, normalize=True)
-            weights += self.get_event_semblances(phase, normalize=True)
-        elif weight == "EventSemblance*PhaseNet":
-            weights = self.get_event_semblances(phase)
-            weights *= self.get_detection_values(phase)
+        elif weight == "add-PhaseNet-semblance":
+            detections = self.get_detection_values(phase)
+            semblances = self.get_event_semblances(phase)
+            weights = detections / detections.max() + semblances / semblances.max()
+        elif weight == "mul-PhaseNet-semblance":
+            weights = self.get_detection_values(phase) * self.get_event_semblances(
+                phase
+            )
         return weights
 
     def get_average_delay(
@@ -205,6 +182,17 @@ class StationCorrection(BaseModel):
     def get_delays_std(self, phase: PhaseDescription) -> float:
         return float(np.std(self.get_traveltime_delays(phase)))
 
+    def iter_events(
+        self, phase: PhaseDescription, observed_only: bool = True
+    ) -> Iterable[EventCorrection]:
+        for event in self.events:
+            phase_detection = event.phase_arrivals.get(phase)
+            if not phase_detection:
+                continue
+            if observed_only and not phase_detection.observed:
+                continue
+            yield event
+
     def iter_phase_arrivals(
         self, phase: PhaseDescription, observed_only: bool = True
     ) -> Iterable[PhaseDetection]:
@@ -214,22 +202,19 @@ class StationCorrection(BaseModel):
     def get_csv_data(self) -> dict[str, float]:
         station = self.station
         data = {"lat": station.effective_lat, "lon": station.effective_lon}
-        avg_delay = self.get_average_delay
-        for phase in self.phases():
-            data[f"{phase}:delay"] = avg_delay(phase)
-            data[f"{phase}:delay_phasenet"] = avg_delay(phase, "PhaseNet")
-            data[f"{phase}:delay_semblance"] = avg_delay(phase, "EventSemblance")
-            data[f"{phase}:delay_phasenet_semblance"] = avg_delay(
-                phase, "PhaseNet+EventSemblance"
-            )
+        average = self.get_average_delay
+        median = self.get_median_delay
+        for phase in self.phases:
+            for aggregator, weight_name in zip(
+                (average, median), ("avg", "median"), strict=True
+            ):
+                for weight in get_args(ArrivalWeighting):
+                    data[f"{phase}-{weight_name}-{weight}"] = aggregator(phase, weight)
+            data[f"{phase}-num-picks"] = self.get_num_picks(phase)
         return data
 
-    @classmethod
-    def from_receiver(cls, receiver: Receiver) -> Self:
-        return cls(station=Station.parse_obj(receiver))
-
     def plot(self, filename: Path) -> None:
-        phases = self.phases()
+        phases = self.phases
         n_phases = len(phases)
         arrival_weights = get_args(ArrivalWeighting)
 
@@ -237,7 +222,7 @@ class StationCorrection(BaseModel):
         fig.set_size_inches(8, 12)
         axes = axes.T
 
-        def plot_data(
+        def plot_histogram(
             ax: plt.Axes, phase: PhaseDescription, weight: ArrivalWeighting
         ) -> None:
             delays = self.get_traveltime_delays(phase=phase)
@@ -261,15 +246,15 @@ class StationCorrection(BaseModel):
             ax.text(
                 0.05,
                 0.95,
-                f"{weight}\n{phase} ({n_delays})",
+                f"{weight}\n{phase} ({n_delays} picks)",
                 fontsize="small",
                 transform=ax.transAxes,
+                va="top",
             )
-            ax.legend(fontsize="small")
 
         for ax_col, phase in zip(axes, phases, strict=True):
             for ax, weight in zip(ax_col, arrival_weights, strict=True):
-                plot_data(ax, phase, weight)
+                plot_histogram(ax, phase, weight)
 
             for ax in ax_col:
                 ax = cast(plt.Axes, ax)
@@ -278,12 +263,17 @@ class StationCorrection(BaseModel):
                 ax.set_xlim(-xlim, xlim)
                 ax.grid(alpha=0.4)
 
+            ax_col[0].legend(fontsize="small")
             ax_col[-1].set_xlabel("Time Residual [s]")
 
         logger.info("saving residual plot to %s", filename)
         fig.tight_layout()
         fig.savefig(str(filename))
         plt.close()
+
+    @classmethod
+    def from_receiver(cls, receiver: Receiver) -> Self:
+        return cls(station=Station.parse_obj(receiver))
 
 
 class StationCorrections(BaseModel):
@@ -294,6 +284,7 @@ class StationCorrections(BaseModel):
             self.add_event(event)
 
     def add_event(self, event: EventDetection) -> None:
+        # FIXME: use event.in_bounds
         if event.distance_border < KM:
             return
 

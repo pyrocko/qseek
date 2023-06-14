@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, ClassVar, Literal, Union
 
 import numpy as np
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
 
 # From Bormann and Dewey (2014) https://doi.org/10.2312/GFZ.NMSOP-2_IS_3.3
 # Page 5
+logger = logging.getLogger(__name__)
+
 WOOD_ANDERSON = trace.PoleZeroResponse(
     poles=[
         -5.49779 - 5.60886j,
@@ -25,7 +28,6 @@ WOOD_ANDERSON = trace.PoleZeroResponse(
     zeros=[0.0 + 0.0j, 0.0 + 0.0j],
     constant=2080.0,
 )
-
 
 KM = 1e3
 MM = 1e3
@@ -85,7 +87,10 @@ class LocalMagnitudeModel(BaseModel):
             return None
 
         log_amp_0 = self.get_amp_0(dist_hypo / KM, dist_epi / KM)
-        amp_max = _get_max_amplitude_mm(self.trace_selector(traces))
+        try:
+            amp_max = _get_max_amplitude_mm(self.trace_selector(traces))
+        except KeyError as exc:
+            logger.exception(exc)
         return StationMagnitude(
             estimator=self.name,
             local_magnitude=np.log(amp_max) + log_amp_0,
@@ -113,17 +118,22 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
 
     def calculate_magnitude(
         self, event: EventDetection, receiver: Receiver, traces: list[Trace]
-    ) -> StationMagnitude:
+    ) -> StationMagnitude | None:
         dist_hypo = event.distance_to(receiver) / KM
-        amp = _get_max_amplitude_mm(ChannelSelectors.Horizontal(traces))
-        amp *= 1000000  # To nm
+        try:
+            amp_max = _get_max_amplitude_mm(ChannelSelectors.Horizontal(traces))
+        except KeyError as exc:
+            logger.exception(exc)
+            return None
+
+        amp_max *= 1000000  # To nm
         local_magnitude = (
-            np.log10(amp) + 1.11 * np.log10(dist_hypo) + 0.00189 * dist_hypo - 2.09
+            np.log10(amp_max) + 1.11 * np.log10(dist_hypo) + 0.00189 * dist_hypo - 2.09
         )
         return StationMagnitude(
             estimator=self.name,
             local_magnitude=local_magnitude,
-            peak_velocity_mm=amp / 1000000,
+            peak_velocity_mm=amp_max / 1000000,
         )
 
 

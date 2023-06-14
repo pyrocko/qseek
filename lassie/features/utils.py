@@ -16,9 +16,9 @@ class ChannelSelector:
         traces = [tr for tr in traces if tr.channel[-1] in self.channels]
         if len(traces) != self.number_channels:
             raise KeyError(
-                "cannot get %d channels for selector %s",
-                self.number_channels,
-                self.channels,
+                f"cannot get {self.number_channels} channels"
+                f" for selector {self.channels}"
+                f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces)}"
             )
         return traces
 
