@@ -160,6 +160,7 @@ class SquirrelSearch(Search):
                 await self._new_detection.emit(detection)
 
             self.search_progress_time = window_end
+            self.write_config()
 
     async def add_features(self, event: EventDetection) -> None:
         squirrel = self.get_squirrel()

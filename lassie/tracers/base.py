@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence, TypeVar
 
 import numpy as np
 from pydantic import BaseModel
 
+from lassie.models.location import Location
 from lassie.models.phase_arrival import PhaseArrival
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from lassie.models.location import Location
     from lassie.models.station import Stations
     from lassie.octree import Octree
+
+_LocationType = TypeVar("_LocationType", bound=Location)
 
 
 class ModelledArrival(PhaseArrival):
@@ -59,6 +61,6 @@ class RayTracer(BaseModel):
         phase: str,
         event_time: datetime,
         source: Location,
-        receivers: Sequence[Location],
-    ) -> list[ModelledArrival]:
+        receivers: Sequence[_LocationType],
+    ) -> list[ModelledArrival | None]:
         raise NotImplementedError

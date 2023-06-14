@@ -12,6 +12,7 @@ from lassie.utils import PhaseDescription, downsample
 
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
+
     from pyrocko.trace import Trace
 
 
@@ -126,7 +127,7 @@ class WaveformImage:
 
     def search_phase_arrivals(
         self,
-        modelled_arrivals: list[datetime],
+        modelled_arrivals: list[datetime | None],
         search_length_seconds: float = 5,
         threshold: float = 0.1,
     ) -> list[PickedArrival | None]:
@@ -148,6 +149,8 @@ class WaveformImage:
                 search_length_seconds=search_length_seconds,
                 threshold=threshold,
             )
+            if modelled_arrival
+            else None
             for idx, modelled_arrival in zip(
                 range(self.n_traces),
                 modelled_arrivals,

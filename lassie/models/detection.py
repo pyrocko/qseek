@@ -4,10 +4,9 @@ import logging
 from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Iterator, Literal, Type, TypeVar
 from uuid import UUID, uuid4
 
-import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko import io
 from pyrocko.gui import marker
@@ -18,7 +17,6 @@ from lassie.features import EventFeatures, ReceiverFeatures
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station
-from lassie.plot.octree import plot_octree, plot_octree_surface
 from lassie.tracers import RayTracerArrival
 from lassie.utils import PhaseDescription, time_to_path
 
@@ -211,11 +209,20 @@ class Receivers(BaseModel):
     def n_receivers(self) -> int:
         return len(self.__root__)
 
+    def n_observations(self, phase: PhaseDescription) -> int:
+        n_observations = 0
+        for receiver in self:
+            if (arrival := receiver.phase_arrivals.get(phase)) and arrival.observed:
+                n_observations += 1
+        return n_observations
+
     def add_receivers(
-        self, stations: list[Station], phase_arrivals: list[PhaseDetection]
+        self, stations: list[Station], phase_arrivals: list[PhaseDetection | None]
     ) -> None:
         receivers = [Receiver.from_station(sta) for sta in stations]
         for receiver, arrival in zip(receivers, phase_arrivals, strict=True):
+            if not arrival:
+                continue
             try:
                 receiver = self.get_by_nsl(receiver.nsl)
             except KeyError:
@@ -306,14 +313,6 @@ class EventDetection(Location):
         logger.info("saving detection's Pyrocko markers to %s", filename)
         marker.save_markers(self.as_pyrocko_markers(), str(filename))
 
-    def plot(self, cmap: str = "Oranges") -> None:
-        plot_octree(self.octree, cmap=cmap)
-
-    def plot_surface(
-        self, accumulator: Callable = np.max, cmap: str = "Oranges"
-    ) -> None:
-        plot_octree_surface(self.octree, accumulator=accumulator, cmap=cmap)
-
 
 class Detections(BaseModel):
     rundir: Path
@@ -369,12 +368,12 @@ class Detections(BaseModel):
         raise KeyError("detection not found")
 
     def save_csv(self, file: Path) -> None:
-        lines = ["lat, lon, depth, detection_peak, time"]
+        lines = ["lat, lon, depth, semblance, time, distance_border"]
         for det in self:
             lat, lon = det.effective_lat_lon
             lines.append(
                 f"{lat:.5f}, {lon:.5f}, {-det.effective_elevation:.1f},"
-                f" {det.semblance}, {det.time}"
+                f" {det.semblance}, {det.time}, {det.distance_border}"
             )
         file.write_text("\n".join(lines))
 

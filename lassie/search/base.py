@@ -96,8 +96,7 @@ class Search(BaseModel):
 
         if not rundir.exists():
             rundir.mkdir()
-        search_config = rundir / "search.json"
-        search_config.write_text(self.json(indent=2))
+        self.write_config()
         self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
 
         logger.info("created new rundir %s", rundir)
@@ -106,6 +105,11 @@ class Search(BaseModel):
         logging.root.addHandler(file_logger)
 
         self._detections = Detections(rundir=rundir)
+
+    def write_config(self, path: Path | None = None) -> None:
+        path = path or self._rundir / "search.json"
+        logger.debug("writing search config to %s", path)
+        path.write_text(self.json(indent=2))
 
     @classmethod
     def load_rundir(cls, path: Path) -> Self:
@@ -228,7 +232,6 @@ class SearchTraces:
             shifts=shifts,
             weights=weights,
             lengthout=n_samples_semblance,
-            result=semblance_data,
             dtype=np.float32,
             method=0,
             nparallel=parent.n_threads_parstack,
@@ -287,13 +290,16 @@ class SearchTraces:
         )
 
         for image in images:
-            await self.calculate_semblance(
-                octree=octree,
-                image=image,
-                ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                semblance_data=semblance.semblance_unpadded,
-                n_samples_semblance=semblance.n_samples_unpadded,
+            semblance.add(
+                await self.calculate_semblance(
+                    octree=octree,
+                    image=image,
+                    ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
+                    semblance_data=semblance.semblance_unpadded,
+                    n_samples_semblance=semblance.n_samples_unpadded,
+                )
             )
+        # TODO: parstack fix ownership of passed result
         semblance.normalize(images.n_images)
 
         parent.semblance_stats.update(semblance.get_stats())
@@ -368,10 +374,15 @@ class SearchTraces:
                     receivers=image.stations.stations,
                 )
                 arrivals_observed = image.search_phase_arrivals(
-                    modelled_arrivals=[arr.time for arr in arrivals_model]
+                    modelled_arrivals=[
+                        arr.time if arr else None for arr in arrivals_model
+                    ]
                 )
+
                 phase_detections = [
                     PhaseDetection(phase=image.phase, model=model, observed=observed)
+                    if model
+                    else None
                     for model, observed in zip(
                         arrivals_model, arrivals_observed, strict=True
                     )

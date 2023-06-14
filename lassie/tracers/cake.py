@@ -382,14 +382,18 @@ class CakeTracer(RayTracer):
         event_time: datetime,
         source: Location,
         receivers: Sequence[Location],
-    ) -> list[CakeArrival]:
+    ) -> list[CakeArrival | None]:
         traveltimes = self.get_traveltimes_locations(
             phase,
             source=source,
             receivers=receivers,
         )
         arrivals = []
-        for traveltime in traveltimes:
+        for traveltime, _receiver in zip(traveltimes, receivers, strict=True):
+            if np.isnan(traveltime):
+                arrivals.append(None)
+                continue
+
             arrivaltime = event_time + timedelta(seconds=traveltime)
             arrival = CakeArrival(time=arrivaltime, phase=phase)
             arrivals.append(arrival)
