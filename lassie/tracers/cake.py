@@ -12,6 +12,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
+from lru import LRU
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
@@ -115,7 +116,7 @@ class TraveltimeTree(BaseModel):
 
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
-    _cache: dict[bytes, np.ndarray] = PrivateAttr({})
+    _cache: dict[bytes, np.ndarray] = PrivateAttr(LRU(30))
 
     def calculate_tree(self) -> spit.SPTree:
         layered_model = self.earthmodel.as_layered_model()

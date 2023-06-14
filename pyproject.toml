@@ -16,13 +16,13 @@ dynamic = ["version"]
 description = "Lassie - The friendly earthquake detector."
 readme = "README.md"
 authors = [
+    { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
     { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
     { name = "Marius Kriegerowski", email = "mk@quakesaver.de" },
-    { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
 ]
 maintainers = [
-    { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
     { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
+    { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
 ]
 keywords = ["earthquake", "detection", "locatiosation", "stacking-migration"]
 
@@ -47,6 +47,7 @@ dependencies = [
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
+    "lru-dict>=1.2"
 ]
 
 [project.optional-dependencies]
