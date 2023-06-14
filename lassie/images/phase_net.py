@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
@@ -7,12 +8,15 @@ import torch
 from obspy import Stream
 from pydantic import PositiveInt, PrivateAttr, conint
 from pyrocko import obspy_compat
+from seisbench import logger
 from seisbench.models import PhaseNet as PhaseNetSeisBench
 
 from lassie.images.base import ImageFunction, PickedArrival, WaveformImage
 from lassie.utils import alog_call, to_datetime
 
 obspy_compat.plant()
+
+logger.setLevel(logging.CRITICAL)
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace

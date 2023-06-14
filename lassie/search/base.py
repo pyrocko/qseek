@@ -147,6 +147,7 @@ class Search(BaseModel):
         logger.info(
             "source-station distances range: %.1f - %.1f m", *self.distance_range
         )
+        logger.info("shift range %s", self.shift_range)
         logger.info("using trace window padding: %s", self.window_padding)
 
     @classmethod
