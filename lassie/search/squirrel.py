@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
 
-from pydantic import PrivateAttr, validator
+from pydantic import PrivateAttr, conint, validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors
@@ -35,6 +35,7 @@ class SquirrelSearch(Search):
         LocalMagnitudeExtractor(),
     ]
     search_progress_time: datetime | None = None
+    window_length_factor: conint(ge=5, le=100) = 10
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 
@@ -94,7 +95,7 @@ class SquirrelSearch(Search):
 
         # TODO: too hardcoded
         window_increment = window_increment or (
-            self.shift_range * 10 + 3 * self.window_padding
+            self.shift_range * self.window_length_factor + 3 * self.window_padding
         )
         logger.info("using trace window increment: %s", window_increment)
 
