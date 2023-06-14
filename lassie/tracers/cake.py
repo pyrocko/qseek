@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 KM = 1e3
 MAX_DBS = 16
 
+LRU_CACHE = 50
+
 
 class CakeArrival(ModelledArrival):
     tracer: Literal["CakeArrival"] = "CakeArrival"
@@ -116,7 +118,9 @@ class TraveltimeTree(BaseModel):
 
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
-    _cache: dict[bytes, np.ndarray] = PrivateAttr(LRU(30))
+    _cache: dict[bytes, np.ndarray] = PrivateAttr(
+        default_factory=lambda: LRU(LRU_CACHE)
+    )
 
     def calculate_tree(self) -> spit.SPTree:
         layered_model = self.earthmodel.as_layered_model()
