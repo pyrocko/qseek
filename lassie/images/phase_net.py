@@ -88,7 +88,7 @@ class PhaseNet(ImageFunction):
     window_overlap_samples: conint(ge=1000, le=3000) = 2000
     torch_use_cuda: bool = False
     torch_cpu_threads: PositiveInt = 4
-    stack_method: StackMethod = "max"
+    stack_method: StackMethod = "avg"
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
         "S": "constant:S",
