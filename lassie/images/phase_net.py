@@ -36,6 +36,7 @@ ModelName = Literal[
 ]
 
 PhaseName = Literal["P", "S"]
+StackMethod = Literal["avg", "max"]
 
 
 class PhaseNetPick(PickedArrival):
@@ -87,7 +88,7 @@ class PhaseNet(ImageFunction):
     window_overlap_samples: conint(ge=1000, le=3000) = 2000
     torch_use_cuda: bool = False
     torch_cpu_threads: PositiveInt = 4
-    seisbench_subprocesses: conint(ge=0) = 0
+    stack_method: StackMethod = "max"
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
         "S": "constant:S",
