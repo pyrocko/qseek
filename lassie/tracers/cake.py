@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 KM = 1e3
 MAX_DBS = 16
 
-LRU_CACHE = 50
+LRU_CACHE = 2000
 
 
 class CakeArrival(ModelledArrival):
