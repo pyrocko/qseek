@@ -255,8 +255,8 @@ class TraveltimeTree(BaseModel):
                 lambda phase: sptree.interpolate_many,
                 coordinates,
             )
-            self._cache[coord_hash] = traveltimes
-        return self._cache[coord_hash]
+            self._cache[coord_hash] = traveltimes.astype(np.float32)
+        return self._cache[coord_hash].astype(float)
 
     def get_traveltime(self, source: Location, receiver: Location) -> float:
         coordinates = [
@@ -323,7 +323,7 @@ class CakeTracer(RayTracer):
     def prepare(self, octree: Octree, stations: Stations) -> None:
         global LRU_CACHE
 
-        LRU_CACHE = octree.n_nodes * 3
+        LRU_CACHE = octree.n_nodes * 2
         logging.info("setting LRU cache to %d", LRU_CACHE)
 
         cached_trees = [
