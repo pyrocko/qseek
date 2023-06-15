@@ -88,6 +88,7 @@ class PhaseNet(ImageFunction):
     window_overlap_samples: conint(ge=1000, le=3000) = 2000
     torch_use_cuda: bool = False
     torch_cpu_threads: PositiveInt = 4
+    batch_size: conint(ge=64) = 64
     stack_method: StackMethod = "avg"
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
@@ -116,6 +117,7 @@ class PhaseNet(ImageFunction):
         annotations: Stream = self._phase_net.annotate(
             stream,
             overlap=self.window_overlap_samples,
+            batch_size=self.batch_size
             # parallelism=self.seisbench_subprocesses,
         )
 

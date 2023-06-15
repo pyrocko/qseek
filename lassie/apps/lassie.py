@@ -184,3 +184,7 @@ def main() -> None:
 
         file = args.folder / "detections.schema.json"
         file.write_text(Detections.schema_json(indent=2))
+
+
+if __name__ == "__main__":
+    main()
