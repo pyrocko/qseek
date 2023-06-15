@@ -62,16 +62,20 @@ class Stations(BaseModel):
     pyrocko_station_yamls: list[Path] = []
 
     _cached_coordinates: np.ndarray | None = PrivateAttr(None)
+    _cached_stations: list[Station] = PrivateAttr([])
 
     def __iter__(self) -> Iterator[Station]:
-        for sta in self.stations:
-            if sta.pretty_nsl in self.blacklist:
-                continue
-            yield sta
+        if not self._cached_stations:
+            self._cached_stations = [
+                sta for sta in self.stations if sta.pretty_nsl not in self.blacklist
+            ]
+        return iter(self._cached_stations)
 
     @property
     def n_stations(self) -> int:
-        return len([sta for sta in self])
+        if self._cached_stations:
+            return len(self._cached_stations)
+        return sum(1 for _ in self)
 
     def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
         return tuple(sta.nsl for sta in self)

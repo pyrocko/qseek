@@ -47,13 +47,18 @@ class EventCorrection(Location):
 
 def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> float:
     """Calculate the weighted median of an array/list using numpy."""
-    if not weights:
+    if weights is None:
         return float(np.median(data))
 
-    data, weights = np.array(data).squeeze(), np.array(weights).squeeze()
-    s_data, s_weights = map(
-        np.array, zip(*sorted(zip(data, weights, strict=True)), strict=True)
-    )
+    data = np.atleast_1d(np.array(data).squeeze())
+    weights = np.atleast_1d(np.array(weights).squeeze())
+    try:
+        s_data, s_weights = map(
+            np.array, zip(*sorted(zip(data, weights, strict=True)), strict=True)
+        )
+    except TypeError as exc:
+        print(data, weights)
+        raise exc
     midpoint = 0.5 * sum(s_weights)
     if any(weights > midpoint):
         w_median = (data[weights == np.max(weights)])[0]

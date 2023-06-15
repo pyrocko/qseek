@@ -268,6 +268,7 @@ class TraveltimeTree(BaseModel):
         return float(traveltime)
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
+        logger.debug("calculating traveltimes for %d stations", stations.n_stations)
         receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
         source_depths = np.fromiter((node.depth for node in octree), float)
         receiver_distances = octree.distances_stations(stations)
