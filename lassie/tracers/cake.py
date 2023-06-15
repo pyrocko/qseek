@@ -219,7 +219,7 @@ class TraveltimeTree(BaseModel):
         Returns:
             Self: Loaded SPTreeModel
         """
-        logger.debug("loading traveltimes from from %s", file)
+        logger.debug("loading traveltimes from %s", file)
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model = cls.parse_raw((path / "model.json").read_bytes())
@@ -320,6 +320,11 @@ class CakeTracer(RayTracer):
         return float((vel[vel != 0.0]).min())
 
     def prepare(self, octree: Octree, stations: Stations) -> None:
+        global LRU_CACHE
+
+        LRU_CACHE = octree.n_nodes * 3
+        logging.info("setting LRU cache to %d", LRU_CACHE)
+
         cached_trees = [
             TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
         ]
