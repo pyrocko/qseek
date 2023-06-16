@@ -256,11 +256,6 @@ class TraveltimeTree(BaseModel):
                 coordinates,
             )
             self._cache[coord_hash] = traveltimes.astype(np.float32)
-            logger.debug(
-                "caching %d traveltimes, size %d bytes",
-                coordinates.size,
-                traveltimes.nbytes,
-            )
         return self._cache[coord_hash].astype(float)
 
     def get_traveltime(self, source: Location, receiver: Location) -> float:
@@ -271,6 +266,9 @@ class TraveltimeTree(BaseModel):
         ]
         traveltime = self._get_traveltime_sptree(coordinates)
         return float(traveltime)
+
+    def get_cache_size(self) -> int:
+        return sum(traveltimes.size for traveltimes in self._cache.values())
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
         logger.debug("calculating traveltimes for %d stations", stations.n_stations)
@@ -292,6 +290,7 @@ class TraveltimeTree(BaseModel):
             coordinates.append(np.asarray(node_receivers_distances).T)
 
         traveltimes = [self._get_traveltime_sptree(coords) for coords in coordinates]
+        logger.debug("cache size is %d bytes", self.get_cache_size())
         return np.array(traveltimes)
 
 
