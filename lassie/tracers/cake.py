@@ -251,11 +251,16 @@ class TraveltimeTree(BaseModel):
         coordinates = np.atleast_2d(np.ascontiguousarray(coordinates))
         coord_hash = sha1(coordinates.data).digest()
         if coord_hash not in self._cache:
-            traveltimes = timing.evaluate(
+            traveltimes: np.ndarray = timing.evaluate(
                 lambda phase: sptree.interpolate_many,
                 coordinates,
             )
             self._cache[coord_hash] = traveltimes.astype(np.float32)
+            logger.debug(
+                "caching %d traveltimes, size %d bytes",
+                coordinates.size,
+                traveltimes.nbytes,
+            )
         return self._cache[coord_hash].astype(float)
 
     def get_traveltime(self, source: Location, receiver: Location) -> float:
