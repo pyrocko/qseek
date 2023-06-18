@@ -12,7 +12,6 @@ from lassie.models import Stations
 from lassie.search import SquirrelSearch
 from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
-from lassie.tracers import CakeTracer, RayTracers
 from lassie.utils import ANSI
 
 logger = logging.getLogger(__name__)
@@ -99,24 +98,22 @@ def main() -> None:
         folder: Path = args.folder
         if folder.exists():
             raise FileExistsError(f"Folder {folder} already exists")
+        folder.mkdir()
 
-        folder.mkdir(exist_ok=True)
+        pyrocko_stations = folder / "pyrocko-stations.yaml"
+        pyrocko_stations.touch()
 
-        config = SquirrelSearch.construct(
-            stations=Stations.construct(
-                pyrocko_station_yamls=[Path("pyrocko-stations.yaml")],
-                blacklist=["NE.STA.LOC"],
-            ),
+        config = SquirrelSearch(
+            stations=Stations(pyrocko_station_yamls=[pyrocko_stations]),
             waveform_data=[Path("/data/")],
-            ray_tracers=RayTracers(__root__=[CakeTracer()]),
             time_span=(
                 datetime.fromisoformat("2023-04-11T00:00:00+00:00"),
                 datetime.fromisoformat("2023-04-18T00:00:00+00:00"),
             ),
         )
+
         config_file = folder / "config.json"
         config_file.write_text(config.json(by_alias=False, indent=2))
-        (folder / "pyrocko-stations.yaml").touch()
         logger.info("initialized new project in folder %s", folder)
         logger.info(
             "start detecting with:\n\t%slassie run config.json%s", ANSI.Bold, ANSI.Reset

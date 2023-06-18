@@ -50,10 +50,10 @@ class Search(BaseModel):
 
     project_dir: Path = Path(".")
 
-    octree: Octree
-    stations: Stations
-    ray_tracers: RayTracers
-    image_functions: ImageFunctions
+    octree: Octree = Octree()
+    stations: Stations = Stations()
+    ray_tracers: RayTracers = RayTracers()
+    image_functions: ImageFunctions = ImageFunctions()
 
     n_threads_parstack: conint(ge=0) = 0
     n_threads_argmax: PositiveInt = 4

@@ -155,9 +155,7 @@ class Stations(BaseModel):
             seen_nsls.add(sta.pretty_nsl)
 
         if not values.get("stations"):
-            raise AttributeError(
-                "no stations available, add stations to start detection"
-            )
+            logger.warning("no stations available, add stations to start detection")
 
         return values
 
