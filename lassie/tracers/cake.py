@@ -326,7 +326,7 @@ class CakeTracer(RayTracer):
     def prepare(self, octree: Octree, stations: Stations) -> None:
         global LRU_CACHE
 
-        LRU_CACHE = octree.n_nodes * 2
+        LRU_CACHE = octree.n_nodes * 4
         logging.info("setting LRU cache to %d", LRU_CACHE)
 
         cached_trees = [
