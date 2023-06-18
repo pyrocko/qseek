@@ -327,7 +327,7 @@ class CakeTracer(RayTracer):
         global LRU_CACHE
 
         LRU_CACHE = octree.n_nodes * 4
-        logging.info("setting LRU cache to %d", LRU_CACHE)
+        logging.debug("setting LRU cache keys to %d", LRU_CACHE)
 
         cached_trees = [
             TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
