@@ -232,14 +232,8 @@ class Octree(BaseModel):
         return np.fromiter((node.semblance for node in self), float)
 
     def map_semblance(self, semblance: np.ndarray) -> None:
-        n_nodes = 0
         for node, node_semblance in zip(self, semblance, strict=True):
             node.semblance = float(node_semblance)
-            n_nodes += 1
-        if n_nodes != semblance.size:
-            raise ValueError(
-                f"semblance is of bad shape {semblance.shape}, expected {n_nodes}"
-            )
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if self._cached_coordinates.get(system) is None:

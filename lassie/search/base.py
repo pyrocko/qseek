@@ -322,6 +322,7 @@ class SearchTraces:
             detection_idx, detection_semblance, strict=True
         ):
             octree.map_semblance(semblance.semblance[:, idx])
+            # TODO: threshold should be configurable
             split_nodes.update(octree.get_nodes(semblance_detection * 0.9))
 
         try:
@@ -332,7 +333,9 @@ class SearchTraces:
                 len(split_nodes),
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
+            del semblance
             return await self.search(octree)
+
         except NodeSplitError:
             logger.debug("reverting partial split")
             for node in split_nodes:
@@ -345,9 +348,9 @@ class SearchTraces:
         ):
             time = self.start_time + timedelta(seconds=idx / sampling_rate)
 
-            octree.map_semblance(semblance.semblance[:, idx])
+            octree.map_semblance(semblance.semblance[:, idx])  # noqa: F821
 
-            idx = (await semblance.maximum_node_idx())[idx]
+            idx = (await semblance.maximum_node_idx())[idx]  # noqa: F821
             node = octree[idx]
             if not octree.is_node_in_bounds(node):
                 logger.info(
@@ -409,4 +412,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance.get_trace(padded=False)
+        return detections, semblance.get_trace(padded=False)  # noqa: F821
