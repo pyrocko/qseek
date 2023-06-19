@@ -204,10 +204,13 @@ class Semblance:
             ydata=data,
         )
 
-    def reset(self) -> None:
-        """Reset the semblance."""
-        self.semblance_unpadded = np.zeros_like(self.semblance_unpadded)
-        self._clear_cache()
+    def get_size_bytes(self) -> int:
+        """Get size of the semblance in bytes.
+
+        Returns:
+            int: Size in bytes.
+        """
+        return self.semblance_unpadded.nbytes
 
     def _clear_cache(self) -> None:
         self._node_idx_max = None

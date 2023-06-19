@@ -272,7 +272,6 @@ class SearchTraces:
     async def search(
         self,
         octree: Octree | None = None,
-        semblance: Semblance | None = None,
     ) -> tuple[list[EventDetection], Trace]:
         parent = self.parent
         sampling_rate = parent.sampling_rate
@@ -283,17 +282,13 @@ class SearchTraces:
         padding_samples = int(
             round(parent.window_padding.total_seconds() * sampling_rate)
         )
-
-        if semblance is None:
-            semblance = Semblance(
-                n_nodes=octree.n_nodes,
-                n_samples=self._get_n_samples_semblance(),
-                start_time=self.start_time,
-                sampling_rate=sampling_rate,
-                padding_samples=padding_samples,
-            )
-        else:
-            semblance.reset()
+        semblance = Semblance(
+            n_nodes=octree.n_nodes,
+            n_samples=self._get_n_samples_semblance(),
+            start_time=self.start_time,
+            sampling_rate=sampling_rate,
+            padding_samples=padding_samples,
+        )
 
         for image in images:
             await self.calculate_semblance(
@@ -308,6 +303,7 @@ class SearchTraces:
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.info("semblance stats: %s", parent.semblance_stats)
+        logger.info("semblance size %d bytes", semblance.get_size_bytes())
 
         detection_idx, detection_semblance = semblance.find_peaks(
             height=parent.detection_threshold,
@@ -336,7 +332,8 @@ class SearchTraces:
                 len(split_nodes),
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
-            return await self.search(octree, semblance)
+            del semblance
+            return await self.search(octree)
 
         except NodeSplitError:
             logger.debug("reverting partial split")
@@ -350,9 +347,9 @@ class SearchTraces:
         ):
             time = self.start_time + timedelta(seconds=idx / sampling_rate)
 
-            octree.map_semblance(semblance.semblance[:, idx])
+            octree.map_semblance(semblance.semblance[:, idx])  # noqa: F821
 
-            idx = (await semblance.maximum_node_idx())[idx]
+            idx = (await semblance.maximum_node_idx())[idx]  # noqa: F821
             node = octree[idx]
             if not octree.is_node_in_bounds(node):
                 logger.info(
@@ -414,4 +411,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance.get_trace(padded=False)
+        return detections, semblance.get_trace(padded=False)  # noqa: F821
