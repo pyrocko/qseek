@@ -267,8 +267,8 @@ class TraveltimeTree(BaseModel):
         traveltime = self._get_traveltime_sptree(coordinates)
         return float(traveltime)
 
-    def get_cache_size(self) -> int:
-        return sum(traveltimes.size for traveltimes in self._cache.values())
+    def get_cache_bytes(self) -> int:
+        return sum(traveltimes.nbytes for traveltimes in self._cache.values())
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
         logger.debug("calculating traveltimes for %d stations", stations.n_stations)
@@ -388,7 +388,7 @@ class CakeTracer(RayTracer):
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
         tree = self._get_sptree_model(phase)
-        logger.debug("%s cache size is %d bytes", phase, tree.get_cache_size())
+        logger.info("%s cache size is %d bytes", phase, tree.get_cache_bytes())
         return tree.get_traveltimes(octree, stations)
 
     def get_arrivals(
