@@ -73,12 +73,14 @@ class Stations(BaseModel):
 
     @property
     def n_stations(self) -> int:
+        """Number of stations in the stations object."""
         if self._cached_stations:
             return len(self._cached_stations)
         return sum(1 for _ in self)
 
-    def get_all_nsl(self) -> tuple[tuple[str, str, str]]:
-        return tuple(sta.nsl for sta in self)
+    def get_all_nsl(self) -> set[tuple[str, str, str]]:
+        """Get all NSL codes from all stations."""
+        return {sta.nsl for sta in self}
 
     def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
         """Select stations by NSL code.
@@ -160,6 +162,11 @@ class Stations(BaseModel):
         return values
 
     def dump_pyrocko_stations(self, filename: Path) -> None:
+        """Dump stations to pyrocko station yaml file.
+
+        Args:
+            filename (Path): Path to yaml file.
+        """
         dump_stations_yaml(
             [sta.to_pyrocko_station() for sta in self],
             filename=str(filename.expanduser()),

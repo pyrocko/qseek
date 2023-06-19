@@ -206,7 +206,7 @@ class Semblance:
 
     def reset(self) -> None:
         """Reset the semblance."""
-        self.semblance_unpadded.fill(0.0)
+        self.semblance_unpadded = np.zeros_like(self.semblance_unpadded)
         self._clear_cache()
 
     def _clear_cache(self) -> None:

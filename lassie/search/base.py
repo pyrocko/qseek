@@ -233,6 +233,7 @@ class SearchTraces:
             shifts=shifts,
             weights=weights,
             lengthout=n_samples_semblance,
+            result=semblance_data,
             dtype=np.float32,
             method=0,
             nparallel=parent.n_threads_parstack,
@@ -269,7 +270,9 @@ class SearchTraces:
         return self._images[sampling_rate]
 
     async def search(
-        self, octree: Octree | None = None, semblance: Semblance | None = None
+        self,
+        octree: Octree | None = None,
+        semblance: Semblance | None = None,
     ) -> tuple[list[EventDetection], Trace]:
         parent = self.parent
         sampling_rate = parent.sampling_rate
