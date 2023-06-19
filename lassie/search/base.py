@@ -269,8 +269,7 @@ class SearchTraces:
         return self._images[sampling_rate]
 
     async def search(
-        self,
-        octree: Octree | None = None,
+        self, octree: Octree | None = None, semblance: Semblance | None = None
     ) -> tuple[list[EventDetection], Trace]:
         parent = self.parent
         sampling_rate = parent.sampling_rate
@@ -282,23 +281,24 @@ class SearchTraces:
             round(parent.window_padding.total_seconds() * sampling_rate)
         )
 
-        semblance = Semblance(
-            n_nodes=octree.n_nodes,
-            n_samples=self._get_n_samples_semblance(),
-            start_time=self.start_time,
-            sampling_rate=sampling_rate,
-            padding_samples=padding_samples,
-        )
+        if semblance is None:
+            semblance = Semblance(
+                n_nodes=octree.n_nodes,
+                n_samples=self._get_n_samples_semblance(),
+                start_time=self.start_time,
+                sampling_rate=sampling_rate,
+                padding_samples=padding_samples,
+            )
+        else:
+            semblance.reset()
 
         for image in images:
-            semblance.add(
-                await self.calculate_semblance(
-                    octree=octree,
-                    image=image,
-                    ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                    semblance_data=semblance.semblance_unpadded,
-                    n_samples_semblance=semblance.n_samples_unpadded,
-                )
+            await self.calculate_semblance(
+                octree=octree,
+                image=image,
+                ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
+                semblance_data=semblance.semblance_unpadded,
+                n_samples_semblance=semblance.n_samples_unpadded,
             )
         # TODO: parstack fix ownership of passed result
         semblance.normalize(images.n_images)
@@ -333,8 +333,7 @@ class SearchTraces:
                 len(split_nodes),
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
-            del semblance
-            return await self.search(octree)
+            return await self.search(octree, semblance)
 
         except NodeSplitError:
             logger.debug("reverting partial split")
@@ -348,9 +347,9 @@ class SearchTraces:
         ):
             time = self.start_time + timedelta(seconds=idx / sampling_rate)
 
-            octree.map_semblance(semblance.semblance[:, idx])  # noqa: F821
+            octree.map_semblance(semblance.semblance[:, idx])
 
-            idx = (await semblance.maximum_node_idx())[idx]  # noqa: F821
+            idx = (await semblance.maximum_node_idx())[idx]
             node = octree[idx]
             if not octree.is_node_in_bounds(node):
                 logger.info(
@@ -412,4 +411,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance.get_trace(padded=False)  # noqa: F821
+        return detections, semblance.get_trace(padded=False)

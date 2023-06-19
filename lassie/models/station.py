@@ -154,8 +154,8 @@ class Stations(BaseModel):
                 continue
             seen_nsls.add(sta.pretty_nsl)
 
-        if not values.get("stations"):
-            logger.warning("no stations available, add stations to start detection")
+        # if not values.get("stations"):
+        #     logger.warning("no stations available, add stations to start detection")
 
         return values
 

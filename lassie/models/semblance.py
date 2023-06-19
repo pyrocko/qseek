@@ -204,6 +204,11 @@ class Semblance:
             ydata=data,
         )
 
+    def reset(self) -> None:
+        """Reset the semblance."""
+        self.semblance_unpadded.fill(0.0)
+        self._clear_cache()
+
     def _clear_cache(self) -> None:
         self._node_idx_max = None
         self._max_semblance = None
