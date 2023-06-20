@@ -123,8 +123,8 @@ class Search(BaseModel):
         for phase, tracer in self.ray_tracers.iter_phase_tracer():
             traveltimes = tracer.get_traveltimes(phase, self.octree, self.stations)
             self.travel_time_ranges[phase] = (
-                timedelta(seconds=traveltimes.min()),
-                timedelta(seconds=traveltimes.max()),
+                timedelta(seconds=np.nanmin(traveltimes)),
+                timedelta(seconds=np.nanmax(traveltimes)),
             )
             logger.info(
                 "shift ranges: %s / %s - %s", phase, *self.travel_time_ranges[phase]
