@@ -34,7 +34,7 @@ ImageFunctionPick = Annotated[
 
 
 class ImageFunctions(BaseModel):
-    __root__: list[ImageFunctionType] = []
+    __root__: list[ImageFunctionType] = [PhaseNet()]
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
