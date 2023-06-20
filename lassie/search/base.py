@@ -220,7 +220,8 @@ class SearchTraces:
         weights[traveltimes_bad] = 0.0
 
         # Normalize by number of station contribution
-        weights /= station_contribution[:, np.newaxis]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            weights /= station_contribution[:, np.newaxis]
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
