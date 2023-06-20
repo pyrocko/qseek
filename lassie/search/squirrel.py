@@ -90,6 +90,7 @@ class SquirrelSearch(Search):
         self,
         window_increment: timedelta | None = None,
     ) -> None:
+        self.ray_tracers.prepare(self.octree, self.stations)
         self._init_ranges()
         squirrel = self.get_squirrel()
 

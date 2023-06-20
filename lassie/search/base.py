@@ -52,8 +52,8 @@ class Search(BaseModel):
 
     octree: Octree = Octree()
     stations: Stations = Stations()
-    ray_tracers: RayTracers = RayTracers()
-    image_functions: ImageFunctions = ImageFunctions()
+    ray_tracers: RayTracers
+    image_functions: ImageFunctions
 
     n_threads_parstack: conint(ge=0) = 0
     n_threads_argmax: PositiveInt = 4
@@ -72,10 +72,6 @@ class Search(BaseModel):
     _rundir: Path = PrivateAttr()
 
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
-
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
-        self.ray_tracers.prepare(self.octree, self.stations)
 
     def init_rundir(self, force=False) -> None:
         rundir = (

@@ -8,10 +8,14 @@ from pathlib import Path
 
 from pkg_resources import get_distribution
 
+from lassie.images import ImageFunctions
+from lassie.images.phase_net import PhaseNet
 from lassie.models import Stations
 from lassie.search import SquirrelSearch
 from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
+from lassie.tracers import RayTracers
+from lassie.tracers.cake import CakeTracer
 from lassie.utils import ANSI
 
 logger = logging.getLogger(__name__)
@@ -104,6 +108,10 @@ def main() -> None:
         pyrocko_stations.touch()
 
         config = SquirrelSearch(
+            ray_tracers=RayTracers(__root__=[CakeTracer()]),
+            image_functions=ImageFunctions(
+                __root__=[PhaseNet(phase_map={"P": "cake:P", "S": "cake:S"})]
+            ),
             stations=Stations(pyrocko_station_yamls=[pyrocko_stations]),
             waveform_data=[Path("/data/")],
             time_span=(

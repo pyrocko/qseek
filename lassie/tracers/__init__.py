@@ -33,7 +33,7 @@ RayTracerArrival = Annotated[
 
 
 class RayTracers(BaseModel):
-    __root__: list[RayTracerType] = [CakeTracer()]
+    __root__: list[RayTracerType] = []
 
     def prepare(self, octree: Octree, stations: Stations) -> None:
         logger.info("preparing ray tracers")
