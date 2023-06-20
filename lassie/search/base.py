@@ -215,13 +215,12 @@ class SearchTraces:
         station_contribution = (~traveltimes_bad).sum(axis=1, dtype=float)
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
-
         weights = np.ones_like(shifts, dtype=float)
-        weights[traveltimes_bad] = 0.0
 
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
+        weights[traveltimes_bad] = 0.0
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
