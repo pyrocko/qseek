@@ -311,7 +311,7 @@ class SearchTraces:
         )
 
         if detection_idx.size == 0:
-            return [], semblance.get_trace(padded=False)
+            return [], semblance.get_trace()
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
@@ -410,4 +410,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance.get_trace(padded=False)  # noqa: F821
+        return detections, semblance.get_trace()  # noqa: F821
