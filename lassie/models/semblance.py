@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -10,8 +11,13 @@ from pyrocko import parstack
 from pyrocko.trace import Trace
 from scipy import signal, stats
 
+from lassie.utils import human_readable_bytes
+
 if TYPE_CHECKING:
     from datetime import datetime
+
+
+logger = logging.getLogger(__name__)
 
 
 class SemblanceStats(BaseModel):
@@ -54,6 +60,12 @@ class Semblance:
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
 
+        logger.info(
+            "allocating volume for %d nodes and %d samples (%s)",
+            n_nodes,
+            n_samples,
+            human_readable_bytes(n_nodes * n_samples * np.float32().itemsize),
+        )
         self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
 
     @property
@@ -203,14 +215,6 @@ class Semblance:
             deltat=1.0 / self.sampling_rate,
             ydata=data,
         )
-
-    def get_size_bytes(self) -> int:
-        """Get size of the semblance in bytes.
-
-        Returns:
-            int: Size in bytes.
-        """
-        return self.semblance_unpadded.nbytes
 
     def _clear_cache(self) -> None:
         self._node_idx_max = None

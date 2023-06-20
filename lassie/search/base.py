@@ -303,7 +303,6 @@ class SearchTraces:
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.info("semblance stats: %s", parent.semblance_stats)
-        logger.info("semblance size %d bytes", semblance.get_size_bytes())
 
         detection_idx, detection_semblance = semblance.find_peaks(
             height=parent.detection_threshold,
@@ -328,7 +327,7 @@ class SearchTraces:
             new_nodes = [node.split() for node in split_nodes]
             sizes = set(node.size for node in chain.from_iterable(new_nodes))
             logger.info(
-                "event detected - splitted %d octree nodes to %s m",
+                "event detected - split %d octree nodes to %s m",
                 len(split_nodes),
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
