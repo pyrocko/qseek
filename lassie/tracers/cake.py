@@ -19,7 +19,7 @@ from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
 from pyrocko.gf import meta
 
 from lassie.tracers.base import ModelledArrival, RayTracer
-from lassie.utils import CACHE_DIR, PhaseDescription, log_call
+from lassie.utils import CACHE_DIR, PhaseDescription, human_readable_bytes, log_call
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -388,7 +388,9 @@ class CakeTracer(RayTracer):
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
         tree = self._get_sptree_model(phase)
-        logger.info("%s cache size is %d bytes", phase, tree.get_cache_bytes())
+        logger.info(
+            "%s cache size is %s", phase, human_readable_bytes(tree.get_cache_bytes())
+        )
         return tree.get_traveltimes(octree, stations)
 
     def get_arrivals(

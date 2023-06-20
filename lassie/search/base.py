@@ -327,7 +327,7 @@ class SearchTraces:
             new_nodes = [node.split() for node in split_nodes]
             sizes = set(node.size for node in chain.from_iterable(new_nodes))
             logger.info(
-                "event detected - split %d octree nodes to %s m",
+                "energy detected - split %d octree nodes to %s m",
                 len(split_nodes),
                 ", ".join(f"{s:.1f}" for s in sizes),
             )
