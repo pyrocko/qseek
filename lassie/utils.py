@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Awaitable, Callable, ParamSpec, TypeVar
 
 from pydantic import ConstrainedStr
 from pyrocko.util import UnavailableDecimation
+from rich.logging import RichHandler
+
+FORMAT = "%(message)s"
+
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -40,6 +44,12 @@ class ANSI:
     Italic = "\033[3m"
     Underline = "\033[4m"
     Reset = "\033[0m"
+
+
+def setup_rich_logging():
+    logging.basicConfig(
+        level=logging.INFO, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+    )
 
 
 def time_to_path(datetime: datetime) -> str:

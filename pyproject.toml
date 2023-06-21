@@ -26,6 +26,18 @@ maintainers = [
 ]
 keywords = ["earthquake", "detection", "locatiosation", "stacking-migration"]
 
+dependencies = [
+    "numpy>=1.17.3",
+    "scipy>=1.8.0",
+    "pyrocko>=2022.06.10",
+    "seisbench>=0.4.0",
+    "pydantic>=1.9",
+    "aiohttp>=3.8",
+    "aiohttp_cors>=0.7.0",
+    "typing-extensions>=4.6",
+    "lru-dict>=1.2",
+    "rich>=13.4",
+]
 classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
@@ -37,17 +49,6 @@ classifiers = [
     "Programming Language :: C",
     "Operating System :: POSIX",
     "Operating System :: MacOS",
-]
-dependencies = [
-    "numpy>=1.17.3",
-    "scipy>=1.8.0",
-    "pyrocko>=2022.06.10",
-    "seisbench>=0.4.0",
-    "pydantic>=1.9",
-    "aiohttp>=3.8",
-    "aiohttp_cors>=0.7.0",
-    "typing-extensions>=4.6",
-    "lru-dict>=1.2"
 ]
 
 [project.optional-dependencies]

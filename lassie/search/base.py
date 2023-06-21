@@ -40,9 +40,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-MUTE_MEDIAN_LEVEL = 3.0
-
-
 class Search(BaseModel):
     sampling_rate: confloat(ge=10.0, le=20.0) = 10.0
     detection_threshold: PositiveFloat = 0.05

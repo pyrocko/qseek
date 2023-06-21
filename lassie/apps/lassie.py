@@ -16,7 +16,9 @@ from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import RayTracers
 from lassie.tracers.cake import CakeTracer
-from lassie.utils import ANSI
+from lassie.utils import ANSI, setup_rich_logging
+
+setup_rich_logging()
 
 logger = logging.getLogger(__name__)
 
