@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
+from random import uniform
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Type, TypeVar
 from uuid import UUID, uuid4
 
@@ -342,6 +343,7 @@ class Detections(BaseModel):
         filename.write_text(detection.json())
 
         self.save_csv(self.rundir / "detections.csv")
+        self.save_csv(self.rundir / "detections-randomized.csv", randomize_meters=100.0)
         self.save_pyrocko_events(self.rundir / "pyrocko-events.list")
         self.save_pyrocko_markers(self.rundir / "pyrocko-markers.list")
 
@@ -365,11 +367,16 @@ class Detections(BaseModel):
         for detection in self:
             if detection.uid == uid:
                 return detection
-        raise KeyError("detection not found")
+        raise KeyError(f"detection {uid} not found")
 
-    def save_csv(self, file: Path) -> None:
+    def save_csv(self, file: Path, randomize_meters: float = 0.0) -> None:
         lines = ["lat, lon, depth, semblance, time, distance_border"]
-        for det in self:
+        for detection in self:
+            det = detection.copy()
+            if randomize_meters:
+                det.east_shift += uniform(-randomize_meters, randomize_meters)
+                det.north_shift += uniform(-randomize_meters, randomize_meters)
+                det.depth += uniform(-randomize_meters, randomize_meters)
             lat, lon = det.effective_lat_lon
             lines.append(
                 f"{lat:.5f}, {lon:.5f}, {-det.effective_elevation:.1f},"
