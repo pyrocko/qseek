@@ -208,9 +208,11 @@ class Receivers(BaseModel):
 
     @property
     def n_receivers(self) -> int:
+        """Number of receivers in the receiver set"""
         return len(self.__root__)
 
     def n_observations(self, phase: PhaseDescription) -> int:
+        """Number of observations for a given phase"""
         n_observations = 0
         for receiver in self:
             if (arrival := receiver.phase_arrivals.get(phase)) and arrival.observed:
@@ -218,8 +220,19 @@ class Receivers(BaseModel):
         return n_observations
 
     def add_receivers(
-        self, stations: list[Station], phase_arrivals: list[PhaseDetection | None]
+        self,
+        stations: list[Station],
+        phase_arrivals: list[PhaseDetection | None],
     ) -> None:
+        """Add receivers to the receiver set
+
+        Args:
+            stations: List of stations
+            phase_arrivals: List of phase arrivals
+
+        Raises:
+            KeyError: If a station is not found in the receiver set
+        """
         receivers = [Receiver.from_station(sta) for sta in stations]
         for receiver, arrival in zip(receivers, phase_arrivals, strict=True):
             if not arrival:
@@ -280,12 +293,24 @@ class EventDetection(Location):
         self.features.append(feature)
 
     def get_feature(self, feature_type: Type[_EventFeature]) -> _EventFeature:
+        """Retrieve feature from detection
+
+        Args:
+            feature_type (Type[_EventFeature]): Feature type to retrieve
+
+        Raises:
+            TypeError: If feature type is not found
+
+        Returns:
+            EventFeature: The feature
+        """
         for feature in self.features:
             if isinstance(feature, feature_type):
                 return feature
         raise TypeError(f"cannot find feature of type {feature_type.__class__}")
 
     def as_pyrocko_event(self) -> Event:
+        """Get detection as Pyrocko event"""
         return Event(
             name=self.time.isoformat(sep="T"),
             time=self.time.timestamp(),
@@ -300,6 +325,7 @@ class EventDetection(Location):
         )
 
     def as_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:
+        """Get detections as Pyrocko markers"""
         event = self.as_pyrocko_event()
 
         pyrocko_markers: list[marker.EventMarker | marker.PhaseMarker] = [
@@ -311,6 +337,11 @@ class EventDetection(Location):
         return pyrocko_markers
 
     def save_pyrocko_markers(self, filename: Path) -> None:
+        """Save detection's Pyrocko markers to file
+
+        Args:
+            filename (Path): path to marker file
+        """
         logger.info("saving detection's Pyrocko markers to %s", filename)
         marker.save_markers(self.as_pyrocko_markers(), str(filename))
 
@@ -329,10 +360,12 @@ class Detections(BaseModel):
 
     @property
     def n_detections(self) -> int:
+        """Number of detections"""
         return len(self.detections)
 
     @property
     def detections_dir(self) -> Path:
+        """Directory where detections are saved, infered from rundir"""
         return self.rundir / "detections"
 
     def add(self, detection: EventDetection) -> None:
@@ -364,12 +397,30 @@ class Detections(BaseModel):
         logger.info("loaded %d detections", self.n_detections)
 
     def get(self, uid: UUID) -> EventDetection:
+        """Get a detection by its UUID
+
+        Args:
+            uid (UUID): UUID of the detection
+
+        Raises:
+            KeyError: if the detection is not found
+
+        Returns:
+            EventDetection: the detection
+        """
         for detection in self:
             if detection.uid == uid:
                 return detection
         raise KeyError(f"detection {uid} not found")
 
     def save_csv(self, file: Path, randomize_meters: float = 0.0) -> None:
+        """Save detections to a CSV file
+
+        Args:
+            file (Path): output filename
+            randomize_meters (float, optional): randomize the location of each detection
+                by this many meters. Defaults to 0.0.
+        """
         lines = ["lat, lon, depth, semblance, time, distance_border"]
         for detection in self:
             det = detection.copy()
@@ -385,6 +436,11 @@ class Detections(BaseModel):
         file.write_text("\n".join(lines))
 
     def save_pyrocko_events(self, filename: Path) -> None:
+        """Save Pyrocko events for all detections to a file
+
+        Args:
+            filename (Path): output filename
+        """
         logger.info("saving Pyrocko events to %s", filename)
         dump_events(
             [detection.as_pyrocko_event() for detection in self],
@@ -392,6 +448,11 @@ class Detections(BaseModel):
         )
 
     def save_pyrocko_markers(self, filename: Path) -> None:
+        """Save Pyrocko markers for all detections to a file
+
+        Args:
+            filename (Path): output filename
+        """
         logger.info("saving Pyrocko markers to %s", filename)
         pyrocko_markers = []
         for detection in self:
