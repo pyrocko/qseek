@@ -86,7 +86,7 @@ class Stations(BaseModel):
         """Select stations by NSL code.
 
         Args:
-            selection (Iterable[tuple[str, str, str]]): NSL codes
+            selection (Iterable[Trace]): Pyrocko Traces
 
         Returns:
             Stations: Containing only selected stations.
@@ -98,7 +98,7 @@ class Stations(BaseModel):
                     stations.append(sta)
                     break
             else:
-                raise ValueError(f"could not find a station for {nsl}")
+                raise ValueError(f"could not find a station for {'.'.join(nsl)}")
         return Stations.construct(stations=stations)
 
     def get_centroid(self) -> Location:
