@@ -14,6 +14,7 @@ from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 from typing_extensions import Self
 
+from lassie.console import console
 from lassie.features import EventFeatures, ReceiverFeatures
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
@@ -46,7 +47,7 @@ class PhaseDetection(BaseModel):
     @property
     def traveltime_delay(self) -> timedelta | None:
         if self.observed:
-            return self.model.time - self.observed.time
+            return self.observed.time - self.model.time
         return None
 
     def get_arrival_time(self) -> datetime:
@@ -345,6 +346,10 @@ class EventDetection(Location):
         logger.info("saving detection's Pyrocko markers to %s", filename)
         marker.save_markers(self.as_pyrocko_markers(), str(filename))
 
+    def __str__(self) -> str:
+        # TODO: Add more information
+        return str(self.time)
+
 
 class Detections(BaseModel):
     rundir: Path
@@ -390,11 +395,14 @@ class Detections(BaseModel):
 
     def load_detections(self) -> None:
         logger.info("loading detections from %s", self.detections_dir)
-        for file in sorted(self.detections_dir.glob("*.json")):
-            detection = EventDetection.parse_file(file)
-            logger.debug("loaded %s", detection.time)
-            self.detections.append(detection)
-        logger.info("loaded %d detections", self.n_detections)
+        files = sorted(self.detections_dir.glob("*.json"))
+
+        with console.status("[bold green]Loading detections..."):
+            for file in files:
+                detection = EventDetection.parse_file(file)
+                logger.debug("loaded %s", detection)
+                self.detections.append(detection)
+        console.out(f"loaded {self.n_detections} detections")
 
     def get(self, uid: UUID) -> EventDetection:
         """Get a detection by its UUID

@@ -26,6 +26,7 @@ from lassie.models.detection import Detections, EventDetection, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
+from lassie.station_corrections import StationCorrections
 from lassie.tracers import RayTracers
 from lassie.utils import ANSI, PhaseDescription, Symbols, alog_call, time_to_path
 
@@ -51,6 +52,8 @@ class Search(BaseModel):
     stations: Stations = Stations()
     ray_tracers: RayTracers
     image_functions: ImageFunctions
+
+    station_corrections: StationCorrections | None = None
 
     n_threads_parstack: conint(ge=0) = 0
     n_threads_argmax: PositiveInt = 4
@@ -207,6 +210,13 @@ class SearchTraces:
         parent = self.parent
 
         traveltimes = ray_tracer.get_traveltimes(image.phase, octree, image.stations)
+
+        if parent.station_corrections:
+            station_delays = parent.station_corrections.get_delays(
+                image.stations.get_all_nsl(), image.phase
+            )
+            traveltimes += station_delays[np.newaxis, :]
+
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
         station_contribution = (~traveltimes_bad).sum(axis=1, dtype=float)

@@ -9,9 +9,9 @@ from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pydantic import BaseModel, Extra, Field
+from pydantic import BaseModel, Extra, Field, PositiveInt, PrivateAttr
 
-from lassie.models.detection import EventDetection, PhaseDetection, Receiver
+from lassie.models.detection import Detections, EventDetection, PhaseDetection, Receiver
 from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.utils import PhaseDescription
@@ -19,7 +19,6 @@ from lassie.utils import PhaseDescription
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from lassie.models.detection import Detections
 
 logger = logging.getLogger(__name__)
 KM = 1e3
@@ -35,7 +34,7 @@ ArrivalWeighting = Literal[
 ]
 
 
-class EventCorrection(Location):
+class StationEvent(Location):
     uid: UUID = Field(default_factory=uuid4)
     time: datetime
     semblance: float
@@ -79,12 +78,15 @@ def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> floa
 
 class StationCorrection(BaseModel):
     station: Station
-    events: list[EventCorrection] = []
+    events: list[StationEvent] = []
 
     class Config:
         extra = Extra.ignore
 
-    def add_event(self, event: EventCorrection) -> None:
+    def add_event(self, event: StationEvent) -> None:
+        if event.uid in (ev.uid for ev in self.events):
+            logger.warning("event already associated to station")
+            return
         self.events.append(event)
 
     @property
@@ -194,10 +196,9 @@ class StationCorrection(BaseModel):
 
     def iter_events(
         self, phase: PhaseDescription, observed_only: bool = True
-    ) -> Iterable[EventCorrection]:
+    ) -> Iterable[StationEvent]:
         for event in self.events:
-            phase_detection = event.phase_arrivals.get(phase)
-            if not phase_detection:
+            if not (phase_detection := event.phase_arrivals.get(phase)):
                 continue
             if observed_only and not phase_detection.observed:
                 continue
@@ -287,39 +288,81 @@ class StationCorrection(BaseModel):
 
 
 class StationCorrections(BaseModel):
-    station_corrections: dict[tuple[str, str, str], StationCorrection] = {}
+    load_rundir: Path | None = None
+    measure: Literal["median", "average"] = "median"
+    weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
+    minimum_picks: PositiveInt = 5
 
-    def load_detections(self, detections: Detections) -> None:
-        for event in detections:
-            self.add_event(event)
+    station_corrections: dict[str, StationCorrection] = {}
 
-    def add_event(self, event: EventDetection) -> None:
-        # FIXME: use event.in_bounds
-        if event.distance_border < KM:
+    _cache: dict[tuple[NSL, str], float] = PrivateAttr({})
+
+    def __init__(self, **data) -> None:
+        super().__init__(**data)
+        if self.load_rundir:
+            logger.debug("loading station detections from %s", self.load_rundir)
+            detections = Detections(rundir=self.load_rundir)
+            for event in detections:
+                self.add_event(event)
+            logger.info("loaded station corrections")
+            self.load_rundir = None
+
+    def add_event(self, detection: EventDetection) -> None:
+        if not detection.in_bounds:
             return
 
-        logger.info("loading event %s", event.time)
-        for receiver in event.receivers:
+        logger.debug("loading event %s", detection)
+        for receiver in detection.receivers:
             try:
-                sta_correction = self.get_station_correction(receiver.nsl)
+                sta_correction = self.get_station(receiver.nsl)
             except KeyError:
                 sta_correction = StationCorrection.from_receiver(receiver)
-                self.station_corrections[receiver.nsl] = sta_correction
+                self.station_corrections[receiver.pretty_nsl] = sta_correction
 
             sta_correction.add_event(
-                EventCorrection(
+                StationEvent(
                     phase_arrivals=receiver.phase_arrivals,
-                    **event.dict(exclude={"receivers", "phase_arrivals"}),
+                    **detection.dict(
+                        exclude={
+                            "receivers",
+                            "phase_arrivals",
+                            "features",
+                        }
+                    ),
                 )
             )
 
-    def get_station_correction(self, nsl: tuple[str, str, str]) -> StationCorrection:
+    def get_station(self, nsl: NSL | str) -> StationCorrection:
+        if isinstance(nsl, tuple):
+            nsl = ".".join(nsl)
         return self.station_corrections[nsl]
 
-    def get_correction(
-        self, phase: PhaseDescription, station_nsl: tuple[str, str, str]
-    ) -> float:
-        ...
+    def get_delay(self, station_nsl: NSL, phase: PhaseDescription) -> float:
+        def get_delay() -> float:
+            try:
+                station = self.get_station(station_nsl)
+            except KeyError:
+                return 0.0
+
+            if station.get_num_picks(phase) < self.minimum_picks:
+                return 0.0
+
+            if self.measure == "average":
+                return station.get_average_delay(phase, self.weighting)
+            if self.measure == "median":
+                return station.get_median_delay(phase, self.weighting)
+            raise ValueError(f"unknown measure {self.measure!r}")
+
+        if (station_nsl, phase) not in self._cache:
+            self._cache[station_nsl, phase] = get_delay()
+        return self._cache[station_nsl, phase]
+
+    def get_delays(
+        self,
+        station_nsls: list[NSL],
+        phase: PhaseDescription,
+    ) -> np.ndarray[float]:
+        return np.fromiter((self.get_delay(nsl, phase) for nsl in station_nsls), float)
 
     def save_plots(self, folder: Path) -> None:
         folder.mkdir(exist_ok=True)
@@ -346,5 +389,6 @@ class StationCorrections(BaseModel):
     def from_detections(cls, detections: Detections) -> Self:
         logger.info("loading detections")
         station_corrections = cls()
-        station_corrections.load_detections(detections=detections)
+        for event in detections:
+            station_corrections.add_event(event)
         return station_corrections

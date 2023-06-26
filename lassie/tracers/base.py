@@ -54,6 +54,16 @@ class RayTracer(BaseModel):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
+        """Get travel times for a phase from a source to a set of stations.
+
+        Args:
+            phase: Phase name.
+            octree: Octree containing the source.
+            stations: Stations to calculate travel times to.
+
+        Returns:
+            Travel times in seconds.
+        """
         raise NotImplementedError
 
     def get_arrivals(

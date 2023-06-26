@@ -45,12 +45,12 @@ class ConstantVelocityTracer(RayTracer):
     def get_traveltimes(
         self,
         phase: str,
-        source: Octree,
+        octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
         if phase not in self.velocities:
             raise ValueError(f"Phase {phase} is not defined.")
-        distances = source.distances_stations(stations)
+        distances = octree.distances_stations(stations)
         return distances / self.velocities[phase]
 
     def get_arrivals(
