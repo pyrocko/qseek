@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Union
 import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko import trace
+from pyrocko.squirrel.error import NotAvailable
 
 from lassie.features.base import EventFeature, FeatureExtractor, ReceiverFeature
 from lassie.features.utils import ChannelSelector, ChannelSelectors
@@ -213,11 +214,16 @@ class LocalMagnitudeExtractor(FeatureExtractor):
     async def add_features(self, squirrel: Squirrel, event: EventDetection) -> None:
         local_magnitudes: list[StationMagnitude] = []
         for receiver in event.receivers:
-            traces = receiver.get_waveforms_restituted(
-                squirrel,
-                seconds_before=self.seconds_before,
-                seconds_after=self.seconds_after,
-            )
+            try:
+                traces = receiver.get_waveforms_restituted(
+                    squirrel,
+                    seconds_before=self.seconds_before,
+                    seconds_after=self.seconds_after,
+                )
+            except NotAvailable:
+                logger.error("cannot get responses for %s", receiver.pretty_nsl)
+                continue
+
             restituded_traces = [
                 tr.transfer(transfer_function=WOOD_ANDERSON) for tr in traces
             ]

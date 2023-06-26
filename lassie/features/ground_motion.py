@@ -53,19 +53,19 @@ class GroundMotionExtractor(FeatureExtractor):
     ) -> None:
         receiver_motions: list[ReceiverGroundMotion] = []
         for receiver in event.receivers:
-            traces_acc = receiver.get_waveforms_restituted(
-                squirrel,
-                seconds_after=self.seconds_after,
-                seconds_before=self.seconds_before,
-                quantity="acceleration",
-            )
-            traces_vel = receiver.get_waveforms_restituted(
-                squirrel,
-                seconds_after=self.seconds_after,
-                seconds_before=self.seconds_before,
-                quantity="velocity",
-            )
             try:
+                traces_acc = receiver.get_waveforms_restituted(
+                    squirrel,
+                    seconds_after=self.seconds_after,
+                    seconds_before=self.seconds_before,
+                    quantity="acceleration",
+                )
+                traces_vel = receiver.get_waveforms_restituted(
+                    squirrel,
+                    seconds_after=self.seconds_after,
+                    seconds_before=self.seconds_before,
+                    quantity="velocity",
+                )
                 pga = _get_maximum(ChannelSelectors.All(traces_acc))
                 pha = _get_maximum(ChannelSelectors.Horizontal(traces_acc))
                 pgv = _get_maximum(ChannelSelectors.All(traces_vel))
@@ -77,7 +77,7 @@ class GroundMotionExtractor(FeatureExtractor):
                     peak_horizontal_acceleration=pha,
                     peak_ground_velocity=pgv,
                 )
-            except KeyError:
+            except Exception:
                 continue
             receiver_motions.append(ground_motion)
             receiver.add_feature(ground_motion)

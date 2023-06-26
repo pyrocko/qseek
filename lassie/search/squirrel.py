@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import glob
 import logging
-import tracemalloc
+
+# import tracemalloc
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from lassie.models.detection import EventDetection
 
 logger = logging.getLogger(__name__)
-profile = None
+# profile = None
 
 
 class SquirrelSearch(Search):
@@ -96,7 +97,7 @@ class SquirrelSearch(Search):
         self._init_ranges()
         squirrel = self.get_squirrel()
 
-        tracemalloc.start()
+        # tracemalloc.start()
 
         # TODO: too hardcoded
         window_increment = window_increment or (
@@ -168,13 +169,13 @@ class SquirrelSearch(Search):
             self.search_progress_time = window_end
             self.write_config()
 
-            global profile
-            new_profile = tracemalloc.take_snapshot()
-            if profile is not None:
-                lines = profile.compare_to(new_profile, "lineno")
-                for line in lines[:10]:
-                    logger.warning(line)
-            profile = new_profile
+            # global profile
+            # new_profile = tracemalloc.take_snapshot()
+            # if profile is not None:
+            #     lines = profile.compare_to(new_profile, "lineno")
+            #     for line in lines[:10]:
+            #         logger.warning(line)
+            # profile = new_profile
 
     async def add_features(self, event: EventDetection) -> None:
         squirrel = self.get_squirrel()

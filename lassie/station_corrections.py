@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 KM = 1e3
 
+NSL = tuple[str, str, str]
+
 ArrivalWeighting = Literal[
     "none",
     "PhaseNet",
@@ -40,6 +42,9 @@ class EventCorrection(Location):
     distance_border: float
 
     phase_arrivals: dict[PhaseDescription, PhaseDetection] = {}
+
+    class Config:
+        extra = Extra.ignore
 
     def phases(self) -> tuple[PhaseDescription, ...]:
         return tuple(self.phase_arrivals.keys())
@@ -302,9 +307,9 @@ class StationCorrections(BaseModel):
                 self.station_corrections[receiver.nsl] = sta_correction
 
             sta_correction.add_event(
-                EventCorrection.construct(
+                EventCorrection(
                     phase_arrivals=receiver.phase_arrivals,
-                    **event.dict(),
+                    **event.dict(exclude={"receivers", "phase_arrivals"}),
                 )
             )
 
