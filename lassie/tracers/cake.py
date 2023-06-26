@@ -343,14 +343,14 @@ class CakeTracer(RayTracer):
         # TODO: Time tolerance is too hardcoded
         time_tolerance = octree.size_limit / (self.get_vmin() * 3.0)
 
-        traveltime_tree_args = dict(
-            earthmodel=self.earthmodel,
-            distance_bounds=distance_bounds,
-            source_depth_bounds=source_depth_bounds,
-            receiver_depth_bounds=receiver_depths_bounds,
-            spatial_tolerance=octree.size_limit / 2,
-            time_tolerance=time_tolerance,
-        )
+        traveltime_tree_args = {
+            "earthmodel": self.earthmodel,
+            "distance_bounds": distance_bounds,
+            "source_depth_bounds": source_depth_bounds,
+            "receiver_depth_bounds": receiver_depths_bounds,
+            "spatial_tolerance": octree.size_limit / 2,
+            "time_tolerance": time_tolerance,
+        }
 
         for phase_descr, timing in self.timings.items():
             for tree in cached_trees:

@@ -33,9 +33,9 @@ class Node(BaseModel):
     semblance: float = 0.0
 
     tree: Octree | None = Field(None, exclude=True)
-    children: tuple[Node] = Field(tuple(), exclude=True)
+    children: tuple[Node] = Field((), exclude=True)
 
-    _children_cached: tuple[Node] = PrivateAttr(tuple())
+    _children_cached: tuple[Node] = PrivateAttr(())
     _location: Location | None = PrivateAttr(None)
 
     def split(self) -> tuple[Node]:
@@ -85,7 +85,7 @@ class Node(BaseModel):
 
     def reset(self) -> None:
         self._children_cached = self.children
-        self.children = tuple()
+        self.children = ()
         self.semblance = 0.0
 
     def set_parent(self, tree: Octree) -> None:
@@ -281,7 +281,7 @@ class Octree(BaseModel):
             list[Node]: List of nodes.
         """
         if not semblance_threshold:
-            return [node for node in self]
+            return list(self)
         return [node for node in self if node.semblance >= semblance_threshold]
 
     def is_node_in_bounds(self, node: Node) -> bool:

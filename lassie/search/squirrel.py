@@ -83,7 +83,7 @@ class SquirrelSearch(Search):
                     paths.extend(glob.glob(str(path.expanduser()), recursive=True))
                 else:
                     paths.append(str(path.expanduser()))
-            paths.extend(map(lambda p: str(p.expanduser()), self.stations.station_xmls))
+            paths.extend((str(p.expanduser()) for p in self.stations.station_xmls))
 
             squirrel.add(paths, check=False)
             self._squirrel = squirrel
