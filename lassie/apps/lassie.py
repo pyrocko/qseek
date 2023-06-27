@@ -170,12 +170,10 @@ def main() -> None:
         asyncio.run(extract())
 
     elif args.command == "station-corrections":
-        search = SquirrelSearch.load_rundir(args.rundir)
-        station_corrections = StationCorrections.from_detections(search._detections)
-        station_corrections.save_plots(search._rundir / "station-corrections")
-        station_corrections.save_csv(
-            filename=args.rundir / "station-corrections-stats.csv"
-        )
+        rundir = Path(args.rundir)
+        station_corrections = StationCorrections(load_rundir=rundir)
+        station_corrections.save_plots(rundir / "station-corrections")
+        station_corrections.save_csv(filename=rundir / "station-corrections-stats.csv")
 
     elif args.command == "serve":
         search = SquirrelSearch.load_rundir(args.rundir)

@@ -409,10 +409,9 @@ class Detections(BaseModel):
 
     def load_detections(self) -> None:
         """Load detections from files in the detections directory."""
-        logger.info("loading detections from %s", self.detections_dir)
         files = sorted(self.detections_dir.glob("*.json"))
 
-        with console.status("Loading detections..."):
+        with console.status(f"Loading detections from {self.detections_dir}..."):
             for file in files:
                 detection = EventDetection.parse_file(file)
                 logger.debug("loaded %s", detection)

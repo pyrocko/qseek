@@ -233,6 +233,7 @@ class StationCorrection(BaseModel):
         fig, axes = plt.subplots(len(arrival_weights), n_phases)
         fig.set_size_inches(8, 12)
         axes = axes.T
+        axes = np.atleast_2d(axes)
 
         def plot_histogram(
             ax: plt.Axes, phase: PhaseDescription, weight: ArrivalWeighting
@@ -264,6 +265,16 @@ class StationCorrection(BaseModel):
                 va="top",
             )
 
+            ax.text(
+                0.05,
+                0.05,
+                f"median: {self.get_median_delay(phase, weight=weight):.2f} s\n"
+                f"avg: {self.get_average_delay(phase, weight=weight):.2f} s\n",
+                fontsize="small",
+                transform=ax.transAxes,
+                va="top",
+            )
+
         for ax_col, phase in zip(axes, phases, strict=True):
             for ax, weight in zip(ax_col, arrival_weights, strict=True):
                 plot_histogram(ax, phase, weight)
@@ -278,7 +289,7 @@ class StationCorrection(BaseModel):
             ax_col[0].legend(fontsize="small")
             ax_col[-1].set_xlabel("Time Residual [s]")
 
-        logger.info("saving residual plot to %s", filename)
+        logger.debug("saving residual plot to %s", filename)
         fig.tight_layout()
         fig.savefig(str(filename))
         plt.close()
@@ -303,9 +314,10 @@ class StationCorrections(BaseModel):
         if self.load_rundir:
             logger.debug("loading station detections from %s", self.load_rundir)
             detections = Detections(rundir=self.load_rundir)
-            for event in detections:
-                self.add_event(event)
-            logger.info("loaded station corrections")
+            with console.status("loading station corrections"):
+                for event in detections:
+                    self.add_event(event)
+            console.log("loaded station corrections")
             self.load_rundir = None
 
     def add_event(self, detection: EventDetection) -> None:
@@ -314,12 +326,6 @@ class StationCorrections(BaseModel):
 
         logger.debug("loading event %s", detection)
         for receiver in detection.receivers:
-            try:
-                sta_correction = self.get_station(receiver.nsl)
-            except KeyError:
-                sta_correction = StationCorrection.from_receiver(receiver)
-                self.station_corrections[receiver.pretty_nsl] = sta_correction
-
             # Remove unobserved phases
             phase_arrivals = receiver.phase_arrivals.copy()
             for phase_name, phase in phase_arrivals.copy().items():
@@ -327,6 +333,12 @@ class StationCorrections(BaseModel):
                     phase_arrivals.pop(phase_name)
             if not phase_arrivals:
                 continue
+
+            try:
+                sta_correction = self.get_station(receiver.nsl)
+            except KeyError:
+                sta_correction = StationCorrection.from_receiver(receiver)
+                self.station_corrections[receiver.pretty_nsl] = sta_correction
 
             sta_correction.add_event(
                 StationEvent(
@@ -380,7 +392,9 @@ class StationCorrections(BaseModel):
                 correction.plot(
                     filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
                 )
-                status.update(f"plotting {correction.station.pretty_nsl}")
+                status.update(
+                    f"plotting corrections for {correction.station.pretty_nsl}"
+                )
 
     def save_csv(self, filename: Path) -> None:
         logger.info("writing corrections to %s", filename)
@@ -395,11 +409,3 @@ class StationCorrections(BaseModel):
 
     def __iter__(self) -> Iterator[StationCorrection]:
         return iter(self.station_corrections.values())
-
-    @classmethod
-    def from_detections(cls, detections: Detections) -> Self:
-        logger.info("loading detections")
-        station_corrections = cls()
-        for event in detections:
-            station_corrections.add_event(event)
-        return station_corrections
