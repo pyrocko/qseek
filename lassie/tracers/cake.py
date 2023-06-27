@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from functools import cached_property
 from hashlib import sha1
 from io import BytesIO
@@ -17,9 +18,16 @@ from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
 from pyrocko.gf import meta
+from rich.progress import Progress
 
 from lassie.tracers.base import ModelledArrival, RayTracer
-from lassie.utils import CACHE_DIR, PhaseDescription, human_readable_bytes, log_call
+from lassie.utils import (
+    CACHE_DIR,
+    PhaseDescription,
+    datetime_now,
+    human_readable_bytes,
+    log_call,
+)
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -114,7 +122,7 @@ class TraveltimeTree(BaseModel):
     time_tolerance: float
     spatial_tolerance: float
 
-    created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created: datetime = Field(default_factory=datetime_now)
 
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
@@ -289,7 +297,21 @@ class TraveltimeTree(BaseModel):
             )
             coordinates.append(np.asarray(node_receivers_distances).T)
 
-        traveltimes = [self._get_traveltime_sptree(coords) for coords in coordinates]
+        with Progress() as progress:
+            status = progress.add_task(
+                f"interpolating {stations.n_stations*octree.n_nodes} traveltimes",
+                total=len(coordinates),
+                visible=False,
+            )
+            start = time.time()
+
+            traveltimes = []
+            for coords in coordinates:
+                traveltimes.append(self._get_traveltime_sptree(coords))
+                progress.update(status, advance=1)
+                if time.time() - start > 1.0:
+                    progress.update(status, visible=True)
+
         return np.array(traveltimes)
 
 
@@ -326,7 +348,7 @@ class CakeTracer(RayTracer):
     def prepare(self, octree: Octree, stations: Stations) -> None:
         global LRU_CACHE
 
-        LRU_CACHE = octree.n_nodes * 4
+        LRU_CACHE = octree.n_nodes * 8
         logging.debug("setting LRU cache keys to %d", LRU_CACHE)
 
         cached_trees = [
@@ -388,7 +410,7 @@ class CakeTracer(RayTracer):
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
         tree = self._get_sptree_model(phase)
-        logger.info(
+        logger.debug(
             "%s cache size is %s", phase, human_readable_bytes(tree.get_cache_bytes())
         )
         return tree.get_traveltimes(octree, stations)

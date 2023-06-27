@@ -60,13 +60,13 @@ class Semblance:
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
 
+        self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
         logger.info(
-            "allocating volume for %d nodes and %d samples (%s)",
+            "allocated volume for %d nodes and %d samples (%s)",
             n_nodes,
             n_samples,
-            human_readable_bytes(n_nodes * n_samples * np.float32().itemsize),
+            human_readable_bytes(self.semblance_unpadded.nbytes),
         )
-        self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
 
     @property
     def n_nodes(self) -> int:
@@ -82,7 +82,7 @@ class Semblance:
     def semblance(self) -> np.ndarray:
         padding_samples = self.padding_samples
         if padding_samples:
-            return self.semblance_unpadded[:, padding_samples : -padding_samples - 1]
+            return self.semblance_unpadded[:, padding_samples:-padding_samples]
         return self.semblance_unpadded
 
     @property
@@ -213,7 +213,7 @@ class Semblance:
             station="semblance",
             tmin=start_time.timestamp(),
             deltat=1.0 / self.sampling_rate,
-            ydata=data.astype(np.float32),
+            ydata=data.astype(np.float32, copy=False),
         )
 
     def _clear_cache(self) -> None:

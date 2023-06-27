@@ -28,7 +28,7 @@ from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import RayTracers
-from lassie.utils import ANSI, PhaseDescription, Symbols, alog_call, time_to_path
+from lassie.utils import PhaseDescription, Symbols, alog_call, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -183,13 +183,15 @@ class SearchTraces:
 
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
+        """Remove empty or bad traces."""
         for tr in traces.copy():
             if not tr.ydata.size or not np.all(np.isfinite(tr.ydata)):
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 traces.remove(tr)
         return traces
 
-    def _get_n_samples_semblance(self) -> int:
+    def _n_samples_semblance(self) -> int:
+        """Number of samples to use for semblance calculation, includes padding."""
         parent = self.parent
         window_padding = parent.window_padding
         time_span = (self.end_time + window_padding) - (
@@ -276,6 +278,16 @@ class SearchTraces:
         self,
         octree: Octree | None = None,
     ) -> tuple[list[EventDetection], Trace]:
+        """Searches for events in the given traces.
+
+        Args:
+            octree (Octree | None, optional): The octree to use for the search.
+                Defaults to None.
+
+        Returns:
+            tuple[list[EventDetection], Trace]: The event detections and the
+                semblance traces used for the search.
+        """
         parent = self.parent
         sampling_rate = parent.sampling_rate
 
@@ -287,7 +299,7 @@ class SearchTraces:
         )
         semblance = Semblance(
             n_nodes=octree.n_nodes,
-            n_samples=self._get_n_samples_semblance(),
+            n_samples=self._n_samples_semblance(),
             start_time=self.start_time,
             sampling_rate=sampling_rate,
             padding_samples=padding_samples,
@@ -328,6 +340,12 @@ class SearchTraces:
 
         try:
             new_nodes = [node.split() for node in split_nodes]
+        except NodeSplitError:
+            logger.debug("reverting partial split")
+            for node in split_nodes:
+                node.reset()
+            logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
+        else:
             sizes = {node.size for node in chain.from_iterable(new_nodes)}
             logger.info(
                 "energy detected - split %d octree nodes to %s m",
@@ -336,12 +354,6 @@ class SearchTraces:
             )
             del semblance
             return await self.search(octree)
-
-        except NodeSplitError:
-            logger.debug("reverting partial split")
-            for node in split_nodes:
-                node.reset()
-            logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
 
         detections = []
         for idx, semblance_detection in zip(
@@ -399,14 +411,12 @@ class SearchTraces:
 
             detections.append(detection)
             logger.info(
-                "%s%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f%s",
-                ANSI.Bold,
+                "%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
                 Symbols.Target,
                 detection.time,
                 *detection.effective_lat_lon,
                 detection.effective_depth,
                 detection.semblance,
-                ANSI.Reset,
             )
 
             # detection.plot()

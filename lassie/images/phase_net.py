@@ -50,7 +50,7 @@ class PhaseNetImage(WaveformImage):
         self,
         trace_idx: int,
         modelled_arrival: datetime,
-        search_length_seconds: float = 5,
+        search_length_seconds: float = 5.0,
         threshold: float = 0.1,
     ) -> PhaseNetPick | None:
         """Search for a peak in all station's image functions.

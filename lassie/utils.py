@@ -53,7 +53,7 @@ def setup_rich_logging():
 
 
 def time_to_path(datetime: datetime) -> str:
-    return datetime.isoformat(sep="T", timespec="minutes").replace(":", "")
+    return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
 
 
 def to_datetime(time: float) -> datetime:
@@ -80,7 +80,7 @@ def log_call(func: Callable[P, T]) -> Callable[P, T]:
         start = time.time()
         ret = func(*args, **kwargs)
         duration = timedelta(seconds=time.time() - start)
-        logger.info("executed %s in %s", func.__qualname__, duration)
+        logger.debug("executed %s in %s", func.__qualname__, duration)
         return ret
 
     return wrapper
@@ -92,7 +92,7 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         start = time.time()
         ret = await func(*args, **kwargs)
         duration = timedelta(seconds=time.time() - start)
-        logger.info("executed %s in %s", func.__qualname__, duration)
+        logger.debug("executed %s in %s", func.__qualname__, duration)
         return ret
 
     return wrapper
@@ -105,3 +105,7 @@ def human_readable_bytes(size: int | float) -> str:
             return f"{size:.2f} {unit}"
         size = size / 1024.0
     return f"{size:.2f} PiB"
+
+
+def datetime_now() -> datetime:
+    return datetime.now(tz=timezone.utc)

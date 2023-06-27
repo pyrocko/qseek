@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pydantic import BaseModel, Extra, Field, PositiveInt, PrivateAttr
 
+from lassie.console import console
 from lassie.models.detection import Detections, EventDetection, PhaseDetection, Receiver
 from lassie.models.location import Location
 from lassie.models.station import Station
@@ -319,9 +320,17 @@ class StationCorrections(BaseModel):
                 sta_correction = StationCorrection.from_receiver(receiver)
                 self.station_corrections[receiver.pretty_nsl] = sta_correction
 
+            # Remove unobserved phases
+            phase_arrivals = receiver.phase_arrivals.copy()
+            for phase_name, phase in phase_arrivals.copy().items():
+                if not phase.observed:
+                    phase_arrivals.pop(phase_name)
+            if not phase_arrivals:
+                continue
+
             sta_correction.add_event(
                 StationEvent(
-                    phase_arrivals=receiver.phase_arrivals,
+                    phase_arrivals=phase_arrivals,
                     **detection.dict(
                         exclude={
                             "receivers",
@@ -366,10 +375,12 @@ class StationCorrections(BaseModel):
 
     def save_plots(self, folder: Path) -> None:
         folder.mkdir(exist_ok=True)
-        for correction in self.station_corrections.values():
-            correction.plot(
-                filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
-            )
+        with console.status("plotting station corrections") as status:
+            for correction in self.station_corrections.values():
+                correction.plot(
+                    filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
+                )
+                status.update(f"plotting {correction.station.pretty_nsl}")
 
     def save_csv(self, filename: Path) -> None:
         logger.info("writing corrections to %s", filename)

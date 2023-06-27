@@ -16,7 +16,7 @@ from lassie.features import FeatureExtractors
 from lassie.features.ground_motion import GroundMotionExtractor
 from lassie.features.local_magnitude import LocalMagnitudeExtractor
 from lassie.search.base import Search, SearchTraces
-from lassie.utils import alog_call, to_datetime
+from lassie.utils import alog_call, datetime_now, to_datetime
 
 if TYPE_CHECKING:
     from pyrocko.squirrel.base import Batch
@@ -89,10 +89,7 @@ class SquirrelSearch(Search):
             self._squirrel = squirrel
         return self._squirrel
 
-    async def scan_squirrel(
-        self,
-        window_increment: timedelta | None = None,
-    ) -> None:
+    async def scan_squirrel(self) -> None:
         self.ray_tracers.prepare(self.octree, self.stations)
         self._init_ranges()
         squirrel = self.get_squirrel()
@@ -100,9 +97,7 @@ class SquirrelSearch(Search):
         # tracemalloc.start()
 
         # TODO: too hardcoded
-        window_increment = window_increment or (
-            self.shift_range * self.window_length_factor + 3 * self.window_padding
-        )
+        window_increment = self.shift_range * self.window_length_factor
         logger.info("using trace window increment: %s", window_increment)
 
         start_time = self.start_time
@@ -130,6 +125,8 @@ class SquirrelSearch(Search):
                     return
                 yield batch
 
+        batch_start_time = None
+        compute_time_cumulative = timedelta()
         async for batch in async_iterator():
             window_start = to_datetime(batch.tmin)
             window_end = to_datetime(batch.tmax)
@@ -165,10 +162,27 @@ class SquirrelSearch(Search):
 
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
+            self._detections.dump_all()
 
             self.search_progress_time = window_end
             progress_file = self._rundir / "search_progress_time.txt"
             progress_file.write_text(str(self.search_progress_time))
+
+            if batch_start_time is not None:
+                batch_duration = datetime_now() - batch_start_time
+                compute_time_cumulative += batch_duration
+                batch_end = datetime_now() - batch_start_time
+                logger.info(
+                    "window %d/%d took %s",
+                    batch.i + 1,
+                    batch.n,
+                    batch_end,
+                )
+                logger.info(
+                    "time remaining: %s",
+                    compute_time_cumulative / (batch.i + 1) * (batch.n - batch.i - 1),
+                )
+            batch_start_time = datetime_now()
 
             # global profile
             # new_profile = tracemalloc.take_snapshot()

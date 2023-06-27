@@ -360,7 +360,7 @@ class Detections(BaseModel):
         super().__init__(**data)
         if not self.detections_dir.exists():
             self.detections_dir.mkdir()
-            logger.info("created directory %s", self.detections_dir)
+            self.markers_dir.mkdir(exist_ok=True)
         else:
             self.load_detections()
 
@@ -374,19 +374,32 @@ class Detections(BaseModel):
         """Directory where detections are saved, infered from rundir"""
         return self.rundir / "detections"
 
+    @property
+    def markers_dir(self) -> Path:
+        return self.detections_dir / "pyrocko-markers"
+
     def add(self, detection: EventDetection) -> None:
-        # detection.octree.make_concrete()
         self.detections.append(detection)
 
         filename = self.detections_dir / (time_to_path(detection.time) + ".json")
         filename.write_text(detection.json())
 
+        markers_file = self.markers_dir / (time_to_path(detection.time) + ".list")
+        marker.save_markers(detection.as_pyrocko_markers(), str(markers_file))
+
+    def dump_all(self) -> None:
+        """Dump all detections to files in the detection directory."""
+        logger.debug("dumping detections")
         self.save_csv(self.rundir / "detections.csv")
         self.save_csv(self.rundir / "detections-randomized.csv", randomize_meters=100.0)
         self.save_pyrocko_events(self.rundir / "pyrocko-events.list")
-        self.save_pyrocko_markers(self.rundir / "pyrocko-markers.list")
 
     def add_semblance(self, trace: Trace) -> None:
+        """Add semblance trace to detection and save to file.
+
+        Args:
+            trace (Trace): semblance trace.
+        """
         trace.set_station("SEMBL")
         io.save(
             trace,
@@ -395,10 +408,11 @@ class Detections(BaseModel):
         )
 
     def load_detections(self) -> None:
+        """Load detections from files in the detections directory."""
         logger.info("loading detections from %s", self.detections_dir)
         files = sorted(self.detections_dir.glob("*.json"))
 
-        with console.status("[bold green]Loading detections..."):
+        with console.status("Loading detections..."):
             for file in files:
                 detection = EventDetection.parse_file(file)
                 logger.debug("loaded %s", detection)
