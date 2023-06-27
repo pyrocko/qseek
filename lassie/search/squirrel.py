@@ -167,7 +167,8 @@ class SquirrelSearch(Search):
                 await self._new_detection.emit(detection)
 
             self.search_progress_time = window_end
-            self.write_config()
+            progress_file = self._rundir / "search_progress_time.txt"
+            progress_file.write_text(str(self.search_progress_time))
 
             # global profile
             # new_profile = tracemalloc.take_snapshot()

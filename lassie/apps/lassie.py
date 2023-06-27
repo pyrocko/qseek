@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pkg_resources import get_distribution
 
+from lassie.console import console
 from lassie.images import ImageFunctions
 from lassie.images.phase_net import PhaseNet
 from lassie.models import Stations
@@ -144,6 +145,10 @@ def main() -> None:
 
     elif args.command == "continue":
         search = SquirrelSearch.load_rundir(args.rundir)
+        search_time_file = args.rundir / "search_progress_time.txt"
+        search.search_progress_time = datetime.fromisoformat(
+            search_time_file.read_text().strip()
+        )
 
         webserver = WebServer(search)
 
@@ -152,6 +157,7 @@ def main() -> None:
             await search.scan_squirrel()
             await http
 
+        console.rule("Continuing search")
         asyncio.run(_run())
 
     elif args.command == "feature-extraction":

@@ -46,12 +46,13 @@ class PhaseDetection(BaseModel):
 
     @property
     def traveltime_delay(self) -> timedelta | None:
+        """Traveltime delay between observed and modelled arrival."""
         if self.observed:
             return self.observed.time - self.model.time
         return None
 
     def get_arrival_time(self) -> datetime:
-        """Return observed time or modelled time, if observed is not set.
+        """Get observed time or modelled time, if observed is not set.
 
         Returns:
             datetime: Arrival time
@@ -402,7 +403,7 @@ class Detections(BaseModel):
                 detection = EventDetection.parse_file(file)
                 logger.debug("loaded %s", detection)
                 self.detections.append(detection)
-        console.out(f"loaded {self.n_detections} detections")
+        console.log(f"loaded {self.n_detections} detections")
 
     def get(self, uid: UUID) -> EventDetection:
         """Get a detection by its UUID
