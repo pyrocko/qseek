@@ -359,9 +359,9 @@ class StationCorrections(BaseModel):
 
     def get_delays(
         self,
-        station_nsls: list[NSL],
+        station_nsls: Iterable[NSL],
         phase: PhaseDescription,
-    ) -> np.ndarray[float]:
+    ) -> np.ndarray:
         return np.fromiter((self.get_delay(nsl, phase) for nsl in station_nsls), float)
 
     def save_plots(self, folder: Path) -> None:
