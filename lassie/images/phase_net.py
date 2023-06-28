@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal
 
 import torch
 from obspy import Stream
-from pydantic import PositiveInt, PrivateAttr, conint
+from pydantic import PositiveFloat, PositiveInt, PrivateAttr, conint
 from pyrocko import obspy_compat
 from seisbench import logger
 from seisbench.models import PhaseNet as PhaseNetSeisBench
@@ -94,6 +94,10 @@ class PhaseNet(ImageFunction):
         "P": "constant:P",
         "S": "constant:S",
     }
+    weights: dict[PhaseName, PositiveFloat] = {
+        "P": 1.0,
+        "S": 1.0,
+    }
 
     _phase_net: PhaseNetSeisBench = PrivateAttr(None)
 
@@ -129,11 +133,13 @@ class PhaseNet(ImageFunction):
 
         annotation_p = PhaseNetImage(
             image_function=self,
+            weight=self.weights["P"],
             phase=self.phase_map["P"],
             traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
         )
         annotation_s = PhaseNetImage(
             image_function=self,
+            weight=self.weights["S"],
             phase=self.phase_map["S"],
             traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],
         )

@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pydantic import BaseModel, Extra, Field, PositiveInt, PrivateAttr
+from pydantic import BaseModel, Extra, Field, PositiveFloat, PositiveInt, PrivateAttr
 
 from lassie.console import console
 from lassie.models.detection import Detections, EventDetection, PhaseDetection, Receiver
@@ -259,7 +259,7 @@ class StationCorrection(BaseModel):
             ax.text(
                 0.05,
                 0.95,
-                f"{weight}\n{phase} ({n_delays} picks)",
+                f"{phase} ({n_delays} picks)",
                 fontsize="small",
                 transform=ax.transAxes,
                 va="top",
@@ -267,12 +267,13 @@ class StationCorrection(BaseModel):
 
             ax.text(
                 0.05,
-                0.05,
+                0.02,
                 f"median: {self.get_median_delay(phase, weight=weight):.2f} s\n"
-                f"avg: {self.get_average_delay(phase, weight=weight):.2f} s\n",
-                fontsize="small",
+                f"avg: {self.get_average_delay(phase, weight=weight):.2f} s\n"
+                f"weight: {weight}\n",
+                fontsize="x-small",
+                va="bottom",
                 transform=ax.transAxes,
-                va="top",
             )
 
         for ax_col, phase in zip(axes, phases, strict=True):
@@ -303,31 +304,35 @@ class StationCorrections(BaseModel):
     load_rundir: Path | None = None
     measure: Literal["median", "average"] = "median"
     weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
-    minimum_picks: PositiveInt = 5
 
-    station_corrections: dict[str, StationCorrection] = {}
+    minimum_num_picks: PositiveInt = 5
+    minimum_distance_border: PositiveFloat = 2000.0
+    minimum_depth: PositiveFloat = 3000.0
 
-    _cache: dict[tuple[NSL, str], float] = PrivateAttr({})
+    _station_corrections: dict[str, StationCorrection] = PrivateAttr({})
+    _traveltime_delay_cache: dict[tuple[NSL, PhaseDescription], float] = PrivateAttr({})
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
         if self.load_rundir:
             logger.debug("loading station detections from %s", self.load_rundir)
             detections = Detections(rundir=self.load_rundir)
-            with console.status("loading station corrections"):
+            with console.status("aggregating station detections"):
                 for event in detections:
                     self.add_event(event)
-            console.log("loaded station corrections")
-            self.load_rundir = None
+            console.log(f"aggregated {self.n_stations} station corrections")
 
     def add_event(self, detection: EventDetection) -> None:
-        if not detection.in_bounds:
+        if (
+            not detection.distance_border < self.minimum_distance_border
+            or detection.depth < self.minimum_depth
+        ):
             return
 
         logger.debug("loading event %s", detection)
         for receiver in detection.receivers:
-            # Remove unobserved phases
             phase_arrivals = receiver.phase_arrivals.copy()
+            # Remove unobserved phases
             for phase_name, phase in phase_arrivals.copy().items():
                 if not phase.observed:
                     phase_arrivals.pop(phase_name)
@@ -338,7 +343,7 @@ class StationCorrections(BaseModel):
                 sta_correction = self.get_station(receiver.nsl)
             except KeyError:
                 sta_correction = StationCorrection.from_receiver(receiver)
-                self.station_corrections[receiver.pretty_nsl] = sta_correction
+                self._station_corrections[receiver.pretty_nsl] = sta_correction
 
             sta_correction.add_event(
                 StationEvent(
@@ -353,10 +358,14 @@ class StationCorrections(BaseModel):
                 )
             )
 
+    @property
+    def n_stations(self) -> int:
+        return len(self._station_corrections)
+
     def get_station(self, nsl: NSL | str) -> StationCorrection:
         if isinstance(nsl, tuple):
             nsl = ".".join(nsl)
-        return self.station_corrections[nsl]
+        return self._station_corrections[nsl]
 
     def get_delay(self, station_nsl: NSL, phase: PhaseDescription) -> float:
         def get_delay() -> float:
@@ -364,8 +373,7 @@ class StationCorrections(BaseModel):
                 station = self.get_station(station_nsl)
             except KeyError:
                 return 0.0
-
-            if station.get_num_picks(phase) < self.minimum_picks:
+            if station.get_num_picks(phase) < self.minimum_num_picks:
                 return 0.0
 
             if self.measure == "average":
@@ -374,9 +382,9 @@ class StationCorrections(BaseModel):
                 return station.get_median_delay(phase, self.weighting)
             raise ValueError(f"unknown measure {self.measure!r}")
 
-        if (station_nsl, phase) not in self._cache:
-            self._cache[station_nsl, phase] = get_delay()
-        return self._cache[station_nsl, phase]
+        if (station_nsl, phase) not in self._traveltime_delay_cache:
+            self._traveltime_delay_cache[station_nsl, phase] = get_delay()
+        return self._traveltime_delay_cache[station_nsl, phase]
 
     def get_delays(
         self,
@@ -388,7 +396,7 @@ class StationCorrections(BaseModel):
     def save_plots(self, folder: Path) -> None:
         folder.mkdir(exist_ok=True)
         with console.status("plotting station corrections") as status:
-            for correction in self.station_corrections.values():
+            for correction in self._station_corrections.values():
                 correction.plot(
                     filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
                 )
@@ -408,4 +416,4 @@ class StationCorrections(BaseModel):
                 )
 
     def __iter__(self) -> Iterator[StationCorrection]:
-        return iter(self.station_corrections.values())
+        return iter(self._station_corrections.values())

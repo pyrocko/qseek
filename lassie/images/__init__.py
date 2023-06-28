@@ -75,6 +75,9 @@ class WaveformImages:
         for image in self:
             image.set_stations(stations)
 
+    def cumulative_weight(self) -> float:
+        return sum(image.weight for image in self)
+
     def snuffle(self) -> None:
         from pyrocko.trace import snuffle
 

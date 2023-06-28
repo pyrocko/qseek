@@ -162,7 +162,9 @@ class SquirrelSearch(Search):
 
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
-            self._detections.dump_all()
+
+            if detections:
+                self._detections.dump_all()
 
             self.search_progress_time = window_end
             progress_file = self._rundir / "search_progress_time.txt"

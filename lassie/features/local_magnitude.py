@@ -52,10 +52,6 @@ class LocalMagnitude(EventFeature):
     n_stations: int
 
 
-def _get_max_amplitude_mm(traces: list[Trace]) -> float:
-    return max(np.abs(trace.ydata).max() for trace in traces)
-
-
 class LocalMagnitudeModel(BaseModel):
     name: Literal["local-magnitude-estimator"] = "local-magnitude-estimator"
 
@@ -66,6 +62,9 @@ class LocalMagnitudeModel(BaseModel):
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
         raise NotImplementedError
+
+    def _get_max_amplitude_mm(self, traces: list[Trace]) -> float:
+        return max(np.abs(trace.ydata).max() for trace in self.trace_selector(traces))
 
     def _is_distance_valid(self, dist_hypo: float, dist_epi: float) -> bool:
         epi_range = self.epicentral_range
@@ -88,10 +87,7 @@ class LocalMagnitudeModel(BaseModel):
             return None
 
         log_amp_0 = self.get_amp_0(dist_hypo / KM, dist_epi / KM)
-        try:
-            amp_max = _get_max_amplitude_mm(self.trace_selector(traces))
-        except KeyError as exc:
-            logger.exception(exc)
+        amp_max = self._get_max_amplitude_mm(traces)
         return StationMagnitude(
             estimator=self.name,
             local_magnitude=np.log(amp_max) + log_amp_0,
@@ -122,7 +118,7 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
     ) -> StationMagnitude | None:
         dist_hypo = event.distance_to(receiver) / KM
         try:
-            amp_max = _get_max_amplitude_mm(ChannelSelectors.Horizontal(traces))
+            amp_max = self._get_max_amplitude_mm(traces)
         except KeyError as exc:
             logger.exception(exc)
             return None

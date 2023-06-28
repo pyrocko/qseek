@@ -224,7 +224,7 @@ class SearchTraces:
         station_contribution = (~traveltimes_bad).sum(axis=1, dtype=float)
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
-        weights = np.ones_like(shifts, dtype=float)
+        weights = np.full_like(shifts, fill_value=image.weight, dtype=float)
 
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -243,7 +243,6 @@ class SearchTraces:
             method=0,
             nparallel=parent.n_threads_parstack,
         )
-        # semblance_data /= station_contribution[:, np.newaxis]
         return semblance_data
 
     async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
@@ -314,7 +313,7 @@ class SearchTraces:
                 n_samples_semblance=semblance.n_samples_unpadded,
             )
         # TODO: parstack fix ownership of passed result
-        semblance.normalize(images.n_images)
+        semblance.normalize(images.cumulative_weight())
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.info("semblance stats: %s", parent.semblance_stats)

@@ -43,6 +43,7 @@ class ImageFunction(BaseModel):
 class WaveformImage:
     image_function: ImageFunction
     phase: PhaseDescription
+    weight: float
     traces: list[Trace]
     stations: Stations = Stations.construct()
 
