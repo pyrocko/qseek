@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import glob
 import logging
+from collections import deque
 
 # import tracemalloc
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator, Deque
 
 from pydantic import PrivateAttr, conint, validator
 from pyrocko.squirrel import Squirrel
@@ -126,7 +127,7 @@ class SquirrelSearch(Search):
                 yield batch
 
         batch_start_time = None
-        compute_time_cumulative = timedelta()
+        batch_times: Deque[timedelta] = deque(maxlen=20)
         async for batch in async_iterator():
             window_start = to_datetime(batch.tmin)
             window_end = to_datetime(batch.tmax)
@@ -172,18 +173,19 @@ class SquirrelSearch(Search):
 
             if batch_start_time is not None:
                 batch_duration = datetime_now() - batch_start_time
-                compute_time_cumulative += batch_duration
-                batch_end = datetime_now() - batch_start_time
+                batch_times.append(batch_duration)
                 logger.info(
                     "window %d/%d took %s",
                     batch.i + 1,
                     batch.n,
-                    batch_end,
+                    batch_duration,
                 )
-                logger.info(
-                    "time remaining: %s",
-                    compute_time_cumulative / (batch.i + 1) * (batch.n - batch.i - 1),
+                remaining_time = (
+                    sum(batch_times, timedelta())
+                    / len(batch_times)
+                    * (batch.n - batch.i - 1)
                 )
+                logger.info("time remaining: %s", remaining_time)
             batch_start_time = datetime_now()
 
             # global profile
