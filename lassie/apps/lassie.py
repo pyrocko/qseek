@@ -175,7 +175,7 @@ def main() -> None:
 
     elif args.command == "station-corrections":
         rundir = Path(args.rundir)
-        station_corrections = StationCorrections(load_rundir=rundir)
+        station_corrections = StationCorrections(rundir=rundir)
         station_corrections.save_plots(rundir / "station-corrections")
         station_corrections.save_csv(filename=rundir / "station-corrections-stats.csv")
 

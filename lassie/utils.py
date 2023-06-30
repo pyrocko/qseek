@@ -63,7 +63,7 @@ def to_datetime(time: float) -> datetime:
 def downsample(trace: Trace, sampling_rate: float) -> None:
     deltat = 1.0 / sampling_rate
     try:
-        trace.downsample_to(deltat, demean=False, snap=True, allow_upsample_max=4)
+        trace.downsample_to(deltat, demean=False, snap=False, allow_upsample_max=4)
 
     except UnavailableDecimation:
         logger.warning("using resample instead of decimation")

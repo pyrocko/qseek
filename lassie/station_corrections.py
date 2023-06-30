@@ -301,7 +301,7 @@ class StationCorrection(BaseModel):
 
 
 class StationCorrections(BaseModel):
-    load_rundir: Path | None = None
+    rundir: Path | None = None
     measure: Literal["median", "average"] = "median"
     weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
 
@@ -314,9 +314,9 @@ class StationCorrections(BaseModel):
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
-        if self.load_rundir:
-            logger.debug("loading station detections from %s", self.load_rundir)
-            detections = Detections(rundir=self.load_rundir)
+        if self.rundir:
+            logger.debug("loading station detections from %s", self.rundir)
+            detections = Detections(rundir=self.rundir)
             with console.status("aggregating station detections"):
                 for event in detections:
                     self.add_event(event)

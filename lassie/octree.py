@@ -42,10 +42,11 @@ class Node(BaseModel):
         if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
+        if not self.can_split():
+            raise NodeSplitError("Cannot split node below limit.")
+
         if not self._children_cached:
             half_size = self.size / 2
-            if half_size < self.tree.size_limit:
-                raise NodeSplitError("Cannot split node below limit.")
 
             self._children_cached = tuple(
                 Node.construct(
@@ -82,6 +83,10 @@ class Node(BaseModel):
             self.depth - tree.depth_bounds[0],
             tree.depth_bounds[1] - self.depth,
         )
+
+    def can_split(self):
+        half_size = self.size / 2
+        return half_size >= self.tree.size_limit
 
     def reset(self) -> None:
         self._children_cached = self.children

@@ -58,6 +58,8 @@ class Search(BaseModel):
     n_threads_parstack: conint(ge=0) = 0
     n_threads_argmax: PositiveInt = 4
 
+    split_fraction: confloat(gt=0.0, lt=1.0) = 0.9
+
     # Overwritten at initialisation
     shift_range: timedelta = timedelta(seconds=0.0)
     window_padding: timedelta = timedelta(seconds=0.0)
@@ -312,7 +314,6 @@ class SearchTraces:
                 semblance_data=semblance.semblance_unpadded,
                 n_samples_semblance=semblance.n_samples_unpadded,
             )
-        # TODO: parstack fix ownership of passed result
         semblance.normalize(images.cumulative_weight())
 
         parent.semblance_stats.update(semblance.get_stats())
@@ -329,64 +330,64 @@ class SearchTraces:
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
-        split_nodes: set[Node] = set()
-        for idx, semblance_detection in zip(
+        maxima_node_idx = await semblance.maxima_node_idx()
+        refine_nodes: set[Node] = set()
+        for time_idx, semblance_detection in zip(
             detection_idx, detection_semblance, strict=True
         ):
-            octree.map_semblance(semblance.semblance[:, idx])
-            # TODO: threshold should be configurable
-            split_nodes.update(octree.get_nodes(semblance_detection * 0.9))
+            octree.map_semblance(semblance.semblance[:, time_idx])
+            node_idx = maxima_node_idx[time_idx]
+            source_node = octree[node_idx]
 
-        try:
-            new_nodes = [node.split() for node in split_nodes]
-        except NodeSplitError:
-            logger.debug("reverting partial split")
-            for node in split_nodes:
-                node.reset()
-            logger.debug("event detected - octree bottom %.1f m", octree.size_limit)
-        else:
-            sizes = {node.size for node in chain.from_iterable(new_nodes)}
-            logger.info(
-                "energy detected - split %d octree nodes to %s m",
-                len(split_nodes),
-                ", ".join(f"{s:.1f}" for s in sizes),
-            )
+            if not source_node.can_split():
+                continue
+
+            split_nodes = octree.get_nodes(semblance_detection * parent.split_fraction)
+            refine_nodes.update(split_nodes)
+
+        # refine_nodes is empty when all sources fall into smallest octree nodes
+        if refine_nodes:
+            logger.info("energy detected, refining %d nodes", len(refine_nodes))
+            for node in refine_nodes:
+                try:
+                    node.split()
+                except NodeSplitError:
+                    continue
+
             del semblance
             return await self.search(octree)
 
         detections = []
-        for idx, semblance_detection in zip(
+        for time_idx, semblance_detection in zip(
             detection_idx, detection_semblance, strict=True
         ):
-            time = self.start_time + timedelta(seconds=idx / sampling_rate)
+            time = self.start_time + timedelta(seconds=time_idx / sampling_rate)
+            octree.map_semblance(semblance.semblance[:, time_idx])
 
-            octree.map_semblance(semblance.semblance[:, idx])  # noqa: F821
-
-            idx = (await semblance.maximum_node_idx())[idx]  # noqa: F821
-            node = octree[idx]
-            if not octree.is_node_in_bounds(node):
+            node_idx = (await semblance.maxima_node_idx())[time_idx]
+            source_node = octree[node_idx]
+            if not octree.is_node_in_bounds(source_node):
                 logger.info(
                     "source node is inside octree's absorbing boundary (%.1f m)",
-                    node.distance_border,
+                    source_node.distance_border,
                 )
-
-            source_node = node.as_location()
+            source_location = source_node.as_location()
 
             detection = EventDetection(
                 time=time,
                 semblance=float(semblance_detection),
-                distance_border=node.distance_border,
-                in_bounds=octree.is_node_in_bounds(node),
-                **source_node.dict(),
+                distance_border=source_node.distance_border,
+                in_bounds=octree.is_node_in_bounds(source_node),
+                **source_location.dict(),
             )
 
-            # Attach receivers with modelled and picked arrivals
+            # Attach modelled and picked arrivals to receivers
             for image in await self.get_images(sampling_rate=None):
                 ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = ray_tracer.get_arrivals(
                     phase=image.phase,
                     event_time=time,
-                    source=source_node,
+                    source=source_location,
                     receivers=image.stations.stations,
                 )
                 arrivals_observed = image.search_phase_arrivals(
@@ -396,12 +397,10 @@ class SearchTraces:
                 )
 
                 phase_detections = [
-                    PhaseDetection(phase=image.phase, model=model, observed=observed)
-                    if model
+                    PhaseDetection(phase=image.phase, model=mod, observed=obs)
+                    if mod
                     else None
-                    for model, observed in zip(
-                        arrivals_model, arrivals_observed, strict=True
-                    )
+                    for mod, obs in zip(arrivals_model, arrivals_observed, strict=True)
                 ]
                 detection.receivers.add_receivers(
                     stations=image.stations.stations,
@@ -422,4 +421,4 @@ class SearchTraces:
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
 
-        return detections, semblance.get_trace()  # noqa: F821
+        return detections, semblance.get_trace()

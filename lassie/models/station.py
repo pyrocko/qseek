@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 class Station(Location):
-    network: str
-    station: str
-    location: str
+    network: constr(max_length=2, regex=r"[a-zA-Z0-9]")
+    station: constr(max_length=5, regex=r"[a-zA-Z0-9]")
+    location: constr(max_length=2, regex=r"[a-zA-Z0-9]")
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:

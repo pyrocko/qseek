@@ -96,7 +96,7 @@ class Semblance:
             self._max_semblance = self.semblance.max(axis=0)
         return self._max_semblance
 
-    async def maximum_node_idx(self, nparallel: int = 6) -> np.ndarray:
+    async def maxima_node_idx(self, nparallel: int = 6) -> np.ndarray:
         """Indices of maximum semblance at any time step.
 
         Args:
