@@ -146,9 +146,14 @@ def main() -> None:
     elif args.command == "continue":
         search = SquirrelSearch.load_rundir(args.rundir)
         search_time_file = args.rundir / "search_progress_time.txt"
-        search.search_progress_time = datetime.fromisoformat(
-            search_time_file.read_text().strip()
-        )
+        if search_time_file.exists():
+            search.search_progress_time = datetime.fromisoformat(
+                search_time_file.read_text().strip()
+            )
+            console.rule("Continuing search")
+        else:
+            logger.warning("cannot find progress file, starting from scratch")
+            console.rule("Starting new search")
 
         webserver = WebServer(search)
 
@@ -157,7 +162,6 @@ def main() -> None:
             await search.scan_squirrel()
             await http
 
-        console.rule("Continuing search")
         asyncio.run(_run())
 
     elif args.command == "feature-extraction":
