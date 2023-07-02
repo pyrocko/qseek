@@ -50,7 +50,7 @@ class SquirrelSearch(Search):
     time_span: tuple[datetime | None, datetime | None] = (None, None)
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
-    squirrel_prefetch: PositiveInt = 4
+    waveform_prefetch_batches: PositiveInt = 4
 
     features: list[FeatureExtractors] = [
         GroundMotionExtractor(),
@@ -129,10 +129,10 @@ class SquirrelSearch(Search):
             want_incomplete=False,
             codes=[(*nsl, "*") for nsl in self.stations.get_all_nsl()],
         )
-        prefetcher = SquirrelPrefetcher(iterator, queue_size=self.squirrel_prefetch)
+        prefetcher = SquirrelPrefetcher(iterator, self.waveform_prefetch_batches)
 
         batch_start_time = None
-        batch_durations: Deque[timedelta] = deque(maxlen=20)
+        batch_durations: Deque[timedelta] = deque(maxlen=25)
         while True:
             batch = await prefetcher.queue.get()
             if batch is None:
