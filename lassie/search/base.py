@@ -132,6 +132,8 @@ class Search(BaseModel):
                 "shift ranges: %s / %s - %s", phase, *self.travel_time_ranges[phase]
             )
 
+        # TODO: minimum shift is calculated on the coarse octree grid, which is
+        # not necessarily the same as the fine grid used for semblance calculation
         shift_min = min(chain.from_iterable(self.travel_time_ranges.values()))
         shift_max = max(chain.from_iterable(self.travel_time_ranges.values()))
         self.shift_range = shift_max - shift_min

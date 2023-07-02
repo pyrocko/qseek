@@ -4,11 +4,9 @@ import asyncio
 import glob
 import logging
 from collections import deque
-
-# import tracemalloc
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Deque
+from typing import TYPE_CHECKING, Deque, Iterator
 
 from pydantic import PrivateAttr, conint, validator
 from pyrocko.squirrel import Squirrel
@@ -17,7 +15,7 @@ from lassie.features import FeatureExtractors
 from lassie.features.ground_motion import GroundMotionExtractor
 from lassie.features.local_magnitude import LocalMagnitudeExtractor
 from lassie.search.base import Search, SearchTraces
-from lassie.utils import alog_call, datetime_now, to_datetime
+from lassie.utils import datetime_now, to_datetime
 
 if TYPE_CHECKING:
     from pyrocko.squirrel.base import Batch
@@ -26,7 +24,28 @@ if TYPE_CHECKING:
     from lassie.models.detection import EventDetection
 
 logger = logging.getLogger(__name__)
-# profile = None
+
+
+class SquirrelPrefetcher:
+    def __init__(self, iterator: Iterator[Batch]) -> None:
+        self.iterator = iterator
+        self.queue: asyncio.Queue[Batch] = asyncio.Queue(maxsize=2)
+
+        self._task = asyncio.create_task(self.prefetch_worker())
+
+    async def prefetch_worker(self) -> None:
+        logger.info("start prefetching squirrel data")
+        while True:
+            start = datetime_now()
+            batch = await asyncio.to_thread(lambda: next(self.iterator, None))
+            if batch is None:
+                logger.debug("squirrel prefetcher finished")
+                await self.queue.wait(None)
+                break
+            logger.info(
+                "prefetched batch %d in %s", batch.i + 1, datetime_now() - start
+            )
+            await self.queue.put(batch)
 
 
 class SquirrelSearch(Search):
@@ -95,9 +114,6 @@ class SquirrelSearch(Search):
         self._init_ranges()
         squirrel = self.get_squirrel()
 
-        # tracemalloc.start()
-
-        # TODO: too hardcoded
         window_increment = self.shift_range * self.window_length_factor
         logger.info("using trace window increment: %s", window_increment)
 
@@ -114,21 +130,16 @@ class SquirrelSearch(Search):
             want_incomplete=False,
             codes=[(*nsl, "*") for nsl in self.stations.get_all_nsl()],
         )
-
-        async def async_iterator() -> AsyncIterator[Batch]:
-            @alog_call  # to log the call
-            async def get_waveforms() -> Batch | None:
-                return await asyncio.to_thread(lambda: next(iterator, None))
-
-            while True:
-                batch = await get_waveforms()
-                if batch is None:
-                    return
-                yield batch
+        prefetcher = SquirrelPrefetcher(iterator)
 
         batch_start_time = None
-        batch_times: Deque[timedelta] = deque(maxlen=20)
-        async for batch in async_iterator():
+        batch_durations: Deque[timedelta] = deque(maxlen=20)
+        while True:
+            batch = await prefetcher.queue.get()
+            if batch is None:
+                logger.info("squirrel search finished")
+                break
+
             window_start = to_datetime(batch.tmin)
             window_end = to_datetime(batch.tmax)
             window_length = window_end - window_start
@@ -173,7 +184,7 @@ class SquirrelSearch(Search):
 
             if batch_start_time is not None:
                 batch_duration = datetime_now() - batch_start_time
-                batch_times.append(batch_duration)
+                batch_durations.append(batch_duration)
                 logger.info(
                     "window %d/%d took %s",
                     batch.i + 1,
@@ -181,20 +192,14 @@ class SquirrelSearch(Search):
                     batch_duration,
                 )
                 remaining_time = (
-                    sum(batch_times, timedelta())
-                    / len(batch_times)
+                    sum(batch_durations, timedelta())
+                    / len(batch_durations)
                     * (batch.n - batch.i - 1)
                 )
                 logger.info("time remaining: %s", remaining_time)
             batch_start_time = datetime_now()
 
-            # global profile
-            # new_profile = tracemalloc.take_snapshot()
-            # if profile is not None:
-            #     lines = profile.compare_to(new_profile, "lineno")
-            #     for line in lines[:10]:
-            #         logger.warning(line)
-            # profile = new_profile
+            prefetcher.queue.task_done()
 
     async def add_features(self, event: EventDetection) -> None:
         squirrel = self.get_squirrel()

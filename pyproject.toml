@@ -37,6 +37,7 @@ dependencies = [
     "typing-extensions>=4.6",
     "lru-dict>=1.2",
     "rich>=13.4",
+    "nest-asyncio>=1.5",  # wait for seisbench merge https://github.com/seisbench/seisbench/pull/214
 ]
 classifiers = [
     "Intended Audience :: Science/Research",
@@ -71,4 +72,5 @@ Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
 [tool.setuptools_scm]
 
 [tool.ruff]
-select = ['E', 'F', 'W', 'N', 'DTZ', 'FA', 'G', 'RET', 'SIM', 'B', 'RET', 'C4']
+extend-select = ['W', 'N', 'DTZ', 'FA', 'G', 'RET', 'SIM', 'B', 'RET', 'C4']
+target-version = 'py310'

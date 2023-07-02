@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+import nest_asyncio
 from pkg_resources import get_distribution
 
 from lassie.console import console
@@ -18,6 +19,8 @@ from lassie.station_corrections import StationCorrections
 from lassie.tracers import RayTracers
 from lassie.tracers.cake import CakeTracer
 from lassie.utils import ANSI, setup_rich_logging
+
+nest_asyncio.apply()
 
 setup_rich_logging()
 
@@ -150,7 +153,7 @@ def main() -> None:
             search.search_progress_time = datetime.fromisoformat(
                 search_time_file.read_text().strip()
             )
-            console.rule("Continuing search")
+            console.rule(f"Continuing search from {search.search_progress_time}")
         else:
             logger.warning("cannot find progress file, starting from scratch")
             console.rule("Starting new search")
