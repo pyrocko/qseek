@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Iterator
 
-from pydantic import PrivateAttr, conint, validator
+from pydantic import PositiveInt, PrivateAttr, conint, validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors
@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 class SquirrelPrefetcher:
-    def __init__(self, iterator: Iterator[Batch]) -> None:
+    def __init__(self, iterator: Iterator[Batch], queue_size: int = 4) -> None:
         self.iterator = iterator
-        self.queue: asyncio.Queue[Batch] = asyncio.Queue(maxsize=2)
+        self.queue: asyncio.Queue[Batch] = asyncio.Queue(maxsize=queue_size)
 
         self._task = asyncio.create_task(self.prefetch_worker())
 
@@ -38,11 +38,11 @@ class SquirrelPrefetcher:
         while True:
             start = datetime_now()
             batch = await asyncio.to_thread(lambda: next(self.iterator, None))
+            logger.debug("prefetched waveforms in %s", datetime_now() - start)
             if batch is None:
                 logger.debug("squirrel prefetcher finished")
                 await self.queue.wait(None)
                 break
-            logger.info("prefetched waveforms in %s", datetime_now() - start)
             await self.queue.put(batch)
 
 
@@ -50,6 +50,7 @@ class SquirrelSearch(Search):
     time_span: tuple[datetime | None, datetime | None] = (None, None)
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
+    squirrel_prefetch: PositiveInt = 4
 
     features: list[FeatureExtractors] = [
         GroundMotionExtractor(),
@@ -128,7 +129,7 @@ class SquirrelSearch(Search):
             want_incomplete=False,
             codes=[(*nsl, "*") for nsl in self.stations.get_all_nsl()],
         )
-        prefetcher = SquirrelPrefetcher(iterator)
+        prefetcher = SquirrelPrefetcher(iterator, queue_size=self.squirrel_prefetch)
 
         batch_start_time = None
         batch_durations: Deque[timedelta] = deque(maxlen=20)
