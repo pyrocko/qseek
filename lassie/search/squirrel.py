@@ -42,9 +42,7 @@ class SquirrelPrefetcher:
                 logger.debug("squirrel prefetcher finished")
                 await self.queue.wait(None)
                 break
-            logger.info(
-                "prefetched batch %d in %s", batch.i + 1, datetime_now() - start
-            )
+            logger.info("prefetched waveforms in %s", datetime_now() - start)
             await self.queue.put(batch)
 
 
