@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import cProfile
 import logging
 import re
-import time
 import zipfile
 from datetime import datetime, timedelta
 from functools import cached_property
@@ -15,11 +15,13 @@ from typing import TYPE_CHECKING, Literal, Sequence
 import numpy as np
 from lru import LRU
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
+from pyrocko import orthodrome as od
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
 from pyrocko.gf import meta
 from rich.progress import Progress
 
+from lassie.octree import get_node_coordinates
 from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.utils import (
     CACHE_DIR,
@@ -34,14 +36,15 @@ if TYPE_CHECKING:
 
     from lassie.models.location import Location
     from lassie.models.station import Stations
-    from lassie.octree import Octree
+    from lassie.octree import Node, Octree
 
 logger = logging.getLogger(__name__)
+p = cProfile.Profile()
 
 KM = 1e3
 MAX_DBS = 16
 
-LRU_CACHE = 2000
+LRU_CACHE_SIZE = 2000
 
 
 class CakeArrival(ModelledArrival):
@@ -82,6 +85,7 @@ class EarthModel(BaseModel):
         return self._as_array()[:, 1] * KM
 
     def get_profile_vs(self) -> np.ndarray:
+        # TODO: reduce to relevant layers
         return self._as_array()[:, 2] * KM
 
     def as_layered_model(self) -> LayeredModel:
@@ -126,8 +130,11 @@ class TraveltimeTree(BaseModel):
 
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
-    _cache: dict[bytes, np.ndarray] = PrivateAttr(
-        default_factory=lambda: LRU(LRU_CACHE)
+
+    _cached_stations: Stations | None = PrivateAttr(None)
+    _cached_station_indeces: dict[str, int] | None = PrivateAttr({})
+    _node_cache: dict[bytes, np.ndarray] = PrivateAttr(
+        default_factory=lambda: LRU(LRU_CACHE_SIZE)
     )
 
     def calculate_tree(self) -> spit.SPTree:
@@ -249,7 +256,7 @@ class TraveltimeTree(BaseModel):
             self._sptree = self._load_sptree()
         return self._sptree
 
-    def _get_traveltime_sptree(
+    def _interpolate_traveltimes_sptree(
         self,
         coordinates: np.ndarray | list[float],
     ) -> np.ndarray:
@@ -257,33 +264,85 @@ class TraveltimeTree(BaseModel):
         timing = self.timing.as_pyrocko_timing()
 
         coordinates = np.atleast_2d(np.ascontiguousarray(coordinates))
-        coord_hash = sha1(coordinates.data).digest()
-        if coord_hash not in self._cache:
-            traveltimes: np.ndarray = timing.evaluate(
-                lambda phase: sptree.interpolate_many,
-                coordinates,
-            )
-            self._cache[coord_hash] = traveltimes.astype(np.float32)
-        return self._cache[coord_hash].astype(float)
+        return timing.evaluate(
+            lambda phase: sptree.interpolate_many,
+            coordinates,
+        )
 
-    def get_traveltime(self, source: Location, receiver: Location) -> float:
-        coordinates = [
-            receiver.effective_depth,
-            source.effective_depth,
-            receiver.distance_to(source),
-        ]
-        traveltime = self._get_traveltime_sptree(coordinates)
-        return float(traveltime)
+    def init_cache(self, octree: Octree, stations: Stations) -> None:
+        self._cached_stations = stations
+        self._cached_station_indeces = {
+            sta.pretty_nsl: idx for idx, sta in enumerate(stations)
+        }
+        station_traveltimes = self.interpolate_traveltimes(octree, stations)
 
-    def get_cache_bytes(self) -> int:
-        return sum(traveltimes.nbytes for traveltimes in self._cache.values())
+        for node, traveltimes in zip(octree, station_traveltimes, strict=True):
+            self._node_cache[node.hash()] = traveltimes.astype(np.float32)
+
+    def fill_cache(self, nodes: Sequence[Node]) -> None:
+        logger.debug("filling traveltimes cache for %d nodes", len(nodes))
+        stations = self._cached_stations
+
+        node_coords = get_node_coordinates(nodes, system="geographic")
+        sta_coords = stations.get_coordinates(system="geographic")
+
+        sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
+        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
+
+        receiver_distances = np.linalg.norm(
+            sta_coords - node_coords[:, np.newaxis], axis=2
+        )
+
+        traveltimes = self._interpolate_traveltimes(
+            receiver_distances,
+            np.array([sta.effective_depth for sta in stations]),
+            np.array([node.depth for node in nodes]),
+        )
+
+        for node, times in zip(nodes, traveltimes, strict=True):
+            self._node_cache[node.hash()] = times.astype(np.float32)
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
-        logger.debug("calculating traveltimes for %d stations", stations.n_stations)
-        receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
-        source_depths = np.fromiter((node.depth for node in octree), float)
-        receiver_distances = octree.distances_stations(stations)
+        station_indices = np.fromiter(
+            (self._cached_station_indeces[sta.pretty_nsl] for sta in stations),
+            dtype=int,
+        )
 
+        stations_traveltimes = []
+        fill_nodes = []
+        for node in octree:
+            try:
+                node_traveltimes = self._node_cache[node.hash()][station_indices]
+            except KeyError:
+                fill_nodes.append(node)
+                continue
+            stations_traveltimes.append(node_traveltimes)
+
+        if fill_nodes:
+            self.fill_cache(fill_nodes)
+            return self.get_traveltimes(octree, stations)
+
+        return np.asarray(stations_traveltimes).astype(float, copy=False)
+
+    def interpolate_traveltimes(
+        self,
+        octree: Octree,
+        stations: Stations,
+    ) -> np.ndarray:
+        receiver_distances = octree.distances_stations(stations)
+        receiver_depths = np.array([sta.effective_depth for sta in stations])
+        source_depths = np.array([node.depth for node in octree])
+
+        return self._interpolate_traveltimes(
+            receiver_distances, receiver_depths, source_depths
+        )
+
+    def _interpolate_traveltimes(
+        self,
+        receiver_distances: np.ndarray,
+        receiver_depths: np.ndarray,
+        source_depths: np.ndarray,
+    ) -> np.ndarray:
         coordinates = []
         for distances, source_depth in zip(
             receiver_distances,
@@ -297,22 +356,29 @@ class TraveltimeTree(BaseModel):
             )
             coordinates.append(np.asarray(node_receivers_distances).T)
 
+        n_traveltimes = receiver_distances.size
         with Progress() as progress:
             status = progress.add_task(
-                f"interpolating {stations.n_stations*octree.n_nodes} traveltimes",
-                total=len(coordinates),
-                visible=False,
+                f"interpolating {n_traveltimes} traveltimes", total=len(coordinates)
             )
-            start = time.time()
-
             traveltimes = []
             for coords in coordinates:
-                traveltimes.append(self._get_traveltime_sptree(coords))
+                traveltimes.append(self._interpolate_traveltimes_sptree(coords))
                 progress.update(status, advance=1)
-                if time.time() - start > 1.0:
-                    progress.update(status, visible=True)
 
-        return np.array(traveltimes)
+        return np.asarray(traveltimes).astype(float)
+
+    def get_traveltime(self, source: Location, receiver: Location) -> float:
+        coordinates = [
+            receiver.effective_depth,
+            source.effective_depth,
+            receiver.distance_to(source),
+        ]
+        try:
+            traveltime = self._get_sptree().interpolate(coordinates) or np.nan
+        except spit.OutOfBounds:
+            traveltime = np.nan
+        return float(traveltime)
 
 
 class CakeTracer(RayTracer):
@@ -346,10 +412,15 @@ class CakeTracer(RayTracer):
         return float((vel[vel != 0.0]).min())
 
     def prepare(self, octree: Octree, stations: Stations) -> None:
-        global LRU_CACHE
+        global LRU_CACHE_SIZE
 
-        LRU_CACHE = octree.n_nodes * 8
-        logging.debug("setting LRU cache keys to %d", LRU_CACHE)
+        LRU_CACHE_SIZE = octree.n_nodes * 64
+        lru_size_bytes = LRU_CACHE_SIZE * stations.n_stations * 4
+        logging.info(
+            "setting traveltime node cache to %d (%s)",
+            LRU_CACHE_SIZE,
+            human_readable_bytes(lru_size_bytes),
+        )
 
         cached_trees = [
             TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
@@ -384,6 +455,7 @@ class CakeTracer(RayTracer):
                 tree = TraveltimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
+            tree.init_cache(octree, stations)
             self._traveltime_trees[phase_descr] = tree
 
     def _get_sptree_model(self, phase: str) -> TraveltimeTree:
@@ -409,11 +481,7 @@ class CakeTracer(RayTracer):
     ) -> np.ndarray:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
-        tree = self._get_sptree_model(phase)
-        logger.debug(
-            "%s cache size is %s", phase, human_readable_bytes(tree.get_cache_bytes())
-        )
-        return tree.get_traveltimes(octree, stations)
+        return self._get_sptree_model(phase).get_traveltimes(octree, stations)
 
     def get_arrivals(
         self,

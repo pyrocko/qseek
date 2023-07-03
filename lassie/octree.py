@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import struct
 from collections import defaultdict
 from functools import cached_property
-from typing import TYPE_CHECKING, Callable, Iterator
+from hashlib import sha1
+from typing import TYPE_CHECKING, Callable, Iterator, Sequence
 
 import numpy as np
 from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
@@ -21,6 +23,28 @@ logger = logging.getLogger(__name__)
 km = 1e3
 
 
+def get_node_coordinates(
+    nodes: Sequence[Node],
+    system: CoordSystem = "geographic",
+) -> np.ndarray:
+    node_locations = (node.as_location() for node in nodes)
+    if system == "geographic":
+        return np.array(
+            [
+                (*node.effective_lat_lon, node.effective_elevation)
+                for node in node_locations
+            ]
+        )
+    if system == "cartesian":
+        return np.array(
+            [
+                (node.east_shift, node.north_shift, node.effective_elevation)
+                for node in node_locations
+            ]
+        )
+    raise ValueError(f"Unknown coordinate system: {system}")
+
+
 class NodeSplitError(Exception):
     ...
 
@@ -35,6 +59,7 @@ class Node(BaseModel):
     tree: Octree | None = Field(None, exclude=True)
     children: tuple[Node] = Field((), exclude=True)
 
+    _hash: bytes | None = PrivateAttr(None)
     _children_cached: tuple[Node] = PrivateAttr(())
     _location: Location | None = PrivateAttr(None)
 
@@ -84,7 +109,7 @@ class Node(BaseModel):
             tree.depth_bounds[1] - self.depth,
         )
 
-    def can_split(self):
+    def can_split(self) -> bool:
         half_size = self.size / 2
         return half_size >= self.tree.size_limit
 
@@ -120,17 +145,23 @@ class Node(BaseModel):
         else:
             yield self
 
+    def hash(self) -> bytes:
+        if self._hash is None:
+            self._hash = sha1(
+                struct.pack(
+                    "dddddd",
+                    self.tree.center_lat,
+                    self.tree.center_lon,
+                    self.east,
+                    self.north,
+                    self.depth,
+                    self.size,
+                )
+            ).digest()
+        return self._hash
+
     def __hash__(self) -> int:
-        return hash(
-            (
-                self.tree.center_lat,
-                self.tree.center_lon,
-                self.east,
-                self.north,
-                self.depth,
-                self.size,
-            )
-        )
+        return hash(self.hash())
 
 
 class Octree(BaseModel):
@@ -242,22 +273,10 @@ class Octree(BaseModel):
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if self._cached_coordinates.get(system) is None:
-            node_locations = [node.as_location() for node in self]
-
-            if system == "geographic":
-                self._cached_coordinates[system] = np.array(
-                    [
-                        (*node.effective_lat_lon, node.effective_elevation)
-                        for node in node_locations
-                    ]
-                )
-            elif system == "cartesian":
-                self._cached_coordinates[system] = np.array(
-                    [
-                        (node.east_shift, node.north_shift, node.effective_elevation)
-                        for node in node_locations
-                    ]
-                )
+            nodes = (node for node in self)
+            self._cached_coordinates[system] = get_node_coordinates(
+                nodes, system=system
+            )
         return self._cached_coordinates[system]
 
     def distances_stations(self, stations: Stations) -> np.ndarray:

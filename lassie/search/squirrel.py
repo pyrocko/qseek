@@ -195,7 +195,11 @@ class SquirrelSearch(Search):
                     / len(batch_durations)
                     * (batch.n - batch.i - 1)
                 )
-                logger.info("time remaining: %s", remaining_time)
+                logger.info(
+                    "finish %s (remaining %s)",
+                    datetime.now() + remaining_time,  # noqa: DTZ005
+                    remaining_time,
+                )
             batch_start_time = datetime_now()
 
             prefetcher.queue.task_done()
