@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from lassie.models.station import Stations
 
 logger = logging.getLogger(__name__)
-km = 1e3
+KM = 1e3
 
 
 def get_node_coordinates(
@@ -168,12 +168,12 @@ class Octree(BaseModel):
     center_lat: float = 0.0
     center_lon: float = 0.0
     surface_elevation: float = 0.0
-    size_initial: PositiveFloat = 2 * km
+    size_initial: PositiveFloat = 2 * KM
     size_limit: PositiveFloat = 500
-    east_bounds: tuple[float, float] = (-10 * km, 10 * km)
-    north_bounds: tuple[float, float] = (-10 * km, 10 * km)
-    depth_bounds: tuple[float, float] = (0 * km, 20 * km)
-    absorbing_boundary: float = 1 * km
+    east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
+    north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
+    depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
+    absorbing_boundary: float = 1 * KM
 
     nodes: list[Node] | None = None
 

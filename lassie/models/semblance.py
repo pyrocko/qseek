@@ -61,7 +61,7 @@ class Semblance:
         self.n_samples_unpadded = n_samples
 
         self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
-        logger.info(
+        logger.debug(
             "allocated volume for %d nodes and %d samples (%s)",
             n_nodes,
             n_samples,

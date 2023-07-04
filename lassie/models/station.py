@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class Station(Location):
     network: constr(max_length=2)
     station: constr(max_length=5)
-    location: constr(max_length=2)
+    location: constr(max_length=2) = ""
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:

@@ -133,7 +133,7 @@ class TraveltimeTree(BaseModel):
 
     _cached_stations: Stations | None = PrivateAttr(None)
     _cached_station_indeces: dict[str, int] | None = PrivateAttr({})
-    _node_cache: dict[bytes, np.ndarray] = PrivateAttr(
+    _node_lut: dict[bytes, np.ndarray] = PrivateAttr(
         default_factory=lambda: LRU(LRU_CACHE_SIZE)
     )
 
@@ -269,7 +269,7 @@ class TraveltimeTree(BaseModel):
             coordinates,
         )
 
-    def init_cache(self, octree: Octree, stations: Stations) -> None:
+    def init_lut(self, octree: Octree, stations: Stations) -> None:
         self._cached_stations = stations
         self._cached_station_indeces = {
             sta.pretty_nsl: idx for idx, sta in enumerate(stations)
@@ -277,7 +277,7 @@ class TraveltimeTree(BaseModel):
         station_traveltimes = self.interpolate_traveltimes(octree, stations)
 
         for node, traveltimes in zip(octree, station_traveltimes, strict=True):
-            self._node_cache[node.hash()] = traveltimes.astype(np.float32)
+            self._node_lut[node.hash()] = traveltimes.astype(np.float32)
 
     def fill_cache(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling traveltimes cache for %d nodes", len(nodes))
@@ -300,7 +300,7 @@ class TraveltimeTree(BaseModel):
         )
 
         for node, times in zip(nodes, traveltimes, strict=True):
-            self._node_cache[node.hash()] = times.astype(np.float32)
+            self._node_lut[node.hash()] = times.astype(np.float32)
 
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
         station_indices = np.fromiter(
@@ -312,7 +312,7 @@ class TraveltimeTree(BaseModel):
         fill_nodes = []
         for node in octree:
             try:
-                node_traveltimes = self._node_cache[node.hash()][station_indices]
+                node_traveltimes = self._node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
                 continue
@@ -455,7 +455,7 @@ class CakeTracer(RayTracer):
                 tree = TraveltimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
-            tree.init_cache(octree, stations)
+            tree.init_lut(octree, stations)
             self._traveltime_trees[phase_descr] = tree
 
     def _get_sptree_model(self, phase: str) -> TraveltimeTree:
