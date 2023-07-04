@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import cProfile
 import logging
 import re
 import zipfile
@@ -39,7 +38,6 @@ if TYPE_CHECKING:
     from lassie.octree import Node, Octree
 
 logger = logging.getLogger(__name__)
-p = cProfile.Profile()
 
 KM = 1e3
 MAX_DBS = 16
@@ -279,8 +277,8 @@ class TraveltimeTree(BaseModel):
         for node, traveltimes in zip(octree, station_traveltimes, strict=True):
             self._node_lut[node.hash()] = traveltimes.astype(np.float32)
 
-    def fill_cache(self, nodes: Sequence[Node]) -> None:
-        logger.debug("filling traveltimes cache for %d nodes", len(nodes))
+    def fill_lut(self, nodes: Sequence[Node]) -> None:
+        logger.debug("filling traveltimes LUT for %d nodes", len(nodes))
         stations = self._cached_stations
 
         node_coords = get_node_coordinates(nodes, system="geographic")
@@ -319,7 +317,7 @@ class TraveltimeTree(BaseModel):
             stations_traveltimes.append(node_traveltimes)
 
         if fill_nodes:
-            self.fill_cache(fill_nodes)
+            self.fill_lut(fill_nodes)
             return self.get_traveltimes(octree, stations)
 
         return np.asarray(stations_traveltimes).astype(float, copy=False)
@@ -417,7 +415,7 @@ class CakeTracer(RayTracer):
         LRU_CACHE_SIZE = octree.n_nodes * 64
         lru_size_bytes = LRU_CACHE_SIZE * stations.n_stations * 4
         logging.info(
-            "setting traveltime node cache to %d (%s)",
+            "setting traveltime LUT size to %d (%s)",
             LRU_CACHE_SIZE,
             human_readable_bytes(lru_size_bytes),
         )
