@@ -131,7 +131,7 @@ def main() -> None:
         )
 
         config_file = folder / "config.json"
-        config_file.write_text(config.json(by_alias=False, indent=2))
+        config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
         logger.info("initialized new project in folder %s", folder)
         logger.info(
             "start detecting with:\n\t%slassie run config.json%s", ANSI.Bold, ANSI.Reset
