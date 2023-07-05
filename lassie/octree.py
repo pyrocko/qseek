@@ -9,7 +9,7 @@ from hashlib import sha1
 from typing import TYPE_CHECKING, Callable, Iterator, Sequence
 
 import numpy as np
-from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
+from pydantic import ConfigDict, BaseModel, Field, PositiveFloat, PrivateAttr
 from pyrocko import orthodrome as od
 
 from lassie.models.location import CoordSystem, Location
@@ -179,9 +179,7 @@ class Octree(BaseModel):
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
-
-    class Config:
-        keep_untouched = (cached_property,)
+    model_config = ConfigDict(ignored_types=(cached_property,))
 
     def __init__(self, **data) -> None:
         super().__init__(**data)

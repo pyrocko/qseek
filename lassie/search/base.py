@@ -107,13 +107,14 @@ class Search(BaseModel):
     def write_config(self, path: Path | None = None) -> None:
         path = path or self._rundir / "search.json"
         logger.debug("writing search config to %s", path)
-        path.write_text(self.json(indent=2))
+        path.write_text(self.model_dump_json(indent=2))
 
     @classmethod
-    def load_rundir(cls, path: Path) -> Self:
-        search = cls.parse_file(path / "search.json")
-        search._rundir = path
-        search._detections = Detections(rundir=path)
+    def load_rundir(cls, directory: Path) -> Self:
+        search_file = directory / "search.json"
+        search = cls.model_validate_json(search_file.read_text())
+        search._rundir = directory
+        search._detections = Detections(rundir=directory)
         return search
 
     def _init_ranges(self) -> None:
@@ -151,19 +152,19 @@ class Search(BaseModel):
         logger.info("using trace window padding: %s", self.window_padding)
 
     @classmethod
-    def parse_file(
+    def from_config(
         cls,
-        path: str | Path,
+        filename: str | Path,
     ) -> Self:
-        model = super().parse_file(path)
+        model = super().model_validate_json(filename.read_text())
         # Make relative paths absolute
-        path = Path(path)
-        base_dir = path.absolute().parent
-        for name in model.__fields__:
+        filename = Path(filename)
+        base_dir = filename.absolute().parent
+        for name in model.model_fields_set:
             value = getattr(model, name)
             if isinstance(value, Path) and not value.absolute():
                 setattr(model, name, value.relative_to(base_dir))
-        model._config_stem = path.stem
+        model._config_stem = filename.stem
         return model
 
 
@@ -369,6 +370,7 @@ class SearchTraces:
             node_idx = (await semblance.maxima_node_idx())[time_idx]
             source_node = octree[node_idx]
             if not octree.is_node_in_bounds(source_node):
+                print(source_node)
                 logger.info(
                     "source node is inside octree's absorbing boundary (%.1f m)",
                     source_node.distance_border,

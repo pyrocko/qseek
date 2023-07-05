@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Annotated, Union
 
 from pydantic import Field
@@ -16,16 +18,16 @@ from lassie.features.local_magnitude import (
 
 FeatureExtractors = Annotated[
     Union[GroundMotionExtractor, LocalMagnitudeExtractor, FeatureExtractor],
-    Field(discriminator="feature"),
+    Field(..., discriminator="feature"),
 ]
 
 
 ReceiverFeatures = Annotated[
     Union[ReceiverGroundMotion, StationMagnitude, ReceiverFeature],
-    Field(discriminator="feature"),
+    Field(..., discriminator="feature"),
 ]
 
 EventFeatures = Annotated[
     Union[EventGroundMotion, LocalMagnitude, EventFeature],
-    Field(discriminator="feature"),
+    Field(..., discriminator="feature"),
 ]

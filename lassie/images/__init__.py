@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
-from pydantic import BaseModel, Field
+from pydantic import Field, RootModel
 
 from lassie.images.base import ImageFunction, PickedArrival
 from lassie.images.phase_net import PhaseNet, PhaseNetPick
@@ -23,18 +23,18 @@ logger = logging.getLogger(__name__)
 
 ImageFunctionType = Annotated[
     Union[PhaseNet, ImageFunction],
-    Field(discriminator="image"),
+    Field(..., discriminator="image"),
 ]
 
 # Make this a Union when more picks are implemented
 ImageFunctionPick = Annotated[
     Union[PhaseNetPick, PickedArrival],
-    Field(discriminator="provider"),
+    Field(..., discriminator="provider"),
 ]
 
 
-class ImageFunctions(BaseModel):
-    __root__: list[ImageFunctionType] = []
+class ImageFunctions(RootModel):
+    root: list[ImageFunctionType] = []
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
@@ -42,22 +42,22 @@ class ImageFunctions(BaseModel):
             logger.debug("calculating images from %s", function.name)
             images.extend(await function.process_traces(traces))
 
-        return WaveformImages(__root__=images)
+        return WaveformImages(root=images)
 
     def get_blinding(self) -> timedelta:
         return max(image.blinding for image in self)
 
     def __iter__(self) -> Iterator[ImageFunction]:
-        return iter(self.__root__)
+        return iter(self.root)
 
 
 @dataclass
 class WaveformImages:
-    __root__: list[WaveformImage] = Field([], alias="images")
+    root: list[WaveformImage] = Field([], alias="images")
 
     @property
     def n_images(self) -> int:
-        return len(self.__root__)
+        return len(self.root)
 
     def downsample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Downsample traces in-place.
@@ -87,4 +87,4 @@ class WaveformImages:
         snuffle(traces)
 
     def __iter__(self) -> Iterator[WaveformImage]:
-        yield from self.__root__
+        yield from self.root

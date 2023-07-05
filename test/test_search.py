@@ -13,7 +13,7 @@ def test_search() -> None:
     search = SquirrelSearch()
 
     # search.scan_squirrel()
-    locations = [sta for sta in search.stations]
+    locations = search.stations.model_copy()
     locations += [node.as_location() for node in search.octree]
     locations_to_csv(locations, Path("/tmp/test.csv"))
 

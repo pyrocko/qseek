@@ -22,8 +22,6 @@ from lassie.utils import ANSI, setup_rich_logging
 
 nest_asyncio.apply()
 
-setup_rich_logging()
-
 logger = logging.getLogger(__name__)
 
 
@@ -80,6 +78,12 @@ def main() -> None:
         help="analyse station corrections from existing run",
         description="analyze and plot station corrections from a finished run",
     )
+    station_corrections.add_argument(
+        "--plot",
+        action="store_true",
+        default=False,
+        help="plot station correction results and save to rundir",
+    )
     station_corrections.add_argument("rundir", type=Path, help="path of existing run")
 
     serve = subparsers.add_parser(
@@ -102,7 +106,7 @@ def main() -> None:
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO - args.verbose * 10)
+    setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
     if args.command == "init-project":
         folder: Path = args.folder
@@ -114,9 +118,9 @@ def main() -> None:
         pyrocko_stations.touch()
 
         config = SquirrelSearch(
-            ray_tracers=RayTracers(__root__=[CakeTracer()]),
+            ray_tracers=RayTracers(root=[CakeTracer()]),
             image_functions=ImageFunctions(
-                __root__=[PhaseNet(phase_map={"P": "cake:P", "S": "cake:S"})]
+                root=[PhaseNet(phase_map={"P": "cake:P", "S": "cake:S"})]
             ),
             stations=Stations(pyrocko_station_yamls=[pyrocko_stations]),
             waveform_data=[Path("/data/")],
@@ -134,7 +138,7 @@ def main() -> None:
         )
 
     elif args.command == "run":
-        search = SquirrelSearch.parse_file(args.config)
+        search = SquirrelSearch.from_config(args.config)
         search.init_rundir(force=args.force)
 
         webserver = WebServer(search)
@@ -179,7 +183,8 @@ def main() -> None:
     elif args.command == "station-corrections":
         rundir = Path(args.rundir)
         station_corrections = StationCorrections(rundir=rundir)
-        station_corrections.save_plots(rundir / "station-corrections")
+        if args.plot:
+            station_corrections.save_plots(rundir / "station-corrections")
         station_corrections.save_csv(filename=rundir / "station-corrections-stats.csv")
 
     elif args.command == "serve":

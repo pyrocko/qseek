@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Iterator
 
-from pydantic import PositiveInt, PrivateAttr, conint, validator
+from pydantic import field_validator, PositiveInt, PrivateAttr, conint
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors
@@ -41,7 +41,7 @@ class SquirrelPrefetcher:
             logger.debug("prefetched waveforms in %s", datetime_now() - start)
             if batch is None:
                 logger.debug("squirrel prefetcher finished")
-                await self.queue.wait(None)
+                await self.queue.put(None)
                 break
             await self.queue.put(batch)
 
@@ -79,7 +79,8 @@ class SquirrelSearch(Search):
             self.end_time - self.start_time,
         )
 
-    @validator("time_span")
+    @field_validator("time_span")
+    @classmethod
     def _validate_time_span(cls, range):  # noqa: N805
         if range[0] >= range[1]:
             raise ValueError(f"time range is invalid {range[0]} - {range[1]}")

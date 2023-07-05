@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, PrivateAttr, constr, root_validator
+from pydantic import BaseModel, PrivateAttr, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -56,13 +56,51 @@ class Station(Location):
 
 class Stations(BaseModel):
     stations: list[Station] = []
-    blacklist: set[constr(regex=NSL_RE)] = set()
+    blacklist: set[constr(pattern=NSL_RE)] = set()
 
     station_xmls: list[Path] = []
     pyrocko_station_yamls: list[Path] = []
 
     _cached_coordinates: np.ndarray | None = PrivateAttr(None)
     _cached_stations: list[Station] = PrivateAttr([])
+
+    def model_post_init(self, __context: Any) -> None:
+        loaded_stations = []
+        for file in self.pyrocko_station_yamls:
+            loaded_stations += load_stations(filename=str(file.expanduser()))
+
+        for file in self.station_xmls:
+            station_xml = load_xml(filename=str(file.expanduser()))
+            loaded_stations += station_xml.get_pyrocko_stations()
+
+        for sta in loaded_stations:
+            sta = Station.from_pyrocko_station(sta)
+            if sta not in self.stations:
+                self.stations.append(sta)
+
+        self.weed_stations()
+
+    def weed_stations(self) -> None:
+        logger.debug("weeding stations")
+
+        seen_nsls = set()
+        for sta in self.stations.copy():
+            if sta.lat == 0.0 or sta.lon == 0.0:
+                logger.warning(
+                    "blacklisting station %s: bad geographical coordinates",
+                    sta.pretty_nsl,
+                )
+                self.blacklist.add(sta.pretty_nsl)
+                continue
+
+            if sta.pretty_nsl in seen_nsls:
+                logger.warning("removing doublicate station: %s", sta.pretty_nsl)
+                self.stations.remove(sta)
+                continue
+            seen_nsls.add(sta.pretty_nsl)
+
+        # if not values.get("stations"):
+        #     logger.warning("no stations available, add stations to start detection")
 
     def __iter__(self) -> Iterator[Station]:
         if not self._cached_stations:
@@ -123,43 +161,6 @@ class Stations(BaseModel):
                 [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
             )
         return self._cached_coordinates
-
-    @root_validator
-    def _load_stations(cls, values) -> Any:  # noqa: N805
-        loaded_stations = []
-        for path in values.get("pyrocko_station_yamls"):
-            loaded_stations += load_stations(filename=str(path.expanduser()))
-
-        for path in values.get("station_xmls"):
-            station_xml = load_xml(filename=str(path.expanduser()))
-            loaded_stations += station_xml.get_pyrocko_stations()
-
-        for sta in loaded_stations:
-            sta = Station.from_pyrocko_station(sta)
-            if sta not in values.get("stations"):
-                values.get("stations").append(sta)
-
-        # Check stations
-        seen_nsls = set()
-        for sta in values.get("stations").copy():
-            if not sta.lat or not sta.lon:
-                logger.warning(
-                    "blacklisting station %s: bad geographical coordinates",
-                    sta.pretty_nsl,
-                )
-                values.get("blacklist").add(sta.pretty_nsl)
-                continue
-
-            if sta.pretty_nsl in seen_nsls:
-                logger.warning("removing doublicate station: %s", sta.pretty_nsl)
-                values.get("stations").remove(sta)
-                continue
-            seen_nsls.add(sta.pretty_nsl)
-
-        # if not values.get("stations"):
-        #     logger.warning("no stations available, add stations to start detection")
-
-        return values
 
     def dump_pyrocko_stations(self, filename: Path) -> None:
         """Dump stations to pyrocko station yaml file.

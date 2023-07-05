@@ -9,13 +9,22 @@ from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pydantic import BaseModel, Extra, Field, PositiveFloat, PositiveInt, PrivateAttr
+from pydantic import (
+    ConfigDict,
+    BaseModel,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    PrivateAttr,
+)
 
 from lassie.console import console
 from lassie.models.detection import Detections, EventDetection, PhaseDetection, Receiver
 from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.utils import PhaseDescription
+
+from rich.progress import track
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -42,9 +51,7 @@ class StationEvent(Location):
     distance_border: float
 
     phase_arrivals: dict[PhaseDescription, PhaseDetection] = {}
-
-    class Config:
-        extra = Extra.ignore
+    model_config = ConfigDict(extra="ignore")
 
     def phases(self) -> tuple[PhaseDescription, ...]:
         return tuple(self.phase_arrivals.keys())
@@ -80,9 +87,7 @@ def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> floa
 class StationCorrection(BaseModel):
     station: Station
     events: list[StationEvent] = []
-
-    class Config:
-        extra = Extra.ignore
+    model_config = ConfigDict(extra="ignore")
 
     def add_event(self, event: StationEvent) -> None:
         if event.uid in (ev.uid for ev in self.events):
@@ -395,14 +400,12 @@ class StationCorrections(BaseModel):
 
     def save_plots(self, folder: Path) -> None:
         folder.mkdir(exist_ok=True)
-        with console.status("plotting station corrections") as status:
-            for correction in self._station_corrections.values():
-                correction.plot(
-                    filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
-                )
-                status.update(
-                    f"plotting corrections for {correction.station.pretty_nsl}"
-                )
+        for correction in track(
+            self._station_corrections.values(), description="plotting corrections"
+        ):
+            correction.plot(
+                filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
+            )
 
     def save_csv(self, filename: Path) -> None:
         logger.info("writing corrections to %s", filename)

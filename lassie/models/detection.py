@@ -8,7 +8,7 @@ from random import uniform
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Type, TypeVar
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
@@ -205,13 +205,13 @@ class Receiver(Station):
         return cls(**station.dict())
 
 
-class Receivers(BaseModel):
-    __root__: list[Receiver] = []
+class Receivers(RootModel):
+    root: list[Receiver] = []
 
     @property
     def n_receivers(self) -> int:
         """Number of receivers in the receiver set"""
-        return len(self.__root__)
+        return len(self.root)
 
     def n_observations(self, phase: PhaseDescription) -> int:
         """Number of observations for a given phase"""
@@ -242,7 +242,7 @@ class Receivers(BaseModel):
             try:
                 receiver = self.get_by_nsl(receiver.nsl)
             except KeyError:
-                self.__root__.append(receiver)
+                self.root.append(receiver)
             receiver.add_phase_detection(arrival)
 
     def get_by_nsl(self, nsl: tuple[str, str, str]) -> Receiver:
@@ -270,7 +270,7 @@ class Receivers(BaseModel):
         snuffle([*chain.from_iterable(traces)])
 
     def __iter__(self) -> Iterator[Receiver]:
-        return iter(self.__root__)
+        return iter(self.root)
 
 
 class EventDetection(Location):
@@ -356,8 +356,7 @@ class Detections(BaseModel):
     rundir: Path
     detections: list[EventDetection] = []
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
+    def model_post_init(self, __context: Any) -> None:
         if not self.detections_dir.exists():
             self.detections_dir.mkdir()
             self.markers_dir.mkdir(exist_ok=True)
@@ -411,9 +410,11 @@ class Detections(BaseModel):
         """Load detections from files in the detections directory."""
         files = sorted(self.detections_dir.glob("*.json"))
 
-        with console.status(f"Loading detections from {self.detections_dir}..."):
+        with console.status(
+            f"Loading {len(files)} detections from {self.detections_dir}..."
+        ):
             for file in files:
-                detection = EventDetection.parse_file(file)
+                detection = EventDetection.model_validate_json(file.read_text())
                 logger.debug("loaded %s", detection)
                 self.detections.append(detection)
         console.log(f"loaded {self.n_detections} detections")

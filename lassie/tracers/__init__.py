@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
-from pydantic import BaseModel, Field
+from pydantic import Field, RootModel
 
 from lassie.tracers.base import ModelledArrival
 from lassie.tracers.cake import CakeArrival, CakeTracer
@@ -23,17 +23,17 @@ logger = logging.getLogger(__name__)
 
 RayTracerType = Annotated[
     Union[CakeTracer, ConstantVelocityTracer],
-    Field(discriminator="tracer"),
+    Field(..., discriminator="tracer"),
 ]
 
 RayTracerArrival = Annotated[
     Union[CakeArrival, ConstantVelocityArrival, ModelledArrival],
-    Field(discriminator="tracer"),
+    Field(..., discriminator="tracer"),
 ]
 
 
-class RayTracers(BaseModel):
-    __root__: list[RayTracerType] = []
+class RayTracers(RootModel):
+    root: list[RayTracerType] = []
 
     def prepare(self, octree: Octree, stations: Stations) -> None:
         logger.info("preparing ray tracers")
@@ -58,7 +58,7 @@ class RayTracers(BaseModel):
         )
 
     def __iter__(self) -> Iterator[RayTracer]:
-        yield from self.__root__
+        yield from self.root
 
     def iter_phase_tracer(self) -> Iterator[tuple[PhaseDescription, RayTracer]]:
         for tracer in self:

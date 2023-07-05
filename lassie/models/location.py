@@ -4,7 +4,7 @@ import math
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
 
-from pydantic import BaseModel
+from pydantic import ConfigDict, BaseModel
 from pyrocko import orthodrome as od
 
 if TYPE_CHECKING:
@@ -20,9 +20,7 @@ class Location(BaseModel):
     north_shift: float = 0.0
     elevation: float = 0.0
     depth: float = 0.0
-
-    class Config:
-        keep_untouched = (cached_property,)
+    model_config = ConfigDict(ignored_types=(cached_property,))
 
     @property
     def effective_lat(self) -> float:

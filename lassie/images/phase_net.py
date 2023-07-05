@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import torch
 from obspy import Stream
@@ -101,9 +101,7 @@ class PhaseNet(ImageFunction):
 
     _phase_net: PhaseNetSeisBench = PrivateAttr(None)
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
-
+    def model_post_init(self, __context: Any) -> None:
         torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
         if self.torch_use_cuda:

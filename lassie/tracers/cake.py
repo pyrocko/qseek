@@ -13,7 +13,16 @@ from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 from lru import LRU
-from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, constr
+from pydantic import (
+    ConfigDict,
+    BaseModel,
+    Field,
+    PositiveFloat,
+    PrivateAttr,
+    constr,
+    RootModel,
+    ByteSize,
+)
 from pyrocko import orthodrome as od
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
@@ -40,6 +49,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 KM = 1e3
+GiB = int(1024**3)
 MAX_DBS = 16
 
 LRU_CACHE_SIZE = 2000
@@ -50,8 +60,8 @@ class CakeArrival(ModelledArrival):
     phase: str
 
 
-class EarthModel(BaseModel):
-    __root__: list[tuple[float, PositiveFloat, PositiveFloat, PositiveFloat]] = [
+class EarthModel(RootModel):
+    root: list[tuple[float, PositiveFloat, PositiveFloat, PositiveFloat]] = [
         (0.00, 5.50, 3.59, 2.7),
         (1.00, 5.50, 3.59, 2.7),
         (1.00, 6.00, 3.92, 2.7),
@@ -71,12 +81,10 @@ class EarthModel(BaseModel):
         (30.00, 8.10, 5.29, 2.7),
         (45.00, 8.10, 5.29, 2.7),
     ]
-
-    class Config:
-        keep_untouched = (cached_property,)
+    model_config = ConfigDict(ignored_types=(cached_property,))
 
     def _as_array(self) -> np.ndarray:
-        return np.asarray(self.__root__)
+        return np.asarray(self.root)
 
     def get_profile_vp(self) -> np.ndarray:
         # TODO: reduce to relevant layers
@@ -88,7 +96,7 @@ class EarthModel(BaseModel):
 
     def as_layered_model(self) -> LayeredModel:
         line_tpl = "{} {} {} {}"
-        earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.__root__)
+        earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.root)
         return LayeredModel.from_scanlines(read_nd_model_str(earthmodel))
 
     @cached_property
@@ -179,7 +187,7 @@ class TraveltimeTree(BaseModel):
             return self[0] <= requested[0] and self[1] >= requested[1]
 
         return (
-            self.earthmodel == earthmodel
+            self.earthmodel.root == earthmodel.root
             and self.timing == timing
             and check_bounds(self.distance_bounds, distance_bounds)
             and check_bounds(self.source_depth_bounds, source_depth_bounds)
@@ -216,7 +224,7 @@ class TraveltimeTree(BaseModel):
         logger.info("saving traveltimes to %s", file)
 
         with zipfile.ZipFile(file, "w") as archive:
-            archive.writestr("model.json", self.json(indent=2))
+            archive.writestr("model.json", self.model_dump_json(indent=2))
             with NamedTemporaryFile() as tmpfile:
                 self._get_sptree().dump(tmpfile.name)
                 archive.write(tmpfile.name, "model.sptree")
@@ -235,7 +243,8 @@ class TraveltimeTree(BaseModel):
         logger.debug("loading traveltimes from %s", file)
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
-            model = cls.parse_raw((path / "model.json").read_bytes())
+            model_file = path / "model.json"
+            model = cls.model_validate_json(model_file.read_text())
         model._file = file
         return model
 
@@ -354,10 +363,11 @@ class TraveltimeTree(BaseModel):
             )
             coordinates.append(np.asarray(node_receivers_distances).T)
 
-        n_traveltimes = receiver_distances.size
+        n_nodes = len(coordinates)
         with Progress() as progress:
             status = progress.add_task(
-                f"interpolating {n_traveltimes} traveltimes", total=len(coordinates)
+                f"interpolating station traveltimes for {n_nodes} nodes",
+                total=len(coordinates),
             )
             traveltimes = []
             for coords in coordinates:
@@ -386,6 +396,7 @@ class CakeTracer(RayTracer):
         "cake:S": Timing(definition="S,s"),
     }
     earthmodel: EarthModel = EarthModel()
+    lut_cache_size: ByteSize = 2 * GiB
 
     _traveltime_trees: dict[PhaseDescription, TraveltimeTree] = PrivateAttr({})
 
@@ -412,17 +423,19 @@ class CakeTracer(RayTracer):
     def prepare(self, octree: Octree, stations: Stations) -> None:
         global LRU_CACHE_SIZE
 
-        LRU_CACHE_SIZE = octree.n_nodes * 64
-        lru_size_bytes = LRU_CACHE_SIZE * stations.n_stations * 4
+        bytes_per_node = stations.n_stations * np.float32().itemsize
+        n_trees = len(self.timings)
+        LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
         logging.info(
-            "setting traveltime LUT size to %d (%s)",
+            "setting traveltime LUT size to %d nodes (total: %s)",
             LRU_CACHE_SIZE,
-            human_readable_bytes(lru_size_bytes),
+            human_readable_bytes(self.lut_cache_size),
         )
 
         cached_trees = [
             TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
         ]
+        logger.debug("loaded %d cached traveltime tree %s", len(cached_trees))
 
         distances = octree.distances_stations(stations)
         source_depths = np.asarray(octree.depth_bounds)

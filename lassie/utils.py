@@ -5,27 +5,20 @@ import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, ParamSpec, TypeVar
+from typing import Awaitable, Callable, ParamSpec, TypeVar, Annotated, TYPE_CHECKING
+from pydantic import constr
 
-from pydantic import ConstrainedStr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
+if TYPE_CHECKING:
+    from pyrocko import Trace
+
+logger = logging.getLogger(__name__)
 FORMAT = "%(message)s"
 
 
-if TYPE_CHECKING:
-    from pyrocko.trace import Trace
-
-    PhaseDescription = str
-
-else:
-
-    class PhaseDescription(ConstrainedStr):
-        regex = r"[a-zA-Z]*:[a-zA-Z]*"
-
-
-logger = logging.getLogger(__name__)
+PhaseDescription = Annotated[str, constr(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
 
 CACHE_DIR = Path.home() / ".cache" / "lassie"
 if not CACHE_DIR.exists():
@@ -46,9 +39,9 @@ class ANSI:
     Reset = "\033[0m"
 
 
-def setup_rich_logging():
+def setup_rich_logging(level: int) -> None:
     logging.basicConfig(
-        level=logging.INFO, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+        level=level, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
     )
 
 
