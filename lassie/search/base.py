@@ -112,7 +112,7 @@ class Search(BaseModel):
     @classmethod
     def load_rundir(cls, directory: Path) -> Self:
         search_file = directory / "search.json"
-        search = cls.model_validate_json(search_file.read_text())
+        search = cls.model_validate_json(search_file.read_bytes())
         search._rundir = directory
         search._detections = Detections(rundir=directory)
         return search

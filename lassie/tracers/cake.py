@@ -435,7 +435,7 @@ class CakeTracer(RayTracer):
         node_cache_fraction = LRU_CACHE_SIZE / octree.maximum_number_nodes()
         logging.info(
             "limiting traveltime LUT size to %d nodes (%s),"
-            " caching %.1f%% of nodes from finest octree",
+            " caching %.1f%% of possible octree nodes",
             LRU_CACHE_SIZE,
             human_readable_bytes(self.lut_cache_size),
             node_cache_fraction * 100,
