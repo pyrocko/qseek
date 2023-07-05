@@ -88,9 +88,14 @@ class LocalMagnitudeModel(BaseModel):
 
         log_amp_0 = self.get_amp_0(dist_hypo / KM, dist_epi / KM)
         amp_max = self._get_max_amplitude_mm(traces)
+        local_magnitude = np.log(amp_max) + log_amp_0
+
+        if not np.isfinite(local_magnitude):
+            return None
+
         return StationMagnitude(
             estimator=self.name,
-            local_magnitude=np.log(amp_max) + log_amp_0,
+            local_magnitude=local_magnitude,
             peak_velocity_mm=amp_max,
         )
 
@@ -127,6 +132,8 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
         local_magnitude = (
             np.log10(amp_max) + 1.11 * np.log10(dist_hypo) + 0.00189 * dist_hypo - 2.09
         )
+        if not np.isfinite(local_magnitude):
+            return None
         return StationMagnitude(
             estimator=self.name,
             local_magnitude=local_magnitude,

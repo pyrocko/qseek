@@ -381,7 +381,7 @@ class Detections(BaseModel):
         self.detections.append(detection)
 
         filename = self.detections_dir / (time_to_path(detection.time) + ".json")
-        filename.write_text(detection.json())
+        filename.write_text(detection.model_dump_json(exclude_defaults=True))
 
         markers_file = self.markers_dir / (time_to_path(detection.time) + ".list")
         marker.save_markers(detection.as_pyrocko_markers(), str(markers_file))

@@ -331,7 +331,9 @@ class TraveltimeTree(BaseModel):
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
-            logger.info("node LUT fill level: %.1f%%", self.lut_fill_level() * 100)
+            logger.info(
+                "node LUT cache fill level: %.1f%%", self.lut_fill_level() * 100
+            )
             return self.get_traveltimes(octree, stations)
 
         return np.asarray(stations_traveltimes).astype(float, copy=False)

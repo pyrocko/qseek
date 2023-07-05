@@ -107,7 +107,7 @@ class Search(BaseModel):
     def write_config(self, path: Path | None = None) -> None:
         path = path or self._rundir / "search.json"
         logger.debug("writing search config to %s", path)
-        path.write_text(self.model_dump_json(indent=2))
+        path.write_text(self.model_dump_json(indent=2, exclude_defaults=True))
 
     @classmethod
     def load_rundir(cls, directory: Path) -> Self:
