@@ -309,6 +309,10 @@ class TraveltimeTree(BaseModel):
         for node, times in zip(nodes, traveltimes, strict=True):
             self._node_lut[node.hash()] = times.astype(np.float32)
 
+    def lut_fill_level(self) -> float:
+        """Return the fill level of the LUT as a float between 0.0 and 1.0"""
+        return len(self._node_lut) / self._node_lut.get_size()
+
     def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
         station_indices = np.fromiter(
             (self._cached_station_indeces[sta.pretty_nsl] for sta in stations),
@@ -329,6 +333,7 @@ class TraveltimeTree(BaseModel):
             self.fill_lut(fill_nodes)
             return self.get_traveltimes(octree, stations)
 
+        logger.debug("node LUT fill level: %.1f%%", self.lut_fill_level() * 100)
         return np.asarray(stations_traveltimes).astype(float, copy=False)
 
     def interpolate_traveltimes(
@@ -427,15 +432,16 @@ class CakeTracer(RayTracer):
         n_trees = len(self.timings)
         LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
         logging.info(
-            "setting traveltime LUT size to %d nodes (total: %s)",
+            "setting traveltime LUT size to %d nodes (%s), octree has maximum %d nodes",
             LRU_CACHE_SIZE,
             human_readable_bytes(self.lut_cache_size),
+            octree.maximum_number_nodes(),
         )
 
         cached_trees = [
             TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
         ]
-        logger.debug("loaded %d cached traveltime tree %s", len(cached_trees))
+        logger.debug("loaded %d cached traveltime trees", len(cached_trees))
 
         distances = octree.distances_stations(stations)
         source_depths = np.asarray(octree.depth_bounds)

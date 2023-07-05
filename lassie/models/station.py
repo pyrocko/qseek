@@ -81,7 +81,8 @@ class Stations(BaseModel):
         self.weed_stations()
 
     def weed_stations(self) -> None:
-        logger.debug("weeding stations")
+        """Remove stations with bad coordinates or duplicates."""
+        logger.debug("weeding bad stations")
 
         seen_nsls = set()
         for sta in self.stations.copy():
@@ -94,7 +95,7 @@ class Stations(BaseModel):
                 continue
 
             if sta.pretty_nsl in seen_nsls:
-                logger.warning("removing doublicate station: %s", sta.pretty_nsl)
+                logger.warning("removing douplicate station: %s", sta.pretty_nsl)
                 self.stations.remove(sta)
                 continue
             seen_nsls.add(sta.pretty_nsl)

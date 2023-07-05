@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Literal, cast, get_args
 from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
@@ -12,6 +12,7 @@ import numpy as np
 from pydantic import (
     ConfigDict,
     BaseModel,
+    DirectoryPath,
     Field,
     PositiveFloat,
     PositiveInt,
@@ -306,7 +307,7 @@ class StationCorrection(BaseModel):
 
 
 class StationCorrections(BaseModel):
-    rundir: Path | None = None
+    rundir: DirectoryPath
     measure: Literal["median", "average"] = "median"
     weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
 
@@ -317,15 +318,13 @@ class StationCorrections(BaseModel):
     _station_corrections: dict[str, StationCorrection] = PrivateAttr({})
     _traveltime_delay_cache: dict[tuple[NSL, PhaseDescription], float] = PrivateAttr({})
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
-        if self.rundir:
-            logger.debug("loading station detections from %s", self.rundir)
-            detections = Detections(rundir=self.rundir)
-            with console.status("aggregating station detections"):
-                for event in detections:
-                    self.add_event(event)
-            console.log(f"aggregated {self.n_stations} station corrections")
+    def model_post_init(self, __context: Any) -> None:
+        logger.debug("loading station detections from %s", self.rundir)
+        detections = Detections(rundir=self.rundir)
+        with console.status("aggregating station detections"):
+            for event in detections:
+                self.add_event(event)
+        console.log(f"aggregated {self.n_stations} station corrections")
 
     def add_event(self, detection: EventDetection) -> None:
         if (

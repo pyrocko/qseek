@@ -6,10 +6,18 @@ import struct
 from collections import defaultdict
 from functools import cached_property
 from hashlib import sha1
-from typing import TYPE_CHECKING, Callable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
 import numpy as np
-from pydantic import ConfigDict, BaseModel, Field, PositiveFloat, PrivateAttr
+from pydantic import (
+    ConfigDict,
+    BaseModel,
+    Field,
+    PositiveFloat,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 from pyrocko import orthodrome as od
 
 from lassie.models.location import CoordSystem, Location
@@ -173,38 +181,36 @@ class Octree(BaseModel):
     east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
-    absorbing_boundary: float = 1 * KM
-
-    nodes: list[Node] | None = None
+    absorbing_boundary: PositiveFloat = 1 * KM
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
+
     model_config = ConfigDict(ignored_types=(cached_property,))
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
+    @field_validator("east_bounds", "north_bounds", "depth_bounds")
+    def check_bounds(
+        cls, bounds: tuple[float, float]  # noqa: N805
+    ) -> tuple[float, float]:
+        if bounds[0] >= bounds[1]:
+            raise ValueError(f"invalid bounds {bounds}, expected (min, max)")
+        return bounds
 
-        if self.nodes:
-            logger.debug("loading existing nodes")
-            self._root_nodes = self.nodes
-            for node in self._root_nodes:
-                node.tree = self
-        else:
-            logger.debug("initializing root nodes")
-            self._root_nodes = self._get_root_nodes(self.size_initial)
+    @model_validator(mode="after")
+    def _check_limits(cls, m: Octree) -> Octree:  # noqa: N805
+        if m.size_limit >= m.size_initial:
+            raise ValueError(
+                "invalid octree size limits, expected size_limit < size_initial"
+            )
+        return m
 
-    # @validator("east_bounds", "north_bounds", "depth_bounds", )
-    # def _check_bounds(cls, bounds):  # noqa: N805
-    #     for value in bounds:
-    #         if value[0] >= value[1]:
-    #             raise ValueError(f"invalid bounds {value}")
-    #     return bounds
-
-    # @validator("size_initial", "size_limit")
-    # def _check_limits(cls, limits):  # noqa: N805
-    #     if limits[0] < limits[1]:
-    #         raise ValueError(f"invalid octree size limits {limits}")
-    #     return limits
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize octree. This method is called by the pydantic model"""
+        logger.info(
+            "initializing octree, smallest node size: %.1f m",
+            self.smallest_node_size(),
+        )
+        self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def extent(self) -> tuple[float, float, float]:
         return (
@@ -221,7 +227,9 @@ class Octree(BaseModel):
         depth_nodes = np.arange(ext_depth // len) * len + len / 2 + self.depth_bounds[0]
 
         return [
-            Node.construct(east=east, north=north, depth=depth, size=len, tree=self)
+            Node.model_construct(
+                east=east, north=north, depth=depth, size=len, tree=self
+            )
             for east in east_nodes
             for north in north_nodes
             for depth in depth_nodes
@@ -229,6 +237,7 @@ class Octree(BaseModel):
 
     @cached_property
     def n_nodes(self) -> int:
+        """Number of nodes in the octree"""
         return sum(1 for _ in self)
 
     def __iter__(self) -> Iterator[Node]:
@@ -247,11 +256,20 @@ class Octree(BaseModel):
             del self.n_nodes
 
     def reset(self) -> None:
+        """Reset the octree to its initial state"""
         logger.debug("resetting tree")
         self._clear_cache()
         self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
+        """Reduce the octree's nodes to the surface
+
+        Args:
+            accumulator (Callable, optional): Accumulator function. Defaults to np.max.
+
+        Returns:
+            np.ndarray: Of shape (n-nodes, 4) with columns (east, north, depth, value).
+        """
         groups = defaultdict(list)
         for node in self:
             groups[(node.east, node.north, node.size)].append(node.semblance)
@@ -263,9 +281,15 @@ class Octree(BaseModel):
 
     @property
     def semblance(self) -> np.ndarray:
-        return np.fromiter((node.semblance for node in self), float)
+        """Returns the semblance values of all nodes."""
+        return np.array([node.semblance for node in self])
 
     def map_semblance(self, semblance: np.ndarray) -> None:
+        """Maps semblance values to nodes.
+
+        Args:
+            semblance (np.ndarray): Of shape (n-nodes,).
+        """
         for node, node_semblance in zip(self, semblance, strict=True):
             node.semblance = float(node_semblance)
 
@@ -317,29 +341,32 @@ class Octree(BaseModel):
         """
         return node.distance_border > self.absorbing_boundary
 
-    def make_concrete(self) -> None:
-        """Make octree concrete for serialisation."""
-        self._root_nodes = self.get_nodes()
-        self.nodes = self._root_nodes
+    def smallest_node_size(self) -> float:
+        """Returns the smallest possible node size.
 
-    def refine(self, semblance_threshold: float) -> list[Node]:
-        new_nodes = []
-        for node in self:
-            if node.semblance > semblance_threshold:
-                new_nodes.extend(node.split())
-        return new_nodes
+        Returns:
+            float: Smallest possible node size.
+        """
+        size = self.size_initial
+        while size >= self.size_limit * 2:
+            size /= 2
+        return size
 
-    def finest_tree(self) -> Octree:
-        tree = self.copy()
-        tree.reset()
-        tree._root_nodes = tree._get_root_nodes(tree.size_limit)
-        return tree
+    def maximum_number_nodes(self) -> int:
+        """Returns the maximum number of nodes.
 
-    def get_smallest_node_size(self) -> float:
-        return min(node.size for node in self)
+        Returns:
+            int: Maximum number of nodes.
+        """
+        return int(
+            (self.east_bounds[1] - self.east_bounds[0])
+            * (self.north_bounds[1] - self.north_bounds[0])
+            * (self.depth_bounds[1] - self.depth_bounds[0])
+            / self.smallest_node_size() ** 3
+        )
 
     def copy(self, deep=False) -> Self:
-        tree = super().copy(deep=deep)
+        tree = super().model_copy(deep=deep)
         tree._clear_cache()
         for node in tree._root_nodes:
             node.set_parent(tree)
