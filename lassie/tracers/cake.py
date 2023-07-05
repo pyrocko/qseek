@@ -331,9 +331,9 @@ class TraveltimeTree(BaseModel):
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
+            logger.info("node LUT fill level: %.1f%%", self.lut_fill_level() * 100)
             return self.get_traveltimes(octree, stations)
 
-        logger.debug("node LUT fill level: %.1f%%", self.lut_fill_level() * 100)
         return np.asarray(stations_traveltimes).astype(float, copy=False)
 
     def interpolate_traveltimes(
@@ -435,7 +435,7 @@ class CakeTracer(RayTracer):
         node_cache_fraction = LRU_CACHE_SIZE / octree.maximum_number_nodes()
         logging.info(
             "limiting traveltime LUT size to %d nodes (%s),"
-            " holding %.1f%% of finest octree",
+            " caching %.1f%% of nodes from finest octree",
             LRU_CACHE_SIZE,
             human_readable_bytes(self.lut_cache_size),
             node_cache_fraction * 100,
