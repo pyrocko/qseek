@@ -101,8 +101,8 @@ class Stations(BaseModel):
                 continue
             seen_nsls.add(sta.pretty_nsl)
 
-        if not self.stations:
-            logger.warning("no stations available, add stations to start detection")
+        # if not self.stations:
+        #     logger.warning("no stations available, add stations to start detection")
 
     def weed_from_squirrel_waveforms(self, squirrel: Squirrel) -> None:
         """Remove stations without waveforms from squirrel instances.
