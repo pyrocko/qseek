@@ -6,7 +6,7 @@ import logging
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Deque, Iterator
+from typing import TYPE_CHECKING, Any, Deque, Iterator
 
 from pydantic import field_validator, PositiveInt, PrivateAttr, conint
 from pyrocko.squirrel import Squirrel
@@ -61,12 +61,10 @@ class SquirrelSearch(Search):
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
+    def model_post_init(self, __context: Any) -> None:
         if not all(self.time_span):
-            sq_tmin, sq_tmax = self.get_squirrel().get_time_span(
-                ["waveform", "waveform_promise"]
-            )
+            squirrel = self.get_squirrel()
+            sq_tmin, sq_tmax = squirrel.get_time_span(["waveform", "waveform_promise"])
             self.time_span = (
                 self.time_span[0] or to_datetime(sq_tmin),
                 self.time_span[1] or to_datetime(sq_tmax),

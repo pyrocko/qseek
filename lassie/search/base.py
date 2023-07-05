@@ -370,7 +370,6 @@ class SearchTraces:
             node_idx = (await semblance.maxima_node_idx())[time_idx]
             source_node = octree[node_idx]
             if not octree.is_node_in_bounds(source_node):
-                print(source_node)
                 logger.info(
                     "source node is inside octree's absorbing boundary (%.1f m)",
                     source_node.distance_border,

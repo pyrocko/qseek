@@ -413,7 +413,7 @@ class CakeTracer(RayTracer):
 
     def clear_cache(self) -> None:
         """Clear cached SPTreeModels from user's cache."""
-        logging.info("clearing traveltime cache %s", self.cache_dir)
+        logging.info("clearing traveltime cached trees in %s", self.cache_dir)
         for file in self.cache_dir.glob("*.sptree"):
             file.unlink()
 
@@ -431,11 +431,14 @@ class CakeTracer(RayTracer):
         bytes_per_node = stations.n_stations * np.float32().itemsize
         n_trees = len(self.timings)
         LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
+
+        node_cache_fraction = LRU_CACHE_SIZE / octree.maximum_number_nodes()
         logging.info(
-            "setting traveltime LUT size to %d nodes (%s), octree has maximum %d nodes",
+            "limiting traveltime LUT size to %d nodes (%s),"
+            " holding %.1f%% of finest octree",
             LRU_CACHE_SIZE,
             human_readable_bytes(self.lut_cache_size),
-            octree.maximum_number_nodes(),
+            node_cache_fraction * 100,
         )
 
         cached_trees = [
