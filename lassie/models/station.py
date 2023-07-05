@@ -95,7 +95,7 @@ class Stations(BaseModel):
                 continue
 
             if sta.pretty_nsl in seen_nsls:
-                logger.warning("removing douplicate station: %s", sta.pretty_nsl)
+                logger.warning("removing duplicate station: %s", sta.pretty_nsl)
                 self.stations.remove(sta)
                 continue
             seen_nsls.add(sta.pretty_nsl)

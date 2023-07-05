@@ -401,7 +401,7 @@ class CakeTracer(RayTracer):
         "cake:S": Timing(definition="S,s"),
     }
     earthmodel: EarthModel = EarthModel()
-    lut_cache_size: ByteSize = 2 * GiB
+    lut_cache_size: ByteSize = 4 * GiB
 
     _traveltime_trees: dict[PhaseDescription, TraveltimeTree] = PrivateAttr({})
 
