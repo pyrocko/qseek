@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -112,7 +113,8 @@ class Search(BaseModel):
     @classmethod
     def load_rundir(cls, directory: Path) -> Self:
         search_file = directory / "search.json"
-        search = cls.model_validate_json(search_file.read_bytes())
+        # TODO: bug in pydantic-core
+        search = cls.model_validate(json.loads(search_file.read_text()))
         search._rundir = directory
         search._detections = Detections(rundir=directory)
         return search
