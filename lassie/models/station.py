@@ -12,6 +12,7 @@ from pyrocko.model import dump_stations_yaml, load_stations
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from pyrocko.squirrel import Squirrel
 
 from lassie.models.location import CoordSystem, Location
 
@@ -100,8 +101,34 @@ class Stations(BaseModel):
                 continue
             seen_nsls.add(sta.pretty_nsl)
 
-        # if not values.get("stations"):
-        #     logger.warning("no stations available, add stations to start detection")
+        if not self.stations:
+            logger.warning("no stations available, add stations to start detection")
+
+    def weed_from_squirrel_waveforms(self, squirrel: Squirrel) -> None:
+        """Remove stations without waveforms from squirrel instances.
+
+        Args:
+            squirrel (Squirrel): Squirrel instance
+        """
+        available_squirrel_codes = squirrel.get_codes(kind="waveform")
+        available_squirrel_nsls = {
+            ".".join(code[0:3]) for code in available_squirrel_codes
+        }
+
+        n_removed_stations = 0
+        for sta in self.stations.copy():
+            if sta.pretty_nsl not in available_squirrel_nsls:
+                logger.debug(
+                    "removing station %s: waveforms not available in squirrel",
+                    sta.pretty_nsl,
+                )
+                self.stations.remove(sta)
+                n_removed_stations += 1
+
+        if n_removed_stations:
+            logger.info("removed %d stations without waveforms", n_removed_stations)
+        if not self.stations:
+            raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
         if not self._cached_stations:
