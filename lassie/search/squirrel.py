@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Deque, Iterator
 
-from pydantic import field_validator, PositiveInt, PrivateAttr, conint
+from pydantic import PositiveInt, PrivateAttr, conint, field_validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors

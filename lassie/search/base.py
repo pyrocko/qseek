@@ -255,6 +255,7 @@ class SearchTraces:
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
         weights[traveltimes_bad] = 0.0
+        print(shifts.shape, len(image.get_trace_data()))
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
