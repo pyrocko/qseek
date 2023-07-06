@@ -63,7 +63,7 @@ class Stations(BaseModel):
     pyrocko_station_yamls: list[Path] = []
 
     _cached_coordinates: np.ndarray | None = PrivateAttr(None)
-    _cached_stations: list[Station] = PrivateAttr([])
+    _cached_stations: list[Station] | None = PrivateAttr(None)
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
@@ -131,7 +131,7 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        if not self._cached_stations:
+        if self._cached_stations is None:
             self._cached_stations = [
                 sta for sta in self.stations if sta.pretty_nsl not in self.blacklist
             ]
