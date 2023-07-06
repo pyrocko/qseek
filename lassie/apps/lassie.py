@@ -152,15 +152,10 @@ def main() -> None:
 
     elif args.command == "continue":
         search = SquirrelSearch.load_rundir(args.rundir)
-        search_time_file = args.rundir / "search_progress_time.txt"
-        if search_time_file.exists():
-            search.search_progress_time = datetime.fromisoformat(
-                search_time_file.read_text().strip()
-            )
-            console.rule(f"Continuing search from {search.search_progress_time}")
+        if search.progress.time_progress:
+            console.rule(f"Continuing search from {search.progress.time_progress}")
         else:
-            logger.warning("cannot find progress file, starting from scratch")
-            console.rule("Starting new search")
+            console.rule("Starting search from scratch")
 
         webserver = WebServer(search)
 

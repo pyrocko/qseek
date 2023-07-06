@@ -195,14 +195,14 @@ class Receiver(Station):
         return restituted_traces
 
     def _get_csv_dict(self) -> dict[str, Any]:
-        csv_dict = self.dict(exclude={"features", "phase_arrivals"})
+        csv_dict = self.model_dump(exclude={"features", "phase_arrivals"})
         for arrival in self.phase_arrivals.values():
             csv_dict.update(arrival._get_csv_dict())
         return csv_dict
 
     @classmethod
     def from_station(cls, station: Station) -> Self:
-        return cls(**station.dict())
+        return cls(**station.model_dump())
 
 
 class Receivers(RootModel):
@@ -381,7 +381,7 @@ class Detections(BaseModel):
         self.detections.append(detection)
 
         filename = self.detections_dir / (time_to_path(detection.time) + ".json")
-        filename.write_text(detection.model_dump_json())
+        filename.write_text(detection.model_dump_json(exclude_unset=True))
 
         markers_file = self.markers_dir / (time_to_path(detection.time) + ".list")
         marker.save_markers(detection.as_pyrocko_markers(), str(markers_file))

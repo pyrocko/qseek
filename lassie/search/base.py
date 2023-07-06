@@ -41,6 +41,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class SearchProcess(BaseModel):
+    time_progress: datetime | None = None
+    semblance_stats: SemblanceStats = SemblanceStats()
+
+
 class Search(BaseModel):
     sampling_rate: confloat(ge=10.0, le=20.0) = 10.0
     detection_threshold: PositiveFloat = 0.05
@@ -65,7 +70,7 @@ class Search(BaseModel):
     window_padding: timedelta = timedelta(seconds=0.0)
     distance_range: tuple[float, float] = (0.0, 0.0)
     travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = {}
-    semblance_stats: SemblanceStats = SemblanceStats()
+    progress: SearchProcess = SearchProcess()
 
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
@@ -107,7 +112,11 @@ class Search(BaseModel):
     def write_config(self, path: Path | None = None) -> None:
         path = path or self._rundir / "search.json"
         logger.debug("writing search config to %s", path)
-        path.write_text(self.model_dump_json(indent=2))
+        path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
+
+    @property
+    def semblance_stats(self) -> SemblanceStats:
+        return self.progress.semblance_stats
 
     @classmethod
     def load_rundir(cls, directory: Path) -> Self:
@@ -115,7 +124,16 @@ class Search(BaseModel):
         search = cls.model_validate_json(search_file.read_bytes())
         search._rundir = directory
         search._detections = Detections(rundir=directory)
+
+        progress_file = directory / "progress.json"
+        if progress_file.exists():
+            search.progress = search.model_validate_json(progress_file.read_text())
         return search
+
+    def set_progress(self, time: datetime) -> None:
+        self.progress.time_progress = time
+        progress_file = self._rundir / "progress.json"
+        progress_file.write_text(self.progress.model_dump_json())
 
     def _init_ranges(self) -> None:
         # Grid/receiver distances

@@ -56,7 +56,6 @@ class SquirrelSearch(Search):
         GroundMotionExtractor(),
         LocalMagnitudeExtractor(),
     ]
-    search_progress_time: datetime | None = None
     window_length_factor: conint(ge=5, le=100) = 10
 
     _squirrel: Squirrel | None = PrivateAttr(None)
@@ -113,13 +112,14 @@ class SquirrelSearch(Search):
         self.stations.weed_from_squirrel_waveforms(squirrel)
         self.ray_tracers.prepare(self.octree, self.stations)
         self._init_ranges()
+        self.write_config()
 
         window_increment = self.shift_range * self.window_length_factor
         logger.info("using trace window increment: %s", window_increment)
 
         start_time = self.start_time
-        if self.search_progress_time:
-            start_time = self.search_progress_time
+        if self.progress.time_progress:
+            start_time = self.progress.time_progress
             logger.info("continuing search from %s", start_time)
 
         iterator = squirrel.chopper_waveforms(
@@ -178,10 +178,6 @@ class SquirrelSearch(Search):
             if detections:
                 self._detections.dump_all()
 
-            self.search_progress_time = window_end
-            progress_file = self._rundir / "search_progress_time.txt"
-            progress_file.write_text(str(self.search_progress_time))
-
             if batch_start_time is not None:
                 batch_duration = datetime_now() - batch_start_time
                 batch_durations.append(batch_duration)
@@ -203,6 +199,7 @@ class SquirrelSearch(Search):
                 )
             batch_start_time = datetime_now()
 
+            self.set_progress(window_end)
             prefetcher.queue.task_done()
 
     async def add_features(self, event: EventDetection) -> None:
