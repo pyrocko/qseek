@@ -165,7 +165,9 @@ class Stations(BaseModel):
                     break
             else:
                 raise ValueError(f"could not find a station for {'.'.join(nsl)} ")
-        return Stations.model_construct(stations=stations)
+        stations = Stations()
+        stations.stations = stations
+        return stations
 
     def get_centroid(self) -> Location:
         """Get centroid location from all stations.

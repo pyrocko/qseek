@@ -209,18 +209,11 @@ class SearchTraces:
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
         """Remove empty or bad traces."""
-        seen_nsl_ids = set()
         for tr in traces.copy():
             if not tr.ydata.size or not np.all(np.isfinite(tr.ydata)):
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 traces.remove(tr)
 
-            if tr.nslc_id[:3] in seen_nsl_ids:
-                logger.warning("duplicate trace: %s", ".".join(tr.nslc_id))
-                traces.remove(tr)
-                continue
-
-            seen_nsl_ids.add(tr.nslc_id[:3])
         return traces
 
     def _n_samples_semblance(self) -> int:
