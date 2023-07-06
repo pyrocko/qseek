@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class SearchProcess(BaseModel):
+class SearchProgress(BaseModel):
     time_progress: datetime | None = None
     semblance_stats: SemblanceStats = SemblanceStats()
 
@@ -70,7 +70,7 @@ class Search(BaseModel):
     window_padding: timedelta = timedelta(seconds=0.0)
     distance_range: tuple[float, float] = (0.0, 0.0)
     travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = {}
-    progress: SearchProcess = SearchProcess()
+    progress: SearchProgress = SearchProgress()
 
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
@@ -127,7 +127,9 @@ class Search(BaseModel):
 
         progress_file = directory / "progress.json"
         if progress_file.exists():
-            search.progress = search.model_validate_json(progress_file.read_text())
+            search.progress = SearchProgress.model_validate_json(
+                progress_file.read_text()
+            )
         return search
 
     def set_progress(self, time: datetime) -> None:
