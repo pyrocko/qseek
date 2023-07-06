@@ -209,19 +209,18 @@ class SearchTraces:
     @staticmethod
     def clean_traces(traces: list[Trace]) -> list[Trace]:
         """Remove empty or bad traces."""
-        seen_nslc_ids = set()
+        seen_nsl_ids = set()
         for tr in traces.copy():
             if not tr.ydata.size or not np.all(np.isfinite(tr.ydata)):
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 traces.remove(tr)
-                continue
 
-            if tr.nslc_id in seen_nslc_ids:
+            if tr.nslc_id[:3] in seen_nsl_ids:
                 logger.warning("duplicate trace: %s", ".".join(tr.nslc_id))
                 traces.remove(tr)
                 continue
 
-            seen_nslc_ids.add(tr.nslc_id)
+            seen_nsl_ids.add(tr.nslc_id[:3])
         return traces
 
     def _n_samples_semblance(self) -> int:
@@ -264,6 +263,7 @@ class SearchTraces:
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
         weights[traveltimes_bad] = 0.0
+        print("\n".join(str(tr) for tr in image.traces))
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
