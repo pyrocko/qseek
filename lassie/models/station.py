@@ -157,17 +157,17 @@ class Stations(BaseModel):
         Returns:
             Stations: Containing only selected stations.
         """
-        stations = []
+        selected_stations = []
         for nsl in ((tr.network, tr.station, tr.location) for tr in traces):
             for sta in self:
                 if sta.nsl == nsl:
-                    stations.append(sta)
+                    selected_stations.append(sta)
                     break
             else:
                 raise ValueError(f"could not find a station for {'.'.join(nsl)} ")
-        selected_stations = Stations()
-        selected_stations.stations = stations
-        return selected_stations
+        stations = Stations()
+        stations.stations = selected_stations
+        return stations
 
     def get_centroid(self) -> Location:
         """Get centroid location from all stations.
