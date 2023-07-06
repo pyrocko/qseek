@@ -63,7 +63,7 @@ class Stations(BaseModel):
     pyrocko_station_yamls: list[Path] = []
 
     _cached_coordinates: np.ndarray | None = PrivateAttr(None)
-    _cached_stations: list[Station] | None = PrivateAttr(None)
+    _cached_iter: list[Station] | None = PrivateAttr(None)
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
@@ -131,17 +131,17 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        if self._cached_stations is None:
-            self._cached_stations = [
+        if self._cached_iter is None:
+            self._cached_iter = [
                 sta for sta in self.stations if sta.pretty_nsl not in self.blacklist
             ]
-        return iter(self._cached_stations)
+        return iter(self._cached_iter)
 
     @property
     def n_stations(self) -> int:
         """Number of stations in the stations object."""
-        if self._cached_stations:
-            return len(self._cached_stations)
+        if self._cached_iter:
+            return len(self._cached_iter)
         return sum(1 for _ in self)
 
     def get_all_nsl(self) -> set[tuple[str, str, str]]:
@@ -165,9 +165,9 @@ class Stations(BaseModel):
                     break
             else:
                 raise ValueError(f"could not find a station for {'.'.join(nsl)} ")
-        stations = Stations()
-        stations.stations = stations
-        return stations
+        selected_stations = Stations()
+        selected_stations.stations = stations
+        return selected_stations
 
     def get_centroid(self) -> Location:
         """Get centroid location from all stations.
