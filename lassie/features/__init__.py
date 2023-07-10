@@ -22,12 +22,12 @@ FeatureExtractors = Annotated[
 ]
 
 
-ReceiverFeatures = Annotated[
+ReceiverFeaturesTypes = Annotated[
     Union[ReceiverGroundMotion, StationMagnitude, ReceiverFeature],
     Field(..., discriminator="feature"),
 ]
 
-EventFeatures = Annotated[
+EventFeaturesTypes = Annotated[
     Union[EventGroundMotion, LocalMagnitude, EventFeature],
     Field(..., discriminator="feature"),
 ]

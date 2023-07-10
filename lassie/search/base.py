@@ -22,7 +22,7 @@ from pyrocko import parstack
 
 from lassie.images import ImageFunctions, WaveformImages
 from lassie.models import Stations
-from lassie.models.detection import Detections, EventDetection, PhaseDetection
+from lassie.models.detection import EventDetection, EventDetections, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
@@ -74,7 +74,7 @@ class Search(BaseModel):
 
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
-    _detections: Detections = PrivateAttr()
+    _detections: EventDetections = PrivateAttr()
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
@@ -107,7 +107,7 @@ class Search(BaseModel):
         file_logger = logging.FileHandler(rundir / "lassie.log")
         logging.root.addHandler(file_logger)
 
-        self._detections = Detections(rundir=rundir)
+        self._detections = EventDetections(rundir=rundir)
 
     def write_config(self, path: Path | None = None) -> None:
         path = path or self._rundir / "search.json"
@@ -119,13 +119,13 @@ class Search(BaseModel):
         return self.progress.semblance_stats
 
     @classmethod
-    def load_rundir(cls, directory: Path) -> Self:
-        search_file = directory / "search.json"
+    def load_rundir(cls, rundir: Path) -> Self:
+        search_file = rundir / "search.json"
         search = cls.model_validate_json(search_file.read_bytes())
-        search._rundir = directory
-        search._detections = Detections(rundir=directory)
+        search._rundir = rundir
+        search._detections = EventDetections.load_rundir(rundir)
 
-        progress_file = directory / "progress.json"
+        progress_file = rundir / "progress.json"
         if progress_file.exists():
             search.progress = SearchProgress.model_validate_json(
                 progress_file.read_text()
@@ -174,7 +174,7 @@ class Search(BaseModel):
     @classmethod
     def from_config(
         cls,
-        filename: str | Path,
+        filename: Path,
     ) -> Self:
         model = super().model_validate_json(filename.read_text())
         # Make relative paths absolute

@@ -10,22 +10,26 @@ from uuid import UUID, uuid4
 import matplotlib.pyplot as plt
 import numpy as np
 from pydantic import (
-    ConfigDict,
     BaseModel,
+    ConfigDict,
     DirectoryPath,
     Field,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
 )
+from rich.progress import track
 
 from lassie.console import console
-from lassie.models.detection import Detections, EventDetection, PhaseDetection, Receiver
+from lassie.models.detection import (
+    EventDetection,
+    EventDetections,
+    PhaseDetection,
+    Receiver,
+)
 from lassie.models.location import Location
 from lassie.models.station import Station
 from lassie.utils import PhaseDescription
-
-from rich.progress import track
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -303,7 +307,7 @@ class StationCorrection(BaseModel):
 
     @classmethod
     def from_receiver(cls, receiver: Receiver) -> Self:
-        return cls(station=Station.parse_obj(receiver))
+        return cls(station=Station.model_validate(receiver, from_attributes=True))
 
 
 class StationCorrections(BaseModel):
@@ -320,7 +324,7 @@ class StationCorrections(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         logger.debug("loading station detections from %s", self.rundir)
-        detections = Detections(rundir=self.rundir)
+        detections = EventDetections.load_rundir(self.rundir)
         with console.status("aggregating station detections"):
             for event in detections:
                 self.add_event(event)
@@ -355,7 +359,7 @@ class StationCorrections(BaseModel):
             sta_correction.add_event(
                 StationEvent(
                     phase_arrivals=phase_arrivals,
-                    **detection.dict(
+                    **detection.model_dump(
                         exclude={
                             "receivers",
                             "phase_arrivals",

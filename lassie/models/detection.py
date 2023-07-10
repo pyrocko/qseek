@@ -5,17 +5,17 @@ from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, Iterator, Literal, Type, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal, Type, TypeVar
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, PrivateAttr, computed_field
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 from typing_extensions import Self
 
 from lassie.console import console
-from lassie.features import EventFeatures, ReceiverFeatures
+from lassie.features import EventFeaturesTypes, ReceiverFeaturesTypes
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station
@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
 
-_ReceiverFeature = TypeVar("_ReceiverFeature", bound=ReceiverFeatures)
-_EventFeature = TypeVar("_EventFeature", bound=EventFeatures)
+_ReceiverFeature = TypeVar("_ReceiverFeature", bound=ReceiverFeaturesTypes)
+_EventFeature = TypeVar("_EventFeature", bound=EventFeaturesTypes)
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +37,10 @@ MeasurementUnit = Literal[
     "velocity",
     "acceleration",
 ]
+
+
+FILENAME_DETECTIONS = "detections.json"
+FILENAME_RECEIVERS = "detections_receivers.json"
 
 
 class PhaseDetection(BaseModel):
@@ -95,13 +99,13 @@ class PhaseDetection(BaseModel):
 
 
 class Receiver(Station):
-    features: list[ReceiverFeatures] = []
+    features: list[ReceiverFeaturesTypes] = []
     phase_arrivals: dict[PhaseDescription, PhaseDetection] = {}
 
     def add_phase_detection(self, arrival: PhaseDetection) -> None:
         self.phase_arrivals[arrival.phase] = arrival
 
-    def add_feature(self, feature: ReceiverFeatures) -> None:
+    def add_feature(self, feature: ReceiverFeaturesTypes) -> None:
         for existing_feature in self.features.copy():
             if isinstance(feature, existing_feature.__class__):
                 logger.debug("replacing existing feature %s", feature.feature)
@@ -166,7 +170,7 @@ class Receiver(Station):
         phase: PhaseDescription | None = None,
         quantity: MeasurementUnit = "velocity",
         demean: bool = True,
-        # TODO: Make freqlimits better
+        # TODO: Improve freqlimits
         freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 25.0, 35.0),
     ) -> list[Trace]:
         traces = self.get_waveforms(
@@ -194,24 +198,19 @@ class Receiver(Station):
             )
         return restituted_traces
 
-    def _get_csv_dict(self) -> dict[str, Any]:
-        csv_dict = self.model_dump(exclude={"features", "phase_arrivals"})
-        for arrival in self.phase_arrivals.values():
-            csv_dict.update(arrival._get_csv_dict())
-        return csv_dict
-
     @classmethod
     def from_station(cls, station: Station) -> Self:
         return cls(**station.model_dump())
 
 
-class Receivers(RootModel):
-    root: list[Receiver] = []
+class EventReceivers(BaseModel):
+    event_uid: UUID | None = None
+    receivers: list[Receiver] = []
 
     @property
     def n_receivers(self) -> int:
         """Number of receivers in the receiver set"""
-        return len(self.root)
+        return len(self.receivers)
 
     def n_observations(self, phase: PhaseDescription) -> int:
         """Number of observations for a given phase"""
@@ -242,7 +241,7 @@ class Receivers(RootModel):
             try:
                 receiver = self.get_by_nsl(receiver.nsl)
             except KeyError:
-                self.root.append(receiver)
+                self.receivers.append(receiver)
             receiver.add_phase_detection(arrival)
 
     def get_by_nsl(self, nsl: tuple[str, str, str]) -> Receiver:
@@ -251,42 +250,30 @@ class Receivers(RootModel):
                 return receiver
         raise KeyError(f"cannot find station {nsl}")
 
-    def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+    def get_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         return list(
             chain.from_iterable((receiver.as_pyrocko_markers() for receiver in self))
         )
 
-    def save_csv(self, filename: Path) -> None:
-        for receiver in self:
-            receiver._get_csv_dict()
-
-    def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:
-        from pyrocko.trace import snuffle
-
-        if restituted:
-            traces = (receiver.get_waveforms_restituted(squirrel) for receiver in self)
-        else:
-            traces = (receiver.get_waveforms(squirrel) for receiver in self)
-        snuffle([*chain.from_iterable(traces)])
-
     def __iter__(self) -> Iterator[Receiver]:
-        return iter(self.root)
+        return iter(self.receivers)
 
 
-class EventDetection(Location):
-    uid: UUID = Field(default_factory=uuid4)
-    time: datetime
-    semblance: float
-    distance_border: float
+class EventFeatures(BaseModel):
+    event_uid: UUID | None = None
+    features: list[EventFeaturesTypes] = []
 
-    magnitude: float | None = None
-    magnitude_type: str | None = None
+    @property
+    def n_features(self) -> int:
+        """Number of features in the feature set"""
+        return len(self.features)
 
-    receivers: Receivers = Receivers()
-    features: list[EventFeatures] = []
-    in_bounds: bool = True
+    def add_feature(self, feature: EventFeaturesTypes) -> None:
+        """Add feature to the feature set.
 
-    def add_feature(self, feature: EventFeatures) -> None:
+        Args:
+            feature (EventFeature): Feature to add
+        """
         for existing_feature in self.features.copy():
             if isinstance(feature, existing_feature.__class__):
                 logger.debug("replacing existing feature %s", feature.feature)
@@ -311,6 +298,62 @@ class EventDetection(Location):
                 return feature
         raise TypeError(f"cannot find feature of type {feature_type.__class__}")
 
+
+class EventDetection(Location):
+    uid: UUID = Field(default_factory=uuid4)
+
+    time: datetime
+    semblance: float
+    distance_border: float
+
+    in_bounds: bool = True
+
+    magnitude: float | None = None
+    magnitude_type: str | None = None
+
+    features: EventFeatures = EventFeatures()
+
+    _receivers: EventReceivers | None = PrivateAttr(None)
+
+    _detection_idx: int | None = PrivateAttr(None)
+    _rundir: ClassVar[Path | None] = None
+
+    def model_post_init(self, __context: Any) -> None:
+        self.features.event_uid = self.uid
+
+    def dump_append(self, directory: Path) -> None:
+        logger.debug("dumping event, receivers and features to %s", directory)
+
+        event_file = directory / FILENAME_DETECTIONS
+        json_data = self.model_dump_json(exclude={"receivers"}, exclude_unset=True)
+        with event_file.open("a") as f:
+            f.write(f"{json_data}\n")
+
+        receiver_file = directory / FILENAME_RECEIVERS
+        with receiver_file.open("a") as f:
+            f.write(f"{self.receivers.model_dump_json(exclude_unset=True)}\n")
+
+    @computed_field
+    @property
+    def receivers(self) -> EventReceivers:
+        if self._receivers is not None:
+            ...
+        elif self._detection_idx is None:
+            self._receivers = EventReceivers(event_uid=self.uid)
+        elif self._rundir and self._detection_idx is not None:
+            logger.debug("fetching receiver information from file")
+            feature_file = self._rundir / FILENAME_RECEIVERS
+            with feature_file.open() as f:
+                [next(f) for _ in range(self._detection_idx)]
+                receivers = EventReceivers.model_validate_json(next(f))
+
+            if receivers.event_uid != self.uid:
+                raise ValueError(f"uid mismatch: {receivers.event_uid} != {self.uid}")
+            self._receivers = receivers
+        else:
+            raise ValueError("cannot fetch receivers without set rundir and index")
+        return self._receivers
+
     def as_pyrocko_event(self) -> Event:
         """Get detection as Pyrocko event"""
         return Event(
@@ -326,42 +369,66 @@ class EventDetection(Location):
             magnitude_type=self.magnitude_type,
         )
 
-    def as_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:
+    def get_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:
         """Get detections as Pyrocko markers"""
         event = self.as_pyrocko_event()
 
         pyrocko_markers: list[marker.EventMarker | marker.PhaseMarker] = [
             marker.EventMarker(event)
         ]
-        for phase_pick in self.receivers.as_pyrocko_markers():
+        for phase_pick in self.receivers.get_pyrocko_markers():
             phase_pick.set_event(event)
             pyrocko_markers.append(phase_pick)
         return pyrocko_markers
 
-    def save_pyrocko_markers(self, filename: Path) -> None:
+    def dump_pyrocko_markers(self, filename: Path) -> None:
         """Save detection's Pyrocko markers to file
 
         Args:
             filename (Path): path to marker file
         """
-        logger.info("saving detection's Pyrocko markers to %s", filename)
-        marker.save_markers(self.as_pyrocko_markers(), str(filename))
+        logger.info("dumping detection's Pyrocko markers to %s", filename)
+        marker.save_markers(self.get_pyrocko_markers(), str(filename))
+
+    def jitter_location(self, meters: float) -> EventDetection:
+        """Randomize detection location
+
+        Args:
+            meters (float): maximum randomization in meters
+
+        Returns:
+            EventDetection: randomized detection
+        """
+        half_meters = meters / 2
+        detection = self.model_copy()
+        detection.east_shift += uniform(-half_meters, half_meters)
+        detection.north_shift += uniform(-half_meters, half_meters)
+        detection.depth += uniform(-half_meters, half_meters)
+        return detection
+
+    def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:
+        from pyrocko.trace import snuffle
+
+        if restituted:
+            traces = (
+                receiver.get_waveforms_restituted(squirrel)
+                for receiver in self.receivers
+            )
+        else:
+            traces = (receiver.get_waveforms(squirrel) for receiver in self.receivers)
+        snuffle([*chain.from_iterable(traces)], markers=self.get_pyrocko_markers())
 
     def __str__(self) -> str:
         # TODO: Add more information
         return str(self.time)
 
 
-class Detections(BaseModel):
+class EventDetections(BaseModel):
     rundir: Path
     detections: list[EventDetection] = []
 
     def model_post_init(self, __context: Any) -> None:
-        if not self.detections_dir.exists():
-            self.detections_dir.mkdir()
-            self.markers_dir.mkdir(exist_ok=True)
-        else:
-            self.load_detections()
+        EventDetection._rundir = self.rundir
 
     @property
     def n_detections(self) -> int:
@@ -369,29 +436,35 @@ class Detections(BaseModel):
         return len(self.detections)
 
     @property
-    def detections_dir(self) -> Path:
-        """Directory where detections are saved, infered from rundir"""
-        return self.rundir / "detections"
-
-    @property
     def markers_dir(self) -> Path:
-        return self.detections_dir / "pyrocko-markers"
+        return self.rundir / "pyrocko_markers"
 
     def add(self, detection: EventDetection) -> None:
         self.detections.append(detection)
+        detection.dump_append(self.rundir)
 
-        filename = self.detections_dir / (time_to_path(detection.time) + ".json")
-        filename.write_text(detection.model_dump_json(exclude_unset=True))
+        markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
+        self.markers_dir.mkdir(exist_ok=True)
+        marker.save_markers(detection.get_pyrocko_markers(), str(markers_file))
 
-        markers_file = self.markers_dir / (time_to_path(detection.time) + ".list")
-        marker.save_markers(detection.as_pyrocko_markers(), str(markers_file))
-
-    def dump_all(self) -> None:
+    def dump_detections(self, jitter_location: float = 0.0) -> None:
         """Dump all detections to files in the detection directory."""
+        csv_folder = self.rundir / "csv"
+        csv_folder.mkdir(exist_ok=True)
+
         logger.debug("dumping detections")
-        self.save_csv(self.rundir / "detections.csv")
-        self.save_csv(self.rundir / "detections-randomized.csv", randomize_meters=100.0)
-        self.save_pyrocko_events(self.rundir / "pyrocko-events.list")
+        self.save_csvs(csv_folder / "detections_locations.csv")
+        self.save_pyrocko_events(self.rundir / "pyrocko_events.list")
+
+        if jitter_location:
+            self.save_csvs(
+                csv_folder / "detections_locations_jittered.csv",
+                jitter_location=jitter_location,
+            )
+            self.save_pyrocko_events(
+                self.rundir / "pyrocko_events_jittered.list",
+                jitter_location=jitter_location,
+            )
 
     def add_semblance(self, trace: Trace) -> None:
         """Add semblance trace to detection and save to file.
@@ -406,37 +479,27 @@ class Detections(BaseModel):
             append=True,
         )
 
-    def load_detections(self) -> None:
+    @classmethod
+    def load_rundir(cls, rundir: Path) -> EventDetections:
         """Load detections from files in the detections directory."""
-        files = sorted(self.detections_dir.glob("*.json"))
+        detection_file = rundir / FILENAME_DETECTIONS
+        if not detection_file.exists():
+            raise FileNotFoundError(f"cannot find {detection_file}")
 
-        with console.status(
-            f"Loading {len(files)} detections from {self.detections_dir}..."
-        ):
-            for file in files:
-                detection = EventDetection.model_validate_json(file.read_text())
-                logger.debug("loaded %s", detection)
-                self.detections.append(detection)
-        console.log(f"loaded {self.n_detections} detections")
+        detections = cls(rundir=rundir)
 
-    def get(self, uid: UUID) -> EventDetection:
-        """Get a detection by its UUID
+        with console.status(f"Loading detections from {rundir}..."), open(
+            detection_file
+        ) as f:
+            for i_detection, line in enumerate(f):
+                detection = EventDetection.model_validate_json(line)
+                detection._detection_idx = i_detection
+                detections.detections.append(detection)
 
-        Args:
-            uid (UUID): UUID of the detection
+        console.log(f"loaded {detections.n_detections} detections")
+        return detections
 
-        Raises:
-            KeyError: if the detection is not found
-
-        Returns:
-            EventDetection: the detection
-        """
-        for detection in self:
-            if detection.uid == uid:
-                return detection
-        raise KeyError(f"detection {uid} not found")
-
-    def save_csv(self, file: Path, randomize_meters: float = 0.0) -> None:
+    def save_csvs(self, file: Path, jitter_location: float = 0.0) -> None:
         """Save detections to a CSV file
 
         Args:
@@ -446,27 +509,29 @@ class Detections(BaseModel):
         """
         lines = ["lat, lon, depth, semblance, time, distance_border"]
         for detection in self:
-            det = detection.copy()
-            if randomize_meters:
-                det.east_shift += uniform(-randomize_meters, randomize_meters)
-                det.north_shift += uniform(-randomize_meters, randomize_meters)
-                det.depth += uniform(-randomize_meters, randomize_meters)
-            lat, lon = det.effective_lat_lon
+            if jitter_location:
+                detection = detection.jitter_location(jitter_location)
+            lat, lon = detection.effective_lat_lon
             lines.append(
-                f"{lat:.5f}, {lon:.5f}, {-det.effective_elevation:.1f},"
-                f" {det.semblance}, {det.time}, {det.distance_border}"
+                f"{lat:.5f}, {lon:.5f}, {-detection.effective_elevation:.1f},"
+                f" {detection.semblance}, {detection.time}, {detection.distance_border}"
             )
         file.write_text("\n".join(lines))
 
-    def save_pyrocko_events(self, filename: Path) -> None:
+    def save_pyrocko_events(self, filename: Path, jitter_location: float = 0.0) -> None:
         """Save Pyrocko events for all detections to a file
 
         Args:
             filename (Path): output filename
         """
         logger.info("saving Pyrocko events to %s", filename)
+        detections = self.detections
+        if jitter_location:
+            detections = [
+                detection.jitter_location(jitter_location) for detection in detections
+            ]
         dump_events(
-            [detection.as_pyrocko_event() for detection in self],
+            [detection.as_pyrocko_event() for detection in detections],
             filename=str(filename),
         )
 
@@ -479,7 +544,7 @@ class Detections(BaseModel):
         logger.info("saving Pyrocko markers to %s", filename)
         pyrocko_markers = []
         for detection in self:
-            pyrocko_markers.extend(detection.as_pyrocko_markers())
+            pyrocko_markers.extend(detection.get_pyrocko_markers())
         marker.save_markers(pyrocko_markers, str(filename))
 
     def __iter__(self) -> Iterator[EventDetection]:

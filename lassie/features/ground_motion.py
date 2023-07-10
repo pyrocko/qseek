@@ -95,4 +95,4 @@ class GroundMotionExtractor(FeatureExtractor):
                 gm.peak_ground_velocity for gm in receiver_motions
             ),
         )
-        event.add_feature(event_ground_motions)
+        event.features.add_feature(event_ground_motions)

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class SquirrelPrefetcher:
     def __init__(self, iterator: Iterator[Batch], queue_size: int = 4) -> None:
         self.iterator = iterator
-        self.queue: asyncio.Queue[Batch] = asyncio.Queue(maxsize=queue_size)
+        self.queue: asyncio.Queue[Batch | None] = asyncio.Queue(maxsize=queue_size)
 
         self._task = asyncio.create_task(self.prefetch_worker())
 
@@ -176,7 +176,7 @@ class SquirrelSearch(Search):
                 await self._new_detection.emit(detection)
 
             if detections:
-                self._detections.dump_all()
+                self._detections.dump_detections()
 
             if batch_start_time is not None:
                 batch_duration = datetime_now() - batch_start_time

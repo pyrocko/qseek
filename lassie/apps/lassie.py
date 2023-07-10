@@ -179,8 +179,8 @@ def main() -> None:
         rundir = Path(args.rundir)
         station_corrections = StationCorrections(rundir=rundir)
         if args.plot:
-            station_corrections.save_plots(rundir / "station-corrections")
-        station_corrections.save_csv(filename=rundir / "station-corrections-stats.csv")
+            station_corrections.save_plots(rundir / "station_corrections")
+        station_corrections.save_csv(filename=rundir / "station_corrections_stats.csv")
 
     elif args.command == "serve":
         search = SquirrelSearch.load_rundir(args.rundir)
@@ -191,17 +191,17 @@ def main() -> None:
         loop.run_forever()
 
     elif args.command == "dump-schemas":
-        from lassie.models.detection import Detections
+        from lassie.models.detection import EventDetections
 
         if not args.folder.exists():
             raise EnvironmentError(f"folder {args.folder} does not exist")
 
         file = args.folder / "search.schema.json"
         print(f"writing JSON schemas to {args.folder}")
-        file.write_text(SquirrelSearch.schema_json(indent=2))
+        file.write_text(SquirrelSearch.model_json_schema(indent=2))
 
         file = args.folder / "detections.schema.json"
-        file.write_text(Detections.schema_json(indent=2))
+        file.write_text(EventDetections.model_json_schema(indent=2))
 
 
 if __name__ == "__main__":
