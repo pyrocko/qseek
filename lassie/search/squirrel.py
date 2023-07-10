@@ -111,8 +111,7 @@ class SquirrelSearch(Search):
 
         self.stations.weed_from_squirrel_waveforms(squirrel)
         self.ray_tracers.prepare(self.octree, self.stations)
-        self._init_ranges()
-        self.write_config()
+        self.init_search()
 
         window_increment = self.shift_range * self.window_length_factor
         logger.info("using trace window increment: %s", window_increment)

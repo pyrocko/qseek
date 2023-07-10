@@ -99,13 +99,11 @@ class Search(BaseModel):
 
         if not rundir.exists():
             rundir.mkdir()
+
         self.write_config()
         self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
 
         logger.info("created new rundir %s", rundir)
-
-        file_logger = logging.FileHandler(rundir / "lassie.log")
-        logging.root.addHandler(file_logger)
 
         self._detections = EventDetections(rundir=rundir)
 
@@ -118,26 +116,16 @@ class Search(BaseModel):
     def semblance_stats(self) -> SemblanceStats:
         return self.progress.semblance_stats
 
-    @classmethod
-    def load_rundir(cls, rundir: Path) -> Self:
-        search_file = rundir / "search.json"
-        search = cls.model_validate_json(search_file.read_bytes())
-        search._rundir = rundir
-        search._detections = EventDetections.load_rundir(rundir)
-
-        progress_file = rundir / "progress.json"
-        if progress_file.exists():
-            search.progress = SearchProgress.model_validate_json(
-                progress_file.read_text()
-            )
-        return search
-
     def set_progress(self, time: datetime) -> None:
         self.progress.time_progress = time
         progress_file = self._rundir / "progress.json"
         progress_file.write_text(self.progress.model_dump_json())
 
-    def _init_ranges(self) -> None:
+    def init_search(self) -> None:
+        """Initialise search."""
+        file_logger = logging.FileHandler(self._rundir / "lassie.log")
+        logging.root.addHandler(file_logger)
+
         # Grid/receiver distances
         distances = self.octree.distances_stations(self.stations)
         self.distance_range = (distances.min(), distances.max())
@@ -170,6 +158,21 @@ class Search(BaseModel):
         )
         logger.info("shift range %s", self.shift_range)
         logger.info("using trace window padding: %s", self.window_padding)
+        self.write_config()
+
+    @classmethod
+    def load_rundir(cls, rundir: Path) -> Self:
+        search_file = rundir / "search.json"
+        search = cls.model_validate_json(search_file.read_bytes())
+        search._rundir = rundir
+        search._detections = EventDetections.load_rundir(rundir)
+
+        progress_file = rundir / "progress.json"
+        if progress_file.exists():
+            search.progress = SearchProgress.model_validate_json(
+                progress_file.read_text()
+            )
+        return search
 
     @classmethod
     def from_config(
@@ -402,7 +405,7 @@ class SearchTraces:
                 semblance=float(semblance_detection),
                 distance_border=source_node.distance_border,
                 in_bounds=octree.is_node_in_bounds(source_node),
-                **source_location.dict(),
+                **source_location.model_dump(),
             )
 
             # Attach modelled and picked arrivals to receivers
