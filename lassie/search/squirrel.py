@@ -176,7 +176,7 @@ class SquirrelSearch(Search):
                 await self._new_detection.emit(detection)
 
             if detections:
-                self._detections.dump_detections()
+                self._detections.dump_detections(self.octree.size_limit)
 
             if batch_start_time is not None:
                 batch_duration = datetime_now() - batch_start_time
