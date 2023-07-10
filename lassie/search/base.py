@@ -419,7 +419,6 @@ class SearchTraces:
                         arr.time if arr else None for arr in arrivals_model
                     ]
                 )
-                print(arrivals_model)
 
                 phase_detections = [
                     PhaseDetection(phase=image.phase, model=mod, observed=obs)
