@@ -321,7 +321,7 @@ class EventDetection(Location):
     def model_post_init(self, __context: Any) -> None:
         self.features.event_uid = self.uid
 
-    def dump_append(self, directory: Path) -> None:
+    def dump_append(self, directory: Path, detection_index: int) -> None:
         logger.debug("dumping event, receivers and features to %s", directory)
 
         event_file = directory / FILENAME_DETECTIONS
@@ -332,6 +332,9 @@ class EventDetection(Location):
         receiver_file = directory / FILENAME_RECEIVERS
         with receiver_file.open("a") as f:
             f.write(f"{self.receivers.model_dump_json(exclude_unset=True)}\n")
+
+        self._detection_idx = detection_index
+        self._receivers = None  # Free the memory
 
     @computed_field
     @property
@@ -440,12 +443,13 @@ class EventDetections(BaseModel):
         return self.rundir / "pyrocko_markers"
 
     def add(self, detection: EventDetection) -> None:
-        self.detections.append(detection)
-        detection.dump_append(self.rundir)
-
         markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
         self.markers_dir.mkdir(exist_ok=True)
         marker.save_markers(detection.get_pyrocko_markers(), str(markers_file))
+
+        self.detections.append(detection)
+        # This has to happen after the markers are saved
+        detection.dump_append(self.rundir, self.n_detections - 1)
 
     def dump_detections(self, jitter_location: float = 0.0) -> None:
         """Dump all detections to files in the detection directory."""
