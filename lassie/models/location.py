@@ -34,7 +34,10 @@ class Location(BaseModel):
         """Shift-corrected lat/lon pair of the location."""
         if self.north_shift == 0.0 and self.east_shift == 0.0:
             return self.lat, self.lon
-        return od.ne_to_latlon(self.lat, self.lon, self.north_shift, self.east_shift)
+        return map(
+            float,
+            od.ne_to_latlon(self.lat, self.lon, self.north_shift, self.east_shift),
+        )
 
     @property
     def effective_elevation(self) -> float:
