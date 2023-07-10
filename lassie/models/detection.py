@@ -400,13 +400,14 @@ class EventDetection(Location):
             meters (float): maximum randomization in meters
 
         Returns:
-            EventDetection: randomized detection
+            EventDetection: spatially jittered detection
         """
         half_meters = meters / 2
         detection = self.model_copy()
         detection.east_shift += uniform(-half_meters, half_meters)
         detection.north_shift += uniform(-half_meters, half_meters)
         detection.depth += uniform(-half_meters, half_meters)
+        del detection.effective_lat_lon
         return detection
 
     def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:

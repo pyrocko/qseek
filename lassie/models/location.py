@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import math
-from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
 
-from pydantic import ConfigDict, BaseModel
+from pydantic import BaseModel, computed_field
 from pyrocko import orthodrome as od
 
 if TYPE_CHECKING:
@@ -20,7 +19,6 @@ class Location(BaseModel):
     north_shift: float = 0.0
     elevation: float = 0.0
     depth: float = 0.0
-    model_config = ConfigDict(ignored_types=(cached_property,))
 
     @property
     def effective_lat(self) -> float:
@@ -30,7 +28,8 @@ class Location(BaseModel):
     def effective_lon(self) -> float:
         return self.effective_lat_lon[1]
 
-    @cached_property
+    @computed_field
+    @property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
         if self.north_shift == 0.0 and self.east_shift == 0.0:
