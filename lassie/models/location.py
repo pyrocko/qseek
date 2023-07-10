@@ -36,7 +36,10 @@ class Location(BaseModel):
         if self.north_shift == 0.0 and self.east_shift == 0.0:
             return self.lat, self.lon
         lat, lon = od.ne_to_latlon(
-            self.lat, self.lon, self.north_shift, self.east_shift
+            self.lat,
+            self.lon,
+            self.north_shift,
+            self.east_shift,
         )
         return float(lat), float(lon)
 
