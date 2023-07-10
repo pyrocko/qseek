@@ -18,7 +18,7 @@ from lassie.console import console
 from lassie.features import EventFeaturesTypes, ReceiverFeaturesTypes
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
-from lassie.models.station import Station
+from lassie.models.station import Station, Stations
 from lassie.tracers import RayTracerArrival
 from lassie.utils import PhaseDescription, time_to_path
 
@@ -222,7 +222,7 @@ class EventReceivers(BaseModel):
 
     def add_receivers(
         self,
-        stations: list[Station],
+        stations: Stations,
         phase_arrivals: list[PhaseDetection | None],
     ) -> None:
         """Add receivers to the receiver set
@@ -325,13 +325,13 @@ class EventDetection(Location):
         logger.debug("dumping event, receivers and features to %s", directory)
 
         event_file = directory / FILENAME_DETECTIONS
-        json_data = self.model_dump_json(exclude={"receivers"}, exclude_unset=True)
+        json_data = self.model_dump_json(exclude={"receivers"})
         with event_file.open("a") as f:
             f.write(f"{json_data}\n")
 
         receiver_file = directory / FILENAME_RECEIVERS
         with receiver_file.open("a") as f:
-            f.write(f"{self.receivers.model_dump_json(exclude_unset=True)}\n")
+            f.write(f"{self.receivers.model_dump_json()}\n")
 
         self._detection_idx = detection_index
         self._receivers = None  # Free the memory
@@ -403,13 +403,11 @@ class EventDetection(Location):
             EventDetection: spatially jittered detection
         """
         half_meters = meters / 2
-        detection = EventDetection.model_validate(
-            self.model_dump(),
-            from_attributes=True,
-        )
+        detection = self.model_copy()
         detection.east_shift += uniform(-half_meters, half_meters)
         detection.north_shift += uniform(-half_meters, half_meters)
         detection.depth += uniform(-half_meters, half_meters)
+        del detection.effective_lat_lon
         return detection
 
     def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:

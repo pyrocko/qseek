@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
 
 from pydantic import BaseModel, computed_field
@@ -29,7 +30,7 @@ class Location(BaseModel):
         return self.effective_lat_lon[1]
 
     @computed_field
-    @property
+    @cached_property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
         if self.north_shift == 0.0 and self.east_shift == 0.0:
