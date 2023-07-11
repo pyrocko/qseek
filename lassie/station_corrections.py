@@ -371,9 +371,22 @@ class StationCorrections(BaseModel):
 
     @property
     def n_stations(self) -> int:
+        """The number of stations with corrections.
+
+        Returns:
+            int: The number of stations.
+        """
         return len(self._station_corrections)
 
     def get_station(self, nsl: NSL | str) -> StationCorrection:
+        """Get the station correction for a station.
+
+        Args:
+            nsl: The station NSL.
+
+        Returns:
+            StationCorrection: The station correction.
+        """
         if isinstance(nsl, tuple):
             nsl = ".".join(nsl)
         return self._station_corrections[nsl]
