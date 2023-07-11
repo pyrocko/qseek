@@ -1,19 +1,60 @@
 from __future__ import annotations
 
+import contextlib
 import logging
+import struct
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, ClassVar, Iterator
+from functools import cached_property
+from hashlib import sha1
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
 import numpy as np
-from pydantic import BaseModel, PrivateAttr
+from pydantic import (
+    ConfigDict,
+    BaseModel,
+    Field,
+    PositiveFloat,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
+from pyrocko import orthodrome as od
 
-from lassie.models.location import Location
+from lassie.models.location import CoordSystem, Location
 
 if TYPE_CHECKING:
-    from lassie.models.receiver import Receiver
+    from typing_extensions import Self
+
+    from lassie.models.station import Stations
 
 logger = logging.getLogger(__name__)
-km = 1e3
+KM = 1e3
+
+
+def get_node_coordinates(
+    nodes: Sequence[Node],
+    system: CoordSystem = "geographic",
+) -> np.ndarray:
+    node_locations = (node.as_location() for node in nodes)
+    if system == "geographic":
+        return np.array(
+            [
+                (*node.effective_lat_lon, node.effective_elevation)
+                for node in node_locations
+            ]
+        )
+    if system == "cartesian":
+        return np.array(
+            [
+                (node.east_shift, node.north_shift, node.effective_elevation)
+                for node in node_locations
+            ]
+        )
+    raise ValueError(f"Unknown coordinate system: {system}")
+
+
+class NodeSplitError(Exception):
+    ...
 
 
 class Node(BaseModel):
@@ -23,19 +64,22 @@ class Node(BaseModel):
     size: float
     semblance: float = 0.0
 
-    children: tuple[Node] = tuple()
+    tree: Octree | None = Field(None, exclude=True)
+    children: tuple[Node] = Field((), exclude=True)
 
-    _children_cached: tuple[Node] = PrivateAttr(tuple())
-    _tree: ClassVar[Octree | None] = None
+    _hash: bytes | None = PrivateAttr(None)
+    _children_cached: tuple[Node] = PrivateAttr(())
+    _location: Location | None = PrivateAttr(None)
 
     def split(self) -> tuple[Node]:
-        if not self._tree:
+        if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
+
+        if not self.can_split():
+            raise NodeSplitError("Cannot split node below limit.")
 
         if not self._children_cached:
             half_size = self.size / 2
-            if half_size < self._tree.extent_limit:
-                raise ValueError("Cannot split node below limit.")
 
             self._children_cached = tuple(
                 Node.construct(
@@ -43,6 +87,7 @@ class Node(BaseModel):
                     north=self.north + north * half_size / 2,
                     depth=self.depth + depth * half_size / 2,
                     size=half_size,
+                    tree=self.tree,
                 )
                 for east in (-1, 1)
                 for north in (-1, 1)
@@ -50,30 +95,56 @@ class Node(BaseModel):
             )
 
         self.children = self._children_cached
+        if self.tree:
+            self.tree._clear_cache()
         return self.children
 
     @property
     def coordinates(self) -> tuple[float, float, float]:
         return self.east, self.north, self.depth
 
+    @property
+    def distance_border(self) -> float:
+        if not self.tree:
+            raise AttributeError("parent tree not set")
+        tree = self.tree
+        return min(
+            self.north - tree.north_bounds[0],
+            tree.north_bounds[1] - self.north,
+            self.east - tree.east_bounds[0],
+            tree.east_bounds[1] - self.east,
+            self.depth - tree.depth_bounds[0],
+            tree.depth_bounds[1] - self.depth,
+        )
+
+    def can_split(self) -> bool:
+        half_size = self.size / 2
+        return half_size >= self.tree.size_limit
+
     def reset(self) -> None:
-        self.children = tuple()
         self._children_cached = self.children
+        self.children = ()
         self.semblance = 0.0
 
-    def distance_receiver(self, receiver: Receiver) -> float:
-        return receiver.distance_to(self.as_location())
+    def set_parent(self, tree: Octree) -> None:
+        self.tree = tree
+        for child in self.children:
+            child.set_parent(tree)
+
+    def distance_to_location(self, location: Location) -> float:
+        return location.distance_to(self.as_location())
 
     def as_location(self) -> Location:
-        if not self._tree:
-            raise ValueError("Parent tree not set.")
-        return Location(
-            lat=self._tree.center_lat,
-            lon=self._tree.center_lon,
-            elevation=self._tree.center_elevation,
-            east_shift=self.east,
-            north_shift=self.north,
-        )
+        if not self._location:
+            self._location = Location.construct(
+                lat=self.tree.center_lat,
+                lon=self.tree.center_lon,
+                elevation=self.tree.surface_elevation,
+                east_shift=float(self.east),
+                north_shift=float(self.north),
+                depth=float(self.depth),
+            )
+        return self._location
 
     def __iter__(self) -> Iterator[Node]:
         if self.children:
@@ -82,61 +153,91 @@ class Node(BaseModel):
         else:
             yield self
 
+    def hash(self) -> bytes:
+        if self._hash is None:
+            self._hash = sha1(
+                struct.pack(
+                    "dddddd",
+                    self.tree.center_lat,
+                    self.tree.center_lon,
+                    self.east,
+                    self.north,
+                    self.depth,
+                    self.size,
+                )
+            ).digest()
+        return self._hash
+
     def __hash__(self) -> int:
-        return hash((self.east, self.north, self.depth, self.size))
+        return hash(self.hash())
 
 
 class Octree(BaseModel):
-    _root_nodes: list[Node] = PrivateAttr([])
     center_lat: float = 0.0
     center_lon: float = 0.0
-    center_elevation: float = 0.0
-    extent_initial: float = 2 * km
-    extent_limit: float = 500
-    east_bounds: tuple[float, float] = (-10 * km, 10 * km)
-    north_bounds: tuple[float, float] = (-10 * km, 10 * km)
-    depth_bounds: tuple[float, float] = (0 * km, 20 * km)
-    nodes: list[Node] = []
+    surface_elevation: float = 0.0
+    size_initial: PositiveFloat = 2 * KM
+    size_limit: PositiveFloat = 500
+    east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
+    north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
+    depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
+    absorbing_boundary: PositiveFloat = 1 * KM
 
-    def __init__(self, **data) -> None:
-        super().__init__(**data)
-        self.init_nodes()
+    _root_nodes: list[Node] = PrivateAttr([])
+    _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
+
+    model_config = ConfigDict(ignored_types=(cached_property,))
+
+    @field_validator("east_bounds", "north_bounds", "depth_bounds")
+    def check_bounds(
+        cls, bounds: tuple[float, float]  # noqa: N805
+    ) -> tuple[float, float]:
+        if bounds[0] >= bounds[1]:
+            raise ValueError(f"invalid bounds {bounds}, expected (min, max)")
+        return bounds
+
+    @model_validator(mode="after")
+    def _check_limits(cls, m: Octree) -> Octree:  # noqa: N805
+        if m.size_limit >= m.size_initial:
+            raise ValueError(
+                "invalid octree size limits, expected size_limit < size_initial"
+            )
+        return m
+
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize octree. This method is called by the pydantic model"""
+        logger.info(
+            "initializing octree, smallest node size: %.1f m",
+            self.smallest_node_size(),
+        )
+        self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def extent(self) -> tuple[float, float, float]:
         return (
             self.east_bounds[1] - self.east_bounds[0],
             self.north_bounds[1] - self.north_bounds[0],
-            self.depth_bounds[1] - self.depth_bounds[0] + self.center_elevation,
+            self.depth_bounds[1] - self.depth_bounds[0],
         )
 
-    def init_nodes(self) -> None:
-        logger.debug("initializing nodes")
-        ext = self.extent_initial
+    def _get_root_nodes(self, size: float) -> list[Node]:
+        len = size
         ext_east, ext_north, ext_depth = self.extent()
-        east_nodes = np.arange(ext_east // ext) * ext + ext / 2 + self.east_bounds[0]
-        north_nodes = np.arange(ext_north // ext) * ext + ext / 2 + self.north_bounds[0]
-        depth_nodes = (
-            np.arange(ext_depth // ext) * ext
-            + ext / 2
-            + self.depth_bounds[0]
-            + self.center_elevation
-        )
+        east_nodes = np.arange(ext_east // len) * len + len / 2 + self.east_bounds[0]
+        north_nodes = np.arange(ext_north // len) * len + len / 2 + self.north_bounds[0]
+        depth_nodes = np.arange(ext_depth // len) * len + len / 2 + self.depth_bounds[0]
 
-        Node._tree = self
-        self._root_nodes = [
-            Node.construct(
-                east=east,
-                north=north,
-                depth=depth,
-                size=ext,
+        return [
+            Node.model_construct(
+                east=east, north=north, depth=depth, size=len, tree=self
             )
             for east in east_nodes
             for north in north_nodes
             for depth in depth_nodes
         ]
 
-    @property
-    def nnodes(self) -> int:
+    @cached_property
+    def n_nodes(self) -> int:
+        """Number of nodes in the octree"""
         return sum(1 for _ in self)
 
     def __iter__(self) -> Iterator[Node]:
@@ -147,44 +248,137 @@ class Octree(BaseModel):
         for inode, node in enumerate(self):
             if inode == idx:
                 return node
-        raise IndexError(f"Unknown node {idx}")
+        raise IndexError(f"bad node index {idx}")
+
+    def _clear_cache(self) -> None:
+        self._cached_coordinates.clear()
+        with contextlib.suppress(AttributeError):
+            del self.n_nodes
 
     def reset(self) -> None:
-        for node in self._root_nodes:
-            node.reset()
+        """Reset the octree to its initial state"""
+        logger.debug("resetting tree")
+        self._clear_cache()
+        self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
+        """Reduce the octree's nodes to the surface
+
+        Args:
+            accumulator (Callable, optional): Accumulator function. Defaults to np.max.
+
+        Returns:
+            np.ndarray: Of shape (n-nodes, 4) with columns (east, north, depth, value).
+        """
         groups = defaultdict(list)
         for node in self:
-            groups[(node.east, node.north)].append(node.semblance)
+            groups[(node.east, node.north, node.size)].append(node.semblance)
 
         values = (accumulator(values) for values in groups.values())
         return np.array(
-            [(east, north, val) for (east, north), val in zip(groups.keys(), values)]
+            [(*node, val) for node, val in zip(groups.keys(), values, strict=True)]
         )
 
     @property
     def semblance(self) -> np.ndarray:
-        return np.fromiter((node.semblance for node in self), float)
+        """Returns the semblance values of all nodes."""
+        return np.array([node.semblance for node in self])
 
-    def get_coordinates(self) -> np.ndarray:
-        return np.array([node.coordinates for node in self])
+    def map_semblance(self, semblance: np.ndarray) -> None:
+        """Maps semblance values to nodes.
 
-    def refine(self, semblance_threshold: float) -> list[Node]:
-        new_nodes = []
-        for node in self:
-            if node.semblance > semblance_threshold:
-                new_nodes.extend(node.split())
-        return new_nodes
+        Args:
+            semblance (np.ndarray): Of shape (n-nodes,).
+        """
+        for node, node_semblance in zip(self, semblance, strict=True):
+            node.semblance = float(node_semblance)
 
-    def finest_tree(self) -> Octree:
-        tree = self.copy()
-        tree.reset()
-        while True:
-            try:
-                for node in tree:
-                    node.split()
-            except ValueError:
-                break
+    def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
+        if self._cached_coordinates.get(system) is None:
+            nodes = (node for node in self)
+            self._cached_coordinates[system] = get_node_coordinates(
+                nodes, system=system
+            )
+        return self._cached_coordinates[system]
+
+    def distances_stations(self, stations: Stations) -> np.ndarray:
+        """Returns the distances from all nodes to all stations.
+
+        Args:
+            stations (Stations): Stations to calculate distance to.
+
+        Returns:
+            np.ndarray: Of shape (n-nodes, n-stations).
+        """
+        node_coords = self.get_coordinates(system="geographic")
+        sta_coords = stations.get_coordinates(system="geographic")
+
+        sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
+        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
+        return np.linalg.norm(sta_coords - node_coords[:, np.newaxis], axis=2)
+
+    def get_nodes(self, semblance_threshold: float = 0.0) -> list[Node]:
+        """Get all nodes with a semblance above a threshold.
+
+        Args:
+            semblance_threshold (float): Semblance threshold. Default is 0.0.
+
+        Returns:
+            list[Node]: List of nodes.
+        """
+        if not semblance_threshold:
+            return list(self)
+        return [node for node in self if node.semblance >= semblance_threshold]
+
+    def is_node_in_bounds(self, node: Node) -> bool:
+        """Check if node is inside the absorbing boundary.
+
+        Args:
+            node (Node): Node to check.
+
+        Returns:
+            bool: Check if node is absorbed.
+        """
+        return node.distance_border > self.absorbing_boundary
+
+    def smallest_node_size(self) -> float:
+        """Returns the smallest possible node size.
+
+        Returns:
+            float: Smallest possible node size.
+        """
+        size = self.size_initial
+        while size >= self.size_limit * 2:
+            size /= 2
+        return size
+
+    def maximum_number_nodes(self) -> int:
+        """Returns the maximum number of nodes.
+
+        Returns:
+            int: Maximum number of nodes.
+        """
+        return int(
+            (self.east_bounds[1] - self.east_bounds[0])
+            * (self.north_bounds[1] - self.north_bounds[0])
+            * (self.depth_bounds[1] - self.depth_bounds[0])
+            / self.smallest_node_size() ** 3
+        )
+
+    def copy(self, deep=False) -> Self:
+        tree = super().model_copy(deep=deep)
+        tree._clear_cache()
+        for node in tree._root_nodes:
+            node.set_parent(tree)
         return tree
-        return tree
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.size_initial,
+                self.size_limit,
+                self.east_bounds,
+                self.north_bounds,
+                self.depth_bounds,
+            )
+        )
