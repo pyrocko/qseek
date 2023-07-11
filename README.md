@@ -2,6 +2,7 @@
 
 *The friendly earthquake detector*
 
+[![Build and test](https://github.com/miili/lassie-v2/actions/workflows/build.yaml/badge.svg)](https://github.com/miili/lassie-v2/actions/workflows/build.yaml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10-blue.svg)
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
