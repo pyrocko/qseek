@@ -402,7 +402,6 @@ class StationCorrections(BaseModel):
         station_nsls: Iterable[NSL],
         phase: PhaseDescription,
     ) -> np.ndarray:
-        print("number stations", len(station_nsls))
         return np.array([self.get_delay(nsl, phase) for nsl in station_nsls])
 
     def save_plots(self, folder: Path) -> None:
