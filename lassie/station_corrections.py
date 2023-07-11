@@ -379,6 +379,18 @@ class StationCorrections(BaseModel):
         return self._station_corrections[nsl]
 
     def get_delay(self, station_nsl: NSL, phase: PhaseDescription) -> float:
+        """Get the traveltime delay for a station and phase.
+
+        The delay is the difference between the observed and predicted traveltime.
+
+        Args:
+            station_nsl: The station NSL.
+            phase: The phase description.
+
+        Returns:
+            float: The traveltime delay in seconds.
+        """
+
         def get_delay() -> float:
             try:
                 station = self.get_station(station_nsl)
@@ -402,6 +414,15 @@ class StationCorrections(BaseModel):
         station_nsls: Iterable[NSL],
         phase: PhaseDescription,
     ) -> np.ndarray:
+        """Get the traveltime delays for a set of stations and a phase.
+
+        Args:
+            station_nsls: The stations to get the delays for.
+            phase: The phase to get the delays for.
+
+        Returns:
+            np.ndarray: The traveltime delays for the given stations and phase.
+        """
         return np.array([self.get_delay(nsl, phase) for nsl in station_nsls])
 
     def save_plots(self, folder: Path) -> None:
@@ -414,6 +435,11 @@ class StationCorrections(BaseModel):
             )
 
     def save_csv(self, filename: Path) -> None:
+        """Save the station corrections to a CSV file.
+
+        Args:
+            filename (Path): The filename to save the CSV file to.
+        """
         logger.info("writing corrections to %s", filename)
         csv_data = [correction.get_csv_data() for correction in self]
         columns = set(chain.from_iterable(data.keys() for data in csv_data))
