@@ -37,8 +37,9 @@ dependencies = [
     "typing-extensions>=4.6",
     "lru-dict>=1.2",
     "rich>=13.4",
-    "nest-asyncio>=1.5",  # wait for seisbench merge https://github.com/seisbench/seisbench/pull/214
+    "nest-asyncio>=1.5",      # wait for seisbench merge https://github.com/seisbench/seisbench/pull/214
 ]
+
 classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
@@ -53,7 +54,14 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit", "black", "pytest"]
+dev = [
+    "pre-commit",
+    "black",
+    "ruff",
+    "pytest",
+    "mkdocs-material",
+    "mkdocstrings-python",
+]
 
 [project.scripts]
 lassie = "lassie.apps.lassie:main"

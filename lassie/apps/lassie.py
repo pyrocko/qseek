@@ -93,11 +93,11 @@ def main() -> None:
     )
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
-    init = subparsers.add_parser(
-        "init-project",
+    new = subparsers.add_parser(
+        "new",
         help="initialize a new project",
     )
-    init.add_argument("folder", type=Path, help="folder to initialize project in")
+    new.add_argument("folder", type=Path, help="folder to initialize project in")
 
     dump_schemas = subparsers.add_parser(
         "dump-schemas",
@@ -108,7 +108,7 @@ def main() -> None:
     args = parser.parse_args()
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
-    if args.command == "init-project":
+    if args.command == "new":
         folder: Path = args.folder
         if folder.exists():
             raise FileExistsError(f"Folder {folder} already exists")
