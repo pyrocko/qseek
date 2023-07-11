@@ -144,9 +144,9 @@ class Stations(BaseModel):
             return len(self._cached_iter)
         return sum(1 for _ in self)
 
-    def get_all_nsl(self) -> set[tuple[str, str, str]]:
+    def get_all_nsl(self) -> list[tuple[str, str, str]]:
         """Get all NSL codes from all stations."""
-        return {sta.nsl for sta in self}
+        return [sta.nsl for sta in self]
 
     def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
         """Select stations by NSL code.

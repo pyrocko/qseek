@@ -89,7 +89,7 @@ class WaveformImage:
         Returns:
             list[np.ndarray]: List of numpy arrays.
         """
-        return [tr.ydata for tr in self.traces]
+        return [tr.ydata for tr in self.traces if tr.ydata is not None]
 
     def get_offsets(self, reference: datetime) -> np.ndarray:
         """Get traces timing offsets to a reference time in samples.
