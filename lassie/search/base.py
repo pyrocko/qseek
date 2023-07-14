@@ -101,16 +101,21 @@ class Search(BaseModel):
             rundir.mkdir()
 
         self.write_config()
-        self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
 
         logger.info("created new rundir %s", rundir)
 
         self._detections = EventDetections(rundir=rundir)
 
     def write_config(self, path: Path | None = None) -> None:
-        path = path or self._rundir / "search.json"
+        rundir = self._rundir
+        path = path or rundir / "search.json"
+
         logger.debug("writing search config to %s", path)
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
+
+        logger.debug("dumping stations...")
+        self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
+        self.stations.dump_csv(rundir / "stations.csv")
 
     @property
     def semblance_stats(self) -> SemblanceStats:

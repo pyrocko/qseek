@@ -14,14 +14,14 @@ from typing import TYPE_CHECKING, Literal, Sequence
 import numpy as np
 from lru import LRU
 from pydantic import (
-    ConfigDict,
     BaseModel,
+    ByteSize,
+    ConfigDict,
     Field,
     PositiveFloat,
     PrivateAttr,
-    constr,
     RootModel,
-    ByteSize,
+    constr,
 )
 from pyrocko import orthodrome as od
 from pyrocko import spit
@@ -461,7 +461,7 @@ class CakeTracer(RayTracer):
         source_depth_bounds = (source_depths.min(), source_depths.max())
         distance_bounds = (distances.min(), distances.max())
         # TODO: Time tolerance is too hardcoded
-        time_tolerance = octree.size_limit / (self.get_vmin() * 3.0)
+        time_tolerance = octree.smallest_node_size() / (self.get_vmin() * 5.0)
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,

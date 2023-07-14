@@ -203,5 +203,19 @@ class Stations(BaseModel):
             filename=str(filename.expanduser()),
         )
 
+    def dump_csv(self, filename: Path) -> None:
+        """Dump stations to CSV file.
+
+        Args:
+            filename (Path): Path to CSV file.
+        """
+        with filename.open("w") as f:
+            f.write("network,station,location,latitude,longitude,elevation,depth\n")
+            for sta in self:
+                f.write(
+                    f"{sta.network},{sta.station},{sta.location},"
+                    f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
+                )
+
     def __hash__(self) -> int:
         return hash(sta for sta in self)

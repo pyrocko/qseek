@@ -12,12 +12,15 @@ Lassie is an earthquake detector based on stacking and migration method. It comb
 
 Key features are of the tools are:
 
-* Phase detection using SeisBench
-* Efficient and accurate Octree localisation approach
-* Extraction of event features
+* Earthquaker Phase detection using [SeisBench](https://github.com/seisbench/seisbench)
+* Octree localisation approach for efficient and accurate search
+* Extraction of earthquake event features
     * Local magnitudes
     * Ground motion attributes
-* Determination of station corrections
+* Automatic extraction of modelled and picked travel times
+* Automatic calculation of station corrections
+
+Lassie is built on top of [Pyrocko](https://pyrocko.org).
 
 ## Installation
 
