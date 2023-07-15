@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
 import numpy as np
 from pydantic import (
-    ConfigDict,
     BaseModel,
+    ConfigDict,
     Field,
     PositiveFloat,
     PrivateAttr,
@@ -82,7 +82,7 @@ class Node(BaseModel):
             half_size = self.size / 2
 
             self._children_cached = tuple(
-                Node.construct(
+                Node.model_construct(
                     east=self.east + east * half_size / 2,
                     north=self.north + north * half_size / 2,
                     depth=self.depth + depth * half_size / 2,
@@ -118,6 +118,8 @@ class Node(BaseModel):
         )
 
     def can_split(self) -> bool:
+        if self.tree is None:
+            raise AttributeError("parent tree not set")
         half_size = self.size / 2
         return half_size >= self.tree.size_limit
 
@@ -136,7 +138,7 @@ class Node(BaseModel):
 
     def as_location(self) -> Location:
         if not self._location:
-            self._location = Location.construct(
+            self._location = Location.model_construct(
                 lat=self.tree.center_lat,
                 lon=self.tree.center_lon,
                 elevation=self.tree.surface_elevation,
@@ -190,7 +192,8 @@ class Octree(BaseModel):
 
     @field_validator("east_bounds", "north_bounds", "depth_bounds")
     def check_bounds(
-        cls, bounds: tuple[float, float]  # noqa: N805
+        cls,  # noqa: N805
+        bounds: tuple[float, float],
     ) -> tuple[float, float]:
         if bounds[0] >= bounds[1]:
             raise ValueError(f"invalid bounds {bounds}, expected (min, max)")
@@ -198,9 +201,10 @@ class Octree(BaseModel):
 
     @model_validator(mode="after")
     def _check_limits(cls, m: Octree) -> Octree:  # noqa: N805
-        if m.size_limit >= m.size_initial:
+        """Check that the size limits are valid."""
+        if m.size_limit > m.size_initial:
             raise ValueError(
-                "invalid octree size limits, expected size_limit < size_initial"
+                "invalid octree size limits, expected size_limit <= size_initial"
             )
         return m
 

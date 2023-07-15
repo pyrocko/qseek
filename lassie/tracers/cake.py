@@ -460,7 +460,7 @@ class CakeTracer(RayTracer):
         receiver_depths_bounds = (receiver_depths.min(), receiver_depths.max())
         source_depth_bounds = (source_depths.min(), source_depths.max())
         distance_bounds = (distances.min(), distances.max())
-        # TODO: Time tolerance is too hardcoded
+        # FIXME: Time tolerance is too hardcoded. Is 5x a good value?
         time_tolerance = octree.smallest_node_size() / (self.get_vmin() * 5.0)
 
         traveltime_tree_args = {

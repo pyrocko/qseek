@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Deque, Iterator
 
-from pydantic import PositiveInt, PrivateAttr, conint, field_validator
+from pydantic import AwareDatetime, PositiveInt, PrivateAttr, conint, field_validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors
@@ -47,7 +47,7 @@ class SquirrelPrefetcher:
 
 
 class SquirrelSearch(Search):
-    time_span: tuple[datetime | None, datetime | None] = (None, None)
+    time_span: tuple[AwareDatetime | None, AwareDatetime | None] = (None, None)
     squirrel_environment: Path = Path(".")
     waveform_data: list[Path]
     waveform_prefetch_batches: PositiveInt = 4

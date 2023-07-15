@@ -25,6 +25,7 @@ from lassie.models import Stations
 from lassie.models.detection import EventDetection, EventDetections, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
+from lassie.plot.octree import plot_octree_surface_tiles
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import RayTracers
@@ -47,7 +48,7 @@ class SearchProgress(BaseModel):
 
 
 class Search(BaseModel):
-    sampling_rate: confloat(ge=10.0, le=20.0) = 10.0
+    sampling_rate: confloat(ge=10.0, le=50.0) = 25.0
     detection_threshold: PositiveFloat = 0.05
     detection_blinding: timedelta = timedelta(seconds=2.0)
 
@@ -64,6 +65,8 @@ class Search(BaseModel):
     n_threads_argmax: PositiveInt = 4
 
     split_fraction: confloat(gt=0.0, lt=1.0) = 0.9
+
+    plot_octree_surface: bool = False
 
     # Overwritten at initialisation
     shift_range: timedelta = timedelta(seconds=0.0)
@@ -164,6 +167,22 @@ class Search(BaseModel):
         logger.info("shift range %s", self.shift_range)
         logger.info("using trace window padding: %s", self.window_padding)
         self.write_config()
+
+    def _plot_octree_surface(
+        self,
+        octree: Octree,
+        time: datetime,
+        detections: list[EventDetection] | None = None,
+    ) -> None:
+        logger.info("plotting octree surface...")
+        filename = (
+            self._rundir
+            / "figures"
+            / "octree_surface"
+            / f"{time_to_path(time)}-nodes-{octree.n_nodes}.png"
+        )
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        plot_octree_surface_tiles(octree, filename=filename, detections=detections)
 
     @classmethod
     def load_rundir(cls, rundir: Path) -> Self:
@@ -357,6 +376,10 @@ class SearchTraces:
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
         )
 
+        if parent.plot_octree_surface:
+            octree.map_semblance(semblance.maximum_node_semblance())
+            parent._plot_octree_surface(octree, time=self.start_time)
+
         if detection_idx.size == 0:
             return [], semblance.get_trace()
 
@@ -452,5 +475,10 @@ class SearchTraces:
             # detection.plot()
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
+        if parent.plot_octree_surface:
+            octree.map_semblance(semblance.maximum_node_semblance())
+            parent._plot_octree_surface(
+                octree, time=self.start_time, detections=detections
+            )
 
         return detections, semblance.get_trace()
