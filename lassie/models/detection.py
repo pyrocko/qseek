@@ -553,4 +553,4 @@ class EventDetections(BaseModel):
         marker.save_markers(pyrocko_markers, str(filename))
 
     def __iter__(self) -> Iterator[EventDetection]:
-        return iter(self.detections)
+        return iter(sorted(self.detections, key=lambda d: d.time))

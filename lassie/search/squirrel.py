@@ -174,7 +174,7 @@ class SquirrelSearch(Search):
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
 
-            if detections:
+            if batch.i % 50 == 0:
                 self._detections.dump_detections(self.octree.size_limit)
 
             if batch_start_time is not None:
@@ -207,3 +207,6 @@ class SquirrelSearch(Search):
         for extractor in self.features:
             logger.info("adding features from %s", extractor.feature)
             await extractor.add_features(squirrel, event)
+
+    def __del__(self) -> None:
+        self._detections.dump_detections(self.octree.size_limit)

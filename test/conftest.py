@@ -1,11 +1,16 @@
 import random
+from datetime import timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Generator
 
 import pytest
 
+from lassie.models.detection import EventDetection, EventDetections
 from lassie.models.station import Station, Stations
 from lassie.octree import Octree
 from lassie.tracers.cake import EarthModel, Timing, TraveltimeTree
+from lassie.utils import datetime_now
 
 DATA_PATH = Path(__file__).parent / "data"
 
@@ -65,3 +70,23 @@ def stations() -> Stations:
         )
         stations.append(station)
     return Stations(stations=stations)
+
+
+@pytest.fixture(scope="session")
+def detections() -> Generator[EventDetections, None, None]:
+    n_detections = 2000
+    detections: list[EventDetection] = []
+    for _ in range(n_detections):
+        time = datetime_now() - timedelta(days=random.uniform(0, 365))
+        detection = EventDetection(
+            lat=10.0,
+            lon=10.0,
+            east_shift=random.uniform(-10, 10) * KM,
+            north_shift=random.uniform(-10, 10) * KM,
+            distance_border=1000.0,
+            semblance=random.uniform(0, 1),
+            time=time,
+        )
+        detections.append(detection)
+    with TemporaryDirectory() as tmpdir:
+        yield EventDetections(rundir=Path(tmpdir), detections=detections)

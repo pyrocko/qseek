@@ -8,10 +8,12 @@ import pytest
 from matplotlib import pyplot as plt
 
 from lassie.models.detection import EventDetection
+from lassie.plot.detections import plot_detections
 from lassie.plot.octree import plot_octree_surface_tiles
 from lassie.utils import datetime_now
 
 if TYPE_CHECKING:
+    from lassie.models.detection import EventDetections
     from lassie.octree import Octree
 
 
@@ -36,3 +38,8 @@ def test_octree_2d(octree: Octree) -> None:
 
     plot_octree_surface_tiles(octree, axes=ax, detections=[detection])
     plt.show()
+
+
+@pytest.mark.plot
+def test_detections_semblance(detections: EventDetections) -> None:
+    plot_detections(detections, axes=None)
