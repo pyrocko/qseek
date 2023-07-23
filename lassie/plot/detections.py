@@ -25,7 +25,10 @@ def plot_detections(
     axes = cast(plt.Axes, axes)  # injected by wrapper
 
     semblances = [detection.semblance for detection in detections]
-    times = [detection.time.replace(tzinfo=None) for detection in detections]
+    times = [
+        detection.time.replace(tzinfo=None)  # Stupid fix for matplotlib bug
+        for detection in detections
+    ]
 
     axes.scatter(times, semblances, cmap="viridis_r", c=semblances, s=3, alpha=0.5)
     axes.set_ylabel("Detection Semblance")
