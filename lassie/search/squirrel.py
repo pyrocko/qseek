@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Deque, Iterator
 
-from pydantic import AwareDatetime, PositiveInt, PrivateAttr, conint, field_validator
+from pydantic import AwareDatetime, Field, PositiveInt, PrivateAttr, field_validator
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors
@@ -56,7 +56,7 @@ class SquirrelSearch(Search):
         GroundMotionExtractor(),
         LocalMagnitudeExtractor(),
     ]
-    window_length_factor: conint(ge=5, le=100) = 10
+    window_length_factor: int = Field(10, ge=5, le=100)
 
     _squirrel: Squirrel | None = PrivateAttr(None)
 

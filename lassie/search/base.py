@@ -6,18 +6,10 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-from pydantic import (
-    BaseModel,
-    Field,
-    PositiveFloat,
-    PositiveInt,
-    PrivateAttr,
-    confloat,
-    conint,
-)
+from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import parstack
 
 from lassie.images import ImageFunctions, WaveformImages
@@ -41,6 +33,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+SamplingRate = Literal[10, 20, 25, 50, 100]
+
 
 class SearchProgress(BaseModel):
     time_progress: datetime | None = None
@@ -48,7 +42,7 @@ class SearchProgress(BaseModel):
 
 
 class Search(BaseModel):
-    sampling_rate: confloat(ge=10.0, le=50.0) = 25.0
+    sampling_rate: SamplingRate = 50
     detection_threshold: PositiveFloat = 0.05
     detection_blinding: timedelta = timedelta(seconds=2.0)
 
@@ -61,10 +55,10 @@ class Search(BaseModel):
 
     station_corrections: StationCorrections | None = None
 
-    n_threads_parstack: conint(ge=0) = 0
+    n_threads_parstack: int = Field(0, ge=0)
     n_threads_argmax: PositiveInt = 4
 
-    split_fraction: confloat(gt=0.0, lt=1.0) = 0.9
+    node_split_threshold: float = Field(0.9, gt=0.0, lt=1.0)
 
     plot_octree_surface: bool = False
 
@@ -81,6 +75,7 @@ class Search(BaseModel):
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
+    # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     def init_rundir(self, force=False) -> None:
@@ -397,7 +392,9 @@ class SearchTraces:
             if not source_node.can_split():
                 continue
 
-            split_nodes = octree.get_nodes(semblance_detection * parent.split_fraction)
+            split_nodes = octree.get_nodes(
+                semblance_detection * parent.node_split_threshold
+            )
             refine_nodes.update(split_nodes)
 
         # refine_nodes is empty when all sources fall into smallest octree nodes
