@@ -49,7 +49,7 @@ class Location(BaseModel):
 
     @property
     def effective_depth(self) -> float:
-        return self.depth + self.elevation
+        return self.depth - self.elevation
 
     def _same_origin(self, other: Location) -> bool:
         return bool(self.lat == other.lat and self.lon == other.lon)

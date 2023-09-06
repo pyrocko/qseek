@@ -200,13 +200,13 @@ class Octree(BaseModel):
         return bounds
 
     @model_validator(mode="after")
-    def _check_limits(cls) -> Octree:
+    def check_limits(self) -> Octree:
         """Check that the size limits are valid."""
-        if m.size_limit > m.size_initial:
+        if self.size_limit > self.size_initial:
             raise ValueError(
                 "invalid octree size limits, expected size_limit <= size_initial"
             )
-        return m
+        return self
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
@@ -250,8 +250,8 @@ class Octree(BaseModel):
     @property
     def effective_depth_bounds(self) -> tuple[float, float]:
         return (
-            self.depth_bounds[0] + self.surface_elevation,
-            self.depth_bounds[1] + self.surface_elevation,
+            self.depth_bounds[0] - self.surface_elevation,
+            self.depth_bounds[1] - self.surface_elevation,
         )
 
     @cached_property
