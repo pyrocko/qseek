@@ -30,7 +30,7 @@ class RayTracer(BaseModel):
     def get_available_phases(self) -> tuple[str]:
         ...
 
-    def get_traveltime_location(
+    def get_travel_time_location(
         self,
         phase: str,
         source: Location,
@@ -45,7 +45,7 @@ class RayTracer(BaseModel):
         receivers: Sequence[Location],
     ) -> np.ndarray:
         return np.array(
-            [self.get_traveltime_location(phase, source, recv) for recv in receivers]
+            [self.get_travel_time_location(phase, source, recv) for recv in receivers]
         )
 
     def get_traveltimes(

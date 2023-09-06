@@ -31,7 +31,7 @@ class ConstantVelocityTracer(RayTracer):
     def get_available_phases(self) -> tuple[str]:
         return tuple(self.velocities.keys())
 
-    def get_traveltime_location(
+    def get_travel_time_location(
         self,
         phase: str,
         source: Location,

@@ -9,7 +9,7 @@ import pytest
 from lassie.models.detection import EventDetection, EventDetections
 from lassie.models.station import Station, Stations
 from lassie.octree import Octree
-from lassie.tracers.cake import EarthModel, Timing, TraveltimeTree
+from lassie.tracers.cake import EarthModel, Timing, TravelTimeTree
 from lassie.utils import datetime_now
 
 DATA_PATH = Path(__file__).parent / "data"
@@ -27,8 +27,8 @@ def plot(pytestconfig) -> bool:
 
 
 @pytest.fixture(scope="session")
-def traveltime_tree() -> TraveltimeTree:
-    return TraveltimeTree.new(
+def traveltime_tree() -> TravelTimeTree:
+    return TravelTimeTree.new(
         earthmodel=EarthModel(),
         distance_bounds=(0 * KM, 15 * KM),
         receiver_depth_bounds=(0 * KM, 0 * KM),

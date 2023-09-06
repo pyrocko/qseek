@@ -122,7 +122,7 @@ class Timing(BaseModel):
         return re.sub(r"[\,\s\;]", "", self.definition)
 
 
-class TraveltimeTree(BaseModel):
+class TravelTimeTree(BaseModel):
     earthmodel: EarthModel
     timing: Timing
 
@@ -281,7 +281,7 @@ class TraveltimeTree(BaseModel):
         self._cached_station_indeces = {
             sta.pretty_nsl: idx for idx, sta in enumerate(stations)
         }
-        station_traveltimes = self.interpolate_traveltimes(octree, stations)
+        station_traveltimes = self.interpolate_travel_times(octree, stations)
 
         for node, traveltimes in zip(octree, station_traveltimes, strict=True):
             self._node_lut[node.hash()] = traveltimes.astype(np.float32)
@@ -300,7 +300,7 @@ class TraveltimeTree(BaseModel):
             sta_coords - node_coords[:, np.newaxis], axis=2
         )
 
-        traveltimes = self._interpolate_traveltimes(
+        traveltimes = self._interpolate_travel_times(
             receiver_distances,
             np.array([sta.effective_depth for sta in stations]),
             np.array([node.depth for node in nodes]),
@@ -313,7 +313,7 @@ class TraveltimeTree(BaseModel):
         """Return the fill level of the LUT as a float between 0.0 and 1.0"""
         return len(self._node_lut) / self._node_lut.get_size()
 
-    def get_traveltimes(self, octree: Octree, stations: Stations) -> np.ndarray:
+    def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
         station_indices = np.fromiter(
             (self._cached_station_indeces[sta.pretty_nsl] for sta in stations),
             dtype=int,
@@ -339,11 +339,11 @@ class TraveltimeTree(BaseModel):
                 self.lut_fill_level() * 100,
                 cache_hit_rate * 100,
             )
-            return self.get_traveltimes(octree, stations)
+            return self.get_travel_times(octree, stations)
 
         return np.asarray(stations_traveltimes).astype(float, copy=False)
 
-    def interpolate_traveltimes(
+    def interpolate_travel_times(
         self,
         octree: Octree,
         stations: Stations,
@@ -352,11 +352,11 @@ class TraveltimeTree(BaseModel):
         receiver_depths = np.array([sta.effective_depth for sta in stations])
         source_depths = np.array([node.depth for node in octree])
 
-        return self._interpolate_traveltimes(
+        return self._interpolate_travel_times(
             receiver_distances, receiver_depths, source_depths
         )
 
-    def _interpolate_traveltimes(
+    def _interpolate_travel_times(
         self,
         receiver_distances: np.ndarray,
         receiver_depths: np.ndarray,
@@ -410,7 +410,7 @@ class CakeTracer(RayTracer):
     earthmodel: EarthModel = EarthModel()
     lut_cache_size: ByteSize = 4 * GiB
 
-    _traveltime_trees: dict[PhaseDescription, TraveltimeTree] = PrivateAttr({})
+    _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
     @property
     def cache_dir(self) -> Path:
@@ -449,7 +449,7 @@ class CakeTracer(RayTracer):
         )
 
         cached_trees = [
-            TraveltimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
+            TravelTimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
         ]
         logger.debug("loaded %d cached traveltime trees", len(cached_trees))
 
@@ -479,16 +479,16 @@ class CakeTracer(RayTracer):
                     break
             else:
                 logger.info("pre-calculating traveltime tree for %s", phase_descr)
-                tree = TraveltimeTree.new(timing=timing, **traveltime_tree_args)
+                tree = TravelTimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
             tree.init_lut(octree, stations)
             self._traveltime_trees[phase_descr] = tree
 
-    def _get_sptree_model(self, phase: str) -> TraveltimeTree:
+    def _get_sptree_model(self, phase: str) -> TravelTimeTree:
         return self._traveltime_trees[phase]
 
-    def get_traveltime_location(
+    def get_travel_time_location(
         self,
         phase: str,
         source: Location,
@@ -508,7 +508,7 @@ class CakeTracer(RayTracer):
     ) -> np.ndarray:
         if phase not in self.timings:
             raise ValueError(f"Timing {phase} is not defined.")
-        return self._get_sptree_model(phase).get_traveltimes(octree, stations)
+        return self._get_sptree_model(phase).get_travel_times(octree, stations)
 
     def get_arrivals(
         self,
