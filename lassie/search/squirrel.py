@@ -110,7 +110,7 @@ class SquirrelSearch(Search):
         squirrel = self.get_squirrel()
 
         self.stations.weed_from_squirrel_waveforms(squirrel)
-        self.ray_tracers.prepare(self.octree, self.stations)
+        await self.ray_tracers.prepare(self.octree, self.stations)
         self.init_search()
 
         window_increment = self.shift_range * self.window_length_factor

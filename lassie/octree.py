@@ -200,7 +200,7 @@ class Octree(BaseModel):
         return bounds
 
     @model_validator(mode="after")
-    def _check_limits(cls, m: Octree) -> Octree:  # noqa: N805
+    def _check_limits(cls) -> Octree:
         """Check that the size limits are valid."""
         if m.size_limit > m.size_initial:
             raise ValueError(
@@ -238,6 +238,21 @@ class Octree(BaseModel):
             for north in north_nodes
             for depth in depth_nodes
         ]
+
+    @property
+    def center_location(self) -> Location:
+        return Location(
+            lat=self.center_lat,
+            lon=self.center_lon,
+            elevation=self.surface_elevation,
+        )
+
+    @property
+    def effective_depth_bounds(self) -> tuple[float, float]:
+        return (
+            self.depth_bounds[0] + self.surface_elevation,
+            self.depth_bounds[1] + self.surface_elevation,
+        )
 
     @cached_property
     def n_nodes(self) -> int:

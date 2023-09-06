@@ -24,7 +24,7 @@ class ModelledArrival(PhaseArrival):
 class RayTracer(BaseModel):
     tracer: Literal["RayTracer"] = "RayTracer"
 
-    def prepare(self, octree: Octree, stations: Stations):
+    async def prepare(self, octree: Octree, stations: Stations):
         ...
 
     def get_available_phases(self) -> tuple[str]:

@@ -55,7 +55,14 @@ class Location(BaseModel):
         return bool(self.lat == other.lat and self.lon == other.lon)
 
     def surface_distance_to(self, other: Location) -> float:
-        """Compute surface distance [m] to other location object."""
+        """Compute surface distance [m] to other location object.
+
+        Args:
+            other (Location): The other location.
+
+        Returns:
+            float: The surface distance in [m].
+        """
 
         if self._same_origin(other):
             return math.sqrt(
@@ -69,6 +76,14 @@ class Location(BaseModel):
         )
 
     def distance_to(self, other: Location) -> float:
+        """Compute 3-dimensional distance [m] to other location object.
+
+        Args:
+            other (Location): The other location.
+
+        Returns:
+            float: The distance in [m].
+        """
         if self._same_origin(other):
             return math.sqrt(
                 (self.north_shift - other.north_shift) ** 2
@@ -84,6 +99,31 @@ class Location(BaseModel):
         )
 
         return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
+
+    def offset_to(self, other: Location) -> tuple[float, float, float]:
+        """Return offset vector (east, north, depth) to other location in [m]
+
+        Args:
+            other (Location): The other location.
+
+        Returns:
+            tuple[float, float, float]: The offset vector.
+        """
+        if self._same_origin(other):
+            return (
+                self.east_shift - other.east_shift,
+                self.north_shift - other.north_shift,
+                self.effective_elevation - other.effective_elevation,
+            )
+
+        sx, sy, sz = od.geodetic_to_ecef(
+            *self.effective_lat_lon, self.effective_elevation
+        )
+        ox, oy, oz = od.geodetic_to_ecef(
+            *other.effective_lat_lon, other.effective_elevation
+        )
+
+        return sx - ox, sy - oy, sz - oz
 
     def __hash__(self) -> int:
         return hash(
