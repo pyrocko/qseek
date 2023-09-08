@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import RayTracers
 from lassie.tracers.cake import CakeTracer
-from lassie.utils import ANSI, setup_rich_logging
+from lassie.utils import ANSI, CACHE_DIR, setup_rich_logging
 
 nest_asyncio.apply()
 
@@ -93,15 +94,22 @@ def main() -> None:
     )
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
-    new = subparsers.add_parser(
+    init_project = subparsers.add_parser(
         "new",
-        help="initialize a new project",
+        help="initialize a new Lassie project",
     )
-    new.add_argument("folder", type=Path, help="folder to initialize project in")
+    init_project.add_argument(
+        "folder", type=Path, help="folder to initialize project in"
+    )
+
+    subparsers.add_parser(
+        "clear-cache",
+        help="clear the cached travel times",
+    )
 
     dump_schemas = subparsers.add_parser(
         "dump-schemas",
-        help="dump models to json-schema (development)",
+        help="dump data models to json-schema (development)",
     )
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
@@ -189,6 +197,10 @@ def main() -> None:
         loop = asyncio.get_event_loop()
         loop.create_task(webserver.start())
         loop.run_forever()
+
+    elif args.command == "clear-cache":
+        logger.info("clearing cache directory %s", CACHE_DIR)
+        shutil.rmtree(CACHE_DIR)
 
     elif args.command == "dump-schemas":
         from lassie.models.detection import EventDetections

@@ -18,6 +18,7 @@ from pydantic import (
     ByteSize,
     ConfigDict,
     Field,
+    FilePath,
     PositiveFloat,
     PrivateAttr,
     constr,
@@ -55,6 +56,29 @@ MAX_DBS = 16
 LRU_CACHE_SIZE = 2000
 
 
+DEFAULT_VELOCITY_MODEL = [
+    (-1.00, 5.50, 3.59, 2.7),
+    (0.00, 5.50, 3.59, 2.7),
+    (1.00, 5.50, 3.59, 2.7),
+    (1.00, 6.00, 3.92, 2.7),
+    (4.00, 6.00, 3.92, 2.7),
+    (4.00, 6.20, 4.05, 2.7),
+    (8.00, 6.20, 4.05, 2.7),
+    (8.00, 6.30, 4.12, 2.7),
+    (13.00, 6.30, 4.12, 2.7),
+    (13.00, 6.40, 4.18, 2.7),
+    (17.00, 6.40, 4.18, 2.7),
+    (17.00, 6.50, 4.25, 2.7),
+    (22.00, 6.50, 4.25, 2.7),
+    (22.00, 6.60, 4.31, 2.7),
+    (26.00, 6.60, 4.31, 2.7),
+    (26.00, 6.80, 4.44, 2.7),
+    (30.00, 6.80, 4.44, 2.7),
+    (30.00, 8.10, 5.29, 2.7),
+    (45.00, 8.10, 5.29, 2.7),
+]
+
+
 class CakeArrival(ModelledArrival):
     tracer: Literal["CakeArrival"] = "CakeArrival"
     phase: str
@@ -65,20 +89,32 @@ class EarthModel(BaseModel):
         tuple[float, PositiveFloat, PositiveFloat, PositiveFloat]
     ] | None = Field(
         None,
-        description="Earth model layers as list of tuples (ztop, vp, vs, rho)",
+        description="Earth model layers as "
+        "list of tuples [(top_depth, vp, vs, rho), ...]",
     )
-    nd_file: Path | None = Field(None, description="Path to .nd file velocity model.")
-    model_config = ConfigDict(ignored_types=(cached_property,))
+
+    raw_nd_data: str | None = Field(None, description="Raw .nd file data.")
+    nd_file: FilePath | None = Field(
+        None, description="Path to .nd file velocity model."
+    )
 
     _layered_model: LayeredModel = PrivateAttr(None)
 
+    model_config = ConfigDict(ignored_types=(cached_property,))
+
     @model_validator(mode="after")
     def load_nd_model(self) -> EarthModel:
-        if self.nd_file is not None:
-            logger.info("loading velocity model from %s", self.nd_file)
+        if self.nd_file is not None or self.raw_nd_data is not None:
+            nd_data = self.raw_nd_data
+            if self.nd_file is not None:
+                logger.info("loading velocity model from %s", self.nd_file)
+                nd_data = self.nd_file.read_text()
+                self.raw_nd_data = nd_data
+
             self._layered_model = LayeredModel.from_scanlines(
-                read_nd_model_str(self.nd_file.read_text())
+                read_nd_model_str(nd_data)
             )
+
         elif self.layers is not None:
             line_tpl = "{} {} {} {}"
             earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.layers)
@@ -415,7 +451,7 @@ class CakeTracer(RayTracer):
         "cake:P": Timing(definition="P,p"),
         "cake:S": Timing(definition="S,s"),
     }
-    earthmodel: EarthModel = EarthModel()
+    earthmodel: EarthModel = EarthModel(layers=DEFAULT_VELOCITY_MODEL)
     trim_earth_model_depth: bool = Field(
         True, description="Trim earth model to max depth of the octree."
     )
@@ -476,8 +512,8 @@ class CakeTracer(RayTracer):
         # FIXME: Time tolerance is too hardcoded. Is 5x a good value?
         time_tolerance = octree.smallest_node_size() / (self.get_vmin() * 5.0)
 
-        if self.trim_earth_model_depth:
-            self.earthmodel.trim(source_depth_bounds[1])
+        # if self.trim_earth_model_depth:
+        #     self.earthmodel.trim(-source_depth_bounds[1])
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,

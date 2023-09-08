@@ -4,12 +4,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
-import torch
 from obspy import Stream
 from pydantic import PositiveFloat, PositiveInt, PrivateAttr, conint
 from pyrocko import obspy_compat
 from seisbench import logger
-from seisbench.models import PhaseNet as PhaseNetSeisBench
 
 from lassie.images.base import ImageFunction, PickedArrival, WaveformImage
 from lassie.utils import alog_call, to_datetime
@@ -20,6 +18,7 @@ logger.setLevel(logging.CRITICAL)
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from seisbench.models import PhaseNet as PhaseNetSeisBench
 
 ModelName = Literal[
     "diting",
@@ -102,6 +101,9 @@ class PhaseNet(ImageFunction):
     _phase_net: PhaseNetSeisBench = PrivateAttr(None)
 
     def model_post_init(self, __context: Any) -> None:
+        import torch
+        from seisbench.models import PhaseNet as PhaseNetSeisBench
+
         torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
         if self.torch_use_cuda:

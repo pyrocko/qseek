@@ -293,7 +293,9 @@ class SearchTraces:
         )
         return semblance_data
 
-    async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
+    async def get_images(
+        self, sampling_rate: float | int | None = None
+    ) -> WaveformImages:
         """
         Retrieves waveform images for the specified sampling rate.
 
@@ -304,7 +306,6 @@ class SearchTraces:
         Returns:
             WaveformImages: The waveform images for the specified sampling rate.
         """
-
         if None not in self._images:
             images = await self.parent.image_functions.process_traces(self.traces)
             images.set_stations(self.parent.stations)
@@ -312,7 +313,7 @@ class SearchTraces:
 
         if sampling_rate not in self._images:
             if not isinstance(sampling_rate, float):
-                raise TypeError("sampling rate has to be a float")
+                raise TypeError("sampling rate has to be a float or int")
             images_resampled = deepcopy(self._images[None])
 
             logger.debug("downsampling images to %g Hz", sampling_rate)
@@ -339,7 +340,7 @@ class SearchTraces:
         sampling_rate = parent.sampling_rate
 
         octree = octree or parent.octree.copy(deep=True)
-        images = await self.get_images(sampling_rate=sampling_rate)
+        images = await self.get_images(sampling_rate=float(sampling_rate))
 
         padding_samples = int(
             round(parent.window_padding.total_seconds() * sampling_rate)
