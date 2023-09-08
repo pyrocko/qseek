@@ -97,6 +97,14 @@ class VelocityModel3D(BaseModel):
         times[east_idx, north_idx, depth_idx] = 0.0
         return times
 
+    def is_inside(self, location: Location) -> bool:
+        offset_to_center = location.offset_to(self.center)
+        return (
+            self.east_bounds[0] <= offset_to_center[0] <= self.east_bounds[1]
+            and self.north_bounds[0] <= offset_to_center[1] <= self.north_bounds[1]
+            and self.depth_bounds[0] <= offset_to_center[2] <= self.depth_bounds[1]
+        )
+
     def get_meshgrid(self) -> list[np.ndarray]:
         return np.meshgrid(
             self._east_coords,
@@ -107,9 +115,9 @@ class VelocityModel3D(BaseModel):
     def resample(
         self,
         grid_spacing: float,
-        method: Literal["linear", "nearest", "cubic"] = "linear",
+        method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> Self:
-        logger.info("resampling velocity model to grid spacing %s", grid_spacing)
+        logger.info("resampling velocity model to grid spacing %s m", grid_spacing)
         interpolator = RegularGridInterpolator(
             (self._east_coords, self._north_coords, self._depth_coords),
             self._velocity_model,
@@ -161,7 +169,7 @@ class Constant3DVelocityModel(VelocityModelFactory):
             grid_spacing=grid_spacing,
             east_bounds=octree.east_bounds,
             north_bounds=octree.north_bounds,
-            depth_bounds=octree.effective_depth_bounds,
+            depth_bounds=octree.depth_bounds,
         )
         model._velocity_model.fill(self.velocity)
 
@@ -233,18 +241,18 @@ class NonLinLocHeader:
 
     @property
     def east_bounds(self) -> tuple[float, float]:
+        """Relative to center location."""
         return -self.delta_x * self.nx / 2, self.delta_x * self.nx / 2
 
     @property
     def north_bounds(self) -> tuple[float, float]:
+        """Relative to center location."""
         return -self.delta_y * self.ny / 2, self.delta_y * self.ny / 2
 
     @property
-    def effective_depth_bounds(self) -> tuple[float, float]:
-        return (
-            self.center.effective_depth,
-            (self.delta_z * self.nz) + self.center.effective_depth,
-        )
+    def depth_bounds(self) -> tuple[float, float]:
+        """Relative to center location."""
+        return (0, self.delta_z * self.nz)
 
     @property
     def center(self) -> Location:
@@ -267,7 +275,7 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         description="Path to NonLinLoc model buffer file. If none, the filename will be"
         "infered from the header file.",
     )
-    interpolation: Literal["linear", "nearest", "cubic"] = "linear"
+    interpolation: Literal["nearest", "linear", "cubic"] = "linear"
 
     _header: NonLinLocHeader = PrivateAttr()
     _velocity_model: np.ndarray = PrivateAttr()
@@ -285,12 +293,13 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         ).reshape((self._header.nx, self._header.ny, self._header.nz))
 
         if self._header.grid_type == "SLOW_LEN":
-            logger.debug("convert NonLinLoc SLOW_LEN model to velocity")
+            logger.debug("converting NonLinLoc SLOW_LEN model to velocity")
             self._velocity_model = 1.0 / (
                 self._velocity_model / self._header.grid_spacing
             )
         elif self._header.grid_type == "VELOCITY":
             self._velocity_model *= KM
+
         return self
 
     def get_model(self, octree: Octree, stations: Stations) -> VelocityModel3D:
@@ -306,7 +315,7 @@ class NonLinLocVelocityModel(VelocityModelFactory):
             grid_spacing=header.grid_spacing,
             east_bounds=header.east_bounds,
             north_bounds=header.north_bounds,
-            depth_bounds=header.effective_depth_bounds,
+            depth_bounds=header.depth_bounds,
         )
         velocity_model.set_velocity_model(self._velocity_model)
         return velocity_model.resample(grid_spacing, self.interpolation)

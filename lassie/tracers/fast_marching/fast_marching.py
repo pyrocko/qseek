@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, Sequence
 
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ByteSize, Field, PrivateAttr
 from pyrocko.modelling import eikonal
 from rich.progress import Progress
 from scipy.interpolate import RegularGridInterpolator
@@ -31,6 +31,10 @@ if TYPE_CHECKING:
 
 
 FMM_CACHE_DIR = CACHE_DIR / "fast-marching-cache"
+
+KM = 1e3
+GiB = int(1024**3)
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +44,7 @@ class FastMarchingArrival(ModelledArrival):
 
 
 class StationTravelTimeVolume(BaseModel):
-    origin: Location
+    center: Location
     station: Station
 
     velocity_model_hash: str
@@ -82,17 +86,17 @@ class StationTravelTimeVolume(BaseModel):
 
         self._east_coords = np.arange(
             self.east_bounds[0],
-            self.east_bounds[1] + grid_spacing,
+            self.east_bounds[1],
             grid_spacing,
         )
         self._north_coords = np.arange(
             self.north_bounds[0],
-            self.north_bounds[1] + grid_spacing,
+            self.north_bounds[1],
             grid_spacing,
         )
         self._depth_coords = np.arange(
             self.depth_bounds[0],
-            self.depth_bounds[1] + grid_spacing,
+            self.depth_bounds[1],
             grid_spacing,
         )
 
@@ -101,7 +105,7 @@ class StationTravelTimeVolume(BaseModel):
         cls,
         model: VelocityModel3D,
         station: Station,
-        save: Path | None,
+        save: Path | None = None,
         executor: ThreadPoolExecutor | None = None,
     ) -> Self:
         arrival_times = model.get_source_arrival_grid(station)
@@ -123,7 +127,7 @@ class StationTravelTimeVolume(BaseModel):
                 delta=delta,
             )
             station_travel_times = cls(
-                origin=model.center,
+                center=model.center,
                 velocity_model_hash=model.hash(),
                 station=station,
                 east_bounds=model.east_bounds,
@@ -166,23 +170,23 @@ class StationTravelTimeVolume(BaseModel):
     def interpolate_travel_time(
         self,
         location: Location,
-        method: Literal["linear", "nearest"] = "linear",
+        method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> float:
         interpolator = self.get_traveltime_interpolator()
-        offset = location.offset_to(self.origin)
+        offset = location.offset_to(self.center)
         return interpolator([offset], method=method)[0]
 
     def interpolate_travel_times(
         self,
         octree: Octree,
-        method: Literal["linear", "nearest"] = "linear",
+        method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> np.ndarray:
         interpolator = self.get_traveltime_interpolator()
 
         coordinates = []
         for node in octree:
             location = node.as_location()
-            coordinates.append(location.offset_to(self.origin))
+            coordinates.append(location.offset_to(self.center))
 
         return interpolator(coordinates, method=method)
 
@@ -241,9 +245,14 @@ class StationTravelTimeVolume(BaseModel):
 
 class FastMarchingPhaseTracer(BaseModel):
     velocity_model: VelocityModels = Constant3DVelocityModel()
-    interpolation_method: Literal["linear", "nearest"] = "nearest"
+    interpolation_method: Literal["nearest", "linear", "cubic"] = "nearest"
 
-    _traveltime_models: dict[int, StationTravelTimeVolume] = PrivateAttr({})
+    _traveltime_models: dict[str, StationTravelTimeVolume] = PrivateAttr({})
+
+    lut_cache_size: ByteSize = Field(
+        4 * GiB,
+        description="Size of the LUT cache in MB.",
+    )
 
     async def prepare(
         self,
@@ -252,6 +261,10 @@ class FastMarchingPhaseTracer(BaseModel):
         nthreads: int = 0,
     ) -> None:
         velocity_model = self.velocity_model.get_model(octree, stations)
+        for station in stations:
+            if not velocity_model.is_inside(station):
+                stations.blacklist_station(station, reason="outside the velocity model")
+
         executor = ThreadPoolExecutor(
             max_workers=nthreads or os.cpu_count(), thread_name_prefix="lassie-fmm"
         )
@@ -267,7 +280,7 @@ class FastMarchingPhaseTracer(BaseModel):
                 logger.warning("removing bad travel time file %s", file)
                 file.unlink()
                 continue
-            self._traveltime_models[hash(travel_times.station)] = travel_times
+            self._traveltime_models[travel_times.station.pretty_nsl] = travel_times
 
         logger.info(
             "loaded %d travel times volumes from cache", len(self._traveltime_models)
@@ -275,7 +288,7 @@ class FastMarchingPhaseTracer(BaseModel):
 
         pre_calculate_work = []
         for station in stations:
-            if hash(station) in self._traveltime_models:
+            if station.pretty_nsl in self._traveltime_models:
                 continue
 
             async def worker_station_travel_time(
@@ -288,7 +301,7 @@ class FastMarchingPhaseTracer(BaseModel):
                     save=cache_dir,
                     executor=executor,
                 )
-                self._traveltime_models[hash(model.station)] = model
+                self._traveltime_models[station.pretty_nsl] = model
 
             pre_calculate_work.append(worker_station_travel_time(velocity_model))
 
@@ -321,7 +334,7 @@ class FastMarchingPhaseTracer(BaseModel):
     def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
         result = []
         for station in stations:
-            station_travel_times = self._traveltime_models[hash(station)]
+            station_travel_times = self._traveltime_models[station.pretty_nsl]
             result.append(
                 station_travel_times.interpolate_travel_times(
                     octree, method=self.interpolation_method
@@ -343,15 +356,8 @@ class FastMarchingRayTracer(RayTracer):
         for tracer in self.tracers.values():
             await tracer.prepare(octree, stations, nthreads=self.nthreads)
 
-    def get_available_phases(self) -> tuple[str]:
+    def get_available_phases(self) -> tuple[str, ...]:
         return tuple(self.tracers.keys())
-
-    def clear_cache(self) -> None:
-        logger.info("clearing fast marching cache...")
-        for file in FMM_CACHE_DIR.glob("*/*.3dtt"):
-            file.unlink()
-        for dir in FMM_CACHE_DIR.glob("*"):
-            dir.rmdir()
 
     def _get_tracer(self, phase: str) -> FastMarchingPhaseTracer:
         return self.tracers[phase]

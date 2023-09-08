@@ -88,11 +88,7 @@ class Stations(BaseModel):
         seen_nsls = set()
         for sta in self.stations.copy():
             if sta.lat == 0.0 or sta.lon == 0.0:
-                logger.warning(
-                    "blacklisting station %s: bad geographical coordinates",
-                    sta.pretty_nsl,
-                )
-                self.blacklist.add(sta.pretty_nsl)
+                self.blacklist_station(sta, reason="bad geographical coordinates")
                 continue
 
             if sta.pretty_nsl in seen_nsls:
@@ -103,6 +99,10 @@ class Stations(BaseModel):
 
         # if not self.stations:
         #     logger.warning("no stations available, add stations to start detection")
+
+    def blacklist_station(self, station: Station, reason: str) -> None:
+        logger.warning("blacklisting station %s: %s", station.pretty_nsl, reason)
+        self.blacklist.add(station.pretty_nsl)
 
     def weed_from_squirrel_waveforms(self, squirrel: Squirrel) -> None:
         """Remove stations without waveforms from squirrel instances.

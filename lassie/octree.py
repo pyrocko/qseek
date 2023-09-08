@@ -247,13 +247,6 @@ class Octree(BaseModel):
             elevation=self.surface_elevation,
         )
 
-    @property
-    def effective_depth_bounds(self) -> tuple[float, float]:
-        return (
-            self.depth_bounds[0] - self.surface_elevation,
-            self.depth_bounds[1] - self.surface_elevation,
-        )
-
     @cached_property
     def n_nodes(self) -> int:
         """Number of nodes in the octree"""

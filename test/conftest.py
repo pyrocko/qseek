@@ -49,7 +49,7 @@ def octree() -> Octree:
     return Octree(
         center_lat=10.0,
         center_lon=10.0,
-        surface_elevation=0.0,
+        surface_elevation=1.0 * KM,
         size_initial=2 * KM,
         size_limit=500,
         east_bounds=(-10 * KM, 10 * KM),

@@ -483,7 +483,7 @@ class CakeTracer(RayTracer):
         for file in self.cache_dir.glob("*.sptree"):
             file.unlink()
 
-    def get_available_phases(self) -> tuple[str]:
+    def get_available_phases(self) -> tuple[str, ...]:
         return tuple(self.timings.keys())
 
     def get_vmin(self) -> float:

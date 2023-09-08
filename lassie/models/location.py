@@ -113,14 +113,12 @@ class Location(BaseModel):
             return (
                 self.east_shift - other.east_shift,
                 self.north_shift - other.north_shift,
-                self.effective_elevation - other.effective_elevation,
+                self.effective_depth - other.effective_depth,
             )
 
-        sx, sy, sz = od.geodetic_to_ecef(
-            *self.effective_lat_lon, self.effective_elevation
-        )
+        sx, sy, sz = od.geodetic_to_ecef(*self.effective_lat_lon, self.effective_depth)
         ox, oy, oz = od.geodetic_to_ecef(
-            *other.effective_lat_lon, other.effective_elevation
+            *other.effective_lat_lon, other.effective_depth
         )
 
         return sx - ox, sy - oy, sz - oz

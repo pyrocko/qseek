@@ -10,11 +10,11 @@ from lassie.models.station import Stations
 from lassie.octree import Octree
 from lassie.tracers.fast_marching.fast_marching import (
     FastMarchingPhaseTracer,
+    FastMarchingRayTracer,
     StationTravelTimeVolume,
 )
 from lassie.tracers.fast_marching.velocity_models import (
     Constant3DVelocityModel,
-    NonLinLocHeader,
     NonLinLocVelocityModel,
 )
 
@@ -29,7 +29,9 @@ async def station_travel_times(
     octree.surface_elevation = 1 * KM
     model = Constant3DVelocityModel(velocity=CONSTANT_VELOCITY, grid_spacing=100.0)
     model_3d = model.get_model(octree, stations)
-    await StationTravelTimeVolume.calculate_from_eikonal(model_3d, stations.stations[0])
+    return await StationTravelTimeVolume.calculate_from_eikonal(
+        model_3d, stations.stations[0]
+    )
 
 
 @pytest.mark.asyncio
@@ -51,7 +53,6 @@ async def test_load_save(
 async def test_load_interpolation(
     station_travel_times: StationTravelTimeVolume,
     octree: Octree,
-    tmp_path: str,
 ) -> None:
     eikonal_travel_times = []
     source_distances = []
@@ -77,7 +78,7 @@ async def test_load_interpolation(
 
 
 @pytest.mark.asyncio
-async def test_fast_marching_tracer(octree: Octree, stations: Stations):
+async def test_fast_marching_phase_tracer(octree: Octree, stations: Stations) -> None:
     tracer = FastMarchingPhaseTracer(
         velocity_model=Constant3DVelocityModel(
             velocity=CONSTANT_VELOCITY, grid_spacing=80.0
@@ -86,9 +87,23 @@ async def test_fast_marching_tracer(octree: Octree, stations: Stations):
     await tracer.prepare(octree, stations)
 
 
+@pytest.mark.asyncio
+async def test_fast_marching_ray_tracer(octree: Octree, stations: Stations) -> None:
+    tracer = FastMarchingRayTracer(
+        tracers={
+            "fmm:P": FastMarchingPhaseTracer(
+                velocity_model=Constant3DVelocityModel(
+                    velocity=CONSTANT_VELOCITY, grid_spacing=80.0
+                )
+            )
+        }
+    )
+    await tracer.prepare(octree, stations)
+    tracer.get_traveltimes("fmm:P", octree, stations)
+
+
 def test_non_lin_loc_load(data_dir: Path, octree: Octree, stations: Stations) -> None:
     header_file = data_dir / "FORGE_3D_5_large.P.mod.hdr"
 
-    NonLinLocHeader.from_header_file(header_file)
     velocity_model = NonLinLocVelocityModel(header_file=header_file)
     velocity_model.get_model(octree=octree, stations=stations)
