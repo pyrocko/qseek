@@ -20,8 +20,8 @@ from pydantic import (
     Field,
     PositiveFloat,
     PrivateAttr,
-    RootModel,
     constr,
+    model_validator,
 )
 from pyrocko import orthodrome as od
 from pyrocko import spit
@@ -60,51 +60,59 @@ class CakeArrival(ModelledArrival):
     phase: str
 
 
-class EarthModel(RootModel):
-    root: list[tuple[float, PositiveFloat, PositiveFloat, PositiveFloat]] = [
-        (0.00, 5.50, 3.59, 2.7),
-        (1.00, 5.50, 3.59, 2.7),
-        (1.00, 6.00, 3.92, 2.7),
-        (4.00, 6.00, 3.92, 2.7),
-        (4.00, 6.20, 4.05, 2.7),
-        (8.00, 6.20, 4.05, 2.7),
-        (8.00, 6.30, 4.12, 2.7),
-        (13.00, 6.30, 4.12, 2.7),
-        (13.00, 6.40, 4.18, 2.7),
-        (17.00, 6.40, 4.18, 2.7),
-        (17.00, 6.50, 4.25, 2.7),
-        (22.00, 6.50, 4.25, 2.7),
-        (22.00, 6.60, 4.31, 2.7),
-        (26.00, 6.60, 4.31, 2.7),
-        (26.00, 6.80, 4.44, 2.7),
-        (30.00, 6.80, 4.44, 2.7),
-        (30.00, 8.10, 5.29, 2.7),
-        (45.00, 8.10, 5.29, 2.7),
-    ]
+class EarthModel(BaseModel):
+    layers: list[
+        tuple[float, PositiveFloat, PositiveFloat, PositiveFloat]
+    ] | None = Field(
+        None,
+        description="Earth model layers as list of tuples (ztop, vp, vs, rho)",
+    )
+    nd_file: Path | None = Field(None, description="Path to .nd file velocity model.")
     model_config = ConfigDict(ignored_types=(cached_property,))
 
-    def _as_array(self) -> np.ndarray:
-        return np.asarray(self.root)
+    _layered_model: LayeredModel = PrivateAttr(None)
+
+    @model_validator(mode="after")
+    def load_nd_model(self) -> EarthModel:
+        if self.nd_file is not None:
+            logger.info("loading velocity model from %s", self.nd_file)
+            self._layered_model = LayeredModel.from_scanlines(
+                read_nd_model_str(self.nd_file.read_text())
+            )
+        elif self.layers is not None:
+            line_tpl = "{} {} {} {}"
+            earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.layers)
+            self._layered_model = LayeredModel.from_scanlines(
+                read_nd_model_str(earthmodel)
+            )
+        else:
+            raise AttributeError("No velocity model defined.")
+        return self
+
+    def trim(self, depth_max: float) -> None:
+        """Trim the model to a maximum depth.
+
+        Args:
+            depth_max (float): Maximum depth in meters.
+        """
+        logger.debug("trimming earth model to %.1f km depth", depth_max / KM)
+        self._layered_model = self.layered_model.extract(depth_max=depth_max)
+
+    @property
+    def layered_model(self) -> LayeredModel:
+        return self._layered_model
 
     def get_profile_vp(self) -> np.ndarray:
-        # TODO: reduce to relevant layers
-        return self._as_array()[:, 1] * KM
+        return self.layered_model.profile("vp")
 
     def get_profile_vs(self) -> np.ndarray:
-        # TODO: reduce to relevant layers
-        return self._as_array()[:, 2] * KM
-
-    def as_layered_model(self) -> LayeredModel:
-        line_tpl = "{} {} {} {}"
-        earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.root)
-        return LayeredModel.from_scanlines(read_nd_model_str(earthmodel))
+        return self.layered_model.profile("vs")
 
     @cached_property
     def hash(self) -> str:
-        layered_model = self.as_layered_model()
         model_serialised = BytesIO()
         for param in ("z", "vp", "vs", "rho"):
-            layered_model.profile(param).dump(model_serialised)
+            self.layered_model.profile(param).dump(model_serialised)
         return sha1(model_serialised.getvalue()).hexdigest()
 
 
@@ -144,7 +152,7 @@ class TravelTimeTree(BaseModel):
     )
 
     def calculate_tree(self) -> spit.SPTree:
-        layered_model = self.earthmodel.as_layered_model()
+        layered_model = self.earthmodel.layered_model
 
         def evaluate(args) -> float | None:
             receiver_depth, source_depth, distances = args
@@ -187,7 +195,7 @@ class TravelTimeTree(BaseModel):
             return self[0] <= requested[0] and self[1] >= requested[1]
 
         return (
-            self.earthmodel.root == earthmodel.root
+            self.earthmodel.layers == earthmodel.layers
             and self.timing == timing
             and check_bounds(self.distance_bounds, distance_bounds)
             and check_bounds(self.source_depth_bounds, source_depth_bounds)
@@ -408,7 +416,12 @@ class CakeTracer(RayTracer):
         "cake:S": Timing(definition="S,s"),
     }
     earthmodel: EarthModel = EarthModel()
-    lut_cache_size: ByteSize = 4 * GiB
+    trim_earth_model_depth: bool = Field(
+        True, description="Trim earth model to max depth of the octree."
+    )
+    lut_cache_size: ByteSize = Field(
+        4 * GiB, description="Size of the LUT cache in MB."
+    )
 
     _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
@@ -462,6 +475,9 @@ class CakeTracer(RayTracer):
         distance_bounds = (distances.min(), distances.max())
         # FIXME: Time tolerance is too hardcoded. Is 5x a good value?
         time_tolerance = octree.smallest_node_size() / (self.get_vmin() * 5.0)
+
+        if self.trim_earth_model_depth:
+            self.earthmodel.trim(source_depth_bounds[1])
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,
