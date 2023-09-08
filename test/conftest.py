@@ -12,7 +12,7 @@ from lassie.octree import Octree
 from lassie.tracers.cake import EarthModel, Timing, TravelTimeTree
 from lassie.utils import datetime_now
 
-DATA_PATH = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
 KM = 1e3
 
@@ -37,6 +37,11 @@ def traveltime_tree() -> TravelTimeTree:
         time_tolerance=0.05,
         timing=Timing(definition="P,p"),
     )
+
+
+@pytest.fixture(scope="session")
+def data_dir() -> Path:
+    return DATA_DIR
 
 
 @pytest.fixture(scope="session")

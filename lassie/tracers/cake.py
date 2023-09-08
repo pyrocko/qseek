@@ -19,14 +19,13 @@ from pydantic import (
     ConfigDict,
     Field,
     FilePath,
-    PositiveFloat,
     PrivateAttr,
     constr,
     model_validator,
 )
 from pyrocko import orthodrome as od
 from pyrocko import spit
-from pyrocko.cake import LayeredModel, PhaseDef, m2d, read_nd_model_str
+from pyrocko.cake import LayeredModel, PhaseDef, load_model, m2d
 from pyrocko.gf import meta
 from rich.progress import Progress
 
@@ -56,27 +55,33 @@ MAX_DBS = 16
 LRU_CACHE_SIZE = 2000
 
 
-DEFAULT_VELOCITY_MODEL = [
-    (-1.00, 5.50, 3.59, 2.7),
-    (0.00, 5.50, 3.59, 2.7),
-    (1.00, 5.50, 3.59, 2.7),
-    (1.00, 6.00, 3.92, 2.7),
-    (4.00, 6.00, 3.92, 2.7),
-    (4.00, 6.20, 4.05, 2.7),
-    (8.00, 6.20, 4.05, 2.7),
-    (8.00, 6.30, 4.12, 2.7),
-    (13.00, 6.30, 4.12, 2.7),
-    (13.00, 6.40, 4.18, 2.7),
-    (17.00, 6.40, 4.18, 2.7),
-    (17.00, 6.50, 4.25, 2.7),
-    (22.00, 6.50, 4.25, 2.7),
-    (22.00, 6.60, 4.31, 2.7),
-    (26.00, 6.60, 4.31, 2.7),
-    (26.00, 6.80, 4.44, 2.7),
-    (30.00, 6.80, 4.44, 2.7),
-    (30.00, 8.10, 5.29, 2.7),
-    (45.00, 8.10, 5.29, 2.7),
-]
+# TODO: Move to a separate file
+DEFAULT_VELOCITY_MODEL = """
+-1.00    5.50    3.59    2.7
+ 0.00    5.50    3.59    2.7
+ 1.00    5.50    3.59    2.7
+ 1.00    6.00    3.92    2.7
+ 4.00    6.00    3.92    2.7
+ 4.00    6.20    4.05    2.7
+ 8.00    6.20    4.05    2.7
+ 8.00    6.30    4.12    2.7
+13.00    6.30    4.12    2.7
+13.00    6.40    4.18    2.7
+17.00    6.40    4.18    2.7
+17.00    6.50    4.25    2.7
+22.00    6.50    4.25    2.7
+22.00    6.60    4.31    2.7
+26.00    6.60    4.31    2.7
+26.00    6.80    4.44    2.7
+30.00    6.80    4.44    2.7
+30.00    8.10    5.29    2.7
+45.00    8.10    5.29    2.7
+"""
+
+DEFAULT_VELOCITY_MODEL_FILE = CACHE_DIR / "velocity_models" / "default.nd"
+if not DEFAULT_VELOCITY_MODEL_FILE.exists():
+    DEFAULT_VELOCITY_MODEL_FILE.parent.mkdir(exist_ok=True)
+    DEFAULT_VELOCITY_MODEL_FILE.write_text(DEFAULT_VELOCITY_MODEL)
 
 
 class CakeArrival(ModelledArrival):
@@ -85,44 +90,43 @@ class CakeArrival(ModelledArrival):
 
 
 class EarthModel(BaseModel):
-    layers: list[
-        tuple[float, PositiveFloat, PositiveFloat, PositiveFloat]
-    ] | None = Field(
-        None,
-        description="Earth model layers as "
-        "list of tuples [(top_depth, vp, vs, rho), ...]",
+    filename: FilePath | None = Field(
+        DEFAULT_VELOCITY_MODEL_FILE,
+        description="Path to velocity model.",
+    )
+    format: Literal["nd", "hyposat"] = Field(
+        "nd",
+        description="Format of the velocity model. nd or hyposat is supported.",
+    )
+    crust2_profile: constr(to_upper=True) | tuple[float, float] = Field(
+        "",
+        description="Crust2 profile name or a tuple of (lat, lon) coordinates.",
     )
 
-    raw_nd_data: str | None = Field(None, description="Raw .nd file data.")
-    nd_file: FilePath | None = Field(
-        None, description="Path to .nd file velocity model."
-    )
-
-    _layered_model: LayeredModel = PrivateAttr(None)
+    raw_file_data: str | None = Field(None, description="Raw .nd file data.")
+    _layered_model: LayeredModel = PrivateAttr()
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
     @model_validator(mode="after")
-    def load_nd_model(self) -> EarthModel:
-        if self.nd_file is not None or self.raw_nd_data is not None:
-            nd_data = self.raw_nd_data
-            if self.nd_file is not None:
-                logger.info("loading velocity model from %s", self.nd_file)
-                nd_data = self.nd_file.read_text()
-                self.raw_nd_data = nd_data
+    def load_model(self) -> EarthModel:
+        if self.filename is not None:
+            logger.info("loading velocity model from %s", self.filename)
+            self.raw_file_data = self.filename.read_text()
 
-            self._layered_model = LayeredModel.from_scanlines(
-                read_nd_model_str(nd_data)
-            )
-
-        elif self.layers is not None:
-            line_tpl = "{} {} {} {}"
-            earthmodel = "\n".join(line_tpl.format(*layer) for layer in self.layers)
-            self._layered_model = LayeredModel.from_scanlines(
-                read_nd_model_str(earthmodel)
-            )
+        if self.raw_file_data is not None:
+            with NamedTemporaryFile("w") as tmpfile:
+                tmpfile.write(self.raw_file_data)
+                tmpfile.flush()
+                self._layered_model = load_model(
+                    tmpfile.name,
+                    format=self.format,
+                    crust2_profile=self.crust2_profile or None,
+                )
+        elif self.crust2_profile:
+            self._layered_model = load_model(crust2_profile=self.crust2_profile)
         else:
-            raise AttributeError("No velocity model defined.")
+            raise AttributeError("No velocity model or crust2 profile defined.")
         return self
 
     def trim(self, depth_max: float) -> None:
@@ -181,8 +185,8 @@ class TravelTimeTree(BaseModel):
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
 
-    _cached_stations: Stations | None = PrivateAttr(None)
-    _cached_station_indeces: dict[str, int] | None = PrivateAttr({})
+    _cached_stations: Stations = PrivateAttr()
+    _cached_station_indeces: dict[str, int] = PrivateAttr({})
     _node_lut: dict[bytes, np.ndarray] = PrivateAttr(
         default_factory=lambda: LRU(LRU_CACHE_SIZE)
     )
@@ -231,7 +235,7 @@ class TravelTimeTree(BaseModel):
             return self[0] <= requested[0] and self[1] >= requested[1]
 
         return (
-            self.earthmodel.layers == earthmodel.layers
+            str(self.earthmodel.layered_model) == str(earthmodel.layered_model)
             and self.timing == timing
             and check_bounds(self.distance_bounds, distance_bounds)
             and check_bounds(self.source_depth_bounds, source_depth_bounds)
@@ -268,7 +272,13 @@ class TravelTimeTree(BaseModel):
         logger.info("saving traveltimes to %s", file)
 
         with zipfile.ZipFile(file, "w") as archive:
-            archive.writestr("model.json", self.model_dump_json(indent=2))
+            archive.writestr(
+                "model.json",
+                self.model_dump_json(
+                    indent=2,
+                    exclude={"earthmodel": {"nd_file"}},
+                ),
+            )
             with NamedTemporaryFile() as tmpfile:
                 self._get_sptree().dump(tmpfile.name)
                 archive.write(tmpfile.name, "model.sptree")
@@ -451,7 +461,7 @@ class CakeTracer(RayTracer):
         "cake:P": Timing(definition="P,p"),
         "cake:S": Timing(definition="S,s"),
     }
-    earthmodel: EarthModel = EarthModel(layers=DEFAULT_VELOCITY_MODEL)
+    earthmodel: EarthModel = EarthModel()
     trim_earth_model_depth: bool = Field(
         True, description="Trim earth model to max depth of the octree."
     )

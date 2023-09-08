@@ -123,7 +123,7 @@ class StationTravelTimeVolume(BaseModel):
                 delta=delta,
             )
             station_travel_times = cls(
-                origin=model.origin,
+                origin=model.center,
                 velocity_model_hash=model.hash(),
                 station=station,
                 east_bounds=model.east_bounds,

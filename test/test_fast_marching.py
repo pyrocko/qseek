@@ -12,7 +12,11 @@ from lassie.tracers.fast_marching.fast_marching import (
     FastMarchingPhaseTracer,
     StationTravelTimeVolume,
 )
-from lassie.tracers.fast_marching.velocity_models import Constant3DVelocityModel
+from lassie.tracers.fast_marching.velocity_models import (
+    Constant3DVelocityModel,
+    NonLinLocHeader,
+    NonLinLocVelocityModel,
+)
 
 CONSTANT_VELOCITY = 5000
 KM = 1e3
@@ -25,10 +29,7 @@ async def station_travel_times(
     octree.surface_elevation = 1 * KM
     model = Constant3DVelocityModel(velocity=CONSTANT_VELOCITY, grid_spacing=100.0)
     model_3d = model.get_model(octree, stations)
-    travel_times = await StationTravelTimeVolume.calculate_from_eikonal(
-        model_3d, stations.stations[0]
-    )
-    return travel_times
+    await StationTravelTimeVolume.calculate_from_eikonal(model_3d, stations.stations[0])
 
 
 @pytest.mark.asyncio
@@ -83,3 +84,11 @@ async def test_fast_marching_tracer(octree: Octree, stations: Stations):
         )
     )
     await tracer.prepare(octree, stations)
+
+
+def test_non_lin_loc_load(data_dir: Path, octree: Octree, stations: Stations) -> None:
+    header_file = data_dir / "FORGE_3D_5_large.P.mod.hdr"
+
+    NonLinLocHeader.from_header_file(header_file)
+    velocity_model = NonLinLocVelocityModel(header_file=header_file)
+    velocity_model.get_model(octree=octree, stations=stations)

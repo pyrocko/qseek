@@ -293,9 +293,7 @@ class SearchTraces:
         )
         return semblance_data
 
-    async def get_images(
-        self, sampling_rate: float | int | None = None
-    ) -> WaveformImages:
+    async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
         """
         Retrieves waveform images for the specified sampling rate.
 
