@@ -64,8 +64,6 @@ class VelocityModel3D(BaseModel):
     def hash(self) -> str:
         if self._hash is None:
             sha1_hash = sha1(self._velocity_model.tobytes())
-            # Not needed as origin is already included in the velocity model?
-            # model_hash.update(hash(self.origin).to_bytes())
             self._hash = sha1_hash.hexdigest()
         return self._hash
 
@@ -85,7 +83,8 @@ class VelocityModelFactory(BaseModel):
 
     grid_spacing: PositiveFloat | Literal["quadtree"] = Field(
         "quadtree",
-        description="Grid spacing in meters. If 'quadtree' defaults to smallest octreee node size.",
+        description="Grid spacing in meters."
+        " If 'quadtree' defaults to smallest octreee node size.",
     )
 
     def get_model(self, octree: Octree, stations: Stations) -> VelocityModel3D:

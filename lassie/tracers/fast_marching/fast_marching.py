@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self, Sequence
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 from pyrocko.modelling import eikonal
+from rich.progress import Progress
 from scipy.interpolate import RegularGridInterpolator
 
 from lassie.models.location import Location
@@ -70,6 +71,12 @@ class StationTravelTimeVolume(BaseModel):
     def has_travel_times(self) -> bool:
         return self._travel_times is not None or self._file is not None
 
+    def free_cache(self):
+        self._interpolator = None
+        if self._file is not None:
+            logger.warning("cannot free travel time cache, file is not saved")
+            self._travel_times = None
+
     def model_post_init(self, __context: Any) -> None:
         grid_spacing = self.grid_spacing
 
@@ -115,10 +122,6 @@ class StationTravelTimeVolume(BaseModel):
                 arrival_times,
                 delta=delta,
             )
-            logger.info(
-                "calculated travel time volume for %s",
-                station.pretty_nsl,
-            )
             station_travel_times = cls(
                 origin=model.origin,
                 velocity_model_hash=model.hash(),
@@ -128,7 +131,7 @@ class StationTravelTimeVolume(BaseModel):
                 depth_bounds=model.depth_bounds,
                 grid_spacing=model.grid_spacing,
             )
-            station_travel_times._travel_times = arrival_times
+            station_travel_times._travel_times = arrival_times.astype(np.float32)
             if save:
                 station_travel_times.save(save)
 
@@ -147,6 +150,7 @@ class StationTravelTimeVolume(BaseModel):
 
     @property
     def filename(self) -> str:
+        # TODO: Add origin to hash to avoid collisions
         return f"{self.station.pretty_nsl}-{self.velocity_model_hash}.3dtt"
 
     def get_traveltime_interpolator(self) -> RegularGridInterpolator:
@@ -205,6 +209,8 @@ class StationTravelTimeVolume(BaseModel):
             travel_times = archive.open("travel_times.npy", "w")
             np.save(travel_times, self.travel_times)
             travel_times.close()
+
+        self._file = file
         return file
 
     @classmethod
@@ -247,7 +253,7 @@ class FastMarchingPhaseTracer(BaseModel):
     ) -> None:
         velocity_model = self.velocity_model.get_model(octree, stations)
         executor = ThreadPoolExecutor(
-            max_workers=nthreads or os.cpu_count(), thread_name_prefix="fmm"
+            max_workers=nthreads or os.cpu_count(), thread_name_prefix="lassie-fmm"
         )
 
         cache_dir = FMM_CACHE_DIR / f"{velocity_model.hash()}"
@@ -255,21 +261,26 @@ class FastMarchingPhaseTracer(BaseModel):
             cache_dir.mkdir(parents=True)
 
         for file in cache_dir.glob("*.3dtt"):
-            travel_times = StationTravelTimeVolume.load(file)
+            try:
+                travel_times = StationTravelTimeVolume.load(file)
+            except zipfile.BadZipFile:
+                logger.warning("removing bad travel time file %s", file)
+                file.unlink()
+                continue
             self._traveltime_models[hash(travel_times.station)] = travel_times
 
         logger.info(
-            "using %d travel times volumes from cache", len(self._traveltime_models)
+            "loaded %d travel times volumes from cache", len(self._traveltime_models)
         )
 
         pre_calculate_work = []
         for station in stations:
-            if station.pretty_nsl in self._traveltime_models:
+            if hash(station) in self._traveltime_models:
                 continue
 
             async def worker_station_travel_time(
                 velocity_model: VelocityModel3D,
-                station: Station,
+                station: Station = station,
             ) -> None:
                 model = await StationTravelTimeVolume.calculate_from_eikonal(
                     velocity_model,
@@ -279,9 +290,7 @@ class FastMarchingPhaseTracer(BaseModel):
                 )
                 self._traveltime_models[hash(model.station)] = model
 
-            pre_calculate_work.append(
-                worker_station_travel_time(velocity_model, station)
-            )
+            pre_calculate_work.append(worker_station_travel_time(velocity_model))
 
         if not pre_calculate_work:
             return
@@ -290,9 +299,18 @@ class FastMarchingPhaseTracer(BaseModel):
             "pre-calculating travel time volumes for %d stations...",
             len(pre_calculate_work),
         )
-        start = datetime.now()
-        await asyncio.gather(*pre_calculate_work)
-        logger.info("pre-calculated travel time volumes in %s", datetime.now() - start)
+        start = datetime_now()
+        tasks = [asyncio.create_task(work) for work in pre_calculate_work]
+        with Progress() as progress:
+            status = progress.add_task(
+                f"calculating travel time volumes for {len(tasks)} station",
+                total=len(tasks),
+            )
+            for _task in asyncio.as_completed(tasks):
+                await _task
+                progress.advance(status)
+
+        logger.info("pre-calculated travel time volumes in %s", datetime_now() - start)
 
     def get_travel_time(self, source: Location, receiver: Location) -> float:
         station_travel_times = self._traveltime_models[hash(receiver)]
