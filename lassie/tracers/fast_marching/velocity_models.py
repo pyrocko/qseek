@@ -339,7 +339,13 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         elif self._header.grid_type == "VELOCITY":
             self._velocity_model *= KM
 
-        logging.info("loaded NonLinLoc velocity model %s", self._header)
+        logging.info(
+            "loaded NonLinLoc velocity model, "
+            "east_bounds: %s, north_bounds %s, depth_bounds %s",
+            self._header.east_bounds,
+            self._header.north_bounds,
+            self._header.depth_bounds,
+        )
         return self
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
