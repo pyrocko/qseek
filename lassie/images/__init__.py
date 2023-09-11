@@ -57,9 +57,7 @@ class ImageFunctions(RootModel):
         Returns:
             tuple[str, ...]: All available phases.
         """
-        return tuple(
-            chain.from_iterable(image.get_available_phases() for image in self)
-        )
+        return tuple(chain.from_iterable(image.get_provided_phases() for image in self))
 
     def get_blinding(self) -> timedelta:
         return max(image.blinding for image in self)

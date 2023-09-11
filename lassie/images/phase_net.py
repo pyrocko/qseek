@@ -146,5 +146,5 @@ class PhaseNet(ImageFunction):
 
         return [annotation_s, annotation_p]
 
-    def get_available_phases(self) -> tuple[str, ...]:
-        return tuple(self.phase_map.keys())
+    def get_provided_phases(self) -> tuple[str, ...]:
+        return tuple(self.phase_map.values())

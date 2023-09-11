@@ -60,9 +60,9 @@ class StationTravelTimeVolume(BaseModel):
 
     _travel_times: np.ndarray | None = PrivateAttr(None)
 
-    _north_coords: np.ndarray = PrivateAttr(None)
-    _east_coords: np.ndarray = PrivateAttr(None)
-    _depth_coords: np.ndarray = PrivateAttr(None)
+    _north_coords: np.ndarray = PrivateAttr()
+    _east_coords: np.ndarray = PrivateAttr()
+    _depth_coords: np.ndarray = PrivateAttr()
 
     # Cached values
     _file: Path | None = PrivateAttr(None)
@@ -249,7 +249,7 @@ class FastMarchingTracer(RayTracer):
     tracer: Literal["FastMarchingRayTracer"] = "FastMarchingRayTracer"
 
     phase: PhaseDescription = "fm:P"
-    interpolation_method: Literal["nearest", "linear", "cubic"] = "nearest"
+    interpolation_method: Literal["nearest", "linear", "cubic"] = "linear"
     nthreads: int = Field(
         0,
         description="Number of threads to use for travel time."
@@ -302,6 +302,17 @@ class FastMarchingTracer(RayTracer):
                     station,
                     reason=f"outside the fast-marching velocity model, offset {offset}",
                 )
+
+        nodes_covered = [
+            node for node in octree if velocity_model.is_inside(node.as_location())
+        ]
+        if not nodes_covered:
+            raise ValueError("no octree node is inside the velocity model")
+
+        logger.info(
+            "%d%% octree nodes are inside the velocity model",
+            len(nodes_covered) / octree.n_nodes * 100,
+        )
 
         self._cached_stations = stations
         self._cached_station_indeces = {

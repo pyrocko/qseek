@@ -1,21 +1,8 @@
-import pytest
+from __future__ import annotations
 
 from lassie.octree import Octree
 
 km = 1e3
-
-
-@pytest.fixture(scope="function")
-def octree():
-    yield Octree(
-        center_lat=0.0,
-        center_lon=0.0,
-        east_bounds=(-25 * km, 25 * km),
-        north_bounds=(-25 * km, 25 * km),
-        depth_bounds=(0, 40 * km),
-        size_initial=5 * km,
-        size_limit=0.5 * km,
-    )
 
 
 def test_octree(octree: Octree, plot: bool) -> None:

@@ -365,7 +365,7 @@ class SearchTraces:
         semblance.normalize(images.cumulative_weight())
 
         parent.semblance_stats.update(semblance.get_stats())
-        logger.info("semblance stats: %s", parent.semblance_stats)
+        logger.debug("semblance stats: %s", parent.semblance_stats)
 
         detection_idx, detection_semblance = semblance.find_peaks(
             height=parent.detection_threshold,

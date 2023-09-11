@@ -170,7 +170,7 @@ class Constant3DVelocityModel(VelocityModelFactory):
             grid_spacing = self.grid_spacing
 
         model = VelocityModel3D(
-            center=octree.center_location,
+            center=octree.reference,
             grid_spacing=grid_spacing,
             east_bounds=octree.east_bounds,
             north_bounds=octree.north_bounds,
@@ -199,7 +199,11 @@ class NonLinLocHeader:
     grid_type: NonLinLocGridType
 
     @classmethod
-    def from_header_file(cls, file: Path) -> Self:
+    def from_header_file(
+        cls,
+        file: Path,
+        reference_location: Location | None = None,
+    ) -> Self:
         logger.info("loading NonLinLoc velocity model header file %s", file)
         header_text = file.read_text().split("\n")[0]
         header_text = re.sub(r"\s+", " ", header_text)  # remove excessive spaces
@@ -220,12 +224,20 @@ class NonLinLocHeader:
         if not delta_x == delta_y == delta_z:
             raise ValueError("NonLinLoc velocity model must have equal spacing.")
 
-        return cls(
-            origin=Location(
+        if reference_location:
+            origin = reference_location
+            origin.east_shift += float(orig_x) * KM
+            origin.north_shift += float(orig_y) * KM
+            origin.elevation -= float(orig_z) * KM
+        else:
+            origin = Location(
                 lon=float(orig_x),
                 lat=float(orig_y),
                 elevation=-float(orig_z) * KM,
-            ),
+            )
+
+        return cls(
+            origin=origin,
             nx=int(nx),
             ny=int(ny),
             nz=int(nz),
@@ -261,9 +273,9 @@ class NonLinLocHeader:
 
     @property
     def center(self) -> Location:
-        center = self.origin.model_copy()
-        center.north_shift = self.delta_x * self.nx / 2
-        center.east_shift = self.delta_y * self.ny / 2
+        center = self.origin.model_copy(deep=True)
+        center.east_shift += self.delta_x * self.nx / 2
+        center.north_shift += self.delta_y * self.ny / 2
         return center
 
 
@@ -293,17 +305,28 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         "for the fast-marching method.",
     )
 
+    reference_location: Location | None = Field(
+        None,
+        description="relative location of NonLinLoc model, "
+        "used for models with relative coordinates.",
+    )
+
     _header: NonLinLocHeader = PrivateAttr()
     _velocity_model: np.ndarray = PrivateAttr()
 
     @model_validator(mode="after")
     def load_header(self) -> Self:
-        self._header = NonLinLocHeader.from_header_file(self.header_file)
+        self._header = NonLinLocHeader.from_header_file(
+            self.header_file,
+            reference_location=self.reference_location,
+        )
         self.buffer_file = self.buffer_file or self.header_file.with_suffix(".buf")
         if not self.buffer_file.exists():
             raise FileNotFoundError(f"Buffer file {self.buffer_file} not found.")
 
-        logger.info("loading NonLinLoc velocity model buffer file %s", self.buffer_file)
+        logger.debug(
+            "loading NonLinLoc velocity model buffer file %s", self.buffer_file
+        )
         self._velocity_model = np.fromfile(
             self.buffer_file, dtype=self._header.dtype
         ).reshape((self._header.nx, self._header.ny, self._header.nz))
@@ -316,6 +339,7 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         elif self._header.grid_type == "VELOCITY":
             self._velocity_model *= KM
 
+        logging.info("loaded NonLinLoc velocity model %s", self._header)
         return self
 
     def get_model(self, octree: Octree) -> VelocityModel3D:

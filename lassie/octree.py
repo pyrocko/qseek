@@ -65,13 +65,13 @@ class Node(BaseModel):
     semblance: float = 0.0
 
     tree: Octree | None = Field(None, exclude=True)
-    children: tuple[Node] = Field((), exclude=True)
+    children: tuple[Node, ...] = Field((), exclude=True)
 
     _hash: bytes | None = PrivateAttr(None)
-    _children_cached: tuple[Node] = PrivateAttr(())
+    _children_cached: tuple[Node, ...] = PrivateAttr(())
     _location: Location | None = PrivateAttr(None)
 
-    def split(self) -> tuple[Node]:
+    def split(self) -> tuple[Node, ...]:
         if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
@@ -137,14 +137,17 @@ class Node(BaseModel):
         return location.distance_to(self.as_location())
 
     def as_location(self) -> Location:
+        if not self.tree:
+            raise AttributeError("parent tree not set")
         if not self._location:
+            reference = self.tree.reference
             self._location = Location.model_construct(
-                lat=self.tree.center_lat,
-                lon=self.tree.center_lon,
-                elevation=self.tree.surface_elevation,
-                east_shift=float(self.east),
-                north_shift=float(self.north),
-                depth=float(self.depth),
+                lat=reference.lat,
+                lon=reference.lon,
+                elevation=reference.elevation,
+                east_shift=reference.east_shift + float(self.east),
+                north_shift=reference.north_shift + float(self.north),
+                depth=reference.depth + float(self.depth),
             )
         return self._location
 
@@ -160,8 +163,8 @@ class Node(BaseModel):
             self._hash = sha1(
                 struct.pack(
                     "dddddd",
-                    self.tree.center_lat,
-                    self.tree.center_lon,
+                    self.tree.reference.lat,
+                    self.tree.reference.lon,
                     self.east,
                     self.north,
                     self.depth,
@@ -175,9 +178,7 @@ class Node(BaseModel):
 
 
 class Octree(BaseModel):
-    center_lat: float = 0.0
-    center_lon: float = 0.0
-    surface_elevation: float = 0.0
+    reference: Location = Location(lat=0.0, lon=0)
     size_initial: PositiveFloat = 2 * KM
     size_limit: PositiveFloat = 500
     east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
@@ -238,14 +239,6 @@ class Octree(BaseModel):
             for north in north_nodes
             for depth in depth_nodes
         ]
-
-    @property
-    def center_location(self) -> Location:
-        return Location(
-            lat=self.center_lat,
-            lon=self.center_lon,
-            elevation=self.surface_elevation,
-        )
 
     @cached_property
     def n_nodes(self) -> int:

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from lassie.models.detection import EventDetection, EventDetections
+from lassie.models.location import Location
 from lassie.models.station import Station, Stations
 from lassie.octree import Octree
 from lassie.tracers.cake import EarthModel, Timing, TravelTimeTree
@@ -48,9 +49,11 @@ def data_dir() -> Path:
 @pytest.fixture(scope="session")
 def octree() -> Octree:
     return Octree(
-        center_lat=10.0,
-        center_lon=10.0,
-        surface_elevation=1.0 * KM,
+        reference=Location(
+            lat=10.0,
+            lon=10.0,
+            elevation=1.0 * KM,
+        ),
         size_initial=2 * KM,
         size_limit=500,
         east_bounds=(-10 * KM, 10 * KM),

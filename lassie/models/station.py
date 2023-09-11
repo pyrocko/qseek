@@ -102,6 +102,8 @@ class Stations(BaseModel):
     def blacklist_station(self, station: Station, reason: str) -> None:
         logger.warning("blacklisting station %s: %s", station.pretty_nsl, reason)
         self.blacklist.add(station.pretty_nsl)
+        if self.n_stations == 0:
+            raise ValueError("no stations available, all stations blacklisted")
 
     def weed_from_squirrel_waveforms(self, squirrel: Squirrel) -> None:
         """Remove stations without waveforms from squirrel instances.
@@ -117,7 +119,7 @@ class Stations(BaseModel):
         n_removed_stations = 0
         for sta in self.stations.copy():
             if sta.pretty_nsl not in available_squirrel_nsls:
-                logger.debug(
+                logger.info(
                     "removing station %s: waveforms not available in squirrel",
                     sta.pretty_nsl,
                 )
@@ -125,7 +127,7 @@ class Stations(BaseModel):
                 n_removed_stations += 1
 
         if n_removed_stations:
-            logger.info("removed %d stations without waveforms", n_removed_stations)
+            logger.warning("removed %d stations without waveforms", n_removed_stations)
         if not self.stations:
             raise ValueError("no stations available, add waveforms to start detection")
 

@@ -115,15 +115,18 @@ class Location(BaseModel):
             return (
                 self.east_shift - other.east_shift,
                 self.north_shift - other.north_shift,
-                self.effective_depth - other.effective_depth,
+                -(self.effective_elevation - other.effective_elevation),
             )
 
-        sx, sy, sz = od.geodetic_to_ecef(*self.effective_lat_lon, self.effective_depth)
-        ox, oy, oz = od.geodetic_to_ecef(
-            *other.effective_lat_lon, other.effective_depth
+        shift_north, shift_east = od.latlon_to_ne_numpy(
+            self.lat, self.lon, other.lat, other.lon
         )
 
-        return sx - ox, sy - oy, sz - oz
+        return (
+            self.east_shift - other.east_shift + shift_east[0],
+            self.north_shift - other.north_shift + shift_north[0],
+            -(self.effective_elevation - other.effective_elevation),
+        )
 
     def __hash__(self) -> int:
         return hash(self.location_hash())
