@@ -41,7 +41,7 @@ def test_sptree_model(traveltime_tree: TravelTimeTree):
         depth=0,
     )
 
-    model.get_traveltime(source, receiver)
+    model.get_travel_time(source, receiver)
 
 
 def test_lut(

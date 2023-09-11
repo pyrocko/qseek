@@ -135,7 +135,7 @@ class Search(BaseModel):
 
         # Timing ranges
         for phase, tracer in self.ray_tracers.iter_phase_tracer():
-            traveltimes = tracer.get_traveltimes(phase, self.octree, self.stations)
+            traveltimes = tracer.get_travel_times(phase, self.octree, self.stations)
             self.travel_time_ranges[phase] = (
                 timedelta(seconds=np.nanmin(traveltimes)),
                 timedelta(seconds=np.nanmax(traveltimes)),
@@ -259,7 +259,7 @@ class SearchTraces:
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
-        traveltimes = ray_tracer.get_traveltimes(image.phase, octree, image.stations)
+        traveltimes = ray_tracer.get_travel_times(image.phase, octree, image.stations)
 
         if parent.station_corrections:
             station_delays = parent.station_corrections.get_delays(

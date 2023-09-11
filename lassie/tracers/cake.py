@@ -445,7 +445,7 @@ class TravelTimeTree(BaseModel):
 
         return np.asarray(traveltimes).astype(float)
 
-    def get_traveltime(self, source: Location, receiver: Location) -> float:
+    def get_travel_time(self, source: Location, receiver: Location) -> float:
         coordinates = [
             receiver.effective_depth,
             source.effective_depth,
@@ -560,10 +560,10 @@ class CakeTracer(RayTracer):
         if phase not in self.phases:
             raise ValueError(f"Phase {phase} is not defined.")
         tree = self._get_sptree_model(phase)
-        return tree.get_traveltime(source, receiver)
+        return tree.get_travel_time(source, receiver)
 
     @log_call
-    def get_traveltimes(
+    def get_travel_times(
         self,
         phase: str,
         octree: Octree,
@@ -580,7 +580,7 @@ class CakeTracer(RayTracer):
         source: Location,
         receivers: Sequence[Location],
     ) -> list[CakeArrival | None]:
-        traveltimes = self.get_traveltimes_locations(
+        traveltimes = self.get_travel_times_locations(
             phase,
             source=source,
             receivers=receivers,

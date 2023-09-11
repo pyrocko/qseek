@@ -43,7 +43,7 @@ class ConstantVelocityTracer(RayTracer):
         return source.distance_to(receiver) / self.velocity
 
     @log_call
-    def get_traveltimes(
+    def get_travel_times(
         self,
         phase: str,
         octree: Octree,
@@ -63,7 +63,7 @@ class ConstantVelocityTracer(RayTracer):
     ) -> list[ConstantVelocityArrival]:
         self._check_phase(phase)
 
-        traveltimes = self.get_traveltimes_locations(
+        traveltimes = self.get_travel_times_locations(
             phase,
             source=source,
             receivers=receivers,

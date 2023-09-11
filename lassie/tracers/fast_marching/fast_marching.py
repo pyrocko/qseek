@@ -259,6 +259,9 @@ class FastMarchingTracer(RayTracer):
     _traveltime_models: dict[str, StationTravelTimeVolume] = PrivateAttr({})
     _velocity_model: VelocityModel3D | None = PrivateAttr(None)
 
+    def get_available_phases(self) -> tuple[str, ...]:
+        return (self.phase,)
+
     async def prepare(
         self,
         octree: Octree,
@@ -280,10 +283,12 @@ class FastMarchingTracer(RayTracer):
         else:
             self._load_cached_tavel_times(cache_dir)
 
-        await self._calculate_travel_times(
-            [sta for sta in stations if sta.pretty_nsl not in self._traveltime_models],
-            cache_dir,
-        )
+        work_stations = [
+            station
+            for station in stations
+            if station.location_hash() not in self._traveltime_models
+        ]
+        await self._calculate_travel_times(work_stations, cache_dir)
 
     def _load_cached_tavel_times(self, cache_dir: Path) -> None:
         logger.debug("loading travel times volumes from cache %s...", cache_dir)
@@ -295,7 +300,7 @@ class FastMarchingTracer(RayTracer):
                 logger.warning("removing bad travel time file %s", file)
                 file.unlink()
                 continue
-            models[travel_times.station.pretty_nsl] = travel_times
+            models[travel_times.station.location_hash()] = travel_times
 
         logger.info("loaded %d travel times volumes from cache", len(models))
         self._traveltime_models.update(models)
@@ -318,7 +323,7 @@ class FastMarchingTracer(RayTracer):
                 save=cache_dir,
                 executor=executor,
             )
-            self._traveltime_models[station.pretty_nsl] = model
+            self._traveltime_models[station.location_hash()] = model
 
         calculate_work = [worker_station_travel_time(station) for station in stations]
         if not calculate_work:
@@ -336,16 +341,33 @@ class FastMarchingTracer(RayTracer):
                 progress.advance(status)
         logger.info("calculated travel time volumes in %s", datetime_now() - start)
 
-    def get_travel_time(self, source: Location, receiver: Location) -> float:
-        station_travel_times = self._traveltime_models[hash(receiver)]
+    def get_travel_time_location(
+        self,
+        phase: str,
+        source: Location,
+        receiver: Location,
+    ) -> float:
+        if phase != self.phase:
+            raise ValueError(f"phase {phase} is not supported by this tracer")
+
+        station_travel_times = self._traveltime_models[receiver.location_hash()]
         return station_travel_times.interpolate_travel_time(
-            source, method=self.interpolation_method
+            source,
+            method=self.interpolation_method,
         )
 
-    def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
+    def get_travel_times(
+        self,
+        phase: str,
+        octree: Octree,
+        stations: Stations,
+    ) -> np.ndarray:
+        if phase != self.phase:
+            raise ValueError(f"phase {phase} is not supported by this tracer")
+
         result = []
         for station in stations:
-            station_travel_times = self._traveltime_models[station.pretty_nsl]
+            station_travel_times = self._traveltime_models[station.location_hash()]
             result.append(
                 station_travel_times.interpolate_travel_times(
                     octree, method=self.interpolation_method
@@ -360,6 +382,9 @@ class FastMarchingTracer(RayTracer):
         source: Location,
         receivers: Sequence[Location],
     ) -> list[ModelledArrival | None]:
+        if phase != self.phase:
+            raise ValueError(f"phase {phase} is not supported by this tracer")
+
         traveltimes = []
         for receiver in receivers:
             traveltimes.append(self.get_travel_time_location(phase, source, receiver))

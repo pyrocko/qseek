@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import math
+import struct
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
 
@@ -124,8 +126,12 @@ class Location(BaseModel):
         return sx - ox, sy - oy, sz - oz
 
     def __hash__(self) -> int:
-        return hash(
-            (
+        return hash(self.location_hash())
+
+    def location_hash(self) -> str:
+        sha1 = hashlib.sha1(
+            struct.pack(
+                "dddddd",
                 self.lat,
                 self.lon,
                 self.east_shift,
@@ -134,6 +140,7 @@ class Location(BaseModel):
                 self.depth,
             )
         )
+        return sha1.hexdigest()
 
 
 def locations_to_csv(locations: Iterable[Location], filename: Path) -> Path:
