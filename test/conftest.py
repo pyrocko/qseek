@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Generator
 
+import numpy as np
 import pytest
 
 from lassie.models.detection import EventDetection, EventDetections
@@ -72,6 +73,25 @@ def stations() -> Stations:
             elevation=random.uniform(0, 1) * KM,
             north_shift=random.uniform(-10, 10) * KM,
             east_shift=random.uniform(-10, 10) * KM,
+        )
+        stations.append(station)
+    return Stations(stations=stations)
+
+
+@pytest.fixture(scope="session")
+def fixed_stations() -> Stations:
+    n_stations = 20
+    rng = np.random.RandomState(0)
+    stations: list[Station] = []
+    for i_sta in range(n_stations):
+        station = Station(
+            network="FX",
+            station="STA%02d" % i_sta,
+            lat=10.0,
+            lon=10.0,
+            elevation=rng.uniform(0, 1) * KM,
+            north_shift=rng.uniform(-10, 10) * KM,
+            east_shift=rng.uniform(-10, 10) * KM,
         )
         stations.append(station)
     return Stations(stations=stations)

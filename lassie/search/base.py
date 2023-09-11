@@ -21,6 +21,7 @@ from lassie.plot.octree import plot_octree_surface_tiles
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import CakeTracer, ConstantVelocityTracer, RayTracers
+from lassie.tracers.fast_marching import FastMarchingTracer
 from lassie.utils import PhaseDescription, Symbols, alog_call, time_to_path
 
 if TYPE_CHECKING:
@@ -50,7 +51,9 @@ class Search(BaseModel):
 
     octree: Octree = Octree()
     stations: Stations = Stations()
-    ray_tracers: RayTracers = RayTracers(root=[ConstantVelocityTracer(), CakeTracer()])
+    ray_tracers: RayTracers = RayTracers(
+        root=[ConstantVelocityTracer(), CakeTracer(), FastMarchingTracer()]
+    )
     image_functions: ImageFunctions
 
     station_corrections: StationCorrections | None = None

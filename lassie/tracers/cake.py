@@ -468,7 +468,7 @@ class CakeTracer(RayTracer):
     trim_earth_model_depth: bool = Field(
         True, description="Trim earth model to max depth of the octree."
     )
-    lut_cache_size: ByteSize = Field("4GB", description="Size of the LUT cache.")
+    lut_cache_size: ByteSize = Field(2 * GiB, description="Size of the LUT cache.")
 
     _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
@@ -499,6 +499,7 @@ class CakeTracer(RayTracer):
         n_trees = len(self.phases)
         LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
 
+        # TODO: This should be total number nodes. Not only leaf nodes.
         node_cache_fraction = LRU_CACHE_SIZE / octree.maximum_number_nodes()
         logging.info(
             "limiting traveltime LUT size to %d nodes (%s),"

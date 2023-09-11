@@ -374,7 +374,7 @@ class Octree(BaseModel):
             (self.east_bounds[1] - self.east_bounds[0])
             * (self.north_bounds[1] - self.north_bounds[0])
             * (self.depth_bounds[1] - self.depth_bounds[0])
-            / self.smallest_node_size() ** 3
+            / (self.smallest_node_size() ** 3)
         )
 
     def copy(self, deep=False) -> Self:

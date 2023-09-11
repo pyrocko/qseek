@@ -21,7 +21,7 @@ from scipy.interpolate import RegularGridInterpolator
 from lassie.models.location import Location
 
 if TYPE_CHECKING:
-    from lassie.models.station import Station, Stations
+    from lassie.models.station import Station
     from lassie.octree import Octree
 
 
@@ -79,7 +79,7 @@ class VelocityModel3D(BaseModel):
                 f"Velocity model shape {velocity_model.shape} does not match"
                 f" expected shape {self._velocity_model.shape}"
             )
-        self._velocity_model = velocity_model
+        self._velocity_model = velocity_model.astype(float, copy=False)
 
     def hash(self) -> str:
         if self._hash is None:
@@ -117,6 +117,9 @@ class VelocityModel3D(BaseModel):
         grid_spacing: float,
         method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> Self:
+        if grid_spacing == self.grid_spacing:
+            return self
+
         logger.info("resampling velocity model to grid spacing %s m", grid_spacing)
         interpolator = RegularGridInterpolator(
             (self._east_coords, self._north_coords, self._depth_coords),
@@ -149,16 +152,18 @@ class VelocityModelFactory(BaseModel):
         " If 'quadtree' defaults to smallest octreee node size.",
     )
 
-    def get_model(self, octree: Octree, stations: Stations) -> VelocityModel3D:
+    def get_model(self, octree: Octree) -> VelocityModel3D:
         raise NotImplementedError
 
 
 class Constant3DVelocityModel(VelocityModelFactory):
+    """This model is for mere testing of the method."""
+
     model: Literal["Constant3DVelocityModel"] = "Constant3DVelocityModel"
 
     velocity: PositiveFloat = 5000.0
 
-    def get_model(self, octree: Octree, stations: Stations) -> VelocityModel3D:
+    def get_model(self, octree: Octree) -> VelocityModel3D:
         if self.grid_spacing == "quadtree":
             grid_spacing = octree.smallest_node_size()
         else:
@@ -275,7 +280,18 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         description="Path to NonLinLoc model buffer file. If none, the filename will be"
         "infered from the header file.",
     )
-    interpolation: Literal["nearest", "linear", "cubic"] = "linear"
+
+    grid_spacing: PositiveFloat | Literal["quadtree", "input"] = Field(
+        "input",
+        description="Grid spacing in meters."
+        " If 'quadtree' defaults to smallest octreee node size. If 'input' uses the"
+        " grid spacing from the NonLinLoc header file.",
+    )
+    interpolation: Literal["nearest", "linear", "cubic"] = Field(
+        "linear",
+        description="Interpolation method for resampling the grid "
+        "for the fast-marching method.",
+    )
 
     _header: NonLinLocHeader = PrivateAttr()
     _velocity_model: np.ndarray = PrivateAttr()
@@ -302,9 +318,11 @@ class NonLinLocVelocityModel(VelocityModelFactory):
 
         return self
 
-    def get_model(self, octree: Octree, stations: Stations) -> VelocityModel3D:
+    def get_model(self, octree: Octree) -> VelocityModel3D:
         if self.grid_spacing == "quadtree":
             grid_spacing = octree.smallest_node_size()
+        if self.grid_spacing == "input":
+            grid_spacing = self._header.grid_spacing
         else:
             grid_spacing = self.grid_spacing
 
