@@ -23,13 +23,15 @@ class ConstantVelocityArrival(ModelledArrival):
 
 class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
-    velocities: dict[PhaseDescription, PositiveFloat] = {
-        "constant:P": 6000.0,
-        "constant:S": 3900.0,
-    }
+    phase: PhaseDescription = "constant:P"
+    velocity: PositiveFloat = 5000.0
 
     def get_available_phases(self) -> tuple[str, ...]:
-        return tuple(self.velocities.keys())
+        return (self.phase,)
+
+    def _check_phase(self, phase: PhaseDescription) -> None:
+        if phase != self.phase:
+            raise ValueError(f"Phase {phase} is not defined.")
 
     def get_travel_time_location(
         self,
@@ -37,9 +39,8 @@ class ConstantVelocityTracer(RayTracer):
         source: Location,
         receiver: Location,
     ) -> float:
-        if phase not in self.velocities:
-            raise ValueError(f"Phase {phase} is not defined.")
-        return source.distance_to(receiver) / self.velocities[phase]
+        self._check_phase(phase)
+        return source.distance_to(receiver) / self.velocity
 
     @log_call
     def get_traveltimes(
@@ -48,10 +49,10 @@ class ConstantVelocityTracer(RayTracer):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        if phase not in self.velocities:
-            raise ValueError(f"Phase {phase} is not defined.")
+        self._check_phase(phase)
+
         distances = octree.distances_stations(stations)
-        return distances / self.velocities[phase]
+        return distances / self.velocity
 
     def get_arrivals(
         self,
@@ -60,6 +61,8 @@ class ConstantVelocityTracer(RayTracer):
         source: Location,
         receivers: Sequence[Location],
     ) -> list[ConstantVelocityArrival]:
+        self._check_phase(phase)
+
         traveltimes = self.get_traveltimes_locations(
             phase,
             source=source,

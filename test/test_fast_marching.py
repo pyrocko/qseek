@@ -9,8 +9,8 @@ import pytest_asyncio
 from lassie.models.station import Stations
 from lassie.octree import Octree
 from lassie.tracers.fast_marching.fast_marching import (
-    FastMarchingPhaseTracer,
     FastMarchingRayTracer,
+    FastMarchingTracer,
     StationTravelTimeVolume,
 )
 from lassie.tracers.fast_marching.velocity_models import (
@@ -79,7 +79,7 @@ async def test_load_interpolation(
 
 @pytest.mark.asyncio
 async def test_fast_marching_phase_tracer(octree: Octree, stations: Stations) -> None:
-    tracer = FastMarchingPhaseTracer(
+    tracer = FastMarchingTracer(
         velocity_model=Constant3DVelocityModel(
             velocity=CONSTANT_VELOCITY, grid_spacing=80.0
         )
@@ -91,7 +91,7 @@ async def test_fast_marching_phase_tracer(octree: Octree, stations: Stations) ->
 async def test_fast_marching_ray_tracer(octree: Octree, stations: Stations) -> None:
     tracer = FastMarchingRayTracer(
         tracers={
-            "fmm:P": FastMarchingPhaseTracer(
+            "fmm:P": FastMarchingTracer(
                 velocity_model=Constant3DVelocityModel(
                     velocity=CONSTANT_VELOCITY, grid_spacing=80.0
                 )

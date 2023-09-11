@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Iterator, Union
+from itertools import chain
+from typing import TYPE_CHECKING, Annotated, Any, Iterator, Union
 
 from pydantic import Field, RootModel
 
@@ -36,6 +37,12 @@ ImageFunctionPick = Annotated[
 class ImageFunctions(RootModel):
     root: list[ImageFunctionType] = []
 
+    def model_post_init(self, __context: Any) -> None:
+        # Check if phases are provided twice
+        phases = self.get_phases()
+        if len(set(phases)) != len(phases):
+            raise ValueError("A phase was provided twice")
+
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
         for function in self:
@@ -43,6 +50,16 @@ class ImageFunctions(RootModel):
             images.extend(await function.process_traces(traces))
 
         return WaveformImages(root=images)
+
+    def get_phases(self) -> tuple[str, ...]:
+        """Get all phases that are available in the image functions.
+
+        Returns:
+            tuple[str, ...]: All available phases.
+        """
+        return tuple(
+            chain.from_iterable(image.get_available_phases() for image in self)
+        )
 
     def get_blinding(self) -> timedelta:
         return max(image.blinding for image in self)

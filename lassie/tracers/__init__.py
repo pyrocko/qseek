@@ -35,9 +35,20 @@ RayTracerArrival = Annotated[
 class RayTracers(RootModel):
     root: list[RayTracerType] = []
 
-    async def prepare(self, octree: Octree, stations: Stations) -> None:
+    async def prepare(
+        self,
+        octree: Octree,
+        stations: Stations,
+        phases: tuple[PhaseDescription, ...],
+    ) -> None:
         logger.info("preparing ray tracers")
         for tracer in self:
+            tracer_phases = tracer.get_available_phases()
+            for phase in phases:  # Only prepare tracers for requested phases
+                if phase in tracer_phases:
+                    break
+            else:
+                continue
             await tracer.prepare(octree, stations)
 
     def get_available_phases(self) -> tuple[str]:

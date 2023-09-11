@@ -17,9 +17,7 @@ from lassie.models import Stations
 from lassie.search import SquirrelSearch
 from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
-from lassie.tracers import RayTracers
-from lassie.tracers.cake import CakeTracer
-from lassie.utils import ANSI, CACHE_DIR, setup_rich_logging
+from lassie.utils import CACHE_DIR, setup_rich_logging
 
 nest_asyncio.apply()
 
@@ -67,6 +65,14 @@ def main() -> None:
     )
     continue_run.add_argument("rundir", type=Path, help="existing runding to continue")
 
+    init_project = subparsers.add_parser(
+        "init",
+        help="initialize a new Lassie project",
+    )
+    init_project.add_argument(
+        "folder", type=Path, help="folder to initialize project in"
+    )
+
     features = subparsers.add_parser(
         "feature-extraction",
         help="extract features from an existing run",
@@ -94,14 +100,6 @@ def main() -> None:
     )
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
-    init_project = subparsers.add_parser(
-        "new",
-        help="initialize a new Lassie project",
-    )
-    init_project.add_argument(
-        "folder", type=Path, help="folder to initialize project in"
-    )
-
     subparsers.add_parser(
         "clear-cache",
         help="clear the cached travel times",
@@ -116,7 +114,7 @@ def main() -> None:
     args = parser.parse_args()
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
-    if args.command == "new":
+    if args.command == "init":
         folder: Path = args.folder
         if folder.exists():
             raise FileExistsError(f"Folder {folder} already exists")
@@ -126,7 +124,6 @@ def main() -> None:
         pyrocko_stations.touch()
 
         config = SquirrelSearch(
-            ray_tracers=RayTracers(root=[CakeTracer()]),
             image_functions=ImageFunctions(
                 root=[PhaseNet(phase_map={"P": "cake:P", "S": "cake:S"})]
             ),
@@ -141,9 +138,7 @@ def main() -> None:
         config_file = folder / "config.json"
         config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
         logger.info("initialized new project in folder %s", folder)
-        logger.info(
-            "start detecting with:\n\t%slassie run config.json%s", ANSI.Bold, ANSI.Reset
-        )
+        logger.info("start detecting with: %s", "lassie run config.json")
 
     elif args.command == "run":
         search = SquirrelSearch.from_config(args.config)

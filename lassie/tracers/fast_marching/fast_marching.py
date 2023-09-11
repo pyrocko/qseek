@@ -20,11 +20,11 @@ from lassie.models.location import Location
 from lassie.models.station import Station, Stations
 from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.tracers.fast_marching.velocity_models import (
-    Constant3DVelocityModel,
+    NonLinLocVelocityModel,
     VelocityModel3D,
     VelocityModels,
 )
-from lassie.utils import CACHE_DIR, PhaseDescription, datetime_now, log_call
+from lassie.utils import CACHE_DIR, PhaseDescription, datetime_now
 
 if TYPE_CHECKING:
     from lassie.octree import Octree
@@ -109,6 +109,9 @@ class StationTravelTimeVolume(BaseModel):
         executor: ThreadPoolExecutor | None = None,
     ) -> Self:
         arrival_times = model.get_source_arrival_grid(station)
+
+        if not model.is_inside(station):
+            raise ValueError("station is outside the velocity model")
 
         def eikonal_wrapper(
             velocity_model: VelocityModel3D,
@@ -243,36 +246,48 @@ class StationTravelTimeVolume(BaseModel):
             return np.load(archive.open("travel_times.npy", "r"))
 
 
-class FastMarchingPhaseTracer(BaseModel):
-    velocity_model: VelocityModels = Constant3DVelocityModel()
+class FastMarchingTracer(RayTracer):
+    tracer: Literal["FastMarchingRayTracer"] = "FastMarchingRayTracer"
+
+    phase: PhaseDescription = "fm:P"
     interpolation_method: Literal["nearest", "linear", "cubic"] = "nearest"
+    nthreads: int = Field(default_factory=os.cpu_count)
+    lut_cache_size: ByteSize = Field("4GB", description="Size of the LUT cache.")
+
+    velocity_model: VelocityModels = NonLinLocVelocityModel()
 
     _traveltime_models: dict[str, StationTravelTimeVolume] = PrivateAttr({})
-
-    lut_cache_size: ByteSize = Field(
-        4 * GiB,
-        description="Size of the LUT cache in MB.",
-    )
+    _velocity_model: VelocityModel3D | None = PrivateAttr(None)
 
     async def prepare(
         self,
         octree: Octree,
         stations: Stations,
-        nthreads: int = 0,
     ) -> None:
         velocity_model = self.velocity_model.get_model(octree, stations)
+        self._velocity_model = velocity_model
+
         for station in stations:
             if not velocity_model.is_inside(station):
-                stations.blacklist_station(station, reason="outside the velocity model")
-
-        executor = ThreadPoolExecutor(
-            max_workers=nthreads or os.cpu_count(), thread_name_prefix="lassie-fmm"
-        )
+                stations.blacklist_station(
+                    station, reason="outside the fast-marching velocity model"
+                )
 
         cache_dir = FMM_CACHE_DIR / f"{velocity_model.hash()}"
         if not cache_dir.exists():
+            logger.info("creating cache directory %s", cache_dir)
             cache_dir.mkdir(parents=True)
+        else:
+            self._load_cached_tavel_times(cache_dir)
 
+        await self._calculate_travel_times(
+            [sta for sta in stations if sta.pretty_nsl not in self._traveltime_models],
+            cache_dir,
+        )
+
+    def _load_cached_tavel_times(self, cache_dir: Path) -> None:
+        logger.debug("loading travel times volumes from cache %s...", cache_dir)
+        models: dict[str, StationTravelTimeVolume] = {}
         for file in cache_dir.glob("*.3dtt"):
             try:
                 travel_times = StationTravelTimeVolume.load(file)
@@ -280,40 +295,37 @@ class FastMarchingPhaseTracer(BaseModel):
                 logger.warning("removing bad travel time file %s", file)
                 file.unlink()
                 continue
-            self._traveltime_models[travel_times.station.pretty_nsl] = travel_times
+            models[travel_times.station.pretty_nsl] = travel_times
 
-        logger.info(
-            "loaded %d travel times volumes from cache", len(self._traveltime_models)
+        logger.info("loaded %d travel times volumes from cache", len(models))
+        self._traveltime_models.update(models)
+
+    async def _calculate_travel_times(
+        self,
+        stations: list[Station],
+        cache_dir: Path,
+    ) -> None:
+        executor = ThreadPoolExecutor(
+            max_workers=self.nthreads, thread_name_prefix="lassie-fmm"
         )
+        if self._velocity_model is None:
+            raise AttributeError("velocity model has not been prepared yet")
 
-        pre_calculate_work = []
-        for station in stations:
-            if station.pretty_nsl in self._traveltime_models:
-                continue
+        async def worker_station_travel_time(station: Station) -> None:
+            model = await StationTravelTimeVolume.calculate_from_eikonal(
+                self._velocity_model,  # noqa
+                station,
+                save=cache_dir,
+                executor=executor,
+            )
+            self._traveltime_models[station.pretty_nsl] = model
 
-            async def worker_station_travel_time(
-                velocity_model: VelocityModel3D,
-                station: Station = station,
-            ) -> None:
-                model = await StationTravelTimeVolume.calculate_from_eikonal(
-                    velocity_model,
-                    station,
-                    save=cache_dir,
-                    executor=executor,
-                )
-                self._traveltime_models[station.pretty_nsl] = model
-
-            pre_calculate_work.append(worker_station_travel_time(velocity_model))
-
-        if not pre_calculate_work:
+        calculate_work = [worker_station_travel_time(station) for station in stations]
+        if not calculate_work:
             return
 
-        logger.info(
-            "pre-calculating travel time volumes for %d stations...",
-            len(pre_calculate_work),
-        )
         start = datetime_now()
-        tasks = [asyncio.create_task(work) for work in pre_calculate_work]
+        tasks = [asyncio.create_task(work) for work in calculate_work]
         with Progress() as progress:
             status = progress.add_task(
                 f"calculating travel time volumes for {len(tasks)} station",
@@ -322,8 +334,7 @@ class FastMarchingPhaseTracer(BaseModel):
             for _task in asyncio.as_completed(tasks):
                 await _task
                 progress.advance(status)
-
-        logger.info("pre-calculated travel time volumes in %s", datetime_now() - start)
+        logger.info("calculated travel time volumes in %s", datetime_now() - start)
 
     def get_travel_time(self, source: Location, receiver: Location) -> float:
         station_travel_times = self._traveltime_models[hash(receiver)]
@@ -341,42 +352,6 @@ class FastMarchingPhaseTracer(BaseModel):
                 )
             )
         return np.array(result).T
-
-
-class FastMarchingRayTracer(RayTracer):
-    tracer: Literal["FastMarchingRayTracer"] = "FastMarchingRayTracer"
-
-    tracers: dict[PhaseDescription, FastMarchingPhaseTracer] = {
-        "fm:P": FastMarchingPhaseTracer(),
-        "fm:S": FastMarchingPhaseTracer(),
-    }
-    nthreads: int = Field(default_factory=os.cpu_count)
-
-    async def prepare(self, octree: Octree, stations: Stations) -> None:
-        for tracer in self.tracers.values():
-            await tracer.prepare(octree, stations, nthreads=self.nthreads)
-
-    def get_available_phases(self) -> tuple[str, ...]:
-        return tuple(self.tracers.keys())
-
-    def _get_tracer(self, phase: str) -> FastMarchingPhaseTracer:
-        return self.tracers[phase]
-
-    def get_travel_time_location(
-        self, phase: str, source: Location, receiver: Location
-    ) -> float:
-        if phase not in self.tracers:
-            raise ValueError(f"Phase {phase} is not defined.")
-        return self._get_tracer(phase).get_travel_time(source, receiver)
-
-    @log_call
-    def get_traveltimes(
-        self,
-        phase: str,
-        octree: Octree,
-        stations: Stations,
-    ) -> np.ndarray:
-        return self._get_tracer(phase).get_travel_times(octree, stations)
 
     def get_arrivals(
         self,

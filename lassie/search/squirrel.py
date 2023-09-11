@@ -110,7 +110,11 @@ class SquirrelSearch(Search):
         squirrel = self.get_squirrel()
 
         self.stations.weed_from_squirrel_waveforms(squirrel)
-        await self.ray_tracers.prepare(self.octree, self.stations)
+        await self.ray_tracers.prepare(
+            self.octree,
+            self.stations,
+            phases=self.image_functions.get_phases(),
+        )
         self.init_search()
 
         window_increment = self.shift_range * self.window_length_factor
@@ -209,4 +213,5 @@ class SquirrelSearch(Search):
             await extractor.add_features(squirrel, event)
 
     def __del__(self) -> None:
-        self._detections.dump_detections(self.octree.size_limit)
+        if hasattr(self, "_detections"):
+            self._detections.dump_detections(self.octree.size_limit)

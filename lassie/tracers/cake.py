@@ -103,7 +103,9 @@ class EarthModel(BaseModel):
         description="Crust2 profile name or a tuple of (lat, lon) coordinates.",
     )
 
-    raw_file_data: str | None = Field(None, description="Raw .nd file data.")
+    raw_file_data: str | None = Field(
+        None, description="Raw .nd file data.", exclude=True
+    )
     _layered_model: LayeredModel = PrivateAttr()
 
     model_config = ConfigDict(ignored_types=(cached_property,))
@@ -277,6 +279,7 @@ class TravelTimeTree(BaseModel):
                 self.model_dump_json(
                     indent=2,
                     exclude={"earthmodel": {"nd_file"}},
+                    include={"earthmodel": {"raw_file_data"}},
                 ),
             )
             with NamedTemporaryFile() as tmpfile:
@@ -457,7 +460,7 @@ class TravelTimeTree(BaseModel):
 
 class CakeTracer(RayTracer):
     tracer: Literal["CakeTracer"] = "CakeTracer"
-    timings: dict[PhaseDescription, Timing] = {
+    phases: dict[PhaseDescription, Timing] = {
         "cake:P": Timing(definition="P,p"),
         "cake:S": Timing(definition="S,s"),
     }
@@ -465,9 +468,7 @@ class CakeTracer(RayTracer):
     trim_earth_model_depth: bool = Field(
         True, description="Trim earth model to max depth of the octree."
     )
-    lut_cache_size: ByteSize = Field(
-        4 * GiB, description="Size of the LUT cache in MB."
-    )
+    lut_cache_size: ByteSize = Field("4GB", description="Size of the LUT cache.")
 
     _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
@@ -484,7 +485,7 @@ class CakeTracer(RayTracer):
             file.unlink()
 
     def get_available_phases(self) -> tuple[str, ...]:
-        return tuple(self.timings.keys())
+        return tuple(self.phases.keys())
 
     def get_vmin(self) -> float:
         earthmodel = self.earthmodel
@@ -495,7 +496,7 @@ class CakeTracer(RayTracer):
         global LRU_CACHE_SIZE
 
         bytes_per_node = stations.n_stations * np.float32().itemsize
-        n_trees = len(self.timings)
+        n_trees = len(self.phases)
         LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
 
         node_cache_fraction = LRU_CACHE_SIZE / octree.maximum_number_nodes()
@@ -534,7 +535,7 @@ class CakeTracer(RayTracer):
             "time_tolerance": time_tolerance,
         }
 
-        for phase_descr, timing in self.timings.items():
+        for phase_descr, timing in self.phases.items():
             for tree in cached_trees:
                 if tree.is_suited(timing=timing, **traveltime_tree_args):
                     logger.info("using cached traveltime tree for %s", phase_descr)
@@ -556,8 +557,8 @@ class CakeTracer(RayTracer):
         source: Location,
         receiver: Location,
     ) -> float:
-        if phase not in self.timings:
-            raise ValueError(f"Timing {phase} is not defined.")
+        if phase not in self.phases:
+            raise ValueError(f"Phase {phase} is not defined.")
         tree = self._get_sptree_model(phase)
         return tree.get_traveltime(source, receiver)
 
@@ -568,8 +569,8 @@ class CakeTracer(RayTracer):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        if phase not in self.timings:
-            raise ValueError(f"Timing {phase} is not defined.")
+        if phase not in self.phases:
+            raise ValueError(f"Phase  {phase} is not defined.")
         return self._get_sptree_model(phase).get_travel_times(octree, stations)
 
     def get_arrivals(
