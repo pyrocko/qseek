@@ -3,10 +3,9 @@ from __future__ import annotations
 import hashlib
 import math
 import struct
-from functools import cached_property
-from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
+from typing import TYPE_CHECKING, Iterable, Literal, Self, TypeVar
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, PrivateAttr
 from pyrocko import orthodrome as od
 
 if TYPE_CHECKING:
@@ -23,6 +22,8 @@ class Location(BaseModel):
     elevation: float = 0.0
     depth: float = 0.0
 
+    _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
+
     @property
     def effective_lat(self) -> float:
         return self.effective_lat_lon[0]
@@ -31,19 +32,21 @@ class Location(BaseModel):
     def effective_lon(self) -> float:
         return self.effective_lat_lon[1]
 
-    @computed_field
-    @cached_property
+    @property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
-        if self.north_shift == 0.0 and self.east_shift == 0.0:
-            return self.lat, self.lon
-        lat, lon = od.ne_to_latlon(
-            self.lat,
-            self.lon,
-            self.north_shift,
-            self.east_shift,
-        )
-        return float(lat), float(lon)
+        if self._cached_lat_lon is None:
+            if self.north_shift == 0.0 and self.east_shift == 0.0:
+                self._cached_lat_lon = self.lat, self.lon
+            else:
+                lat, lon = od.ne_to_latlon(
+                    self.lat,
+                    self.lon,
+                    self.north_shift,
+                    self.east_shift,
+                )
+                self._cached_lat_lon = float(lat), float(lon)
+        return self._cached_lat_lon
 
     @property
     def effective_elevation(self) -> float:
@@ -123,10 +126,23 @@ class Location(BaseModel):
         )
 
         return (
-            self.east_shift - other.east_shift + shift_east[0],
-            self.north_shift - other.north_shift + shift_north[0],
+            self.east_shift - other.east_shift - shift_east[0],
+            self.north_shift - other.north_shift - shift_north[0],
             -(self.effective_elevation - other.effective_elevation),
         )
+
+    def shifted_origin(self) -> Self:
+        """Shift the origin of the location to the effective lat/lon.
+
+        Returns:
+            Self: The shifted location.
+        """
+        shifted = self.model_copy()
+        shifted.lat = self.effective_lat
+        shifted.lon = self.effective_lon
+        shifted.east_shift = 0.0
+        shifted.north_shift = 0.0
+        return shifted
 
     def __hash__(self) -> int:
         return hash(self.location_hash())

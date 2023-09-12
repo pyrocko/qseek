@@ -142,3 +142,35 @@ async def test_non_lin_loc(data_dir: Path, octree: Octree, stations: Stations) -
         source=source,
         receivers=list(stations),
     )
+
+
+@pytest.mark.plot
+def test_non_lin_loc_model(
+    data_dir: Path,
+    octree: Octree,
+    stations: Stations,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    header_file = data_dir / "FORGE_3D_5_large.P.mod.hdr"
+
+    model = NonLinLocVelocityModel(header_file=header_file)
+    velocity_model = model.get_model(octree).resample(
+        grid_spacing=200.0,
+        method="linear",
+    )
+
+    # 3d figure of velocity model
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    coords = velocity_model.get_meshgrid()
+    print(coords[0].shape)
+    cmap = ax.scatter(
+        coords[0],
+        coords[1],
+        -coords[2],
+        s=np.log(velocity_model.velocity_model.ravel() / KM),
+        c=velocity_model.velocity_model.ravel(),
+    )
+    fig.colorbar(cmap)
+    plt.show()

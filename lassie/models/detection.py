@@ -407,7 +407,7 @@ class EventDetection(Location):
         detection.east_shift += uniform(-half_meters, half_meters)
         detection.north_shift += uniform(-half_meters, half_meters)
         detection.depth += uniform(-half_meters, half_meters)
-        del detection.effective_lat_lon
+        detection._cached_lat_lon = None
         return detection
 
     def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:

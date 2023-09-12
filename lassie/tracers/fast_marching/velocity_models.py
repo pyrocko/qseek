@@ -81,6 +81,12 @@ class VelocityModel3D(BaseModel):
             )
         self._velocity_model = velocity_model.astype(float, copy=False)
 
+    @property
+    def velocity_model(self) -> np.ndarray:
+        if self._velocity_model is None:
+            raise ValueError("Velocity model not set.")
+        return self._velocity_model
+
     def hash(self) -> str:
         if self._hash is None:
             sha1_hash = sha1(self._velocity_model.tobytes())
@@ -340,8 +346,9 @@ class NonLinLocVelocityModel(VelocityModelFactory):
             self._velocity_model *= KM
 
         logging.info(
-            "loaded NonLinLoc velocity model, "
-            "east_bounds: %s, north_bounds %s, depth_bounds %s",
+            "NonLinLoc velocity model: %s"
+            " east_bounds: %s, north_bounds %s, depth_bounds %s",
+            self._header.center,
             self._header.east_bounds,
             self._header.north_bounds,
             self._header.depth_bounds,
