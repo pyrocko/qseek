@@ -1,11 +1,14 @@
+import asyncio
 import random
 from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Generator
 
+import aiohttp
 import numpy as np
 import pytest
+from rich.progress import Progress
 
 from lassie.models.detection import EventDetection, EventDetections
 from lassie.models.location import Location
@@ -15,6 +18,14 @@ from lassie.tracers.cake import EarthModel, Timing, TravelTimeTree
 from lassie.utils import datetime_now
 
 DATA_DIR = Path(__file__).parent / "data"
+
+DATA_URL = "https://data.pyrocko.org/testing/lassie-v2/"
+DATA_FILES = {
+    "FORGE_3D_5_large.P.mod.hdr",
+    "FORGE_3D_5_large.P.mod.buf",
+    "FORGE_3D_5_large.S.mod.hdr",
+    "FORGE_3D_5_large.S.mod.buf",
+}
 
 KM = 1e3
 
@@ -43,6 +54,38 @@ def travel_time_tree() -> TravelTimeTree:
 
 @pytest.fixture(scope="session")
 def data_dir() -> Path:
+    if not DATA_DIR.exists():
+        DATA_DIR.mkdir()
+
+    async def download_data():
+        download_files = DATA_FILES.copy()
+        for filename in DATA_FILES:
+            filepath = DATA_DIR / filename
+            if filepath.exists():
+                download_files.remove(filename)
+
+        if not download_files:
+            return
+
+        async with aiohttp.ClientSession() as session:
+            for filename in download_files:
+                filepath = DATA_DIR / filename
+                url = DATA_URL + filename
+                with Progress() as progress:
+                    async with session.get(url) as response:
+                        task = progress.add_task(
+                            f"Downloading {url}",
+                            total=response.content_length,
+                        )
+                        with filepath.open("wb") as f:
+                            while True:
+                                chunk = await response.content.read(1024)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                                progress.advance(task, len(chunk))
+
+    asyncio.run(download_data())
     return DATA_DIR
 
 

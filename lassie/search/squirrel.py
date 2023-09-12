@@ -8,7 +8,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Deque, Iterator
 
-from pydantic import AwareDatetime, Field, PositiveInt, PrivateAttr, field_validator
+from pydantic import (
+    AwareDatetime,
+    Field,
+    PositiveInt,
+    PrivateAttr,
+    constr,
+    field_validator,
+)
 from pyrocko.squirrel import Squirrel
 
 from lassie.features import FeatureExtractors
@@ -49,6 +56,7 @@ class SquirrelPrefetcher:
 class SquirrelSearch(Search):
     time_span: tuple[AwareDatetime | None, AwareDatetime | None] = (None, None)
     squirrel_environment: Path = Path(".")
+    channel_selector: constr(max_length=3) = "*"
     waveform_data: list[Path]
     waveform_prefetch_batches: PositiveInt = 4
 
@@ -131,7 +139,9 @@ class SquirrelSearch(Search):
             tinc=window_increment.total_seconds(),
             tpad=self.window_padding.total_seconds(),
             want_incomplete=False,
-            codes=[(*nsl, "*") for nsl in self.stations.get_all_nsl()],
+            codes=[
+                (*nsl, self.channel_selector) for nsl in self.stations.get_all_nsl()
+            ],
         )
         prefetcher = SquirrelPrefetcher(iterator, self.waveform_prefetch_batches)
 

@@ -359,6 +359,27 @@ class Octree(BaseModel):
             size /= 2
         return size
 
+    def n_levels(self) -> int:
+        """Returns the number of levels in the octree.
+
+        Returns:
+            int: Number of levels.
+        """
+        levels = 0
+        size = self.size_initial
+        while size >= self.size_limit * 2:
+            levels += 1
+            size /= 2
+        return levels
+
+    def total_number_nodes(self) -> int:
+        """Returns the total number of nodes of all levels.
+
+        Returns:
+            int: Total number of nodes.
+        """
+        return len(self._root_nodes) * (8 ** self.n_levels())
+
     def maximum_number_nodes(self) -> int:
         """Returns the maximum number of nodes.
 

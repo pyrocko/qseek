@@ -312,6 +312,19 @@ class FastMarchingTracer(RayTracer):
                     reason=f"outside fast-marching velocity model, offset {offset}",
                 )
 
+        for station in stations:
+            velocity_station = velocity_model.get_velocity(station)
+            if velocity_station < 0.0:
+                raise ValueError(
+                    f"station {station.pretty_nsl} has negative velocity"
+                    f" {velocity_station}"
+                )
+            logger.info(
+                "velocity at station %s: %.1f m/s",
+                station.pretty_nsl,
+                velocity_station,
+            )
+
         nodes_covered = [
             node for node in octree if velocity_model.is_inside(node.as_location())
         ]
@@ -319,8 +332,9 @@ class FastMarchingTracer(RayTracer):
             raise ValueError("no octree node is inside the velocity model")
 
         logger.info(
-            "%d%% octree nodes are inside the velocity model",
+            "%d%% octree nodes are inside the %s velocity model",
             len(nodes_covered) / octree.n_nodes * 100,
+            self.phase,
         )
 
         self._cached_stations = stations
@@ -332,7 +346,7 @@ class FastMarchingTracer(RayTracer):
         self._node_lut = LRU(lru_cache_size)
 
         # TODO: This should be total number nodes. Not only leaf nodes.
-        node_cache_fraction = lru_cache_size / octree.maximum_number_nodes()
+        node_cache_fraction = lru_cache_size / octree.total_number_nodes()
         logging.info(
             "limiting traveltime LUT size to %d nodes (%s),"
             " caching %.1f%% of possible octree nodes",
@@ -364,7 +378,9 @@ class FastMarchingTracer(RayTracer):
                 continue
             volumes[travel_times.station.location_hash()] = travel_times
 
-        logger.info("loaded %d travel times volumes from cache", len(volumes))
+        logger.info(
+            "loaded %d travel times volumes for %s from cache", len(volumes), self.phase
+        )
         self._travel_time_volumes.update(volumes)
 
     async def _calculate_travel_times(

@@ -43,6 +43,7 @@ def stations_inside(
             depth=model.center.depth
             + (depth if depth is not None else rng.uniform(*model.depth_bounds)),
         )
+        station = station.shifted_origin()
         stations.append(station)
     return Stations(stations=stations)
 
@@ -87,7 +88,7 @@ async def test_load_save(
 
 
 @pytest.mark.asyncio
-async def test_load_interpolation(
+async def test_travel_time_interpolation(
     station_travel_times: StationTravelTimeVolume,
     octree: Octree,
 ) -> None:
@@ -105,13 +106,25 @@ async def test_load_interpolation(
 
     analytical_travel_times = np.array(source_distances) / CONSTANT_VELOCITY
     nan_travel_times = np.isnan(eikonal_travel_times)
+
+    assert np.any(~nan_travel_times)
     np.testing.assert_almost_equal(
         eikonal_travel_times[~nan_travel_times],
         analytical_travel_times[~nan_travel_times],
         decimal=1,
     )
 
-    station_travel_times.interpolate_nodes(octree)
+    eikonal_travel_times = station_travel_times.interpolate_nodes(
+        octree, method="cubic"
+    )
+
+    nan_travel_times = np.isnan(eikonal_travel_times)
+    assert np.any(~nan_travel_times)
+    np.testing.assert_almost_equal(
+        eikonal_travel_times[~nan_travel_times],
+        analytical_travel_times[~nan_travel_times],
+        decimal=1,
+    )
 
 
 @pytest.mark.asyncio

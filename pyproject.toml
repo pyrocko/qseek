@@ -30,14 +30,13 @@ dependencies = [
     "numpy>=1.17.3",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
-    "seisbench>=0.4.0",
+    "seisbench>=0.5.0",
     "pydantic>=2.3",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
     "lru-dict>=1.2",
     "rich>=13.4",
-    "nest-asyncio>=1.5",      # wait for seisbench merge https://github.com/seisbench/seisbench/pull/214
 ]
 
 classifiers = [

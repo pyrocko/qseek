@@ -7,7 +7,6 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-import nest_asyncio
 from pkg_resources import get_distribution
 
 from lassie.console import console
@@ -18,8 +17,6 @@ from lassie.search import SquirrelSearch
 from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
 from lassie.utils import CACHE_DIR, setup_rich_logging
-
-nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
 

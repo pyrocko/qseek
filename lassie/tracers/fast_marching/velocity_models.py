@@ -22,7 +22,6 @@ from typing_extensions import Self
 from lassie.models.location import Location
 
 if TYPE_CHECKING:
-    from lassie.models.station import Station
     from lassie.octree import Octree
 
 
@@ -89,25 +88,71 @@ class VelocityModel3D(BaseModel):
         return self._velocity_model
 
     def hash(self) -> str:
+        """Return hash of velocity model.
+
+        Returns:
+            str: The hash.
+        """
         if self._hash is None:
             sha1_hash = sha1(self._velocity_model.tobytes())
             self._hash = sha1_hash.hexdigest()
         return self._hash
 
-    def get_source_arrival_grid(self, station: Station) -> np.ndarray:
-        if not self.is_inside(station):
-            raise ValueError("Station is outside of velocity model.")
+    def _get_location_indices(self, location: Location) -> tuple[int, int, int]:
+        """Return indices of location in velocity model, by nearest neighbor.
 
-        times = np.full_like(self.velocity_model, fill_value=-1.0)
+        Args:
+            location (Location): The location.
 
-        station_offset = station.offset_to(self.center)
+        Returns:
+            tuple[int, int, int]: The indices as (east, north, depth).
+        """
+        if not self.is_inside(location):
+            raise ValueError("Location is outside of velocity model.")
+        station_offset = location.offset_to(self.center)
         east_idx = np.argmin(np.abs(self._east_coords - station_offset[0]))
         north_idx = np.argmin(np.abs(self._north_coords - station_offset[1]))
         depth_idx = np.argmin(np.abs(self._depth_coords - station_offset[2]))
+        return int(east_idx), int(north_idx), int(depth_idx)
+
+    def get_velocity(self, location: Location) -> float:
+        """Return velocity at location in [m/s], nearest neighbor.
+
+        Args:
+            location (Location): The location.
+
+        Returns:
+            float: The velocity in m/s.
+        """
+        east_idx, north_idx, depth_idx = self._get_location_indices(location)
+        return self.velocity_model[east_idx, north_idx, depth_idx]
+
+    def get_source_arrival_grid(self, location: Location) -> np.ndarray:
+        """Return travel times grid for Eikonal for specific.
+
+        The initial travel time grid is filled with -1.0, except for the source
+        location, which is set to 0.0 s.
+
+        Args:
+            location (Location): The location.
+
+        Returns:
+            np.ndarray: The initial travel times grid.
+        """
+        times = np.full_like(self.velocity_model, fill_value=-1.0)
+        east_idx, north_idx, depth_idx = self._get_location_indices(location)
         times[east_idx, north_idx, depth_idx] = 0.0
         return times
 
     def is_inside(self, location: Location) -> bool:
+        """Return True if location is inside velocity model.
+
+        Args:
+            location (Location): The location.
+
+        Returns:
+            bool: True if location is inside velocity model.
+        """
         offset_to_center = location.offset_to(self.center)
         return (
             self.east_bounds[0] <= offset_to_center[0] <= self.east_bounds[1]
@@ -116,6 +161,12 @@ class VelocityModel3D(BaseModel):
         )
 
     def get_meshgrid(self) -> list[np.ndarray]:
+        """Return meshgrid of velocity model coordinates.
+
+        Returns:
+            list[np.ndarray]: The meshgrid as list of numpy arrays for east, north,
+                depth.
+        """
         return np.meshgrid(
             self._east_coords,
             self._north_coords,
@@ -128,6 +179,16 @@ class VelocityModel3D(BaseModel):
         grid_spacing: float,
         method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> Self:
+        """Resample velocity model to new grid spacing.
+
+        Args:
+            grid_spacing (float): The new grid spacing in [m].
+            method (Literal['nearest', 'linear', 'cubic'], optional): Interpolation
+                method. Defaults to "linear".
+
+        Returns:
+            Self: A new, resampled velocity model.
+        """
         if grid_spacing == self.grid_spacing:
             return self
 
@@ -215,6 +276,20 @@ class NonLinLocHeader:
         file: Path,
         reference_location: Location | None = None,
     ) -> Self:
+        """Load NonLinLoc velocity model header file.
+
+        Args:
+            file (Path): Path to NonLinLoc model header file.
+            reference_location (Location | None, optional): relative location of
+                NonLinLoc model, used for models with relative coordinates.
+                Defaults to None.
+
+        Raises:
+            ValueError: If grid spacing is not equal in all dimensions.
+
+        Returns:
+            Self: The header.
+        """
         logger.info("loading NonLinLoc velocity model header file %s", file)
         header_text = file.read_text().split("\n")[0]
         header_text = re.sub(r"\s+", " ", header_text)  # remove excessive spaces
@@ -284,6 +359,11 @@ class NonLinLocHeader:
 
     @property
     def center(self) -> Location:
+        """Return center location of velocity model.
+
+        Returns:
+            Location: The center location of the grid.
+        """
         center = self.origin.model_copy(deep=True)
         center.east_shift += self.delta_x * self.nx / 2
         center.north_shift += self.delta_y * self.ny / 2

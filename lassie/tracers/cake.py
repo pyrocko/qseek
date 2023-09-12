@@ -503,7 +503,7 @@ class CakeTracer(RayTracer):
         LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
 
         # TODO: This should be total number nodes. Not only leaf nodes.
-        node_cache_fraction = LRU_CACHE_SIZE / octree.maximum_number_nodes()
+        node_cache_fraction = LRU_CACHE_SIZE / octree.total_number_nodes()
         logging.info(
             "limiting traveltime LUT size to %d nodes (%s),"
             " caching %.1f%% of possible octree nodes",
@@ -515,7 +515,7 @@ class CakeTracer(RayTracer):
         cached_trees = [
             TravelTimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
         ]
-        logger.debug("loaded %d cached traveltime trees", len(cached_trees))
+        logger.debug("loaded %d cached travel time trees", len(cached_trees))
 
         distances = octree.distances_stations(stations)
         source_depths = np.asarray(octree.depth_bounds)
