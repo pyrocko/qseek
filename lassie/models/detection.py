@@ -20,7 +20,7 @@ from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station, Stations
 from lassie.tracers import RayTracerArrival
-from lassie.utils import PhaseDescription, time_to_path
+from lassie.utils import PhaseDescription, Symbols, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Response, Squirrel
@@ -449,6 +449,17 @@ class EventDetections(BaseModel):
         marker.save_markers(detection.get_pyrocko_markers(), str(markers_file))
 
         self.detections.append(detection)
+        logger.info(
+            "%s detection #%d %s: %.5f°, %.5f°, depth %.1f m, "
+            "border distance %.1f m, semblance %.3f",
+            Symbols.Target,
+            self.n_detections,
+            detection.time,
+            *detection.effective_lat_lon,
+            detection.depth,
+            detection.distance_border,
+            detection.semblance,
+        )
         # This has to happen after the markers are saved
         detection.dump_append(self.rundir, self.n_detections - 1)
 

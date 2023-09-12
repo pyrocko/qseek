@@ -196,7 +196,7 @@ class SquirrelSearch(Search):
                     * (batch.n - batch.i - 1)
                 )
                 logger.info(
-                    "remaining %s, estimated finish at %s",
+                    "remaining time %s, estimated finish at %s",
                     remaining_time,
                     datetime.now() + remaining_time,  # noqa: DTZ005
                 )

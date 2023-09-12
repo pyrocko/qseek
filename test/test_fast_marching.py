@@ -24,7 +24,10 @@ KM = 1e3
 
 
 def stations_inside(
-    model: VelocityModel3D, nstations: int = 20, seed: int = 0
+    model: VelocityModel3D,
+    nstations: int = 20,
+    seed: int = 0,
+    depth: float | None = None,
 ) -> Stations:
     stations = []
     rng = np.random.RandomState(seed)
@@ -37,7 +40,8 @@ def stations_inside(
             elevation=model.center.elevation,
             north_shift=model.center.north_shift + rng.uniform(*model.north_bounds),
             east_shift=model.center.east_shift + rng.uniform(*model.east_bounds),
-            depth=model.center.depth + rng.uniform(*model.depth_bounds),
+            depth=model.center.depth
+            + (depth if depth is not None else rng.uniform(*model.depth_bounds)),
         )
         stations.append(station)
     return Stations(stations=stations)
@@ -172,5 +176,47 @@ def test_non_lin_loc_model(
         s=np.log(velocity_model.velocity_model.ravel() / KM),
         c=velocity_model.velocity_model.ravel(),
     )
+    fig.colorbar(cmap)
+    plt.show()
+
+
+@pytest.mark.plot
+@pytest.mark.asyncio
+async def test_non_lin_loc_travel_times(data_dir: Path, octree: Octree) -> None:
+    import matplotlib.pyplot as plt
+
+    header_file = data_dir / "FORGE_3D_5_large.P.mod.hdr"
+
+    tracer = FastMarchingTracer(
+        phase="fm:P",
+        velocity_model=NonLinLocVelocityModel(
+            header_file=header_file,
+            grid_spacing=100.0,
+        ),
+    )
+    model_3d = tracer.velocity_model.get_model(octree)
+    octree = octree_cover(model_3d)
+    stations = stations_inside(model_3d, depth=0.0)
+    await tracer.prepare(octree, stations)
+
+    volume = tracer.get_travel_time_volume(stations.stations[0])
+
+    # 3d figure of velocity model
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    coords = volume.get_meshgrid()
+    print(coords[0].shape)
+
+    cmap = ax.scatter(
+        coords[0],
+        coords[1],
+        coords[2],
+        c=volume.travel_times.ravel(),
+        alpha=0.2,
+    )
+
+    station_offet = volume.station.offset_to(volume.center)
+    print(station_offet)
+    ax.scatter(*station_offet, s=100, c="r")
     fig.colorbar(cmap)
     plt.show()

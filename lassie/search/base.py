@@ -22,7 +22,7 @@ from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import CakeTracer, ConstantVelocityTracer, RayTracers
 from lassie.tracers.fast_marching import FastMarchingTracer
-from lassie.utils import PhaseDescription, Symbols, alog_call, time_to_path
+from lassie.utils import PhaseDescription, alog_call, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -422,11 +422,6 @@ class SearchTraces:
 
             node_idx = (await semblance.maxima_node_idx())[time_idx]
             source_node = octree[node_idx]
-            if not octree.is_node_in_bounds(source_node):
-                logger.info(
-                    "source node is inside octree's absorbing boundary (%.1f m)",
-                    source_node.distance_border,
-                )
             source_location = source_node.as_location()
 
             detection = EventDetection(
@@ -464,15 +459,6 @@ class SearchTraces:
                 )
 
             detections.append(detection)
-            logger.info(
-                "%s new detection %s: %.5fE, %.5fN, depth %.1f m, semblance %.3f",
-                Symbols.Target,
-                detection.time,
-                *detection.effective_lat_lon,
-                detection.depth,
-                detection.semblance,
-            )
-
             # detection.plot()
 
         # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))

@@ -8,7 +8,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 import numpy as np
 from lru import LRU
@@ -16,6 +16,7 @@ from pydantic import BaseModel, ByteSize, Field, PrivateAttr
 from pyrocko.modelling import eikonal
 from rich.progress import Progress
 from scipy.interpolate import RegularGridInterpolator
+from typing_extensions import Self
 
 from lassie.models.location import Location
 from lassie.models.station import Station, Stations
@@ -163,7 +164,7 @@ class StationTravelTimeVolume(BaseModel):
         # TODO: Add origin to hash to avoid collisions
         return f"{self.station.pretty_nsl}-{self.velocity_model_hash}.3dtt"
 
-    def get_traveltime_interpolator(self) -> RegularGridInterpolator:
+    def get_travel_time_interpolator(self) -> RegularGridInterpolator:
         if self._interpolator is None:
             self._interpolator = RegularGridInterpolator(
                 (self._east_coords, self._north_coords, self._depth_coords),
@@ -178,7 +179,7 @@ class StationTravelTimeVolume(BaseModel):
         location: Location,
         method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> float:
-        interpolator = self.get_traveltime_interpolator()
+        interpolator = self.get_travel_time_interpolator()
         offset = location.offset_to(self.center)
         return interpolator([offset], method=method).astype(float, copy=False)[0]
 
@@ -187,10 +188,18 @@ class StationTravelTimeVolume(BaseModel):
         nodes: Sequence[Node],
         method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> np.ndarray:
-        interpolator = self.get_traveltime_interpolator()
+        interpolator = self.get_travel_time_interpolator()
 
         coordinates = [node.as_location().offset_to(self.center) for node in nodes]
         return interpolator(coordinates, method=method).astype(float, copy=False)
+
+    def get_meshgrid(self) -> list[np.ndarray]:
+        return np.meshgrid(
+            self._east_coords,
+            self._north_coords,
+            self._depth_coords,
+            indexing="ij",
+        )
 
     def save(self, path: Path) -> Path:
         """Save travel times to a zip file.
@@ -221,10 +230,10 @@ class StationTravelTimeVolume(BaseModel):
 
     @classmethod
     def load(cls, file: Path) -> Self:
-        """Load 3D travel times from a zip file.
+        """Load 3D travel times from a .3dtt file.
 
         Args:
-            file (Path): path to the zip file containing the travel times
+            file (Path): path to the .3dtt file containing the travel times
 
         Returns:
             Self: 3D travel times
@@ -441,7 +450,7 @@ class FastMarchingTracer(RayTracer):
 
             cache_hits, cache_misses = self._node_lut.get_stats()
             cache_hit_rate = cache_hits / (cache_hits + cache_misses)
-            logger.info(
+            logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
                 self.lut_fill_level() * 100,
                 cache_hit_rate * 100,
@@ -456,7 +465,7 @@ class FastMarchingTracer(RayTracer):
 
         with Progress() as progress:
             status = progress.add_task(
-                f"interpolating {self.phase} traveltimes for {n_nodes} nodes",
+                f"interpolating {self.phase} travel times for {n_nodes} nodes",
                 total=self._cached_stations.n_stations,
             )
             for station in self._cached_stations:

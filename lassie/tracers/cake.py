@@ -393,7 +393,7 @@ class TravelTimeTree(BaseModel):
 
             cache_hits, cache_misses = self._node_lut.get_stats()
             cache_hit_rate = cache_hits / (cache_hits + cache_misses)
-            logger.info(
+            logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
                 self.lut_fill_level() * 100,
                 cache_hit_rate * 100,

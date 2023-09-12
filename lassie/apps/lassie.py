@@ -81,7 +81,7 @@ def main() -> None:
     features.add_argument("rundir", type=Path, help="path of existing run")
 
     station_corrections = subparsers.add_parser(
-        "station-corrections",
+        "corrections",
         help="analyse station corrections from existing run",
         description="analyze and plot station corrections from a finished run",
     )
@@ -95,14 +95,14 @@ def main() -> None:
 
     serve = subparsers.add_parser(
         "serve",
-        help="serve results from an existing run",
+        help="start webserver and serve results from an existing run",
         description="start a webserver and serve detections and results from a run",
     )
     serve.add_argument("rundir", type=Path, help="rundir to serve")
 
     subparsers.add_parser(
         "clear-cache",
-        help="clear the cached travel times",
+        help="clear the cach directory",
     )
 
     dump_schemas = subparsers.add_parser(
@@ -178,7 +178,7 @@ def main() -> None:
 
         asyncio.run(extract())
 
-    elif args.command == "station-corrections":
+    elif args.command == "corrections":
         rundir = Path(args.rundir)
         station_corrections = StationCorrections(rundir=rundir)
         if args.plot:

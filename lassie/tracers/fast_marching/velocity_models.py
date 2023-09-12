@@ -4,7 +4,7 @@ import logging
 import re
 from hashlib import sha1
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Union
 
 import numpy as np
 from pydantic import (
@@ -17,6 +17,7 @@ from pydantic import (
 )
 from pydantic.dataclasses import dataclass
 from scipy.interpolate import RegularGridInterpolator
+from typing_extensions import Self
 
 from lassie.models.location import Location
 
@@ -94,7 +95,10 @@ class VelocityModel3D(BaseModel):
         return self._hash
 
     def get_source_arrival_grid(self, station: Station) -> np.ndarray:
-        times = np.full_like(self._velocity_model, fill_value=-1.0)
+        if not self.is_inside(station):
+            raise ValueError("Station is outside of velocity model.")
+
+        times = np.full_like(self.velocity_model, fill_value=-1.0)
 
         station_offset = station.offset_to(self.center)
         east_idx = np.argmin(np.abs(self._east_coords - station_offset[0]))
@@ -116,6 +120,7 @@ class VelocityModel3D(BaseModel):
             self._east_coords,
             self._north_coords,
             self._depth_coords,
+            indexing="ij",
         )
 
     def resample(
