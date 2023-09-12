@@ -43,11 +43,23 @@ def stations_inside(
     return Stations(stations=stations)
 
 
+def octree_cover(model: VelocityModel3D) -> Octree:
+    return Octree(
+        reference=model.center,
+        size_initial=2 * KM,
+        size_limit=500,
+        east_bounds=model.east_bounds,
+        north_bounds=model.north_bounds,
+        depth_bounds=model.depth_bounds,
+        absorbing_boundary=0,
+    )
+
+
 @pytest_asyncio.fixture
 async def station_travel_times(
     octree: Octree, stations: Stations
 ) -> StationTravelTimeVolume:
-    octree.surface_elevation = 1 * KM
+    octree.reference.elevation = 1 * KM
     model = Constant3DVelocityModel(velocity=CONSTANT_VELOCITY, grid_spacing=100.0)
     model_3d = model.get_model(octree)
     return await StationTravelTimeVolume.calculate_from_eikonal(
@@ -120,6 +132,7 @@ async def test_non_lin_loc(data_dir: Path, octree: Octree, stations: Stations) -
         phase="fm:P",
         velocity_model=NonLinLocVelocityModel(header_file=header_file),
     )
+    octree = octree_cover(tracer.velocity_model.get_model(octree))
     stations = stations_inside(tracer.velocity_model.get_model(octree))
     await tracer.prepare(octree, stations)
     source = octree[1].as_location()

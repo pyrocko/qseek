@@ -15,6 +15,7 @@ from pydantic import (
     Field,
     PositiveFloat,
     PrivateAttr,
+    confloat,
     field_validator,
     model_validator,
 )
@@ -184,7 +185,7 @@ class Octree(BaseModel):
     east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
-    absorbing_boundary: PositiveFloat = 1 * KM
+    absorbing_boundary: confloat(ge=0.0) = 1 * KM
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
@@ -205,7 +206,8 @@ class Octree(BaseModel):
         """Check that the size limits are valid."""
         if self.size_limit > self.size_initial:
             raise ValueError(
-                "invalid octree size limits, expected size_limit <= size_initial"
+                f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
+                " expected size_limit <= size_initial"
             )
         return self
 

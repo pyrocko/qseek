@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lassie.octree import Octree
+from lassie.octree import NodeSplitError, Octree
 
 km = 1e3
 
@@ -16,7 +16,11 @@ def test_octree(octree: Octree, plot: bool) -> None:
     assert nnodes * 8 == octree.n_nodes
 
     child, *_ = octree[80].split()
-    child, *_ = child.split()
+    while True:
+        try:
+            child, *_ = child.split()
+        except NodeSplitError:
+            break
 
     for node in octree:
         node.semblance = node.depth + node.east + node.north

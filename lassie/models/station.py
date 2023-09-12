@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, PrivateAttr, constr
+from pydantic import BaseModel, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -41,7 +41,7 @@ class Station(Location):
         )
 
     def to_pyrocko_station(self) -> PyrockoStation:
-        return PyrockoStation(**self.dict(exclude={"effective_lat_lon"}))
+        return PyrockoStation(**self.model_dump(exclude={"effective_lat_lon"}))
 
     @property
     def pretty_nsl(self) -> str:
@@ -61,8 +61,6 @@ class Stations(BaseModel):
 
     station_xmls: list[Path] = []
     pyrocko_station_yamls: list[Path] = []
-
-    _cached_coordinates: np.ndarray | None = PrivateAttr(None)
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
@@ -181,11 +179,9 @@ class Stations(BaseModel):
         )
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
-        if self._cached_coordinates is None:
-            self._cached_coordinates = np.array(
-                [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
-            )
-        return self._cached_coordinates
+        return np.array(
+            [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
+        )
 
     def dump_pyrocko_stations(self, filename: Path) -> None:
         """Dump stations to pyrocko station yaml file.

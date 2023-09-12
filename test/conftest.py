@@ -29,7 +29,7 @@ def plot(pytestconfig) -> bool:
 
 
 @pytest.fixture(scope="session")
-def traveltime_tree() -> TravelTimeTree:
+def travel_time_tree() -> TravelTimeTree:
     return TravelTimeTree.new(
         earthmodel=EarthModel(),
         distance_bounds=(0 * KM, 15 * KM),

@@ -104,7 +104,8 @@ class EarthModel(BaseModel):
     )
 
     raw_file_data: str | None = Field(
-        None, description="Raw .nd file data.", exclude=True
+        None,
+        description="Raw .nd file data.",
     )
     _layered_model: LayeredModel = PrivateAttr()
 
@@ -278,8 +279,8 @@ class TravelTimeTree(BaseModel):
                 "model.json",
                 self.model_dump_json(
                     indent=2,
-                    exclude={"earthmodel": {"nd_file"}},
-                    include={"earthmodel": {"raw_file_data"}},
+                    exclude={"earthmodel": {"filename"}},
+                    # include={"earthmodel": {"raw_file_data"}},
                 ),
             )
             with NamedTemporaryFile() as tmpfile:
@@ -301,6 +302,7 @@ class TravelTimeTree(BaseModel):
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model_file = path / "model.json"
+            print(model_file.read_text())
             model = cls.model_validate_json(model_file.read_text())
         model._file = file
         return model
