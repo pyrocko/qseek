@@ -144,7 +144,9 @@ class Search(BaseModel):
                 timedelta(seconds=np.nanmax(traveltimes)),
             )
             logger.info(
-                "shift ranges: %s / %s - %s", phase, *self.travel_time_ranges[phase]
+                "time shift ranges: %s / %s - %s",
+                phase,
+                *self.travel_time_ranges[phase],
             )
 
         # TODO: minimum shift is calculated on the coarse octree grid, which is
@@ -463,11 +465,11 @@ class SearchTraces:
 
             detections.append(detection)
             logger.info(
-                "%s new detection %s: %.5fE, %.5fN, %.1f m, semblance %.3f",
+                "%s new detection %s: %.5fE, %.5fN, depth %.1f m, semblance %.3f",
                 Symbols.Target,
                 detection.time,
                 *detection.effective_lat_lon,
-                detection.effective_depth,
+                detection.depth,
                 detection.semblance,
             )
 

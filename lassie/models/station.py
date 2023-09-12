@@ -117,8 +117,8 @@ class Stations(BaseModel):
         n_removed_stations = 0
         for sta in self.stations.copy():
             if sta.pretty_nsl not in available_squirrel_nsls:
-                logger.info(
-                    "removing station %s: waveforms not available in squirrel",
+                logger.warning(
+                    "removing station %s: no waveforms available in squirrel",
                     sta.pretty_nsl,
                 )
                 self.stations.remove(sta)

@@ -437,7 +437,8 @@ class TravelTimeTree(BaseModel):
         n_nodes = len(coordinates)
         with Progress() as progress:
             status = progress.add_task(
-                f"interpolating station traveltimes for {n_nodes} nodes",
+                f"interpolating {self.timing.definition} travel times "
+                f"for {n_nodes} nodes",
                 total=len(coordinates),
             )
             traveltimes = []

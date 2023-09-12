@@ -368,7 +368,7 @@ class EventDetection(Location):
             north_shift=self.north_shift,
             depth=self.depth,
             elevation=self.elevation,
-            magnitude=self.magnitude,
+            magnitude=self.magnitude or self.semblance,
             magnitude_type=self.magnitude_type,
         )
 

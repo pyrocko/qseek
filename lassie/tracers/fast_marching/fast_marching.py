@@ -180,7 +180,7 @@ class StationTravelTimeVolume(BaseModel):
     ) -> float:
         interpolator = self.get_traveltime_interpolator()
         offset = location.offset_to(self.center)
-        return interpolator([offset], method=method)[0]
+        return interpolator([offset], method=method).astype(float, copy=False)[0]
 
     def interpolate_nodes(
         self,
@@ -190,7 +190,7 @@ class StationTravelTimeVolume(BaseModel):
         interpolator = self.get_traveltime_interpolator()
 
         coordinates = [node.as_location().offset_to(self.center) for node in nodes]
-        return interpolator(coordinates, method=method)
+        return interpolator(coordinates, method=method).astype(float, copy=False)
 
     def save(self, path: Path) -> Path:
         """Save travel times to a zip file.
@@ -300,7 +300,7 @@ class FastMarchingTracer(RayTracer):
                 offset = station.offset_to(velocity_model.center)
                 stations.blacklist_station(
                     station,
-                    reason=f"outside the fast-marching velocity model, offset {offset}",
+                    reason=f"outside fast-marching velocity model, offset {offset}",
                 )
 
         nodes_covered = [
@@ -456,7 +456,7 @@ class FastMarchingTracer(RayTracer):
 
         with Progress() as progress:
             status = progress.add_task(
-                f"interpolating station traveltimes for {n_nodes} nodes",
+                f"interpolating {self.phase} traveltimes for {n_nodes} nodes",
                 total=self._cached_stations.n_stations,
             )
             for station in self._cached_stations:
