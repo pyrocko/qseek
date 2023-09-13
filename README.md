@@ -8,24 +8,28 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
 
-Lassie is an earthquake detector based on stacking and migration method. It combines neural network phase picks with an iterative octree localisation approach.
+Lassie is an earthquake detection and localisation framework based on stacking and migration method. It combines neural network phase picks with an iterative octree localisation approach for accurate localisation of seismic events.
 
-Key features are of the tools are:
+Key features are of the earthquake detection and localisation framework are:
 
-* Earthquaker Phase detection using [SeisBench](https://github.com/seisbench/seisbench)
+* Earthquake phase detection using machine-learning pickers from [SeisBench](https://github.com/seisbench/seisbench)
 * Octree localisation approach for efficient and accurate search
-* Extraction of earthquake event features
+* Different velocity models:
+  * Constant velocity
+  * 1D Layered velocity model
+  * 3D fast-marching velocity model (NonLinLoc compatible)
+* Extraction of earthquake event features:
     * Local magnitudes
     * Ground motion attributes
 * Automatic extraction of modelled and picked travel times
-* Automatic calculation of station corrections
+* Calculation and application of station corrections / station delay times
 
 Lassie is built on top of [Pyrocko](https://pyrocko.org).
 
 ## Installation
 
 ```sh
-git clone https://github.com/miili/lassie-v2
+git clone https://github.com/pyrocko/lassie-v2
 cd lassie-v2
 pip3 install .
 ```
@@ -35,12 +39,12 @@ pip3 install .
 Initialize a new project in a fresh directory.
 
 ```sh
-lassie new project-dir/
+lassie init my-project/
 ```
 
-Edit the `search.json`
+Edit the `my-project.json`
 
-Start the detection
+Start the earthquake detection with
 
 ```sh
 lassie run search.json
@@ -55,14 +59,13 @@ The simplest and recommended way of installing from source:
 Local development through pip.
 
 ```sh
-cd lightguide
+cd lassie-v2
 pip3 install .[dev]
 ```
 
 The project utilizes pre-commit for clean commits, install the hooks via:
 
 ```sh
-pip install pre-commit
 pre-commit install
 ```
 
@@ -76,4 +79,4 @@ Please cite lassie as:
 
 Contribution and merge requests by the community are welcome!
 
-Lassie-v@ was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3.
+Lassie-v2 was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3.
