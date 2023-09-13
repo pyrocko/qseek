@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
 import numpy as np
 from pydantic import (
-    ConfigDict,
     BaseModel,
+    ConfigDict,
     Field,
     PositiveFloat,
     PrivateAttr,
+    confloat,
     field_validator,
     model_validator,
 )
@@ -65,13 +66,13 @@ class Node(BaseModel):
     semblance: float = 0.0
 
     tree: Octree | None = Field(None, exclude=True)
-    children: tuple[Node] = Field((), exclude=True)
+    children: tuple[Node, ...] = Field((), exclude=True)
 
     _hash: bytes | None = PrivateAttr(None)
-    _children_cached: tuple[Node] = PrivateAttr(())
+    _children_cached: tuple[Node, ...] = PrivateAttr(())
     _location: Location | None = PrivateAttr(None)
 
-    def split(self) -> tuple[Node]:
+    def split(self) -> tuple[Node, ...]:
         if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
@@ -82,7 +83,7 @@ class Node(BaseModel):
             half_size = self.size / 2
 
             self._children_cached = tuple(
-                Node.construct(
+                Node.model_construct(
                     east=self.east + east * half_size / 2,
                     north=self.north + north * half_size / 2,
                     depth=self.depth + depth * half_size / 2,
@@ -118,6 +119,8 @@ class Node(BaseModel):
         )
 
     def can_split(self) -> bool:
+        if self.tree is None:
+            raise AttributeError("parent tree not set")
         half_size = self.size / 2
         return half_size >= self.tree.size_limit
 
@@ -135,14 +138,17 @@ class Node(BaseModel):
         return location.distance_to(self.as_location())
 
     def as_location(self) -> Location:
+        if not self.tree:
+            raise AttributeError("parent tree not set")
         if not self._location:
-            self._location = Location.construct(
-                lat=self.tree.center_lat,
-                lon=self.tree.center_lon,
-                elevation=self.tree.surface_elevation,
-                east_shift=float(self.east),
-                north_shift=float(self.north),
-                depth=float(self.depth),
+            reference = self.tree.reference
+            self._location = Location.model_construct(
+                lat=reference.lat,
+                lon=reference.lon,
+                elevation=reference.elevation,
+                east_shift=reference.east_shift + float(self.east),
+                north_shift=reference.north_shift + float(self.north),
+                depth=reference.depth + float(self.depth),
             )
         return self._location
 
@@ -158,8 +164,8 @@ class Node(BaseModel):
             self._hash = sha1(
                 struct.pack(
                     "dddddd",
-                    self.tree.center_lat,
-                    self.tree.center_lon,
+                    self.tree.reference.lat,
+                    self.tree.reference.lon,
                     self.east,
                     self.north,
                     self.depth,
@@ -173,15 +179,13 @@ class Node(BaseModel):
 
 
 class Octree(BaseModel):
-    center_lat: float = 0.0
-    center_lon: float = 0.0
-    surface_elevation: float = 0.0
+    reference: Location = Location(lat=0.0, lon=0)
     size_initial: PositiveFloat = 2 * KM
     size_limit: PositiveFloat = 500
     east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
-    absorbing_boundary: PositiveFloat = 1 * KM
+    absorbing_boundary: confloat(ge=0.0) = 1 * KM
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
@@ -190,19 +194,22 @@ class Octree(BaseModel):
 
     @field_validator("east_bounds", "north_bounds", "depth_bounds")
     def check_bounds(
-        cls, bounds: tuple[float, float]  # noqa: N805
+        cls,  # noqa: N805
+        bounds: tuple[float, float],
     ) -> tuple[float, float]:
         if bounds[0] >= bounds[1]:
             raise ValueError(f"invalid bounds {bounds}, expected (min, max)")
         return bounds
 
     @model_validator(mode="after")
-    def _check_limits(cls, m: Octree) -> Octree:  # noqa: N805
-        if m.size_limit >= m.size_initial:
+    def check_limits(self) -> Octree:
+        """Check that the size limits are valid."""
+        if self.size_limit > self.size_initial:
             raise ValueError(
-                "invalid octree size limits, expected size_limit < size_initial"
+                f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
+                " expected size_limit <= size_initial"
             )
-        return m
+        return self
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
@@ -352,6 +359,27 @@ class Octree(BaseModel):
             size /= 2
         return size
 
+    def n_levels(self) -> int:
+        """Returns the number of levels in the octree.
+
+        Returns:
+            int: Number of levels.
+        """
+        levels = 0
+        size = self.size_initial
+        while size >= self.size_limit * 2:
+            levels += 1
+            size /= 2
+        return levels
+
+    def total_number_nodes(self) -> int:
+        """Returns the total number of nodes of all levels.
+
+        Returns:
+            int: Total number of nodes.
+        """
+        return len(self._root_nodes) * (8 ** self.n_levels())
+
     def maximum_number_nodes(self) -> int:
         """Returns the maximum number of nodes.
 
@@ -362,7 +390,7 @@ class Octree(BaseModel):
             (self.east_bounds[1] - self.east_bounds[0])
             * (self.north_bounds[1] - self.north_bounds[0])
             * (self.depth_bounds[1] - self.depth_bounds[0])
-            / self.smallest_node_size() ** 3
+            / (self.smallest_node_size() ** 3)
         )
 
     def copy(self, deep=False) -> Self:

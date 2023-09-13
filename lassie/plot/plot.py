@@ -10,7 +10,7 @@ from matplotlib.patches import Rectangle
 
 if TYPE_CHECKING:
     from matplotlib.colors import Colormap
-    from lassie.models import EventDetection
+
     from lassie.octree import Octree
 
 
@@ -45,15 +45,14 @@ def octree_to_rectangles(
     return PatchCollection(patches=rectangles, facecolors=colors, edgecolors="k")
 
 
-def plot_detection(detection: EventDetection, axes: plt.Axes | None = None) -> None:
+def plot_octree(octree: Octree, axes: plt.Axes | None = None) -> None:
     if axes is None:
         fig = plt.figure()
         ax = fig.gca()
     else:
         ax = axes
-    ax.add_collection(octree_to_rectangles(detection.octree))
-    eq_location = sorted(detection.octree, key=lambda node: node.semblance)[-1]
-    ax.scatter(eq_location.east, eq_location.north, marker="*", s=50, c="red")
+    ax.add_collection(octree_to_rectangles(octree))
+
     ax.autoscale()
     if axes is None:
         plt.show()

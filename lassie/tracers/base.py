@@ -24,13 +24,13 @@ class ModelledArrival(PhaseArrival):
 class RayTracer(BaseModel):
     tracer: Literal["RayTracer"] = "RayTracer"
 
-    def prepare(self, octree: Octree, stations: Stations):
+    async def prepare(self, octree: Octree, stations: Stations):
         ...
 
-    def get_available_phases(self) -> tuple[str]:
+    def get_available_phases(self) -> tuple[str, ...]:
         ...
 
-    def get_traveltime_location(
+    def get_travel_time_location(
         self,
         phase: str,
         source: Location,
@@ -38,17 +38,17 @@ class RayTracer(BaseModel):
     ) -> float:
         raise NotImplementedError
 
-    def get_traveltimes_locations(
+    def get_travel_times_locations(
         self,
         phase: str,
         source: Location,
         receivers: Sequence[Location],
     ) -> np.ndarray:
         return np.array(
-            [self.get_traveltime_location(phase, source, recv) for recv in receivers]
+            [self.get_travel_time_location(phase, source, recv) for recv in receivers]
         )
 
-    def get_traveltimes(
+    def get_travel_times(
         self,
         phase: str,
         octree: Octree,

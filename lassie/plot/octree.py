@@ -5,17 +5,64 @@ from typing import TYPE_CHECKING, Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import cm
 from matplotlib.animation import FFMpegFileWriter, FuncAnimation
 from matplotlib.cm import get_cmap
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import Rectangle
+
+from lassie.models.detection import EventDetection
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from matplotlib.colors import Colormap
+
     from lassie.octree import Octree
 
 logger = logging.getLogger(__name__)
 
 
-def plot_octree(octree: Octree, cmap: str = "Oranges") -> None:
+def octree_to_rectangles(
+    octree: Octree,
+    cmap: str | Colormap = "Oranges",
+    normalize: bool = False,
+) -> PatchCollection:
+    if isinstance(cmap, str):
+        cmap = cm.get_cmap(cmap)
+
+    coords = octree.reduce_surface()
+    coords = coords[np.argsort(coords[:, 2])[::-1]]
+    size_order = np.argsort(coords[:, 2])[::-1]
+    coords = coords[size_order]
+
+    sizes = coords[:, 2]
+    semblances = coords[:, 3]
+    sizes = sorted(set(sizes), reverse=True)
+    # zorders = {size: 1.0 + float(order) for order, size in enumerate(sizes)}
+
+    rectangles = []
+    for node in coords:
+        east, north, size, semblance = node
+        half_size = size / 2
+        rect = Rectangle(
+            xy=(east - half_size, north - half_size),
+            width=size,
+            height=size,
+        )
+        rectangles.append(rect)
+    if normalize:
+        semblances /= semblances.max()
+    colors = cmap(semblances)
+    return PatchCollection(
+        patches=rectangles,
+        facecolors=colors,
+        edgecolors=(0, 0, 0, 0.3),
+        linewidths=0.5,
+    )
+
+
+def plot_octree_3d(octree: Octree, cmap: str = "Oranges") -> None:
     ax = plt.figure().add_subplot(projection="3d")
     colormap = get_cmap(cmap)
 
@@ -29,7 +76,7 @@ def plot_octree(octree: Octree, cmap: str = "Oranges") -> None:
     plt.show()
 
 
-def plot_octree_surface(
+def plot_octree_scatter(
     octree: Octree,
     accumulator: Callable = np.max,
     cmap: str = "Oranges",
@@ -47,7 +94,49 @@ def plot_octree_surface(
     plt.show()
 
 
-def plot_octree_movie(
+def plot_octree_surface_tiles(
+    octree: Octree,
+    axes: plt.Axes | None = None,
+    normalize: bool = False,
+    filename: Path | None = None,
+    detections: list[EventDetection] | None = None,
+) -> None:
+    if axes is None:
+        fig = plt.figure()
+        ax = fig.gca()
+    else:
+        fig = axes.figure
+        ax = axes
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_xticklabels([])
+    ax.set_xticks([])
+    ax.set_yticklabels([])
+    ax.set_yticks([])
+    ax.set_xlabel("East [m]")
+    ax.set_ylabel("North [m]")
+    ax.add_collection(octree_to_rectangles(octree, normalize=normalize))
+
+    ax.set_title(f"Octree surface tiles (nodes: {octree.n_nodes})")
+
+    ax.autoscale()
+    for detection in detections or []:
+        ax.scatter(
+            detection.east_shift,
+            detection.north_shift,
+            marker="*",
+            s=50,
+            color="yellow",
+        )
+    if filename is not None:
+        fig.savefig(str(filename), bbox_inches="tight", dpi=300)
+        plt.close()
+    elif axes is None:
+        plt.show()
+
+
+def plot_octree_semblance_movie(
     octree: Octree,
     semblance: np.ndarray,
     file: Path,

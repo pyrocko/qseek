@@ -1,0 +1,14 @@
+site_name: Lassie
+site_description: The friendly earthquake detector
+repo_url: https://github.com/miili/lassie-v2
+repo_name: miili/lassie-v2
+
+
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+  icon:
+    repo: fontawesome/brands/git-alt
+  logo: logos/lassie.webp

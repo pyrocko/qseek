@@ -5,14 +5,14 @@ import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
-from typing import Awaitable, Callable, ParamSpec, TypeVar, Annotated, TYPE_CHECKING
-from pydantic import constr
+from typing import TYPE_CHECKING, Annotated, Awaitable, Callable, ParamSpec, TypeVar
 
+from pydantic import constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
-    from pyrocko import Trace
+    from pyrocko.trace import Trace
 
 logger = logging.getLogger(__name__)
 FORMAT = "%(message)s"
@@ -55,9 +55,12 @@ def to_datetime(time: float) -> datetime:
 
 def downsample(trace: Trace, sampling_rate: float) -> None:
     deltat = 1.0 / sampling_rate
+
+    if trace.deltat == deltat:
+        return
+
     try:
         trace.downsample_to(deltat, demean=False, snap=False, allow_upsample_max=4)
-
     except UnavailableDecimation:
         logger.warning("using resample instead of decimation")
         trace.resample(deltat)

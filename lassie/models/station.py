@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, PrivateAttr, constr
+from pydantic import BaseModel, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -41,7 +41,7 @@ class Station(Location):
         )
 
     def to_pyrocko_station(self) -> PyrockoStation:
-        return PyrockoStation(**self.dict(exclude={"effective_lat_lon"}))
+        return PyrockoStation(**self.model_dump(exclude={"effective_lat_lon"}))
 
     @property
     def pretty_nsl(self) -> str:
@@ -56,14 +56,11 @@ class Station(Location):
 
 
 class Stations(BaseModel):
-    stations: list[Station] = []
-    blacklist: set[constr(pattern=NSL_RE)] = set()
-
     station_xmls: list[Path] = []
     pyrocko_station_yamls: list[Path] = []
 
-    _cached_coordinates: np.ndarray | None = PrivateAttr(None)
-    _cached_iter: list[Station] | None = PrivateAttr(None)
+    stations: list[Station] = []
+    blacklist: set[constr(pattern=NSL_RE)] = set()
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
@@ -88,11 +85,7 @@ class Stations(BaseModel):
         seen_nsls = set()
         for sta in self.stations.copy():
             if sta.lat == 0.0 or sta.lon == 0.0:
-                logger.warning(
-                    "blacklisting station %s: bad geographical coordinates",
-                    sta.pretty_nsl,
-                )
-                self.blacklist.add(sta.pretty_nsl)
+                self.blacklist_station(sta, reason="bad geographical coordinates")
                 continue
 
             if sta.pretty_nsl in seen_nsls:
@@ -103,6 +96,12 @@ class Stations(BaseModel):
 
         # if not self.stations:
         #     logger.warning("no stations available, add stations to start detection")
+
+    def blacklist_station(self, station: Station, reason: str) -> None:
+        logger.warning("blacklisting station %s: %s", station.pretty_nsl, reason)
+        self.blacklist.add(station.pretty_nsl)
+        if self.n_stations == 0:
+            raise ValueError("no stations available, all stations blacklisted")
 
     def weed_from_squirrel_waveforms(self, squirrel: Squirrel) -> None:
         """Remove stations without waveforms from squirrel instances.
@@ -118,30 +117,24 @@ class Stations(BaseModel):
         n_removed_stations = 0
         for sta in self.stations.copy():
             if sta.pretty_nsl not in available_squirrel_nsls:
-                logger.debug(
-                    "removing station %s: waveforms not available in squirrel",
+                logger.warning(
+                    "removing station %s: no waveforms available in squirrel",
                     sta.pretty_nsl,
                 )
                 self.stations.remove(sta)
                 n_removed_stations += 1
 
         if n_removed_stations:
-            logger.info("removed %d stations without waveforms", n_removed_stations)
+            logger.warning("removed %d stations without waveforms", n_removed_stations)
         if not self.stations:
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        if self._cached_iter is None:
-            self._cached_iter = [
-                sta for sta in self.stations if sta.pretty_nsl not in self.blacklist
-            ]
-        return iter(self._cached_iter)
+        return (sta for sta in self.stations if sta.pretty_nsl not in self.blacklist)
 
     @property
     def n_stations(self) -> int:
         """Number of stations in the stations object."""
-        if self._cached_iter:
-            return len(self._cached_iter)
         return sum(1 for _ in self)
 
     def get_all_nsl(self) -> list[tuple[str, str, str]]:
@@ -186,11 +179,9 @@ class Stations(BaseModel):
         )
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
-        if self._cached_coordinates is None:
-            self._cached_coordinates = np.array(
-                [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
-            )
-        return self._cached_coordinates
+        return np.array(
+            [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
+        )
 
     def dump_pyrocko_stations(self, filename: Path) -> None:
         """Dump stations to pyrocko station yaml file.
@@ -202,6 +193,20 @@ class Stations(BaseModel):
             [sta.to_pyrocko_station() for sta in self],
             filename=str(filename.expanduser()),
         )
+
+    def dump_csv(self, filename: Path) -> None:
+        """Dump stations to CSV file.
+
+        Args:
+            filename (Path): Path to CSV file.
+        """
+        with filename.open("w") as f:
+            f.write("network,station,location,latitude,longitude,elevation,depth\n")
+            for sta in self:
+                f.write(
+                    f"{sta.network},{sta.station},{sta.location},"
+                    f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
+                )
 
     def __hash__(self) -> int:
         return hash(sta for sta in self)

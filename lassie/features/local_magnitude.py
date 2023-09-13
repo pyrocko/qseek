@@ -254,4 +254,4 @@ class LocalMagnitudeExtractor(FeatureExtractor):
         print(event.time, local_magnitude)
         event.magnitude = local_magnitude.median
         event.magnitude_type = "local"
-        event.feature.add_feature(local_magnitude)
+        event.features.add_feature(local_magnitude)

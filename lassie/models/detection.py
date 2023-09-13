@@ -20,7 +20,7 @@ from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station, Stations
 from lassie.tracers import RayTracerArrival
-from lassie.utils import PhaseDescription, time_to_path
+from lassie.utils import PhaseDescription, Symbols, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Response, Squirrel
@@ -368,7 +368,7 @@ class EventDetection(Location):
             north_shift=self.north_shift,
             depth=self.depth,
             elevation=self.elevation,
-            magnitude=self.magnitude,
+            magnitude=self.magnitude or self.semblance,
             magnitude_type=self.magnitude_type,
         )
 
@@ -407,7 +407,7 @@ class EventDetection(Location):
         detection.east_shift += uniform(-half_meters, half_meters)
         detection.north_shift += uniform(-half_meters, half_meters)
         detection.depth += uniform(-half_meters, half_meters)
-        del detection.effective_lat_lon
+        detection._cached_lat_lon = None
         return detection
 
     def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:
@@ -449,6 +449,17 @@ class EventDetections(BaseModel):
         marker.save_markers(detection.get_pyrocko_markers(), str(markers_file))
 
         self.detections.append(detection)
+        logger.info(
+            "%s event detection #%d %s: %.5f°, %.5f°, depth %.1f m, "
+            "border distance %.1f m, semblance %.3f",
+            Symbols.Target,
+            self.n_detections,
+            detection.time,
+            *detection.effective_lat_lon,
+            detection.depth,
+            detection.distance_border,
+            detection.semblance,
+        )
         # This has to happen after the markers are saved
         detection.dump_append(self.rundir, self.n_detections - 1)
 
@@ -493,7 +504,7 @@ class EventDetections(BaseModel):
 
         detections = cls(rundir=rundir)
 
-        with console.status(f"Loading detections from {rundir}..."), open(
+        with console.status(f"loading detections from {rundir}..."), open(
             detection_file
         ) as f:
             for i_detection, line in enumerate(f):
@@ -553,4 +564,4 @@ class EventDetections(BaseModel):
         marker.save_markers(pyrocko_markers, str(filename))
 
     def __iter__(self) -> Iterator[EventDetection]:
-        return iter(self.detections)
+        return iter(sorted(self.detections, key=lambda d: d.time))

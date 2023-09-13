@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
 from pydantic import Field, RootModel
 
-from lassie.tracers.base import ModelledArrival
 from lassie.tracers.cake import CakeArrival, CakeTracer
 from lassie.tracers.constant_velocity import (
     ConstantVelocityArrival,
     ConstantVelocityTracer,
 )
+from lassie.tracers.fast_marching import FastMarchingArrival, FastMarchingTracer
 
 if TYPE_CHECKING:
     from lassie.models.station import Stations
@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 RayTracerType = Annotated[
-    Union[CakeTracer, ConstantVelocityTracer],
+    Union[ConstantVelocityTracer, CakeTracer, FastMarchingTracer],
     Field(..., discriminator="tracer"),
 ]
 
 RayTracerArrival = Annotated[
-    Union[CakeArrival, ConstantVelocityArrival, ModelledArrival],
+    Union[ConstantVelocityArrival, CakeArrival, FastMarchingArrival],
     Field(..., discriminator="tracer"),
 ]
 
@@ -35,10 +35,16 @@ RayTracerArrival = Annotated[
 class RayTracers(RootModel):
     root: list[RayTracerType] = []
 
-    def prepare(self, octree: Octree, stations: Stations) -> None:
+    async def prepare(
+        self,
+        octree: Octree,
+        stations: Stations,
+        phases: tuple[PhaseDescription, ...],
+    ) -> None:
         logger.info("preparing ray tracers")
-        for tracer in self:
-            tracer.prepare(octree, stations)
+        for phase in phases:
+            tracer = self.get_phase_tracer(phase)
+            await tracer.prepare(octree, stations)
 
     def get_available_phases(self) -> tuple[str]:
         phases = []

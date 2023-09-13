@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from lassie.models.phase_arrival import PhaseArrival
 from lassie.models.station import Stations
@@ -35,7 +35,7 @@ class ImageFunction(BaseModel):
         """Blinding duration for the image function. Added to padded waveforms."""
         raise NotImplementedError("must be implemented by subclass")
 
-    def get_available_phases(self) -> tuple[str]:
+    def get_provided_phases(self) -> tuple[str, ...]:
         ...
 
 
@@ -45,7 +45,7 @@ class WaveformImage:
     phase: PhaseDescription
     weight: float
     traces: list[Trace]
-    stations: Stations = Stations.construct()
+    stations: Stations = Field(default_factory=lambda: Stations.model_construct())
 
     @property
     def sampling_rate(self) -> float:
