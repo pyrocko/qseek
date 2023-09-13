@@ -7,13 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
 
-from pydantic import (
-    AwareDatetime,
-    PositiveInt,
-    PrivateAttr,
-    constr,
-    model_validator,
-)
+from pydantic import AwareDatetime, PositiveInt, PrivateAttr, constr, model_validator
 from pyrocko.squirrel import Squirrel
 from typing_extensions import Self
 
@@ -138,5 +132,3 @@ class PyrockoSquirrel(WaveformProvider):
             )
 
             prefetcher.queue.task_done()
-
-        logger.info("squirrel search finished")

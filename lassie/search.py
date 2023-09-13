@@ -223,6 +223,7 @@ class Search(BaseModel):
         await self.prepare()
         self.init_rundir(force_rundir)
         logger.info("starting search...")
+        batch_processing_start = datetime_now()
         processing_start = datetime_now()
 
         if self._progress.time_progress:
@@ -262,7 +263,7 @@ class Search(BaseModel):
             if batch.i_batch % 50 == 0:
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
 
-            processing_time = datetime_now() - processing_start
+            processing_time = datetime_now() - batch_processing_start
             self._batch_processing_durations.append(processing_time)
             if batch.n_batches:
                 percent_processed = ((batch.i_batch + 1) / batch.n_batches) * 100
@@ -288,8 +289,10 @@ class Search(BaseModel):
                     datetime.now() + remaining_time,  # noqa: DTZ005
                 )
 
-            processing_start = datetime_now()
+            batch_processing_start = datetime_now()
             self.set_progress(batch.end_time)
+
+        logger.info("finished search in %s", datetime_now() - processing_start)
 
     async def add_features(self, event: EventDetection) -> None:
         try:
