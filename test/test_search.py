@@ -3,14 +3,14 @@ from pathlib import Path
 import pytest
 
 from lassie.models.location import locations_to_csv
-from lassie.search import SquirrelSearch
+from lassie.search import Search
 
 km = 1e3
 
 
 @pytest.mark.skip(reason="Fail")
 def test_search() -> None:
-    search = SquirrelSearch()
+    search = Search()
 
     # search.scan_squirrel()
     locations = search.stations.model_copy()

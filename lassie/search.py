@@ -264,12 +264,16 @@ class Search(BaseModel):
 
             processing_time = datetime_now() - processing_start
             self._batch_processing_durations.append(processing_time)
+            if batch.n_batches:
+                percent_processed = ((batch.i_batch + 1) / batch.n_batches) * 100
+            else:
+                percent_processed = 0.0
             logger.info(
-                "processed batch %d/%s %s - %s in %s",
+                "%s%% processed - batch %d/%s - %s in %s",
+                f"{percent_processed:.1f}" if percent_processed else "??",
                 batch.i_batch + 1,
                 str(batch.n_batches or "?"),
                 batch.start_time,
-                batch.end_time,
                 processing_time,
             )
             if batch.n_batches:
@@ -279,7 +283,7 @@ class Search(BaseModel):
                     * (batch.n_batches - batch.i_batch - 1)
                 )
                 logger.info(
-                    "remaining time %s, estimated finish at %s",
+                    "%s remaining - estimated finish at %s",
                     remaining_time,
                     datetime.now() + remaining_time,  # noqa: DTZ005
                 )

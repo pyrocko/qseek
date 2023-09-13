@@ -450,7 +450,7 @@ class EventDetections(BaseModel):
 
         self.detections.append(detection)
         logger.info(
-            "%s detection #%d %s: %.5f°, %.5f°, depth %.1f m, "
+            "%s event detection #%d %s: %.5f°, %.5f°, depth %.1f m, "
             "border distance %.1f m, semblance %.3f",
             Symbols.Target,
             self.n_detections,
@@ -504,7 +504,7 @@ class EventDetections(BaseModel):
 
         detections = cls(rundir=rundir)
 
-        with console.status(f"Loading detections from {rundir}..."), open(
+        with console.status(f"loading detections from {rundir}..."), open(
             detection_file
         ) as f:
             for i_detection, line in enumerate(f):
