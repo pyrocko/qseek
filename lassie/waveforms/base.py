@@ -45,6 +45,10 @@ class WaveformBatch:
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 self.traces.remove(tr)
 
+    def log_str(self) -> str:
+        """Log the batch."""
+        return f"{self.i_batch}/{self.n_batches or '?'} {self.start_time}"
+
 
 class WaveformProvider(BaseModel):
     provider: Literal["WaveformProvider"] = "WaveformProvider"

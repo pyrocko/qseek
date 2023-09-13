@@ -237,11 +237,15 @@ class Search(BaseModel):
             batch.clean_traces()
 
             if batch.is_empty():
-                logger.warning("batch is empty")
+                logger.warning("empty batch %s", batch.log_str())
                 continue
 
             if batch.duration < 2 * self._window_padding:
-                logger.warning("batch duration is too short")
+                logger.warning(
+                    "duration of batch %s too short %s",
+                    batch.log_str(),
+                    batch.duration,
+                )
                 continue
 
             search_block = SearchTraces(
@@ -270,11 +274,9 @@ class Search(BaseModel):
             else:
                 percent_processed = 0.0
             logger.info(
-                "%s%% processed - batch %d/%s - %s in %s",
+                "%s%% processed - batch %s in %s",
                 f"{percent_processed:.1f}" if percent_processed else "??",
-                batch.i_batch + 1,
-                str(batch.n_batches or "?"),
-                batch.start_time,
+                batch.log_str(),
                 processing_time,
             )
             if batch.n_batches:
