@@ -469,9 +469,13 @@ class CakeTracer(RayTracer):
     }
     earthmodel: EarthModel = EarthModel()
     trim_earth_model_depth: bool = Field(
-        True, description="Trim earth model to max depth of the octree."
+        default=True,
+        description="Trim earth model to max depth of the octree.",
     )
-    lut_cache_size: ByteSize = Field(2 * GiB, description="Size of the LUT cache.")
+    lut_cache_size: ByteSize = Field(
+        default=2 * GiB,
+        description="Size of the LUT cache.",
+    )
 
     _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 

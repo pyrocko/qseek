@@ -228,7 +228,7 @@ async def test_non_lin_loc_travel_times(data_dir: Path, octree: Octree) -> None:
         alpha=0.2,
     )
 
-    station_offet = volume.station.offset_to(volume.center)
+    station_offet = volume.station.offset_from(volume.center)
     print(station_offet)
     ax.scatter(*station_offet, s=100, c="r")
     fig.colorbar(cmap)

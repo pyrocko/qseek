@@ -35,7 +35,7 @@ ImageFunctionPick = Annotated[
 
 
 class ImageFunctions(RootModel):
-    root: list[ImageFunctionType] = []
+    root: list[ImageFunctionType] = [PhaseNet()]
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice

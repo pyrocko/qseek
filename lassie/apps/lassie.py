@@ -4,19 +4,19 @@ import argparse
 import asyncio
 import logging
 import shutil
-from datetime import datetime
 from pathlib import Path
 
+import nest_asyncio
 from pkg_resources import get_distribution
 
 from lassie.console import console
-from lassie.images import ImageFunctions
-from lassie.images.phase_net import PhaseNet
 from lassie.models import Stations
-from lassie.search import SquirrelSearch
+from lassie.search import Search
 from lassie.server import WebServer
 from lassie.station_corrections import StationCorrections
 from lassie.utils import CACHE_DIR, setup_rich_logging
+
+nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
 
@@ -120,40 +120,34 @@ def main() -> None:
         pyrocko_stations = folder / "pyrocko-stations.yaml"
         pyrocko_stations.touch()
 
-        config = SquirrelSearch(
-            image_functions=ImageFunctions(
-                root=[PhaseNet(phase_map={"P": "cake:P", "S": "cake:S"})]
-            ),
-            stations=Stations(pyrocko_station_yamls=[pyrocko_stations]),
-            waveform_data=[Path("/data/")],
-            time_span=(
-                datetime.fromisoformat("2023-04-11T00:00:00+00:00"),
-                datetime.fromisoformat("2023-04-18T00:00:00+00:00"),
-            ),
+        config = Search(
+            stations=Stations(
+                pyrocko_station_yamls=[pyrocko_stations.relative_to(folder)]
+            )
         )
 
-        config_file = folder / "config.json"
+        config_file = folder / f"{folder.name}.json"
         config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
+
         logger.info("initialized new project in folder %s", folder)
-        logger.info("start detecting with: %s", "lassie run config.json")
+        logger.info("start detection with: lassie run %s", config_file.name)
 
     elif args.command == "run":
-        search = SquirrelSearch.from_config(args.config)
-        search.init_rundir(force=args.force)
+        search = Search.from_config(args.config)
 
         webserver = WebServer(search)
 
         async def _run() -> None:
             http = asyncio.create_task(webserver.start())
-            await search.scan_squirrel()
+            await search.start(force_rundir=args.force)
             await http
 
         asyncio.run(_run())
 
     elif args.command == "continue":
-        search = SquirrelSearch.load_rundir(args.rundir)
-        if search.progress.time_progress:
-            console.rule(f"Continuing search from {search.progress.time_progress}")
+        search = Search.load_rundir(args.rundir)
+        if search._progress.time_progress:
+            console.rule(f"Continuing search from {search._progress.time_progress}")
         else:
             console.rule("Starting search from scratch")
 
@@ -161,13 +155,13 @@ def main() -> None:
 
         async def _run() -> None:
             http = asyncio.create_task(webserver.start())
-            await search.scan_squirrel()
+            await search.start()
             await http
 
         asyncio.run(_run())
 
     elif args.command == "feature-extraction":
-        search = SquirrelSearch.load_rundir(args.rundir)
+        search = Search.load_rundir(args.rundir)
 
         async def extract() -> None:
             for detection in search._detections.detections:
@@ -183,7 +177,7 @@ def main() -> None:
         station_corrections.save_csv(filename=rundir / "station_corrections_stats.csv")
 
     elif args.command == "serve":
-        search = SquirrelSearch.load_rundir(args.rundir)
+        search = Search.load_rundir(args.rundir)
         webserver = WebServer(search)
 
         loop = asyncio.get_event_loop()
@@ -202,7 +196,7 @@ def main() -> None:
 
         file = args.folder / "search.schema.json"
         print(f"writing JSON schemas to {args.folder}")
-        file.write_text(SquirrelSearch.model_json_schema(indent=2))
+        file.write_text(Search.model_json_schema(indent=2))
 
         file = args.folder / "detections.schema.json"
         file.write_text(EventDetections.model_json_schema(indent=2))

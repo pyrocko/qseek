@@ -30,6 +30,34 @@ DATA_FILES = {
 KM = 1e3
 
 
+async def download_test_data() -> None:
+    request_files = [
+        DATA_DIR / filename
+        for filename in DATA_FILES
+        if not (DATA_DIR / filename).exists()
+    ]
+
+    if not request_files:
+        return
+
+    async with aiohttp.ClientSession() as session:
+        for file in request_files:
+            url = DATA_URL + file.name
+            with Progress() as progress:
+                async with session.get(url) as response:
+                    task = progress.add_task(
+                        f"Downloading {url}",
+                        total=response.content_length,
+                    )
+                    with file.open("wb") as f:
+                        while True:
+                            chunk = await response.content.read(1024)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            progress.advance(task, len(chunk))
+
+
 def pytest_addoption(parser) -> None:
     parser.addoption("--plot", action="store_true", default=False)
 
@@ -57,35 +85,7 @@ def data_dir() -> Path:
     if not DATA_DIR.exists():
         DATA_DIR.mkdir()
 
-    async def download_data():
-        download_files = DATA_FILES.copy()
-        for filename in DATA_FILES:
-            filepath = DATA_DIR / filename
-            if filepath.exists():
-                download_files.remove(filename)
-
-        if not download_files:
-            return
-
-        async with aiohttp.ClientSession() as session:
-            for filename in download_files:
-                filepath = DATA_DIR / filename
-                url = DATA_URL + filename
-                with Progress() as progress:
-                    async with session.get(url) as response:
-                        task = progress.add_task(
-                            f"Downloading {url}",
-                            total=response.content_length,
-                        )
-                        with filepath.open("wb") as f:
-                            while True:
-                                chunk = await response.content.read(1024)
-                                if not chunk:
-                                    break
-                                f.write(chunk)
-                                progress.advance(task, len(chunk))
-
-    asyncio.run(download_data())
+    asyncio.run(download_test_data())
     return DATA_DIR
 
 

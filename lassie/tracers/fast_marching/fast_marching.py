@@ -114,7 +114,7 @@ class StationTravelTimeVolume(BaseModel):
         arrival_times = model.get_source_arrival_grid(station)
 
         if not model.is_inside(station):
-            offset = station.offset_to(model.center)
+            offset = station.offset_from(model.center)
             raise ValueError(f"station is outside the velocity model {offset}")
 
         def eikonal_wrapper(
@@ -180,7 +180,7 @@ class StationTravelTimeVolume(BaseModel):
         method: Literal["nearest", "linear", "cubic"] = "linear",
     ) -> float:
         interpolator = self.get_travel_time_interpolator()
-        offset = location.offset_to(self.center)
+        offset = location.offset_from(self.center)
         return interpolator([offset], method=method).astype(float, copy=False)[0]
 
     def interpolate_nodes(
@@ -190,7 +190,7 @@ class StationTravelTimeVolume(BaseModel):
     ) -> np.ndarray:
         interpolator = self.get_travel_time_interpolator()
 
-        coordinates = [node.as_location().offset_to(self.center) for node in nodes]
+        coordinates = [node.as_location().offset_from(self.center) for node in nodes]
         return interpolator(coordinates, method=method).astype(float, copy=False)
 
     def get_meshgrid(self) -> list[np.ndarray]:
@@ -260,12 +260,15 @@ class FastMarchingTracer(RayTracer):
     phase: PhaseDescription = "fm:P"
     interpolation_method: Literal["nearest", "linear", "cubic"] = "linear"
     nthreads: int = Field(
-        0,
+        default=0,
         description="Number of threads to use for travel time."
         "If set to 0, cpu_count*2 will be used.",
     )
 
-    lut_cache_size: ByteSize = Field(2 * GiB, description="Size of the LUT cache.")
+    lut_cache_size: ByteSize = Field(
+        default=2 * GiB,
+        description="Size of the LUT cache.",
+    )
 
     velocity_model: VelocityModels = Constant3DVelocityModel()
 
@@ -301,12 +304,13 @@ class FastMarchingTracer(RayTracer):
         octree: Octree,
         stations: Stations,
     ) -> None:
+        logger.info("preparing fast-marching tracer for %s phase...", self.phase)
         velocity_model = self.velocity_model.get_model(octree)
         self._velocity_model = velocity_model
 
         for station in stations:
             if not velocity_model.is_inside(station):
-                offset = station.offset_to(velocity_model.center)
+                offset = station.offset_from(velocity_model.center)
                 stations.blacklist_station(
                     station,
                     reason=f"outside fast-marching velocity model, offset {offset}",

@@ -311,7 +311,10 @@ class StationCorrection(BaseModel):
 
 
 class StationCorrections(BaseModel):
-    rundir: DirectoryPath
+    rundir: DirectoryPath | None = Field(
+        default=None,
+        description="The rundir to load the detections from",
+    )
     measure: Literal["median", "average"] = "median"
     weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
 
@@ -323,6 +326,10 @@ class StationCorrections(BaseModel):
     _traveltime_delay_cache: dict[tuple[NSL, PhaseDescription], float] = PrivateAttr({})
 
     def model_post_init(self, __context: Any) -> None:
+        if self.rundir is None:
+            logger.debug("no rundir specified, skipping station corrections")
+            return
+
         logger.debug("loading station detections from %s", self.rundir)
         detections = EventDetections.load_rundir(self.rundir)
         with console.status("aggregating station detections"):

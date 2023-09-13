@@ -109,7 +109,7 @@ class VelocityModel3D(BaseModel):
         """
         if not self.is_inside(location):
             raise ValueError("Location is outside of velocity model.")
-        station_offset = location.offset_to(self.center)
+        station_offset = location.offset_from(self.center)
         east_idx = np.argmin(np.abs(self._east_coords - station_offset[0]))
         north_idx = np.argmin(np.abs(self._north_coords - station_offset[1]))
         depth_idx = np.argmin(np.abs(self._depth_coords - station_offset[2]))
@@ -153,7 +153,7 @@ class VelocityModel3D(BaseModel):
         Returns:
             bool: True if location is inside velocity model.
         """
-        offset_to_center = location.offset_to(self.center)
+        offset_to_center = location.offset_from(self.center)
         return (
             self.east_bounds[0] <= offset_to_center[0] <= self.east_bounds[1]
             and self.north_bounds[0] <= offset_to_center[1] <= self.north_bounds[1]
@@ -219,7 +219,7 @@ class VelocityModelFactory(BaseModel):
     model: Literal["VelocityModelFactory"] = "VelocityModelFactory"
 
     grid_spacing: PositiveFloat | Literal["quadtree"] = Field(
-        "quadtree",
+        default="quadtree",
         description="Grid spacing in meters."
         " If 'quadtree' defaults to smallest octreee node size.",
     )
@@ -379,25 +379,25 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         "The file should be in the format of a NonLinLoc velocity model header file.",
     )
     buffer_file: FilePath | None = Field(
-        None,
+        default=None,
         description="Path to NonLinLoc model buffer file. If none, the filename will be"
         "infered from the header file.",
     )
 
     grid_spacing: PositiveFloat | Literal["quadtree", "input"] = Field(
-        "input",
+        default="input",
         description="Grid spacing in meters."
         " If 'quadtree' defaults to smallest octreee node size. If 'input' uses the"
         " grid spacing from the NonLinLoc header file.",
     )
     interpolation: Literal["nearest", "linear", "cubic"] = Field(
-        "linear",
+        default="linear",
         description="Interpolation method for resampling the grid "
         "for the fast-marching method.",
     )
 
     reference_location: Location | None = Field(
-        None,
+        default=None,
         description="relative location of NonLinLoc model, "
         "used for models with relative coordinates.",
     )

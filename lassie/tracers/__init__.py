@@ -42,13 +42,8 @@ class RayTracers(RootModel):
         phases: tuple[PhaseDescription, ...],
     ) -> None:
         logger.info("preparing ray tracers")
-        for tracer in self:
-            tracer_phases = tracer.get_available_phases()
-            for phase in phases:  # Only prepare tracers for requested phases
-                if phase in tracer_phases:
-                    break
-            else:
-                continue
+        for phase in phases:
+            tracer = self.get_phase_tracer(phase)
             await tracer.prepare(octree, stations)
 
     def get_available_phases(self) -> tuple[str]:

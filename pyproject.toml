@@ -37,6 +37,7 @@ dependencies = [
     "typing-extensions>=4.6",
     "lru-dict>=1.2",
     "rich>=13.4",
+    "nest_asyncio>=1.5",
 ]
 
 classifiers = [

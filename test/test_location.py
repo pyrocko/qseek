@@ -46,7 +46,7 @@ def test_location_offset():
         depth=100.0,
     )
 
-    offset = loc_other.offset_to(loc)
+    offset = loc_other.offset_from(loc)
     assert offset == (100.0, 100.0, 100.0)
 
     loc_other = Location(
@@ -56,7 +56,7 @@ def test_location_offset():
         east_shift=100.0,
         elevation=100.0,
     )
-    offset = loc_other.offset_to(loc)
+    offset = loc_other.offset_from(loc)
     assert offset == (100.0, 100.0, -100.0)
 
     loc_other = Location(
@@ -67,9 +67,9 @@ def test_location_offset():
         elevation=100.0,
         depth=10.0,
     )
-    offset = loc_other.offset_to(loc)
+    offset = loc_other.offset_from(loc)
     assert offset == (100.0, 100.0, -90.0)
 
     loc_other = loc_other.shifted_origin()
-    offset = loc_other.offset_to(loc)
+    offset = loc_other.offset_from(loc)
     np.testing.assert_almost_equal(offset, (100.0, 100.0, -90.0), decimal=0)
