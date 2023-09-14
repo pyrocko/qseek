@@ -30,6 +30,15 @@ WOOD_ANDERSON = trace.PoleZeroResponse(
     constant=2080.0,
 )
 
+WOOD_ANDERSON = trace.PoleZeroResponse(
+    poles=[
+        -6.283 - 4.7124j,
+        -6.283 + 4.7124j,
+    ],
+    zeros=[0.0 + 0.0j, 0.0 + 0.0j],
+    constant=2080.0,
+)
+
 KM = 1e3
 MM = 1e3
 
@@ -128,7 +137,7 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
             logger.exception(exc)
             return None
 
-        amp_max *= 1000000  # To nm
+        amp_max *= 1e6  # To nm
         local_magnitude = (
             np.log10(amp_max) + 1.11 * np.log10(dist_hypo) + 0.00189 * dist_hypo - 2.09
         )
@@ -199,8 +208,9 @@ class NorwayFennoscandia(LocalMagnitudeModel):
 class LocalMagnitudeExtractor(FeatureExtractor):
     feature: Literal["LocalMagnitude"] = "LocalMagnitude"
 
-    seconds_before: float = 5.0
-    seconds_after: float = 15.0
+    seconds_before: float = 3.0
+    seconds_after: float = 10.0
+    window_slack: float = 10.0
     estimator: Union[
         IASPEISouthernCalifornia,
         SouthernCalifornia,
@@ -220,19 +230,26 @@ class LocalMagnitudeExtractor(FeatureExtractor):
             try:
                 traces = receiver.get_waveforms_restituted(
                     squirrel,
-                    seconds_before=self.seconds_before,
-                    seconds_after=self.seconds_after,
+                    seconds_before=self.seconds_before - self.window_slack,
+                    seconds_after=self.seconds_after + self.window_slack,
                 )
             except NotAvailable:
                 logger.error("cannot get responses for %s", receiver.pretty_nsl)
                 continue
 
-            restituded_traces = [
+            restituted_traces = [
                 tr.transfer(transfer_function=WOOD_ANDERSON) for tr in traces
             ]
 
+            for tr in restituted_traces:
+                tr.chop(
+                    float(tr.tmin) + self.window_slack,
+                    float(tr.tmax) - self.window_slack,
+                    inplace=True,
+                )
+
             magnitude = self.estimator.calculate_magnitude(
-                event, receiver, restituded_traces
+                event, receiver, restituted_traces
             )
             if magnitude is None:
                 continue
