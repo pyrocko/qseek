@@ -90,6 +90,16 @@ class LocalMagnitudeModel(BaseModel):
         receiver: Receiver,
         traces: list[Trace],
     ) -> StationMagnitude | None:
+        """Calculate the local magnitude for a given event and receiver.
+
+        Args:
+            event (EventDetection): The event to calculate the magnitude for.
+            receiver (Receiver): The seismic station to calculate the magnitude for.
+            traces (list[Trace]): The traces to calculate the magnitude for.
+
+        Returns:
+            StationMagnitude | None: The calculated magnitude or None if the magnitude.
+        """
         dist_hypo = event.distance_to(receiver)
         dist_epi = event.surface_distance_to(receiver)
         if not self._is_distance_valid(dist_hypo, dist_epi):
@@ -232,6 +242,7 @@ class LocalMagnitudeExtractor(FeatureExtractor):
                     squirrel,
                     seconds_before=self.seconds_before - self.window_slack,
                     seconds_after=self.seconds_after + self.window_slack,
+                    quantity="velocity",
                 )
             except NotAvailable:
                 logger.error("cannot get responses for %s", receiver.pretty_nsl)
