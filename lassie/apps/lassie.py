@@ -120,11 +120,7 @@ def main() -> None:
         pyrocko_stations = folder / "pyrocko-stations.yaml"
         pyrocko_stations.touch()
 
-        config = Search(
-            stations=Stations(
-                pyrocko_station_yamls=[pyrocko_stations.relative_to(folder)]
-            )
-        )
+        config = Search(stations=Stations(pyrocko_station_yamls=[pyrocko_stations]))
 
         config_file = folder / f"{folder.name}.json"
         config_file.write_text(config.model_dump_json(by_alias=False, indent=2))

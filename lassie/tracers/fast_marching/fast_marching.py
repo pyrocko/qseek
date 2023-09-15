@@ -149,7 +149,6 @@ class StationTravelTimeVolume(BaseModel):
             return station_travel_times
 
         loop = asyncio.get_running_loop()
-
         work = functools.partial(
             eikonal_wrapper,
             model,
@@ -318,9 +317,9 @@ class FastMarchingTracer(RayTracer):
 
         for station in stations:
             velocity_station = velocity_model.get_velocity(station)
-            if velocity_station < 0.0:
+            if velocity_station <= 0.0:
                 raise ValueError(
-                    f"station {station.pretty_nsl} has negative velocity"
+                    f"station {station.pretty_nsl} has negative or zero velocity"
                     f" {velocity_station}"
                 )
             logger.info(
@@ -435,8 +434,8 @@ class FastMarchingTracer(RayTracer):
         if phase != self.phase:
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
-        station_travel_times = self.get_travel_time_volume(receiver)
-        return station_travel_times.interpolate_travel_time(
+        volume = self.get_travel_time_volume(receiver)
+        return volume.interpolate_travel_time(
             source,
             method=self.interpolation_method,
         )
@@ -496,7 +495,7 @@ class FastMarchingTracer(RayTracer):
         travel_times = np.array(travel_times).T
 
         for node, station_travel_times in zip(nodes, travel_times, strict=True):
-            self._node_lut[node.hash()] = station_travel_times
+            self._node_lut[node.hash()] = station_travel_times.copy()
 
     def get_arrivals(
         self,

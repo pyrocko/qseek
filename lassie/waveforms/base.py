@@ -47,7 +47,7 @@ class WaveformBatch:
 
     def log_str(self) -> str:
         """Log the batch."""
-        return f"{self.i_batch}/{self.n_batches or '?'} {self.start_time}"
+        return f"{self.i_batch+1}/{self.n_batches or '?'} {self.start_time}"
 
 
 class WaveformProvider(BaseModel):

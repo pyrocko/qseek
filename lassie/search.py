@@ -24,7 +24,6 @@ from lassie.models import Stations
 from lassie.models.detection import EventDetection, EventDetections, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
-from lassie.plot.octree import plot_octree_surface_tiles
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import (
@@ -72,8 +71,11 @@ class Search(BaseModel):
 
     sampling_rate: SamplingRate = 50
     detection_threshold: PositiveFloat = 0.05
-    node_split_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
     detection_blinding: timedelta = timedelta(seconds=2.0)
+
+    image_mean_p: float = Field(default=1, ge=1.0, le=2.0)
+
+    node_split_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
     window_length: timedelta = timedelta(minutes=5)
 
     n_threads_parstack: int = Field(default=0, ge=0)
@@ -136,8 +138,11 @@ class Search(BaseModel):
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
 
         logger.debug("dumping stations...")
-        self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
-        self.stations.dump_csv(rundir / "stations.csv")
+        self.stations.dump_pyrocko_stations(rundir / "pyrocko_stations.yaml")
+
+        csv_dir = rundir / "csv"
+        csv_dir.mkdir(exist_ok=True)
+        self.stations.dump_csv(csv_dir / "stations.csv")
 
     @property
     def semblance_stats(self) -> SemblanceStats:
@@ -192,22 +197,6 @@ class Search(BaseModel):
             "source-station distance range: %.1f - %.1f m",
             *self._distance_range,
         )
-
-    def _plot_octree_surface(
-        self,
-        octree: Octree,
-        time: datetime,
-        detections: list[EventDetection] | None = None,
-    ) -> None:
-        logger.info("plotting octree surface...")
-        filename = (
-            self._rundir
-            / "figures"
-            / "octree_surface"
-            / f"{time_to_path(time)}-nodes-{octree.n_nodes}.png"
-        )
-        filename.parent.mkdir(parents=True, exist_ok=True)
-        plot_octree_surface_tiles(octree, filename=filename, detections=detections)
 
     async def prepare(self) -> None:
         logger.info("preparing search...")
@@ -428,6 +417,7 @@ class SearchTraces:
         if None not in self._images:
             images = await self.parent.image_functions.process_traces(self.traces)
             images.set_stations(self.parent.stations)
+            images.apply_exponent(self.parent.image_mean_p)
             self._images[None] = images
 
         if sampling_rate not in self._images:
@@ -480,20 +470,17 @@ class SearchTraces:
                 semblance_data=semblance.semblance_unpadded,
                 n_samples_semblance=semblance.n_samples_unpadded,
             )
+        semblance.apply_exponent(1.0 / parent.image_mean_p)
         semblance.normalize(images.cumulative_weight())
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.debug("semblance stats: %s", parent.semblance_stats)
 
         detection_idx, detection_semblance = semblance.find_peaks(
-            height=parent.detection_threshold,
-            prominence=parent.detection_threshold,
+            height=parent.detection_threshold**parent.image_mean_p,
+            prominence=parent.detection_threshold**parent.image_mean_p,
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
         )
-
-        if parent.plot_octree_surface:
-            octree.map_semblance(semblance.maximum_node_semblance())
-            parent._plot_octree_surface(octree, time=self.start_time)
 
         if detection_idx.size == 0:
             return [], semblance.get_trace()

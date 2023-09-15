@@ -107,7 +107,7 @@ class Location(BaseModel):
         return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
     def offset_from(self, other: Location) -> tuple[float, float, float]:
-        """Return offset vector (east, north, depth) to other location in [m]
+        """Return offset vector (east, north, depth) from other location in [m]
 
         Args:
             other (Location): The other location.

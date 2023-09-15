@@ -85,6 +85,15 @@ class WaveformImages:
         for image in self:
             image.downsample(sampling_rate, max_normalize)
 
+    def apply_exponent(self, exponent: float) -> None:
+        """Apply exponent to all images.
+
+        Args:
+            exponent (float): Exponent to apply.
+        """
+        for image in self:
+            image.apply_exponent(exponent)
+
     def set_stations(self, stations: Stations) -> None:
         """Set the images stations."""
         for image in self:

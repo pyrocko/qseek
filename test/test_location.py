@@ -70,6 +70,23 @@ def test_location_offset():
     offset = loc_other.offset_from(loc)
     assert offset == (100.0, 100.0, -90.0)
 
+    loc2 = Location(
+        lat=11.0,
+        lon=23.55,
+        elevation=20.0,
+        depth=20.0,
+    )
+    loc_other = Location(
+        lat=11.0,
+        lon=23.55,
+        north_shift=100.0,
+        east_shift=100.0,
+        elevation=100.0,
+        depth=10.0,
+    )
+    offset = loc_other.offset_from(loc2)
+    assert offset == (100.0, 100.0, -110.0)
+
     loc_other = loc_other.shifted_origin()
     offset = loc_other.offset_from(loc)
     np.testing.assert_almost_equal(offset, (100.0, 100.0, -90.0), decimal=0)

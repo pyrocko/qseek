@@ -441,7 +441,15 @@ class EventDetections(BaseModel):
 
     @property
     def markers_dir(self) -> Path:
-        return self.rundir / "pyrocko_markers"
+        dir = self.rundir / "pyrocko_markers"
+        dir.mkdir(exist_ok=True)
+        return dir
+
+    @property
+    def csv_dir(self) -> Path:
+        dir = self.rundir / "csv"
+        dir.mkdir(exist_ok=True)
+        return dir
 
     def add(self, detection: EventDetection) -> None:
         markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
@@ -465,20 +473,18 @@ class EventDetections(BaseModel):
 
     def dump_detections(self, jitter_location: float = 0.0) -> None:
         """Dump all detections to files in the detection directory."""
-        csv_folder = self.rundir / "csv"
-        csv_folder.mkdir(exist_ok=True)
 
         logger.debug("dumping detections")
-        self.save_csvs(csv_folder / "detections_locations.csv")
-        self.save_pyrocko_events(self.rundir / "pyrocko_events.list")
+        self.save_csv(self.csv_dir / "detections.csv")
+        self.save_pyrocko_events(self.rundir / "pyrocko_detections.list")
 
         if jitter_location:
-            self.save_csvs(
-                csv_folder / "detections_locations_jittered.csv",
+            self.save_csv(
+                self.csv_dir / "detections_jittered.csv",
                 jitter_location=jitter_location,
             )
             self.save_pyrocko_events(
-                self.rundir / "pyrocko_events_jittered.list",
+                self.rundir / "pyrocko_detections_jittered.list",
                 jitter_location=jitter_location,
             )
 
@@ -515,7 +521,7 @@ class EventDetections(BaseModel):
         console.log(f"loaded {detections.n_detections} detections")
         return detections
 
-    def save_csvs(self, file: Path, jitter_location: float = 0.0) -> None:
+    def save_csv(self, file: Path, jitter_location: float = 0.0) -> None:
         """Save detections to a CSV file
 
         Args:

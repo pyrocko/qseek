@@ -38,11 +38,11 @@ class VelocityModel3D(BaseModel):
     north_bounds: tuple[float, float]
     depth_bounds: tuple[float, float]
 
-    _east_coords: np.ndarray = PrivateAttr(None)
-    _north_coords: np.ndarray = PrivateAttr(None)
-    _depth_coords: np.ndarray = PrivateAttr(None)
+    _east_coords: np.ndarray = PrivateAttr()
+    _north_coords: np.ndarray = PrivateAttr()
+    _depth_coords: np.ndarray = PrivateAttr()
 
-    _velocity_model: np.ndarray = PrivateAttr(None)
+    _velocity_model: np.ndarray = PrivateAttr()
 
     _hash: str | None = PrivateAttr(None)
 
@@ -94,8 +94,7 @@ class VelocityModel3D(BaseModel):
             str: The hash.
         """
         if self._hash is None:
-            sha1_hash = sha1(self._velocity_model.tobytes())
-            self._hash = sha1_hash.hexdigest()
+            self._hash = sha1(self._velocity_model.tobytes()).hexdigest()
         return self._hash
 
     def _get_location_indices(self, location: Location) -> tuple[int, int, int]:
@@ -153,11 +152,11 @@ class VelocityModel3D(BaseModel):
         Returns:
             bool: True if location is inside velocity model.
         """
-        offset_to_center = location.offset_from(self.center)
+        offset_from_center = location.offset_from(self.center)
         return (
-            self.east_bounds[0] <= offset_to_center[0] <= self.east_bounds[1]
-            and self.north_bounds[0] <= offset_to_center[1] <= self.north_bounds[1]
-            and self.depth_bounds[0] <= offset_to_center[2] <= self.depth_bounds[1]
+            self.east_bounds[0] <= offset_from_center[0] <= self.east_bounds[1]
+            and self.north_bounds[0] <= offset_from_center[1] <= self.north_bounds[1]
+            and self.depth_bounds[0] <= offset_from_center[2] <= self.depth_bounds[1]
         )
 
     def get_meshgrid(self) -> list[np.ndarray]:
@@ -218,10 +217,10 @@ class VelocityModel3D(BaseModel):
 class VelocityModelFactory(BaseModel):
     model: Literal["VelocityModelFactory"] = "VelocityModelFactory"
 
-    grid_spacing: PositiveFloat | Literal["quadtree"] = Field(
-        default="quadtree",
+    grid_spacing: PositiveFloat | Literal["octree"] = Field(
+        default="octree",
         description="Grid spacing in meters."
-        " If 'quadtree' defaults to smallest octreee node size.",
+        " If 'octree' defaults to smallest octreee node size.",
     )
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
@@ -236,7 +235,7 @@ class Constant3DVelocityModel(VelocityModelFactory):
     velocity: PositiveFloat = 5000.0
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
-        if self.grid_spacing == "quadtree":
+        if self.grid_spacing == "octree":
             grid_spacing = octree.smallest_node_size()
         else:
             grid_spacing = self.grid_spacing
@@ -355,7 +354,7 @@ class NonLinLocHeader:
     @property
     def depth_bounds(self) -> tuple[float, float]:
         """Relative to center location."""
-        return (0, self.delta_z * self.nz)
+        return 0, self.delta_z * self.nz
 
     @property
     def center(self) -> Location:
@@ -384,10 +383,10 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         "infered from the header file.",
     )
 
-    grid_spacing: PositiveFloat | Literal["quadtree", "input"] = Field(
+    grid_spacing: PositiveFloat | Literal["octree", "input"] = Field(
         default="input",
         description="Grid spacing in meters."
-        " If 'quadtree' defaults to smallest octreee node size. If 'input' uses the"
+        " If 'octree' defaults to smallest octreee node size. If 'input' uses the"
         " grid spacing from the NonLinLoc header file.",
     )
     interpolation: Literal["nearest", "linear", "cubic"] = Field(
@@ -441,12 +440,14 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         return self
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
-        if self.grid_spacing == "quadtree":
+        if self.grid_spacing == "octree":
             grid_spacing = octree.smallest_node_size()
-        if self.grid_spacing == "input":
+        elif self.grid_spacing == "input":
             grid_spacing = self._header.grid_spacing
-        else:
+        elif isinstance(self.grid_spacing, float):
             grid_spacing = self.grid_spacing
+        else:
+            raise ValueError(f"Invalid grid_spacing {self.grid_spacing}")
 
         header = self._header
 

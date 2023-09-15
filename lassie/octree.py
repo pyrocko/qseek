@@ -380,18 +380,23 @@ class Octree(BaseModel):
         """
         return len(self._root_nodes) * (8 ** self.n_levels())
 
-    def maximum_number_nodes(self) -> int:
-        """Returns the maximum number of nodes.
+    def cached_bottom(self) -> Self:
+        """Returns a copy of the octree refined to the cached bottom nodes.
+
+        Raises:
+            EnvironmentError: If the octree has never been split.
 
         Returns:
-            int: Maximum number of nodes.
+            Self: Copy of the octree with cached bottom nodes.
         """
-        return int(
-            (self.east_bounds[1] - self.east_bounds[0])
-            * (self.north_bounds[1] - self.north_bounds[0])
-            * (self.depth_bounds[1] - self.depth_bounds[0])
-            / (self.smallest_node_size() ** 3)
-        )
+        tree = self.copy(deep=True)
+        split_nodes = []
+        for node in tree:
+            if node._children_cached:
+                split_nodes.extend(node.split())
+        if not split_nodes:
+            raise EnvironmentError("octree has never been split.")
+        return tree
 
     def copy(self, deep=False) -> Self:
         tree = super().model_copy(deep=deep)

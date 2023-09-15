@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Iterator
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +11,7 @@ from matplotlib.cm import get_cmap
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 
-from lassie.models.detection import EventDetection
+from lassie.plot.base import BasePlot, LassieFigure
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,6 +62,45 @@ def octree_to_rectangles(
     )
 
 
+class OctreeRefinement(BasePlot):
+    normalize: bool = False
+    plot_detections: bool = False
+
+    def get_figure(self) -> Iterator[LassieFigure]:
+        yield self.create_figure()
+
+    def create_figure(self) -> LassieFigure:
+        figure = self.new_figure("octree-refinement.png")
+        ax = figure.get_axes()
+        octree = self.search.octree
+
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.set_xticklabels([])
+        ax.set_xticks([])
+        ax.set_yticklabels([])
+        ax.set_yticks([])
+        ax.set_xlabel("East [m]")
+        ax.set_ylabel("North [m]")
+        ax.add_collection(octree_to_rectangles(octree, normalize=self.normalize))
+
+        ax.set_title(f"Octree surface tiles (nodes: {octree.n_nodes})")
+
+        ax.autoscale()
+
+        if self.plot_detections:
+            detections = self.search.detections
+            for detection in detections or []:
+                ax.scatter(
+                    detection.east_shift,
+                    detection.north_shift,
+                    marker="*",
+                    s=50,
+                    color="yellow",
+                )
+        return figure
+
+
 def plot_octree_3d(octree: Octree, cmap: str = "Oranges") -> None:
     ax = plt.figure().add_subplot(projection="3d")
     colormap = get_cmap(cmap)
@@ -70,9 +109,9 @@ def plot_octree_3d(octree: Octree, cmap: str = "Oranges") -> None:
     colors = colormap(octree.semblance, alpha=octree.semblance)
 
     ax.scatter(coords[0], coords[1], coords[2], c=colors)
-    ax.set_xlabel("east [m]")
-    ax.set_ylabel("north [m]")
-    ax.set_zlabel("depth [m]")
+    ax.set_xlabel("East [m]")
+    ax.set_ylabel("North [m]")
+    ax.set_zlabel("Depth [m]")
     plt.show()
 
 
@@ -89,51 +128,9 @@ def plot_octree_scatter(
     colors = colormap(surface[:, 2], alpha=normalized_semblance)
     ax = plt.figure().gca()
     ax.scatter(surface[:, 0], surface[:, 1], c=colors)
-    ax.set_xlabel("east [m]")
-    ax.set_ylabel("north [m]")
-    plt.show()
-
-
-def plot_octree_surface_tiles(
-    octree: Octree,
-    axes: plt.Axes | None = None,
-    normalize: bool = False,
-    filename: Path | None = None,
-    detections: list[EventDetection] | None = None,
-) -> None:
-    if axes is None:
-        fig = plt.figure()
-        ax = fig.gca()
-    else:
-        fig = axes.figure
-        ax = axes
-
-    for spine in ax.spines.values():
-        spine.set_visible(False)
-    ax.set_xticklabels([])
-    ax.set_xticks([])
-    ax.set_yticklabels([])
-    ax.set_yticks([])
     ax.set_xlabel("East [m]")
     ax.set_ylabel("North [m]")
-    ax.add_collection(octree_to_rectangles(octree, normalize=normalize))
-
-    ax.set_title(f"Octree surface tiles (nodes: {octree.n_nodes})")
-
-    ax.autoscale()
-    for detection in detections or []:
-        ax.scatter(
-            detection.east_shift,
-            detection.north_shift,
-            marker="*",
-            s=50,
-            color="yellow",
-        )
-    if filename is not None:
-        fig.savefig(str(filename), bbox_inches="tight", dpi=300)
-        plt.close()
-    elif axes is None:
-        plt.show()
+    plt.show()
 
 
 def plot_octree_semblance_movie(

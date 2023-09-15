@@ -251,7 +251,6 @@ class LocalMagnitudeExtractor(FeatureExtractor):
             std=float(np.std(magnitudes)),
             n_stations=len(magnitudes),
         )
-        print(event.time, local_magnitude)
         event.magnitude = local_magnitude.median
         event.magnitude_type = "local"
         event.features.add_feature(local_magnitude)
