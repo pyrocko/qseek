@@ -85,8 +85,44 @@ def test_location_offset():
         depth=10.0,
     )
     offset = loc_other.offset_from(loc2)
-    assert offset == (100.0, 100.0, -110.0)
+    assert offset == (100.0, 100.0, -90.0)
 
     loc_other = loc_other.shifted_origin()
-    offset = loc_other.offset_from(loc)
+    offset = loc_other.offset_from(loc2)
     np.testing.assert_almost_equal(offset, (100.0, 100.0, -90.0), decimal=0)
+
+
+def test_absolute_locations():
+    degree_in_m = 111319.54315315
+
+    loc = Location(lat=0, lon=0)
+    loc_other = Location(lat=0, lon=1)
+    np.testing.assert_almost_equal(loc_other.offset_from(loc), (degree_in_m, 0, 0))
+
+    loc = Location(lat=0, lon=0, depth=0)
+    loc_other = Location(lat=0, lon=1, depth=100)
+    np.testing.assert_almost_equal(loc_other.offset_from(loc), (degree_in_m, 0, 100))
+
+    loc = Location(lat=0, lon=0)
+    loc_other = Location(lat=0, lon=1, east_shift=5 * KM)
+    np.testing.assert_almost_equal(
+        loc_other.offset_from(loc), (degree_in_m + 5 * KM, 0, 0)
+    )
+
+    loc = Location(lat=0, lon=0, east_shift=1 * KM)
+    loc_other = Location(lat=0, lon=1, east_shift=5 * KM)
+    np.testing.assert_almost_equal(
+        loc_other.offset_from(loc), (degree_in_m + 4 * KM, 0, 0)
+    )
+
+    loc = Location(lat=0, lon=0, east_shift=1 * KM)
+    loc_other = Location(lat=0, lon=1, east_shift=5 * KM, elevation=1 * KM)
+    np.testing.assert_almost_equal(
+        loc_other.offset_from(loc), (degree_in_m + 4 * KM, 0, -1 * KM)
+    )
+
+    loc = Location(lat=0, lon=0, east_shift=1 * KM, depth=0.5 * KM)
+    loc_other = Location(lat=0, lon=1, east_shift=5 * KM, elevation=1 * KM)
+    np.testing.assert_almost_equal(
+        loc_other.offset_from(loc), (degree_in_m + 4 * KM, 0, -1.5 * KM)
+    )

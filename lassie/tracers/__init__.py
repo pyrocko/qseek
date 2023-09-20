@@ -46,12 +46,16 @@ class RayTracers(RootModel):
             tracer = self.get_phase_tracer(phase)
             await tracer.prepare(octree, stations)
 
-    def get_available_phases(self) -> tuple[str]:
+    def get_available_phases(self) -> tuple[str, ...]:
         phases = []
         for tracer in self:
             phases.extend([*tracer.get_available_phases()])
         if len(set(phases)) != len(phases):
-            raise ValueError("A phase was provided twice")
+            duplicate_phases = {phase for phase in phases if phases.count(phase) > 1}
+            raise ValueError(
+                f"Phases {', '.join(duplicate_phases)} was provided twice."
+                " Rename or remove the duplicate phases from the tracers."
+            )
         return tuple(phases)
 
     def get_phase_tracer(self, phase: str) -> RayTracer:
@@ -60,7 +64,8 @@ class RayTracers(RootModel):
                 return tracer
         raise ValueError(
             f"No tracer found for phase {phase}."
-            f" Available phases: {', '.join(self.get_available_phases())}"
+            " Please add a tracer for this phase or rename the phase to match a tracer."
+            f" Available phases: {', '.join(self.get_available_phases())}."
         )
 
     def __iter__(self) -> Iterator[RayTracer]:

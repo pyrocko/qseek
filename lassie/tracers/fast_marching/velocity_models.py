@@ -374,13 +374,9 @@ class NonLinLocVelocityModel(VelocityModelFactory):
 
     header_file: FilePath = Field(
         ...,
-        description="Path to NonLinLoc model header file file."
-        "The file should be in the format of a NonLinLoc velocity model header file.",
-    )
-    buffer_file: FilePath | None = Field(
-        default=None,
-        description="Path to NonLinLoc model buffer file. If none, the filename will be"
-        "infered from the header file.",
+        description="Path to NonLinLoc model header file file. "
+        " The file should be in the format of a NonLinLoc velocity model header file."
+        " Binary data has to have the same name and end on `.buf`.",
     )
 
     grid_spacing: PositiveFloat | Literal["octree", "input"] = Field(
@@ -405,20 +401,18 @@ class NonLinLocVelocityModel(VelocityModelFactory):
     _velocity_model: np.ndarray = PrivateAttr()
 
     @model_validator(mode="after")
-    def load_header(self) -> Self:
+    def load_model(self) -> Self:
         self._header = NonLinLocHeader.from_header_file(
             self.header_file,
             reference_location=self.reference_location,
         )
-        self.buffer_file = self.buffer_file or self.header_file.with_suffix(".buf")
-        if not self.buffer_file.exists():
-            raise FileNotFoundError(f"Buffer file {self.buffer_file} not found.")
+        buffer_file = self.header_file.with_suffix(".buf")
+        if not buffer_file.exists():
+            raise FileNotFoundError(f"Buffer file {buffer_file} not found.")
 
-        logger.debug(
-            "loading NonLinLoc velocity model buffer file %s", self.buffer_file
-        )
+        logger.debug("loading NonLinLoc velocity model buffer file %s", buffer_file)
         self._velocity_model = np.fromfile(
-            self.buffer_file, dtype=self._header.dtype
+            buffer_file, dtype=self._header.dtype
         ).reshape((self._header.nx, self._header.ny, self._header.nz))
 
         if self._header.grid_type == "SLOW_LEN":
