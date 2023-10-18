@@ -31,7 +31,7 @@ dependencies = [
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
     "seisbench>=0.5.0",
-    "pydantic>=2.3",
+    "pydantic>=2.4.2",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
@@ -81,8 +81,22 @@ Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
 [tool.setuptools_scm]
 
 [tool.ruff]
-extend-select = ['W', 'N', 'DTZ', 'FA', 'G', 'RET', 'SIM', 'B', 'RET', 'C4']
+extend-select = [
+    'W',
+    'N',
+    'DTZ',
+    'FA',
+    'G',
+    'RET',
+    'SIM',
+    'B',
+    'RET',
+    'C4',
+    'I',
+    'RUF',
+]
 target-version = 'py310'
+ignore = ["RUF012", "RUF009"]
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]

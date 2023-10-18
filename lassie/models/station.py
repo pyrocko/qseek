@@ -11,8 +11,8 @@ from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
 if TYPE_CHECKING:
-    from pyrocko.trace import Trace
     from pyrocko.squirrel import Squirrel
+    from pyrocko.trace import Trace
 
 from lassie.models.location import CoordSystem, Location
 

@@ -401,7 +401,7 @@ class FastMarchingTracer(RayTracer):
 
         async def worker_station_travel_time(station: Station) -> None:
             volume = await StationTravelTimeVolume.calculate_from_eikonal(
-                self._velocity_model,  # noqa
+                self._velocity_model,
                 station,
                 save=cache_dir,
                 executor=executor,

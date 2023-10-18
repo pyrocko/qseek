@@ -15,7 +15,6 @@ from pydantic import (
     Field,
     PositiveFloat,
     PrivateAttr,
-    confloat,
     field_validator,
     model_validator,
 )
@@ -66,7 +65,7 @@ class Node(BaseModel):
     semblance: float = 0.0
 
     tree: Octree | None = Field(None, exclude=True)
-    children: tuple[Node, ...] = Field((), exclude=True)
+    children: tuple[Node, ...] = Field(default=(), exclude=True)
 
     _hash: bytes | None = PrivateAttr(None)
     _children_cached: tuple[Node, ...] = PrivateAttr(())
@@ -185,7 +184,7 @@ class Octree(BaseModel):
     east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
     depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
-    absorbing_boundary: confloat(ge=0.0) = 1 * KM
+    absorbing_boundary: float = Field(default=1 * KM, ge=0.0)
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})

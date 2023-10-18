@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from obspy import Stream
-from pydantic import PositiveFloat, PositiveInt, PrivateAttr, conint
+from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import obspy_compat
 from seisbench import logger
 
@@ -84,10 +84,10 @@ class PhaseNetImage(WaveformImage):
 class PhaseNet(ImageFunction):
     image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = "ethz"
-    window_overlap_samples: conint(ge=1000, le=3000) = 2000
+    window_overlap_samples: int = Field(default=2000, ge=1000, le=3000)
     torch_use_cuda: bool = False
     torch_cpu_threads: PositiveInt = 4
-    batch_size: conint(ge=64) = 64
+    batch_size: int = Field(default=64, ge=64)
     stack_method: StackMethod = "avg"
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",

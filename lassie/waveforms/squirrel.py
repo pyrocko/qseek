@@ -7,7 +7,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
 
-from pydantic import AwareDatetime, PositiveInt, PrivateAttr, constr, model_validator
+from pydantic import (
+    AwareDatetime,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    PrivateAttr,
+    model_validator,
+)
 from pyrocko.squirrel import Squirrel
 from typing_extensions import Self
 
@@ -22,17 +29,36 @@ logger = logging.getLogger(__name__)
 
 
 class SquirrelPrefetcher:
-    def __init__(self, iterator: Iterator[Batch], queue_size: int = 4) -> None:
+    def __init__(
+        self,
+        iterator: Iterator[Batch],
+        queue_size: int = 4,
+        freq_min: float | None = None,
+        freq_max: float | None = None,
+    ) -> None:
         self.iterator = iterator
         self.queue: asyncio.Queue[Batch | None] = asyncio.Queue(maxsize=queue_size)
+        self.freq_min = freq_min
+        self.freq_max = freq_max
 
         self._task = asyncio.create_task(self.prefetch_worker())
 
     async def prefetch_worker(self) -> None:
         logger.info("start prefetching squirrel data")
+
+        def filter_freqs(batch: Batch) -> Batch:
+            if self.freq_min:
+                for tr in batch.traces:
+                    tr.highpass(4, self.freq_min)
+            if self.freq_max:
+                for tr in batch.traces:
+                    tr.lowpass(4, self.freq_max)
+            return batch
+
         while True:
             start = datetime_now()
             batch = await asyncio.to_thread(lambda: next(self.iterator, None))
+            await asyncio.to_thread(filter_freqs, batch)
             logger.debug("prefetched waveforms in %s", datetime_now() - start)
             if batch is None:
                 logger.debug("squirrel prefetcher finished")
@@ -49,16 +75,21 @@ class PyrockoSquirrel(WaveformProvider):
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
 
-    channel_selector: constr(max_length=3) = "*"
+    freq_min: PositiveFloat | None = None
+    freq_max: PositiveFloat | None = None
+
+    channel_selector: str = Field(default="*", max_length=3)
     async_prefetch_batches: PositiveInt = 4
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr()
 
     @model_validator(mode="after")
-    def _validate_time_span(self) -> Self:  # noqa: N805
+    def _validate_time_span(self) -> Self:
         if self.start_time and self.end_time and self.start_time > self.end_time:
             raise ValueError("start_time must be before end_time")
+        if self.freq_min and self.freq_max and self.freq_min > self.freq_max:
+            raise ValueError("freq_min must be less than freq_max")
         return self
 
     def get_squirrel(self) -> Squirrel:
