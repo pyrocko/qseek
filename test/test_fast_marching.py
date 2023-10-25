@@ -8,6 +8,12 @@ import pytest_asyncio
 
 from lassie.models.station import Station, Stations
 from lassie.octree import Octree
+from lassie.tracers.cake import (
+    DEFAULT_VELOCITY_MODEL_FILE,
+    CakeTracer,
+    EarthModel,
+    Timing,
+)
 from lassie.tracers.fast_marching.fast_marching import (
     FastMarchingTracer,
     StationTravelTimeVolume,
@@ -15,6 +21,7 @@ from lassie.tracers.fast_marching.fast_marching import (
 from lassie.tracers.fast_marching.velocity_models import (
     Constant3DVelocityModel,
     NonLinLocVelocityModel,
+    VelocityModel2D,
     VelocityModel3D,
 )
 from lassie.utils import datetime_now
@@ -88,7 +95,7 @@ async def test_load_save(
 
 
 @pytest.mark.asyncio
-async def test_travel_time_interpolation(
+async def test_travel_times_constant_model(
     station_travel_times: StationTravelTimeVolume,
     octree: Octree,
 ) -> None:
@@ -124,6 +131,39 @@ async def test_travel_time_interpolation(
         eikonal_travel_times[~nan_travel_times],
         analytical_travel_times[~nan_travel_times],
         decimal=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_travel_times_cake(
+    octree: Octree,
+    fixed_stations: Stations,
+):
+    tracer = FastMarchingTracer(
+        phase="fm:P",
+        velocity_model=VelocityModel2D(
+            grid_spacing=200.0,
+            velocity="vp",
+            filename=DEFAULT_VELOCITY_MODEL_FILE,
+        ),
+    )
+    await tracer.prepare(octree, fixed_stations)
+
+    cake_tracer = CakeTracer(
+        phases={"cake:P": Timing(definition="P,p")},
+        earthmodel=EarthModel(
+            filename=DEFAULT_VELOCITY_MODEL_FILE,
+        ),
+    )
+    await cake_tracer.prepare(octree, fixed_stations)
+
+    travel_times_fast_marching = tracer.get_travel_times("fm:P", octree, fixed_stations)
+    travel_times_cake = cake_tracer.get_travel_times("cake:P", octree, fixed_stations)
+
+    nan_mask = np.isnan(travel_times_cake)
+    travel_times_fast_marching[nan_mask] = np.nan
+    np.testing.assert_almost_equal(
+        travel_times_fast_marching, travel_times_cake, decimal=1
     )
 
 

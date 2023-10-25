@@ -116,7 +116,8 @@ def stations() -> Stations:
             station="STA%02d" % i_sta,
             lat=10.0,
             lon=10.0,
-            elevation=random.uniform(0, 1) * KM,
+            elevation=random.uniform(0, 0.8) * KM,
+            depth=random.uniform(0, 0.2) * KM,
             north_shift=random.uniform(-10, 10) * KM,
             east_shift=random.uniform(-10, 10) * KM,
         )

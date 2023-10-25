@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import struct
 import zipfile
 from datetime import datetime, timedelta
 from functools import cached_property
@@ -91,21 +92,21 @@ class CakeArrival(ModelledArrival):
 
 class EarthModel(BaseModel):
     filename: FilePath | None = Field(
-        DEFAULT_VELOCITY_MODEL_FILE,
+        default=DEFAULT_VELOCITY_MODEL_FILE,
         description="Path to velocity model.",
     )
     format: Literal["nd", "hyposat"] = Field(
-        "nd",
+        default="nd",
         description="Format of the velocity model. nd or hyposat is supported.",
     )
     crust2_profile: constr(to_upper=True) | tuple[float, float] = Field(
-        "",
+        default="",
         description="Crust2 profile name or a tuple of (lat, lon) coordinates.",
     )
 
     raw_file_data: str | None = Field(
-        None,
-        description="Raw .nd file data.",
+        default=None,
+        description="Raw `.nd` file data.",
     )
     _layered_model: LayeredModel = PrivateAttr()
 
@@ -173,6 +174,27 @@ class Timing(BaseModel):
         return re.sub(r"[\,\s\;]", "", self.definition)
 
 
+def surface_distances(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
+    """Returns the surface distance from all nodes to all stations.
+
+    Args:
+        nodes (Sequence[Node]): Nodes to calculate distance from.
+        stations (Stations): Stations to calculate distance to.
+
+    Returns:
+        np.ndarray: Distances in shape (n-nodes, n-stations).
+    """
+    node_coords = get_node_coordinates(nodes, system="geographic")
+    n_nodes = node_coords.shape[0]
+
+    node_coords = np.repeat(node_coords, stations.n_stations, axis=0)
+    sta_coords = np.vstack(n_nodes * [stations.get_coordinates(system="geographic")])
+
+    return od.distance_accurate50m_numpy(
+        node_coords[:, 0], node_coords[:, 1], sta_coords[:, 0], sta_coords[:, 1]
+    ).reshape(-1, stations.n_stations)
+
+
 class TravelTimeTree(BaseModel):
     earthmodel: EarthModel
     timing: Timing
@@ -234,11 +256,11 @@ class TravelTimeTree(BaseModel):
         time_tolerance: float,
         spatial_tolerance: float,
     ) -> bool:
-        def check_bounds(self, requested) -> bool:
+        def check_bounds(self, requested: tuple[float, float]) -> bool:
             return self[0] <= requested[0] and self[1] >= requested[1]
 
         return (
-            str(self.earthmodel.layered_model) == str(earthmodel.layered_model)
+            str(self.earthmodel) == str(earthmodel.hash)
             and self.timing == timing
             and check_bounds(self.distance_bounds, distance_bounds)
             and check_bounds(self.source_depth_bounds, source_depth_bounds)
@@ -249,7 +271,18 @@ class TravelTimeTree(BaseModel):
 
     @property
     def filename(self) -> Path:
-        return Path(f"{self.timing.id}-{self.earthmodel.hash}.sptree")
+        hash = sha1(self.earthmodel.hash.encode())
+        hash.update(
+            struct.pack(
+                "dddddddd",
+                *self.distance_bounds,
+                *self.source_depth_bounds,
+                *self.receiver_depth_bounds,
+                self.time_tolerance,
+                self.spatial_tolerance,
+            )
+        )
+        return Path(f"{self.timing.id}-{hash.hexdigest()}.sptree")
 
     @classmethod
     def new(cls, **data) -> Self:
@@ -302,7 +335,6 @@ class TravelTimeTree(BaseModel):
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model_file = path / "model.json"
-            print(model_file.read_text())
             model = cls.model_validate_json(model_file.read_text())
         model._file = file
         return model
@@ -345,38 +377,34 @@ class TravelTimeTree(BaseModel):
         for node, traveltimes in zip(octree, station_traveltimes, strict=True):
             self._node_lut[node.hash()] = traveltimes.astype(np.float32)
 
+    def lut_fill_level(self) -> float:
+        """Return the fill level of the LUT as a float between 0.0 and 1.0"""
+        return len(self._node_lut) / self._node_lut.get_size()
+
     def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling traveltimes LUT for %d nodes", len(nodes))
         stations = self._cached_stations
 
-        node_coords = get_node_coordinates(nodes, system="geographic")
-        sta_coords = stations.get_coordinates(system="geographic")
-
-        sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
-        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
-
-        receiver_distances = np.linalg.norm(
-            sta_coords - node_coords[:, np.newaxis], axis=2
-        )
-
         traveltimes = self._interpolate_travel_times(
-            receiver_distances,
+            surface_distances(nodes, stations),
             np.array([sta.effective_depth for sta in stations]),
-            np.array([node.depth for node in nodes]),
+            np.array([node.as_location().effective_depth for node in nodes]),
         )
 
         for node, times in zip(nodes, traveltimes, strict=True):
             self._node_lut[node.hash()] = times.astype(np.float32)
 
-    def lut_fill_level(self) -> float:
-        """Return the fill level of the LUT as a float between 0.0 and 1.0"""
-        return len(self._node_lut) / self._node_lut.get_size()
-
     def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
-        station_indices = np.fromiter(
-            (self._cached_station_indeces[sta.pretty_nsl] for sta in stations),
-            dtype=int,
-        )
+        try:
+            station_indices = np.fromiter(
+                (self._cached_station_indeces[sta.pretty_nsl] for sta in stations),
+                dtype=int,
+            )
+        except KeyError as exc:
+            raise ValueError(
+                "stations not found in cached stations, "
+                "was the LUT initialized with `TravelTimeTree.init_lut`?"
+            ) from exc
 
         stations_traveltimes = []
         fill_nodes = []
@@ -407,9 +435,11 @@ class TravelTimeTree(BaseModel):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        receiver_distances = octree.distances_stations(stations)
+        receiver_distances = surface_distances(octree, stations)
         receiver_depths = np.array([sta.effective_depth for sta in stations])
-        source_depths = np.array([node.depth for node in octree])
+        source_depths = np.array(
+            [node.as_location().effective_depth for node in octree]
+        )
 
         return self._interpolate_travel_times(
             receiver_distances, receiver_depths, source_depths
@@ -452,7 +482,7 @@ class TravelTimeTree(BaseModel):
         coordinates = [
             receiver.effective_depth,
             source.effective_depth,
-            receiver.distance_to(source),
+            receiver.surface_distance_to(source),
         ]
         try:
             traveltime = self._get_sptree().interpolate(coordinates) or np.nan
@@ -521,16 +551,15 @@ class CakeTracer(RayTracer):
         ]
         logger.debug("loaded %d cached travel time trees", len(cached_trees))
 
-        distances = octree.distances_stations(stations)
-        source_depths = np.asarray(octree.depth_bounds)
+        distances = surface_distances(octree, stations)
+        source_depths = np.asarray(octree.depth_bounds) - octree.reference.elevation
         receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
 
-        receiver_depths_bounds = (receiver_depths.min(), receiver_depths.max())
-        source_depth_bounds = (source_depths.min(), source_depths.max())
         distance_bounds = (distances.min(), distances.max())
+        source_depth_bounds = (source_depths.min(), source_depths.max())
+        receiver_depths_bounds = (receiver_depths.min(), receiver_depths.max())
         # FIXME: Time tolerance is too hardcoded. Is 5x a good value?
         time_tolerance = octree.smallest_node_size() / (self.get_vmin() * 5.0)
-
         # if self.trim_earth_model_depth:
         #     self.earthmodel.trim(-source_depth_bounds[1])
 

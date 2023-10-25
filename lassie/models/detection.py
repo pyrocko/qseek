@@ -366,8 +366,7 @@ class EventDetection(Location):
             lon=self.lon,
             east_shift=self.east_shift,
             north_shift=self.north_shift,
-            depth=self.depth,
-            elevation=self.elevation,
+            depth=self.effective_depth,
             magnitude=self.magnitude or self.semblance,
             magnitude_type=self.magnitude_type,
         )
@@ -535,7 +534,7 @@ class EventDetections(BaseModel):
                 detection = detection.jitter_location(jitter_location)
             lat, lon = detection.effective_lat_lon
             lines.append(
-                f"{lat:.5f}, {lon:.5f}, {-detection.effective_elevation:.1f},"
+                f"{lat:.5f}, {lon:.5f}, {detection.effective_depth:.1f},"
                 f" {detection.semblance}, {detection.time}, {detection.distance_border}"
             )
         file.write_text("\n".join(lines))

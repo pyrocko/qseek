@@ -4,6 +4,7 @@ import logging
 import re
 from hashlib import sha1
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Union
 
 import numpy as np
@@ -16,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic.dataclasses import dataclass
+from pyrocko.cake import LayeredModel, load_model
 from scipy.interpolate import RegularGridInterpolator
 from typing_extensions import Self
 
@@ -86,6 +88,18 @@ class VelocityModel3D(BaseModel):
         if self._velocity_model is None:
             raise ValueError("Velocity model not set.")
         return self._velocity_model
+
+    @property
+    def east_coords(self) -> np.ndarray:
+        return self._east_coords
+
+    @property
+    def north_coords(self) -> np.ndarray:
+        return self._north_coords
+
+    @property
+    def depth_coords(self) -> np.ndarray:
+        return self._depth_coords
 
     def hash(self) -> str:
         """Return hash of velocity model.
@@ -259,6 +273,8 @@ DTYPE_MAP = {"FLOAT": np.float32, "DOUBLE": float}
 
 @dataclass
 class NonLinLocHeader:
+    """Helper class representing a NonLinLoc header file."""
+
     origin: Location
     nx: int
     ny: int
@@ -335,10 +351,12 @@ class NonLinLocHeader:
 
     @property
     def dtype(self) -> np.dtype:
+        """dtype of the grid."""
         return DTYPE_MAP[self.grid_dtype]
 
     @property
     def grid_spacing(self) -> float:
+        """grid spacing, homogeneous in three directions."""
         return self.delta_x
 
     @property
@@ -456,7 +474,77 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         return velocity_model.resample(grid_spacing, self.interpolation)
 
 
+class VelocityModel2D(VelocityModelFactory):
+    # For mere testing purposes of the 3D tracer against Pyrocko cake 2D travel times
+    model: Literal["VelocityModel2D"] = "VelocityModel2D"
+    velocity: Literal["vp", "vs"] = Field(
+        default="vp",
+        description="velocity to extract from the 2D model, choose from 'vp' or 'vs'.",
+    )
+    format: Literal["nd", "hyposat"] = Field(
+        default="nd",
+        description="Format of the velocity model. nd or hyposat is supported.",
+    )
+    filename: FilePath = Field(
+        ...,
+        description="Path to `.nd` file holding the 2D velocity model information.",
+    )
+    raw_file_data: str | None = Field(
+        default=None,
+        description="Raw `.nd` file data.",
+    )
+
+    _layered_model: LayeredModel = PrivateAttr()
+
+    @model_validator(mode="after")
+    def load_model(self) -> VelocityModel2D:
+        if self.filename is not None:
+            logger.info("loading velocity model from %s", self.filename)
+            self.raw_file_data = self.filename.read_text()
+
+        if self.raw_file_data is not None:
+            with NamedTemporaryFile("w") as tmpfile:
+                tmpfile.write(self.raw_file_data)
+                tmpfile.flush()
+                self._layered_model = load_model(
+                    tmpfile.name,
+                    format=self.format,
+                )
+        else:
+            raise AttributeError("No velocity model or crust2 profile defined.")
+        return self
+
+    def get_model(self, octree: Octree) -> VelocityModel3D:
+        if self.grid_spacing == "octree":
+            grid_spacing = octree.smallest_node_size()
+        else:
+            grid_spacing = self.grid_spacing
+
+        model = VelocityModel3D(
+            center=octree.reference,
+            grid_spacing=grid_spacing,
+            east_bounds=octree.east_bounds,
+            north_bounds=octree.north_bounds,
+            depth_bounds=octree.depth_bounds,
+        )
+
+        velocities = []
+        for depth in model.depth_coords:
+            material = self._layered_model.material(z=depth)
+            if self.velocity == "vp":
+                velocities.append(material.vp)
+            elif self.velocity == "vs":
+                velocities.append(material.vs)
+            else:
+                raise ValueError(f"Invalid velocity {self.velocity}")
+
+        velocities = np.array(velocities)
+
+        model.velocity_model[:, :, :] = velocities[np.newaxis, np.newaxis, :]
+        return model
+
+
 VelocityModels = Annotated[
-    Union[Constant3DVelocityModel, NonLinLocVelocityModel],
+    Union[Constant3DVelocityModel, NonLinLocVelocityModel, VelocityModel2D],
     Field(..., discriminator="model"),
 ]

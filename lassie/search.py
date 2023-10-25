@@ -253,7 +253,7 @@ class Search(BaseModel):
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
 
-            if batch.i_batch % 50 == 0:
+            if self._detections.n_detections % 50 == 0:
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
 
             processing_time = datetime_now() - batch_processing_start
@@ -283,7 +283,9 @@ class Search(BaseModel):
             batch_processing_start = datetime_now()
             self.set_progress(batch.end_time)
 
+        self._detections.dump_detections(jitter_location=self.octree.size_limit)
         logger.info("finished search in %s", datetime_now() - processing_start)
+        logger.info("found %d detections", self._detections.n_detections)
 
     async def add_features(self, event: EventDetection) -> None:
         try:
@@ -326,6 +328,7 @@ class Search(BaseModel):
         return model
 
     def __del__(self) -> None:
+        # FIXME: Replace with signal overserver?
         if hasattr(self, "_detections"):
             with contextlib.suppress(Exception):
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
@@ -379,10 +382,10 @@ class SearchTraces:
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
-        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=float)
+        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
-        weights = np.full_like(shifts, fill_value=image.weight, dtype=float)
+        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
 
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):

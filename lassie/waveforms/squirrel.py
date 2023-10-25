@@ -44,26 +44,36 @@ class SquirrelPrefetcher:
         self._task = asyncio.create_task(self.prefetch_worker())
 
     async def prefetch_worker(self) -> None:
-        logger.info("start prefetching squirrel data")
+        logger.info("start prefetching data, queue size %d", self.queue.maxsize)
 
         def filter_freqs(batch: Batch) -> Batch:
+            # Filter traces in-place
+            start = None
             if self.freq_min:
+                start = datetime_now()
                 for tr in batch.traces:
-                    tr.highpass(4, self.freq_min)
+                    tr.highpass(4, corner=self.freq_min)
             if self.freq_max:
+                start = start or datetime_now()
                 for tr in batch.traces:
-                    tr.lowpass(4, self.freq_max)
+                    tr.lowpass(4, corner=self.freq_max)
+            if start:
+                logger.debug("filtered traces in %s", datetime_now() - start)
             return batch
 
         while True:
             start = datetime_now()
             batch = await asyncio.to_thread(lambda: next(self.iterator, None))
-            await asyncio.to_thread(filter_freqs, batch)
-            logger.debug("prefetched waveforms in %s", datetime_now() - start)
             if batch is None:
                 logger.debug("squirrel prefetcher finished")
                 await self.queue.put(None)
                 break
+
+            await asyncio.to_thread(filter_freqs, batch)
+            logger.debug("prefetched waveforms in %s", datetime_now() - start)
+            if self.queue.empty():
+                logger.warning("queue ran empty, prefetching is too slow")
+
             await self.queue.put(batch)
 
 
@@ -146,7 +156,12 @@ class PyrockoSquirrel(WaveformProvider):
                 (*nsl, self.channel_selector) for nsl in self._stations.get_all_nsl()
             ],
         )
-        prefetcher = SquirrelPrefetcher(iterator, self.async_prefetch_batches)
+        prefetcher = SquirrelPrefetcher(
+            iterator,
+            self.async_prefetch_batches,
+            self.freq_min,
+            self.freq_max,
+        )
 
         while True:
             batch = await prefetcher.queue.get()
