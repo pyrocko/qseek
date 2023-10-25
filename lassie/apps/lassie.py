@@ -43,8 +43,8 @@ def main() -> None:
     subparsers = parser.add_subparsers(title="commands", required=True, dest="command")
 
     run = subparsers.add_parser(
-        "run",
-        help="start a new detection run",
+        "search",
+        help="start a search 🐕",
         description="detect, localize and characterize earthquakes in a dataset",
     )
     run.add_argument("config", type=Path, help="path to config file")

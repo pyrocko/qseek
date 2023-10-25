@@ -13,6 +13,7 @@ from pydantic import (
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
+    field_validator,
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
@@ -95,12 +96,21 @@ class PyrockoSquirrel(WaveformProvider):
     _stations: Stations = PrivateAttr()
 
     @model_validator(mode="after")
-    def _validate_time_span(self) -> Self:
+    def _validate_model(self) -> Self:
         if self.start_time and self.end_time and self.start_time > self.end_time:
             raise ValueError("start_time must be before end_time")
         if self.freq_min and self.freq_max and self.freq_min > self.freq_max:
             raise ValueError("freq_min must be less than freq_max")
         return self
+
+    @field_validator("waveform_dirs")
+    def check_dirs(self, dirs: list[Path]) -> list[Path]:
+        if not dirs:
+            raise ValueError("no waveform directories provided!")
+        for data_dir in dirs:
+            if not data_dir.exists():
+                raise ValueError(f"waveform directory {data_dir} does not exist")
+        return dirs
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
