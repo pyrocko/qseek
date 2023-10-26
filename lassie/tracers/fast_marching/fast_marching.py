@@ -303,8 +303,18 @@ class FastMarchingTracer(RayTracer):
         octree: Octree,
         stations: Stations,
     ) -> None:
-        logger.info("preparing fast-marching tracer for %s phase...", self.phase)
+        logger.info("loading velocity model %s", self.velocity_model.model)
         velocity_model = self.velocity_model.get_model(octree)
+
+        logger.info(
+            "3D velocity model dimensions: "
+            " north-south %.1f m, east-west %.1f m , depth %.1f m, grid spacing %s m",
+            velocity_model.north_size,
+            velocity_model.east_size,
+            velocity_model.depth_size,
+            velocity_model.grid_spacing,
+        )
+        logger.info("3D velocity model reference location %s", velocity_model.center)
         self._velocity_model = velocity_model
 
         for station in stations:
@@ -320,7 +330,7 @@ class FastMarchingTracer(RayTracer):
             if velocity_station <= 0.0:
                 raise ValueError(
                     f"station {station.pretty_nsl} has negative or zero velocity"
-                    f" {velocity_station}"
+                    f" {velocity_station} m/s"
                 )
             logger.info(
                 "velocity at station %s: %.1f m/s",

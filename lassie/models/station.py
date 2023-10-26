@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, Field, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class Station(Location):
-    network: constr(max_length=2)
-    station: constr(max_length=5)
-    location: constr(max_length=2) = ""
+    network: str = Field(..., max_length=2)
+    station: str = Field(..., max_length=5)
+    location: str = Field(default="", max_length=2)
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:

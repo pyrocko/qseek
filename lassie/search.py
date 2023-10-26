@@ -69,7 +69,7 @@ class Search(BaseModel):
         LocalMagnitudeExtractor(),
     ]
 
-    sampling_rate: SamplingRate = 50
+    sampling_rate: SamplingRate = 100
     detection_threshold: PositiveFloat = 0.05
     detection_blinding: timedelta = timedelta(seconds=2.0)
 
@@ -99,7 +99,10 @@ class Search(BaseModel):
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
-    _batch_processing_durations: Deque[timedelta] = PrivateAttr(
+    _processing_times: Deque[timedelta] = PrivateAttr(
+        default_factory=lambda: deque(maxlen=25)
+    )
+    _batch_cumulative_durations: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
 
@@ -255,29 +258,37 @@ class Search(BaseModel):
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
 
-            if self._detections.n_detections % 50 == 0:
+            if self._detections.n_detections and batch.i_batch % 50 == 0:
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
 
             processing_time = datetime_now() - batch_processing_start
-            self._batch_processing_durations.append(processing_time)
-            if batch.n_batches:
-                percent_processed = ((batch.i_batch + 1) / batch.n_batches) * 100
-            else:
-                percent_processed = 0.0
+            self._processing_times.append(processing_time)
+            self._batch_cumulative_durations.append(batch.cumulative_duration)
+
+            processed_percent = (
+                ((batch.i_batch + 1) / batch.n_batches) * 100
+                if batch.n_batches
+                else 0.0
+            )
+            processing_rate = (
+                sum(self._batch_cumulative_durations, timedelta())
+                / sum(self._processing_times, timedelta()).total_seconds()
+            )
+
             logger.info(
-                "%s%% processed - batch %s in (%s/s)",
-                f"{percent_processed:.1f}" if percent_processed else "??",
+                "%s%% processed - batch %s",
+                f"{processed_percent:.1f}" if processed_percent else "??",
                 batch.log_str(),
-                batch.cumulative_duration / processing_time.total_seconds(),
             )
             if batch.n_batches:
                 remaining_time = (
-                    sum(self._batch_processing_durations, timedelta())
-                    / len(self._batch_processing_durations)
+                    sum(self._processing_times, timedelta())
+                    / len(self._processing_times)
                     * (batch.n_batches - batch.i_batch - 1)
                 )
                 logger.info(
-                    "%s remaining - estimated finish at %s",
+                    "processing rate %s/s - %s remaining - estimated finish at %s",
+                    processing_rate,
                     remaining_time,
                     datetime.now() + remaining_time,  # noqa: DTZ005
                 )
@@ -547,7 +558,7 @@ class SearchTraces:
                     phase=image.phase,
                     event_time=time,
                     source=source_location,
-                    receivers=image.stations.stations,
+                    receivers=image.stations,
                 )
                 arrivals_observed = image.search_phase_arrivals(
                     modelled_arrivals=[
@@ -562,7 +573,7 @@ class SearchTraces:
                     for mod, obs in zip(arrivals_model, arrivals_observed, strict=True)
                 ]
                 detection.receivers.add_receivers(
-                    stations=image.stations.stations,
+                    stations=image.stations,
                     phase_arrivals=phase_detections,
                 )
 

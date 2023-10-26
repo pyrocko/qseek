@@ -267,7 +267,7 @@ async def test_non_lin_loc_travel_times(data_dir: Path, octree: Octree) -> None:
     cmap = ax.scatter(
         coords[0],
         coords[1],
-        -coords[2],
+        coords[2],
         c=volume.travel_times.ravel(),
         alpha=0.2,
     )

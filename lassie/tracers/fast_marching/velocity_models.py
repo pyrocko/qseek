@@ -101,6 +101,18 @@ class VelocityModel3D(BaseModel):
     def depth_coords(self) -> np.ndarray:
         return self._depth_coords
 
+    @property
+    def east_size(self) -> float:
+        return self._east_coords.size * self.grid_spacing
+
+    @property
+    def north_size(self) -> float:
+        return self._north_coords.size * self.grid_spacing
+
+    @property
+    def depth_size(self) -> float:
+        return self._depth_coords.size * self.grid_spacing
+
     def hash(self) -> str:
         """Return hash of velocity model.
 
@@ -392,7 +404,7 @@ class NonLinLocVelocityModel(VelocityModelFactory):
 
     header_file: FilePath = Field(
         ...,
-        description="Path to NonLinLoc model header file file. "
+        description="Path to NonLinLoc model header file file."
         " The file should be in the format of a NonLinLoc velocity model header file."
         " Binary data has to have the same name and end on `.buf`.",
     )
@@ -400,8 +412,8 @@ class NonLinLocVelocityModel(VelocityModelFactory):
     grid_spacing: PositiveFloat | Literal["octree", "input"] = Field(
         default="input",
         description="Grid spacing in meters."
-        " If 'octree' defaults to smallest octreee node size. If 'input' uses the"
-        " grid spacing from the NonLinLoc header file.",
+        " If 'octree' defaults to smallest octreee node size. If 'input' uses the "
+        "grid spacing from the NonLinLoc header file.",
     )
     interpolation: Literal["nearest", "linear", "cubic"] = Field(
         default="linear",

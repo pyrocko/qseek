@@ -89,6 +89,7 @@ class PhaseNet(ImageFunction):
     torch_cpu_threads: PositiveInt = 4
     batch_size: int = Field(default=64, ge=64)
     stack_method: StackMethod = "avg"
+    upscale_input: PositiveInt = 1
     phase_map: dict[PhaseName, str] = {
         "P": "constant:P",
         "S": "constant:S",
@@ -118,12 +119,22 @@ class PhaseNet(ImageFunction):
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
+        if self.upscale_input > 1:
+            scale = self.upscale_input
+            for tr in stream:
+                tr.stats.sampling_rate = tr.stats.sampling_rate / scale
+
         annotations: Stream = self._phase_net.annotate(
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size
             # parallelism=self.seisbench_subprocesses,
         )
+
+        if self.upscale_input > 1:
+            scale = self.upscale_input
+            for tr in annotations:
+                tr.stats.sampling_rate = tr.stats.sampling_rate * scale
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()

@@ -34,13 +34,14 @@ class SquirrelPrefetcher:
         self,
         iterator: Iterator[Batch],
         queue_size: int = 4,
-        freq_min: float | None = None,
-        freq_max: float | None = None,
+        highpass: float | None = None,
+        lowpass: float | None = None,
     ) -> None:
         self.iterator = iterator
         self.queue: asyncio.Queue[Batch | None] = asyncio.Queue(maxsize=queue_size)
-        self.freq_min = freq_min
-        self.freq_max = freq_max
+        self.highpass = highpass
+        self.lowpass = lowpass
+        self._fetched_batches = 0
 
         self._task = asyncio.create_task(self.prefetch_worker())
 
@@ -50,14 +51,14 @@ class SquirrelPrefetcher:
         def filter_freqs(batch: Batch) -> Batch:
             # Filter traces in-place
             start = None
-            if self.freq_min:
+            if self.highpass:
                 start = datetime_now()
                 for tr in batch.traces:
-                    tr.highpass(4, corner=self.freq_min)
-            if self.freq_max:
+                    tr.highpass(4, corner=self.highpass)
+            if self.lowpass:
                 start = start or datetime_now()
                 for tr in batch.traces:
-                    tr.lowpass(4, corner=self.freq_max)
+                    tr.lowpass(4, corner=self.lowpass)
             if start:
                 logger.debug("filtered traces in %s", datetime_now() - start)
             return batch
@@ -72,9 +73,10 @@ class SquirrelPrefetcher:
 
             await asyncio.to_thread(filter_freqs, batch)
             logger.debug("prefetched waveforms in %s", datetime_now() - start)
-            if self.queue.empty():
+            if self.queue.empty() and self._fetched_batches:
                 logger.warning("queue ran empty, prefetching is too slow")
 
+            self._fetched_batches += 1
             await self.queue.put(batch)
 
 
@@ -86,8 +88,8 @@ class PyrockoSquirrel(WaveformProvider):
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
 
-    freq_min: PositiveFloat | None = None
-    freq_max: PositiveFloat | None = None
+    highpass: PositiveFloat | None = None
+    lowpass: PositiveFloat | None = None
 
     channel_selector: str = Field(default="*", max_length=3)
     async_prefetch_batches: PositiveInt = 4
@@ -99,7 +101,7 @@ class PyrockoSquirrel(WaveformProvider):
     def _validate_model(self) -> Self:
         if self.start_time and self.end_time and self.start_time > self.end_time:
             raise ValueError("start_time must be before end_time")
-        if self.freq_min and self.freq_max and self.freq_min > self.freq_max:
+        if self.highpass and self.lowpass and self.highpass > self.lowpass:
             raise ValueError("freq_min must be less than freq_max")
         return self
 
@@ -166,8 +168,8 @@ class PyrockoSquirrel(WaveformProvider):
         prefetcher = SquirrelPrefetcher(
             iterator,
             self.async_prefetch_batches,
-            self.freq_min,
-            self.freq_max,
+            self.highpass,
+            self.lowpass,
         )
 
         while True:
