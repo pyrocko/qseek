@@ -30,6 +30,18 @@ class WaveformBatch:
     def duration(self) -> timedelta:
         return self.end_time - self.start_time
 
+    @property
+    def cumulative_duration(self) -> timedelta:
+        """Cumulative duration of the traces in the batch.
+
+        Returns:
+            timedelta: Cumulative duration of the traces in the batch.
+        """
+        seconds = 0.0
+        for tr in self.traces:
+            seconds += tr.tmax - tr.tmin
+        return timedelta(seconds=seconds)
+
     def is_empty(self) -> bool:
         """Check if the batch is empty.
 

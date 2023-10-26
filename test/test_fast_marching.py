@@ -33,8 +33,8 @@ KM = 1e3
 def stations_inside(
     model: VelocityModel3D,
     nstations: int = 20,
+    depth_range: float | None = None,
     seed: int = 0,
-    depth: float | None = None,
 ) -> Stations:
     stations = []
     rng = np.random.RandomState(seed)
@@ -48,7 +48,11 @@ def stations_inside(
             north_shift=model.center.north_shift + rng.uniform(*model.north_bounds),
             east_shift=model.center.east_shift + rng.uniform(*model.east_bounds),
             depth=model.center.depth
-            + (depth if depth is not None else rng.uniform(*model.depth_bounds)),
+            + (
+                rng.uniform(depth_range)
+                if depth_range is not None
+                else rng.uniform(*model.depth_bounds)
+            ),
         )
         station = station.shifted_origin()
         stations.append(station)
@@ -249,10 +253,10 @@ async def test_non_lin_loc_travel_times(data_dir: Path, octree: Octree) -> None:
     )
     model_3d = tracer.velocity_model.get_model(octree)
     octree = octree_cover(model_3d)
-    stations = stations_inside(model_3d, depth=0.0)
+    stations = stations_inside(model_3d, depth_range=500.0)
     await tracer.prepare(octree, stations)
 
-    volume = tracer.get_travel_time_volume(stations.stations[0])
+    volume = tracer.get_travel_time_volume(stations.stations[3])
 
     # 3d figure of velocity model
     fig = plt.figure()
@@ -263,13 +267,16 @@ async def test_non_lin_loc_travel_times(data_dir: Path, octree: Octree) -> None:
     cmap = ax.scatter(
         coords[0],
         coords[1],
-        coords[2],
+        -coords[2],
         c=volume.travel_times.ravel(),
         alpha=0.2,
     )
+    ax.set_xlabel("East (m)")
+    ax.set_ylabel("North (m)")
+    ax.set_zlabel("Depth (m)")
+    fig.colorbar(cmap)
 
     station_offet = volume.station.offset_from(volume.center)
     print(station_offet)
-    ax.scatter(*station_offet, s=100, c="r")
-    fig.colorbar(cmap)
+    ax.scatter(*station_offet, s=1000, c="r")
     plt.show()

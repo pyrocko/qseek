@@ -188,7 +188,7 @@ class Search(BaseModel):
         if self.window_length < 2 * self._window_padding + self._shift_range:
             raise ValueError(
                 f"window length {self.window_length} is too short for the "
-                f"theoretical shift range {self._shift_range} and "
+                f"theoretical travel time range {self._shift_range} and "
                 f"cummulative window padding of {self._window_padding}."
                 " Increase the window_length time."
             )
@@ -265,10 +265,10 @@ class Search(BaseModel):
             else:
                 percent_processed = 0.0
             logger.info(
-                "%s%% processed - batch %s in %s",
+                "%s%% processed - batch %s in (%s/s)",
                 f"{percent_processed:.1f}" if percent_processed else "??",
                 batch.log_str(),
-                processing_time,
+                batch.cumulative_duration / processing_time.total_seconds(),
             )
             if batch.n_batches:
                 remaining_time = (
