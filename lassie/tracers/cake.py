@@ -21,6 +21,7 @@ from pydantic import (
     Field,
     FilePath,
     PrivateAttr,
+    ValidationError,
     constr,
     model_validator,
 )
@@ -114,7 +115,7 @@ class EarthModel(BaseModel):
 
     @model_validator(mode="after")
     def load_model(self) -> EarthModel:
-        if self.filename is not None:
+        if self.filename is not None and self.raw_file_data is None:
             logger.info("loading velocity model from %s", self.filename)
             self.raw_file_data = self.filename.read_text()
 
@@ -260,7 +261,7 @@ class TravelTimeTree(BaseModel):
             return self[0] <= requested[0] and self[1] >= requested[1]
 
         return (
-            str(self.earthmodel) == str(earthmodel.hash)
+            self.earthmodel.hash == earthmodel.hash
             and self.timing == timing
             and check_bounds(self.distance_bounds, distance_bounds)
             and check_bounds(self.source_depth_bounds, source_depth_bounds)
@@ -331,7 +332,7 @@ class TravelTimeTree(BaseModel):
         Returns:
             Self: Loaded SPTreeModel
         """
-        logger.debug("loading traveltimes from %s", file)
+        logger.debug("loading cached traveltimes from %s", file)
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model_file = path / "model.json"
@@ -368,6 +369,7 @@ class TravelTimeTree(BaseModel):
         )
 
     def init_lut(self, octree: Octree, stations: Stations) -> None:
+        logger.debug("initializing LUT for %d stations", stations.n_stations)
         self._cached_stations = stations
         self._cached_station_indeces = {
             sta.pretty_nsl: idx for idx, sta in enumerate(stations)
@@ -497,7 +499,7 @@ class CakeTracer(RayTracer):
         "cake:P": Timing(definition="P,p"),
         "cake:S": Timing(definition="S,s"),
     }
-    earthmodel: EarthModel = EarthModel()
+    earthmodel: EarthModel = Field(default_factory=EarthModel)
     trim_earth_model_depth: bool = Field(
         default=True,
         description="Trim earth model to max depth of the octree.",
@@ -546,10 +548,7 @@ class CakeTracer(RayTracer):
             node_cache_fraction * 100,
         )
 
-        cached_trees = [
-            TravelTimeTree.load(file) for file in self.cache_dir.glob("*.sptree")
-        ]
-        logger.debug("loaded %d cached travel time trees", len(cached_trees))
+        cached_trees = self._load_cached_trees()
 
         distances = surface_distances(octree, stations)
         source_depths = np.asarray(octree.depth_bounds) - octree.reference.elevation
@@ -587,6 +586,19 @@ class CakeTracer(RayTracer):
 
     def _get_sptree_model(self, phase: str) -> TravelTimeTree:
         return self._traveltime_trees[phase]
+
+    def _load_cached_trees(self) -> list[TravelTimeTree]:
+        trees = []
+        for file in self.cache_dir.glob("*.sptree"):
+            try:
+                tree = TravelTimeTree.load(file)
+            except ValidationError:
+                logger.warning("deleting invalid cached tree %s", file)
+                file.unlink()
+                continue
+            trees.append(tree)
+        logger.debug("loaded %d cached travel time trees", len(trees))
+        return trees
 
     def get_travel_time_location(
         self,

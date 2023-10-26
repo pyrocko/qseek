@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -24,14 +25,15 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="lassie",
-        description="The friendly earthquake detector - V2",
+        description="Lassie - The friendly earthquake detector 🐕",
     )
     parser.add_argument(
         "--verbose",
         "-v",
         action="count",
         default=0,
-        help="increase verbosity of the log messages, default level is INFO",
+        help="increase verbosity of the log messages, repeat to increase. "
+        "Default level is INFO",
     )
     parser.add_argument(
         "--version",
@@ -40,11 +42,28 @@ def main() -> None:
         help="show version and exit",
     )
 
-    subparsers = parser.add_subparsers(title="commands", required=True, dest="command")
+    subparsers = parser.add_subparsers(
+        title="commands",
+        required=True,
+        dest="command",
+        description="Available commands to run Lassie. Get command help with "
+        "`lassie <command> --help`.",
+    )
+
+    init_project = subparsers.add_parser(
+        "init",
+        help="initialize a new Lassie project",
+        description="initialze a new project with a default configuration file. ",
+    )
+    init_project.add_argument(
+        "folder",
+        type=Path,
+        help="folder to initialize project in",
+    )
 
     run = subparsers.add_parser(
         "search",
-        help="start a search 🐕",
+        help="start a search",
         description="detect, localize and characterize earthquakes in a dataset",
     )
     run.add_argument("config", type=Path, help="path to config file")
@@ -61,14 +80,6 @@ def main() -> None:
         description="continue a run from an existing rundir",
     )
     continue_run.add_argument("rundir", type=Path, help="existing runding to continue")
-
-    init_project = subparsers.add_parser(
-        "init",
-        help="initialize a new Lassie project",
-    )
-    init_project.add_argument(
-        "folder", type=Path, help="folder to initialize project in"
-    )
 
     features = subparsers.add_parser(
         "feature-extraction",
@@ -100,11 +111,14 @@ def main() -> None:
     subparsers.add_parser(
         "clear-cache",
         help="clear the cach directory",
+        description="clear all data in the cache directory",
     )
 
     dump_schemas = subparsers.add_parser(
         "dump-schemas",
         help="dump data models to json-schema (development)",
+        description="dump data models to json-schema, "
+        "this is for development purposes only",
     )
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
@@ -128,7 +142,7 @@ def main() -> None:
         logger.info("initialized new project in folder %s", folder)
         logger.info("start detection with: lassie run %s", config_file.name)
 
-    elif args.command == "run":
+    elif args.command == "search":
         search = Search.from_config(args.config)
 
         webserver = WebServer(search)
@@ -192,10 +206,12 @@ def main() -> None:
 
         file = args.folder / "search.schema.json"
         print(f"writing JSON schemas to {args.folder}")
-        file.write_text(Search.model_json_schema(indent=2))
+        file.write_text(json.dumps(Search.model_json_schema(), indent=2))
 
         file = args.folder / "detections.schema.json"
-        file.write_text(EventDetections.model_json_schema(indent=2))
+        file.write_text(json.dumps(EventDetections.model_json_schema(), indent=2))
+    else:
+        parser.error(f"unknown command: {args.command}")
 
 
 if __name__ == "__main__":

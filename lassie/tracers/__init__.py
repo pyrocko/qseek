@@ -41,10 +41,17 @@ class RayTracers(RootModel):
         stations: Stations,
         phases: tuple[PhaseDescription, ...],
     ) -> None:
-        logger.info("preparing ray tracers")
+        prepared_tracers = []
         for phase in phases:
             tracer = self.get_phase_tracer(phase)
+            if tracer in prepared_tracers:
+                continue
+            phases = tracer.get_available_phases()
+            logger.info(
+                "preparing ray tracer %s for phase %s", tracer.tracer, ", ".join(phases)
+            )
             await tracer.prepare(octree, stations)
+            prepared_tracers.append(tracer)
 
     def get_available_phases(self) -> tuple[str, ...]:
         phases = []
@@ -71,7 +78,9 @@ class RayTracers(RootModel):
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.root
 
-    def iter_phase_tracer(self) -> Iterator[tuple[PhaseDescription, RayTracer]]:
-        for tracer in self:
-            for phase in tracer.get_available_phases():
-                yield (phase, tracer)
+    def iter_phase_tracer(
+        self, phases: tuple[PhaseDescription, ...]
+    ) -> Iterator[tuple[PhaseDescription, RayTracer]]:
+        for phase in phases:
+            tracer = self.get_phase_tracer(phase)
+            yield (phase, tracer)

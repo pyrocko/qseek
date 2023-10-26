@@ -9,6 +9,7 @@ from pydantic import Field, RootModel
 
 from lassie.images.base import ImageFunction, PickedArrival
 from lassie.images.phase_net import PhaseNet, PhaseNetPick
+from lassie.utils import PhaseDescription
 
 if TYPE_CHECKING:
     from datetime import timedelta
@@ -51,7 +52,7 @@ class ImageFunctions(RootModel):
 
         return WaveformImages(root=images)
 
-    def get_phases(self) -> tuple[str, ...]:
+    def get_phases(self) -> tuple[PhaseDescription, ...]:
         """Get all phases that are available in the image functions.
 
         Returns:

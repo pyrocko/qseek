@@ -160,7 +160,9 @@ class Search(BaseModel):
         self._distance_range = (distances.min(), distances.max())
 
         # Timing ranges
-        for phase, tracer in self.ray_tracers.iter_phase_tracer():
+        for phase, tracer in self.ray_tracers.iter_phase_tracer(
+            phases=self.image_functions.get_phases()
+        ):
             traveltimes = tracer.get_travel_times(phase, self.octree, self.stations)
             self._travel_time_ranges[phase] = (
                 timedelta(seconds=np.nanmin(traveltimes)),

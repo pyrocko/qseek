@@ -35,7 +35,7 @@ class ImageFunction(BaseModel):
         """Blinding duration for the image function. Added to padded waveforms."""
         raise NotImplementedError("must be implemented by subclass")
 
-    def get_provided_phases(self) -> tuple[str, ...]:
+    def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
         ...
 
 

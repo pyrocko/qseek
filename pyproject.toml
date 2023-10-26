@@ -41,16 +41,16 @@ dependencies = [
 ]
 
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "Topic :: Scientific/Engineering :: Atmospheric Science",
-    "Topic :: Scientific/Engineering :: Image Recognition",
     "Topic :: Scientific/Engineering :: Physics",
-    "Topic :: Scientific/Engineering :: Visualization",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: C",
+    "Topic :: Scientific/Engineering :: Information Analysis",
     "Operating System :: POSIX",
     "Operating System :: MacOS",
+    "Typing :: Typed",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
 ]
 
 [project.optional-dependencies]

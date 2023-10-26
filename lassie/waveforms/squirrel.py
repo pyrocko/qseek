@@ -104,12 +104,9 @@ class PyrockoSquirrel(WaveformProvider):
         return self
 
     @field_validator("waveform_dirs")
-    def check_dirs(self, dirs: list[Path]) -> list[Path]:
+    def check_dirs(cls, dirs: list[Path]) -> list[Path]:  # noqa: N805
         if not dirs:
             raise ValueError("no waveform directories provided!")
-        for data_dir in dirs:
-            if not data_dir.exists():
-                raise ValueError(f"waveform directory {data_dir} does not exist")
         return dirs
 
     def get_squirrel(self) -> Squirrel:
