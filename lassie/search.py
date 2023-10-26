@@ -106,32 +106,33 @@ class Search(BaseModel):
         default_factory=lambda: deque(maxlen=25)
     )
 
-    def init_rundir(self, force=False) -> None:
+    def init_rundir(self, force: bool = False) -> None:
         rundir = (
             self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
         )
         self._rundir = rundir
 
-        if rundir.exists() and not force:
-            raise FileExistsError(f"Rundir {rundir} already exists")
-
-        if rundir.exists() and force:
+        if not rundir.exists():
+            rundir.mkdir()
+        elif rundir.exists() and force:
             create_time = time_to_path(
                 datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
             )
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
             logger.info("created backup of existing rundir to %s", rundir_backup)
+        else:
+            raise FileExistsError(f"Rundir {rundir} already exists")
 
-        if not rundir.exists():
-            rundir.mkdir()
-
-        file_logger = logging.FileHandler(self._rundir / "lassie.log")
-        logging.root.addHandler(file_logger)
         self.write_config()
+        self._init_logging()
 
         logger.info("created new rundir %s", rundir)
         self._detections = EventDetections(rundir=rundir)
+
+    def _init_logging(self) -> None:
+        file_logger = logging.FileHandler(self._rundir / "lassie.log")
+        logging.root.addHandler(file_logger)
 
     def write_config(self, path: Path | None = None) -> None:
         rundir = self._rundir
@@ -215,7 +216,10 @@ class Search(BaseModel):
 
     async def start(self, force_rundir: bool = False) -> None:
         await self.prepare()
-        self.init_rundir(force_rundir)
+
+        if not self.has_rundir():
+            self.init_rundir(force=force_rundir)
+
         logger.info("starting search...")
         batch_processing_start = datetime_now()
         processing_start = datetime_now()
@@ -322,6 +326,8 @@ class Search(BaseModel):
             search._progress = SearchProgress.model_validate_json(
                 progress_file.read_text()
             )
+
+        search._init_logging()
         return search
 
     @classmethod
@@ -339,6 +345,9 @@ class Search(BaseModel):
                 setattr(model, name, value.relative_to(base_dir))
         model._config_stem = filename.stem
         return model
+
+    def has_rundir(self) -> bool:
+        return hasattr(self, "_rundir") and self._rundir.exists()
 
     def __del__(self) -> None:
         # FIXME: Replace with signal overserver?
