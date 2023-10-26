@@ -112,17 +112,19 @@ class Search(BaseModel):
         )
         self._rundir = rundir
 
-        if not rundir.exists():
-            rundir.mkdir()
-        elif rundir.exists() and force:
+        if rundir.exists() and not force:
+            raise FileExistsError(f"Rundir {rundir} already exists")
+
+        if rundir.exists() and force:
             create_time = time_to_path(
                 datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
             )
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
             logger.info("created backup of existing rundir to %s", rundir_backup)
-        else:
-            raise FileExistsError(f"Rundir {rundir} already exists")
+
+        if not rundir.exists():
+            rundir.mkdir()
 
         self.write_config()
         self._init_logging()
