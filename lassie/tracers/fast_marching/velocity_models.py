@@ -247,8 +247,8 @@ class VelocityModel3D(BaseModel):
             str(filename),
             self._east_coords + offset[0],
             self._north_coords + offset[1],
-            -(self._depth_coords + offset[2]),
-            pointData={"velocity": self._velocity_model},
+            np.array((-self._depth_coords + offset[2])[::-1]),
+            pointData={"velocity": np.array(self._velocity_model[:, :, ::-1])},
         )
         logger.info("vtk: exported velocity model to %s", out_file)
 

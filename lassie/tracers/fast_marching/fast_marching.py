@@ -260,8 +260,8 @@ class StationTravelTimeVolume(BaseModel):
             str(filename),
             self._east_coords + offset[0],
             self._north_coords + offset[1],
-            -(self._depth_coords + offset[2]),
-            pointData={"travel_times": self.travel_times},
+            np.array((-self._depth_coords + offset[2])[::-1]),
+            pointData={"travel_time": np.array(self.travel_times[:, :, ::-1])},
         )
         logger.debug(
             "vtk: exported travel times of %s to %s",
