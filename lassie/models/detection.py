@@ -8,7 +8,9 @@ from random import uniform
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal, Type, TypeVar
 from uuid import UUID, uuid4
 
+import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr, computed_field
+from pyevtk.hl import pointsToVTK
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
@@ -450,6 +452,12 @@ class EventDetections(BaseModel):
         dir.mkdir(exist_ok=True)
         return dir
 
+    @property
+    def vtk_dir(self) -> Path:
+        dir = self.rundir / "vtk"
+        dir.mkdir(exist_ok=True)
+        return dir
+
     def add(self, detection: EventDetection) -> None:
         markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
         self.markers_dir.mkdir(exist_ok=True)
@@ -474,16 +482,22 @@ class EventDetections(BaseModel):
         """Dump all detections to files in the detection directory."""
 
         logger.debug("dumping detections")
-        self.save_csv(self.csv_dir / "detections.csv")
-        self.save_pyrocko_events(self.rundir / "pyrocko_detections.list")
+        self.export_csv(self.csv_dir / "detections.csv")
+        self.export_pyrocko_events(self.rundir / "pyrocko_detections.list")
+
+        self.export_vtk(self.vtk_dir / "detections")
 
         if jitter_location:
-            self.save_csv(
+            self.export_csv(
                 self.csv_dir / "detections_jittered.csv",
                 jitter_location=jitter_location,
             )
-            self.save_pyrocko_events(
+            self.export_pyrocko_events(
                 self.rundir / "pyrocko_detections_jittered.list",
+                jitter_location=jitter_location,
+            )
+            self.export_vtk(
+                self.vtk_dir / "detections_jittered",
                 jitter_location=jitter_location,
             )
 
@@ -520,8 +534,8 @@ class EventDetections(BaseModel):
         console.log(f"loaded {detections.n_detections} detections")
         return detections
 
-    def save_csv(self, file: Path, jitter_location: float = 0.0) -> None:
-        """Save detections to a CSV file
+    def export_csv(self, file: Path, jitter_location: float = 0.0) -> None:
+        """Export detections to a CSV file
 
         Args:
             file (Path): output filename
@@ -539,8 +553,10 @@ class EventDetections(BaseModel):
             )
         file.write_text("\n".join(lines))
 
-    def save_pyrocko_events(self, filename: Path, jitter_location: float = 0.0) -> None:
-        """Save Pyrocko events for all detections to a file
+    def export_pyrocko_events(
+        self, filename: Path, jitter_location: float = 0.0
+    ) -> None:
+        """Export Pyrocko events for all detections to a file
 
         Args:
             filename (Path): output filename
@@ -548,16 +564,14 @@ class EventDetections(BaseModel):
         logger.info("saving Pyrocko events to %s", filename)
         detections = self.detections
         if jitter_location:
-            detections = [
-                detection.jitter_location(jitter_location) for detection in detections
-            ]
+            detections = [det.jitter_location(jitter_location) for det in detections]
         dump_events(
-            [detection.as_pyrocko_event() for detection in detections],
+            [det.as_pyrocko_event() for det in detections],
             filename=str(filename),
         )
 
-    def save_pyrocko_markers(self, filename: Path) -> None:
-        """Save Pyrocko markers for all detections to a file
+    def export_pyrocko_markers(self, filename: Path) -> None:
+        """Export Pyrocko markers for all detections to a file
 
         Args:
             filename (Path): output filename
@@ -567,6 +581,34 @@ class EventDetections(BaseModel):
         for detection in self:
             pyrocko_markers.extend(detection.get_pyrocko_markers())
         marker.save_markers(pyrocko_markers, str(filename))
+
+    def export_vtk(
+        self,
+        filename: Path,
+        jitter_location: float = 0.0,
+    ) -> None:
+        """Export events as vtk file
+
+        Args:
+            filename (Path): output filename, without file extension.
+            reference (Location): Relative to this location.
+        """
+        detections = self.detections
+        if jitter_location:
+            detections = [det.jitter_location(jitter_location) for det in detections]
+        offsets = np.array(
+            [(det.east_shift, det.north_shift, det.depth) for det in detections]
+        )
+        pointsToVTK(
+            str(filename),
+            np.array(offsets[:, 0]),
+            np.array(offsets[:, 1]),
+            -np.array(offsets[:, 2]),
+            data={
+                "semblance": np.array([det.semblance for det in detections]),
+                "time": np.array([det.time.timestamp() for det in detections]),
+            },
+        )
 
     def __iter__(self) -> Iterator[EventDetection]:
         return iter(sorted(self.detections, key=lambda d: d.time))

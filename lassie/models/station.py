@@ -183,7 +183,7 @@ class Stations(BaseModel):
             [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
         )
 
-    def dump_pyrocko_stations(self, filename: Path) -> None:
+    def export_pyrocko_stations(self, filename: Path) -> None:
         """Dump stations to pyrocko station yaml file.
 
         Args:
@@ -194,7 +194,7 @@ class Stations(BaseModel):
             filename=str(filename.expanduser()),
         )
 
-    def dump_csv(self, filename: Path) -> None:
+    def export_csv(self, filename: Path) -> None:
         """Dump stations to CSV file.
 
         Args:
@@ -207,6 +207,9 @@ class Stations(BaseModel):
                     f"{sta.network},{sta.station},{sta.location},"
                     f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
                 )
+
+    def export_vtk(self, reference: Location | None = None) -> None:
+        ...
 
     def __hash__(self) -> int:
         return hash(sta for sta in self)

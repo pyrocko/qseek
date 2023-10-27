@@ -240,13 +240,15 @@ class VelocityModel3D(BaseModel):
         )
         return resampled_model
 
-    def export_vtk(self, filename: Path) -> None:
+    def export_vtk(self, filename: Path, reference: Location | None = None) -> None:
+        offset = reference.offset_from(self.center) if reference else np.zeros(3)
+
         out_file = gridToVTK(
             str(filename),
-            self._east_coords,
-            self._north_coords,
-            self._depth_coords,
-            cellData={"velocity": self._velocity_model},
+            self._east_coords + offset[0],
+            self._north_coords + offset[1],
+            -(self._depth_coords + offset[2]),
+            pointData={"velocity": self._velocity_model},
         )
         logger.info("vtk: exported velocity model to %s", out_file)
 

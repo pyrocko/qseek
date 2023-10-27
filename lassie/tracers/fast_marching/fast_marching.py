@@ -217,7 +217,7 @@ class StationTravelTimeVolume(BaseModel):
             raise AttributeError("travel times have not been calculated yet")
 
         file = path / self.filename if path.is_dir() else path
-        logger.debug("saving travel times to %s...", file)
+        logger.debug("saving travel times to %s", file)
 
         with zipfile.ZipFile(str(file), "w") as archive:
             archive.writestr("model.json", self.model_dump_json(indent=2))
@@ -238,7 +238,7 @@ class StationTravelTimeVolume(BaseModel):
         Returns:
             Self: 3D travel times
         """
-        logger.debug("loading travel times from %s...", file)
+        logger.debug("loading travel times from %s", file)
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model_file = path / "model.json"
@@ -253,13 +253,15 @@ class StationTravelTimeVolume(BaseModel):
         with zipfile.ZipFile(self._file, "r") as archive:
             return np.load(archive.open("travel_times.npy", "r"))
 
-    def export_vtk(self, filename: Path) -> None:
+    def export_vtk(self, filename: Path, reference: Location | None = None) -> None:
+        offset = reference.offset_from(self.center) if reference else np.zeros(3)
+
         out_file = gridToVTK(
             str(filename),
-            self._east_coords,
-            self._north_coords,
-            self._depth_coords,
-            cellData={"travel_times": self.travel_times},
+            self._east_coords + offset[0],
+            self._north_coords + offset[1],
+            -(self._depth_coords + offset[2]),
+            pointData={"travel_times": self.travel_times},
         )
         logger.debug(
             "vtk: exported travel times of %s to %s",
@@ -399,12 +401,16 @@ class FastMarchingTracer(RayTracer):
             vtk_dir = rundir / "vtk"
             vtk_dir.mkdir(parents=True, exist_ok=True)
 
-            logger.info("exporting velocity model VTK file...")
-            velocity_model.export_vtk(vtk_dir / f"velocity-model-{self.phase}")
-
-            logger.info("exporting VTK files for travel time volumes...")
-            for station, volume in self._travel_time_volumes.items():
-                volume.export_vtk(vtk_dir / f"travel-times-{station}")
+            logger.info("exporting vtk files")
+            velocity_model.export_vtk(
+                vtk_dir / f"velocity-model-{self.phase}",
+                reference=octree.reference,
+            )
+            for volume in self._travel_time_volumes.values():
+                volume.export_vtk(
+                    vtk_dir / f"travel-times-{volume.station.pretty_nsl}",
+                    reference=octree.reference,
+                )
 
     def _load_cached_tavel_times(self, cache_dir: Path) -> None:
         logger.debug("loading travel times volumes from cache %s...", cache_dir)

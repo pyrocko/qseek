@@ -144,11 +144,11 @@ class Search(BaseModel):
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
 
         logger.debug("dumping stations...")
-        self.stations.dump_pyrocko_stations(rundir / "pyrocko_stations.yaml")
+        self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
 
         csv_dir = rundir / "csv"
         csv_dir.mkdir(exist_ok=True)
-        self.stations.dump_csv(csv_dir / "stations.csv")
+        self.stations.export_csv(csv_dir / "stations.csv")
 
     @property
     def semblance_stats(self) -> SemblanceStats:
@@ -218,10 +218,10 @@ class Search(BaseModel):
         self.init_boundaries()
 
     async def start(self, force_rundir: bool = False) -> None:
-        await self.prepare()
-
         if not self.has_rundir():
             self.init_rundir(force=force_rundir)
+
+        await self.prepare()
 
         logger.info("starting search...")
         batch_processing_start = datetime_now()
