@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic.dataclasses import dataclass
+from pyevtk.hl import gridToVTK
 from pyrocko.cake import LayeredModel, load_model
 from scipy.interpolate import RegularGridInterpolator
 from typing_extensions import Self
@@ -138,7 +139,7 @@ class VelocityModel3D(BaseModel):
         east_idx = np.argmin(np.abs(self._east_coords - station_offset[0]))
         north_idx = np.argmin(np.abs(self._north_coords - station_offset[1]))
         depth_idx = np.argmin(np.abs(self._depth_coords - station_offset[2]))
-        return int(east_idx), int(north_idx), int(depth_idx)
+        return int(round(east_idx)), int(round(north_idx)), int(round(depth_idx))
 
     def get_velocity(self, location: Location) -> float:
         """Return velocity at location in [m/s], nearest neighbor.
@@ -239,6 +240,16 @@ class VelocityModel3D(BaseModel):
         )
         return resampled_model
 
+    def export_vtk(self, filename: Path) -> None:
+        out_file = gridToVTK(
+            str(filename),
+            self._east_coords,
+            self._north_coords,
+            self._depth_coords,
+            cellData={"velocity": self._velocity_model},
+        )
+        logger.info("vtk: exported velocity model to %s", out_file)
+
 
 class VelocityModelFactory(BaseModel):
     model: Literal["VelocityModelFactory"] = "VelocityModelFactory"
@@ -338,7 +349,7 @@ class NonLinLocHeader:
             raise ValueError("NonLinLoc velocity model must have equal spacing.")
 
         if reference_location:
-            origin = reference_location
+            origin = reference_location.model_copy()
             origin.east_shift += float(orig_x) * KM
             origin.north_shift += float(orig_y) * KM
             origin.elevation -= float(orig_z) * KM
@@ -486,7 +497,7 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         return velocity_model.resample(grid_spacing, self.interpolation)
 
 
-class VelocityModel2D(VelocityModelFactory):
+class VelocityModelLayered(VelocityModelFactory):
     # For mere testing purposes of the 3D tracer against Pyrocko cake 2D travel times
     model: Literal["VelocityModel2D"] = "VelocityModel2D"
     velocity: Literal["vp", "vs"] = Field(
@@ -509,7 +520,7 @@ class VelocityModel2D(VelocityModelFactory):
     _layered_model: LayeredModel = PrivateAttr()
 
     @model_validator(mode="after")
-    def load_model(self) -> VelocityModel2D:
+    def load_model(self) -> VelocityModelLayered:
         if self.filename is not None:
             logger.info("loading velocity model from %s", self.filename)
             self.raw_file_data = self.filename.read_text()
@@ -557,6 +568,6 @@ class VelocityModel2D(VelocityModelFactory):
 
 
 VelocityModels = Annotated[
-    Union[Constant3DVelocityModel, NonLinLocVelocityModel, VelocityModel2D],
+    Union[Constant3DVelocityModel, NonLinLocVelocityModel, VelocityModelLayered],
     Field(..., discriminator="model"),
 ]

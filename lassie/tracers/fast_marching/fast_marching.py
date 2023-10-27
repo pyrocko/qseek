@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 import numpy as np
 from lru import LRU
-from pydantic import BaseModel, ByteSize, Field, PrivateAttr
+from pydantic import BaseModel, ByteSize, Field, PrivateAttr, ValidationError
+from pyevtk.hl import gridToVTK
 from pyrocko.modelling import eikonal
 from rich.progress import Progress
 from scipy.interpolate import RegularGridInterpolator
@@ -252,6 +253,20 @@ class StationTravelTimeVolume(BaseModel):
         with zipfile.ZipFile(self._file, "r") as archive:
             return np.load(archive.open("travel_times.npy", "r"))
 
+    def export_vtk(self, filename: Path) -> None:
+        out_file = gridToVTK(
+            str(filename),
+            self._east_coords,
+            self._north_coords,
+            self._depth_coords,
+            cellData={"travel_times": self.travel_times},
+        )
+        logger.info(
+            "vtk: exported travel times of %s to %s",
+            self.station.pretty_nsl,
+            out_file,
+        )
+
 
 class FastMarchingTracer(RayTracer):
     tracer: Literal["FastMarchingRayTracer"] = "FastMarchingRayTracer"
@@ -385,7 +400,7 @@ class FastMarchingTracer(RayTracer):
         for file in cache_dir.glob("*.3dtt"):
             try:
                 travel_times = StationTravelTimeVolume.load(file)
-            except zipfile.BadZipFile:
+            except (zipfile.BadZipFile, ValidationError):
                 logger.warning("removing bad travel time file %s", file)
                 file.unlink()
                 continue
