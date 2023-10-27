@@ -10,6 +10,7 @@ from lassie.models.phase_arrival import PhaseArrival
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from pathlib import Path
 
     from lassie.models.station import Stations
     from lassie.octree import Octree
@@ -24,7 +25,12 @@ class ModelledArrival(PhaseArrival):
 class RayTracer(BaseModel):
     tracer: Literal["RayTracer"] = "RayTracer"
 
-    async def prepare(self, octree: Octree, stations: Stations):
+    async def prepare(
+        self,
+        octree: Octree,
+        stations: Stations,
+        rundir: Path | None = None,
+    ):
         ...
 
     def get_available_phases(self) -> tuple[str, ...]:

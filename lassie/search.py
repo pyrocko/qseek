@@ -213,6 +213,7 @@ class Search(BaseModel):
             self.octree,
             self.stations,
             phases=self.image_functions.get_phases(),
+            rundir=self._rundir,
         )
         self.init_boundaries()
 

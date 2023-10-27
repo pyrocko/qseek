@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
 from pydantic import Field, RootModel
@@ -40,6 +41,7 @@ class RayTracers(RootModel):
         octree: Octree,
         stations: Stations,
         phases: tuple[PhaseDescription, ...],
+        rundir: Path | None = None,
     ) -> None:
         prepared_tracers = []
         for phase in phases:
@@ -50,7 +52,7 @@ class RayTracers(RootModel):
             logger.info(
                 "preparing ray tracer %s for phase %s", tracer.tracer, ", ".join(phases)
             )
-            await tracer.prepare(octree, stations)
+            await tracer.prepare(octree, stations, rundir)
             prepared_tracers.append(tracer)
 
     def get_available_phases(self) -> tuple[str, ...]:

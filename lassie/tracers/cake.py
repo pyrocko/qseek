@@ -531,7 +531,12 @@ class CakeTracer(RayTracer):
         vel = np.concatenate((earthmodel.get_profile_vp(), earthmodel.get_profile_vs()))
         return float((vel[vel != 0.0]).min())
 
-    async def prepare(self, octree: Octree, stations: Stations) -> None:
+    async def prepare(
+        self,
+        octree: Octree,
+        stations: Stations,
+        rundir: Path | None = None,
+    ) -> None:
         global LRU_CACHE_SIZE
 
         bytes_per_node = stations.n_stations * np.float32().itemsize

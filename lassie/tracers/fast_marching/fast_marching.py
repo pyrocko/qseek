@@ -261,7 +261,7 @@ class StationTravelTimeVolume(BaseModel):
             self._depth_coords,
             cellData={"travel_times": self.travel_times},
         )
-        logger.info(
+        logger.debug(
             "vtk: exported travel times of %s to %s",
             self.station.pretty_nsl,
             out_file,
@@ -317,6 +317,7 @@ class FastMarchingTracer(RayTracer):
         self,
         octree: Octree,
         stations: Stations,
+        rundir: Path | None = None,
     ) -> None:
         logger.info("loading velocity model %s", self.velocity_model.model)
         velocity_model = self.velocity_model.get_model(octree)
@@ -393,6 +394,17 @@ class FastMarchingTracer(RayTracer):
             station for station in stations if not self.has_travel_time_volume(station)
         ]
         await self._calculate_travel_times(calc_stations, cache_dir)
+
+        if rundir is not None:
+            vtk_dir = rundir / "vtk"
+            vtk_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info("exporting velocity model VTK file...")
+            velocity_model.export_vtk(vtk_dir / f"velocity-model-{self.phase}")
+
+            logger.info("exporting VTK files for travel time volumes...")
+            for station, volume in self._travel_time_volumes.items():
+                volume.export_vtk(vtk_dir / f"travel-times-{station}")
 
     def _load_cached_tavel_times(self, cache_dir: Path) -> None:
         logger.debug("loading travel times volumes from cache %s...", cache_dir)
