@@ -99,10 +99,10 @@ class Search(BaseModel):
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
-    _processing_times: Deque[timedelta] = PrivateAttr(
+    _batch_ptime: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
-    _batch_cumulative_durations: Deque[timedelta] = PrivateAttr(
+    _batch_cum_durations: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
 
@@ -269,8 +269,8 @@ class Search(BaseModel):
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
 
             processing_time = datetime_now() - batch_processing_start
-            self._processing_times.append(processing_time)
-            self._batch_cumulative_durations.append(batch.cumulative_duration)
+            self._batch_ptime.append(processing_time)
+            self._batch_cum_durations.append(batch.cumulative_duration)
 
             processed_percent = (
                 ((batch.i_batch + 1) / batch.n_batches) * 100
@@ -278,21 +278,25 @@ class Search(BaseModel):
                 else 0.0
             )
             processing_rate = (
-                sum(self._batch_cumulative_durations, timedelta())
-                / sum(self._processing_times, timedelta()).total_seconds()
+                sum(self._batch_cum_durations, timedelta())
+                / sum(self._batch_ptime, timedelta()).total_seconds()
             )
 
             logger.info(
-                "%s%% processed - batch %s",
+                "%s%% processed - batch %s in %s",
                 f"{processed_percent:.1f}" if processed_percent else "??",
                 batch.log_str(),
+                processing_time,
             )
             if batch.n_batches:
-                remaining_time = (
-                    sum(self._processing_times, timedelta())
-                    / len(self._processing_times)
-                    * (batch.n_batches - batch.i_batch - 1)
+                remaining_time = timedelta(
+                    seconds=float(
+                        np.median(
+                            [t_batch.total_seconds() for t_batch in self._batch_ptime]
+                        )
+                    )
                 )
+                remaining_time *= batch.n_batches - batch.i_batch - 1
                 logger.info(
                     "processing rate %s/s - %s remaining - estimated finish at %s",
                     processing_rate,
