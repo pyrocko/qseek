@@ -454,7 +454,7 @@ class StationCorrections(BaseModel):
                 filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
             )
 
-    def save_csv(self, filename: Path) -> None:
+    def export_csv(self, filename: Path) -> None:
         """Save the station corrections to a CSV file.
 
         Args:
@@ -464,10 +464,10 @@ class StationCorrections(BaseModel):
         csv_data = [correction.get_csv_data() for correction in self]
         columns = set(chain.from_iterable(data.keys() for data in csv_data))
         with filename.open("w") as file:
-            file.write(f"{', '.join(columns)}\n")
+            file.write(f"{','.join(columns)}\n")
             for data in csv_data:
                 file.write(
-                    f"{', '.join(str(data.get(key, -9999.9)) for key in columns)}\n"
+                    f"{','.join(str(data.get(key, -9999.9)) for key in columns)}\n"
                 )
 
     def __iter__(self) -> Iterator[StationCorrection]:

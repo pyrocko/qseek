@@ -184,7 +184,9 @@ def main() -> None:
         station_corrections = StationCorrections(rundir=rundir)
         if args.plot:
             station_corrections.save_plots(rundir / "station_corrections")
-        station_corrections.save_csv(filename=rundir / "station_corrections_stats.csv")
+        station_corrections.export_csv(
+            filename=rundir / "station_corrections_stats.csv"
+        )
 
     elif args.command == "serve":
         search = Search.load_rundir(args.rundir)

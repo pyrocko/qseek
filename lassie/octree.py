@@ -208,7 +208,7 @@ class Octree(BaseModel):
                 f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
                 " expected size_limit <= size_initial"
             )
-        self.reference = self.reference.shifted_origin()
+        # self.reference = self.reference.shifted_origin()
         return self
 
     def model_post_init(self, __context: Any) -> None:

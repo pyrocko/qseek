@@ -417,27 +417,27 @@ class NonLinLocVelocityModel(VelocityModelFactory):
 
     header_file: FilePath = Field(
         ...,
-        description="Path to NonLinLoc model header file file."
-        " The file should be in the format of a NonLinLoc velocity model header file."
-        " Binary data has to have the same name and end on `.buf`.",
+        description="Path to NonLinLoc model header file file. "
+        "The file should be in the format of a NonLinLoc velocity model header file. "
+        "Binary data has to have the same name and `.buf` suffix.",
     )
 
     grid_spacing: PositiveFloat | Literal["octree", "input"] = Field(
         default="input",
-        description="Grid spacing in meters."
-        " If 'octree' defaults to smallest octreee node size. If 'input' uses the "
-        "grid spacing from the NonLinLoc header file.",
+        description="Grid spacing in meters. "
+        "If 'octree' defaults to smallest octreee node size. If 'input' uses the"
+        " grid spacing from the NonLinLoc header file.",
     )
     interpolation: Literal["nearest", "linear", "cubic"] = Field(
         default="linear",
-        description="Interpolation method for resampling the grid "
-        "for the fast-marching method.",
+        description="Interpolation method for resampling the grid"
+        " for the fast-marching method.",
     )
 
     reference_location: Location | None = Field(
         default=None,
-        description="relative location of NonLinLoc model, "
-        "used for models with relative coordinates.",
+        description="relative location of NonLinLoc model,"
+        " used for models with relative coordinates.",
     )
 
     _header: NonLinLocHeader = PrivateAttr()

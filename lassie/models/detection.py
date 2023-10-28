@@ -542,14 +542,14 @@ class EventDetections(BaseModel):
             randomize_meters (float, optional): randomize the location of each detection
                 by this many meters. Defaults to 0.0.
         """
-        lines = ["lat, lon, depth, semblance, time, distance_border"]
+        lines = ["lat,lon,depth,semblance,time,distance_border"]
         for detection in self:
             if jitter_location:
                 detection = detection.jitter_location(jitter_location)
             lat, lon = detection.effective_lat_lon
             lines.append(
-                f"{lat:.5f}, {lon:.5f}, {detection.effective_depth:.1f},"
-                f" {detection.semblance}, {detection.time}, {detection.distance_border}"
+                f"{lat:.5f},{lon:.5f},{detection.effective_depth:.1f},"
+                f" {detection.semblance},{detection.time},{detection.distance_border}"
             )
         file.write_text("\n".join(lines))
 
