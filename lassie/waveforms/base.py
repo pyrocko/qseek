@@ -42,6 +42,10 @@ class WaveformBatch:
             seconds += tr.tmax - tr.tmin
         return timedelta(seconds=seconds)
 
+    @property
+    def cumulative_bytes(self) -> int:
+        return sum(tr.ydata.nbytes for tr in self.traces)
+
     def is_empty(self) -> bool:
         """Check if the batch is empty.
 
