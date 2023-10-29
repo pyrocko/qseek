@@ -3,7 +3,8 @@
 *The friendly earthquake detector*
 
 [![Build and test](https://github.com/miili/lassie-v2/actions/workflows/build.yaml/badge.svg)](https://github.com/miili/lassie-v2/actions/workflows/build.yaml)
-![Python 3.10+](https://img.shields.io/badge/python-3.10-blue.svg)
+[![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/lassie-v2/)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%203.11-blue.svg)
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
@@ -26,12 +27,14 @@ Key features are of the earthquake detection and localisation framework are:
 
 Lassie is built on top of [Pyrocko](https://pyrocko.org).
 
+For more information check out the documentation at https://pyrocko.github.io/lassie-v2/.
+
 ## Installation
 
+Simple installation from GitHub.
+
 ```sh
-git clone https://github.com/pyrocko/lassie-v2
-cd lassie-v2
-pip3 install .
+pip install git+https://github.com/pyrocko/lassie-v2
 ```
 
 ## Project Initialisation
@@ -47,7 +50,7 @@ Edit the `my-project.json`
 Start the earthquake detection with
 
 ```sh
-lassie run search.json
+lassie search search.json
 ```
 
 ## Packaging
