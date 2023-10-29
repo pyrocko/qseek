@@ -1,10 +1,12 @@
-site_name: Lassie
+site_name: Lassie - Earthquake Detector
 site_description: The friendly earthquake detector
 repo_url: https://github.com/pyrocko/lassie-v2
 repo_name: pyrocko/lassie-v2
+edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: docs/theme
   palette:
   - scheme: default
     primary: blue grey
@@ -23,6 +25,7 @@ theme:
   features:
     - navigation.tabs
     - search.suggest
+    - announce.dismiss
     - content.code.copy
 
 markdown_extensions:

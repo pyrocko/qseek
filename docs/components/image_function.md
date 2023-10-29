@@ -4,5 +4,5 @@ For image functions this version of Lassie relies heavily on machine learning pi
 
 ## PhaseNet
 
-!!! abstract "PhaseNet Citation"
+!!! abstract "Citation PhaseNet"
     Zhu, Weiqiang, and Gregory C. Beroza. "PhaseNet: A Deep-Neural-Network-Based Seismic Arrival Time Picking Method." arXiv preprint arXiv:1803.03211 (2018).

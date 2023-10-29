@@ -4,14 +4,15 @@ Lassie is an earthquake detection and localisation framework. It combines modern
 
 The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https://github.com/seisbench/seisbench), it is highly-performant and can scan massive data sets efficiently.
 
+!!! note "Citation"
+    TDB
+
 ![Reykjanes detections](images/reykjanes-demo.webp)
 
 *Seismic swarm activity at Iceland, Reykjanes Peninsula during a 2020 unrest. 15,000+ earthquakes detected, outlining a dike intrusion, preceeding the 2021 Fagradasfjall eruption. Visualized in [Pyrocko Sparrow](https://pyrocko.org).*
 
 ## Features
 
-!!! note "Citation"
-    TDB
 
 * [x] Earthquake phase detection using machine-learning pickers from [SeisBench](https://github.com/seisbench/seisbench)
 * [x] Octree localisation approach for efficient and accurate search

@@ -4,7 +4,11 @@
 
 The seismic can be delivered in MiniSeed or any other format compatible with Pyrocko.
 
+Organize your data in an [SDS structure](https://www.seiscomp.de/doc/base/concepts/waveformarchives.html) or just a blob if MiniSeed.
+
 ## Meta Data
+
+Meta data is required primarily for station locations and codes.
 
 Supported data formats are:
 

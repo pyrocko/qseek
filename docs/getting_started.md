@@ -4,19 +4,13 @@
 
 The installation is straight-forward:
 
-```sh
-pip install lassie-v2
-```
-
-or install from GitHub
-
 ```sh title="From GitHub"
 pip install git+https://github.com/pyrocko/lassie-v2
 ```
 
-## Initializing a new Project
+## Initializing a New Project
 
-Once installed you can run the lassie executeable
+Once installed you can run the lassie executeable to initialize a new project.
 
 ```sh title="Initialize new Project"
 lassie init my-project
