@@ -20,7 +20,7 @@ CONSTANT_VELOCITY = 5 * KM
 @pytest.fixture(scope="session")
 def small_octree() -> Octree:
     return Octree(
-        reference=Location(
+        location=Location(
             lat=10.0,
             lon=10.0,
             elevation=0.2 * KM,

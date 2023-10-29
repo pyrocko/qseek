@@ -1,3 +1,4 @@
+
 [build-system]
 requires = [
     "wheel",
@@ -56,13 +57,13 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit",
-    "black",
-    "ruff",
-    "pytest",
-    "pytest-asyncio",
-    "mkdocs-material",
-    "mkdocstrings-python",
+    "pre-commit>=3.4",
+    "black>=23.7",
+    "ruff>=0.1",
+    "pytest>=7.4",
+    "pytest-asyncio>=0.21",
+    "mkdocs-material>=9.4",
+    "mkdocstrings[python]>=0.23",
 ]
 
 [project.scripts]

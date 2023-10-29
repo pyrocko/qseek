@@ -92,7 +92,7 @@ def data_dir() -> Path:
 @pytest.fixture(scope="session")
 def octree() -> Octree:
     return Octree(
-        reference=Location(
+        location=Location(
             lat=10.0,
             lon=10.0,
             elevation=1.0 * KM,

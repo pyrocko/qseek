@@ -280,7 +280,7 @@ class Constant3DVelocityModel(VelocityModelFactory):
             grid_spacing = self.grid_spacing
 
         model = VelocityModel3D(
-            center=octree.reference,
+            center=octree.location,
             grid_spacing=grid_spacing,
             east_bounds=octree.east_bounds,
             north_bounds=octree.north_bounds,
@@ -546,7 +546,7 @@ class VelocityModelLayered(VelocityModelFactory):
             grid_spacing = self.grid_spacing
 
         model = VelocityModel3D(
-            center=octree.reference,
+            center=octree.location,
             grid_spacing=grid_spacing,
             east_bounds=octree.east_bounds,
             north_bounds=octree.north_bounds,

@@ -303,7 +303,7 @@ class Search(BaseModel):
                 )
                 remaining_time *= batch.n_batches - batch.i_batch - 1
                 logger.info(
-                    "processing rate %s/s - %s remaining - estimated finish at %s",
+                    "processing rate %s/s - %s remaining - finish at %s",
                     processing_rate_bytes,
                     remaining_time,
                     datetime.now() + remaining_time,  # noqa: DTZ005

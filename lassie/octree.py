@@ -140,7 +140,7 @@ class Node(BaseModel):
         if not self.tree:
             raise AttributeError("parent tree not set")
         if not self._location:
-            reference = self.tree.reference
+            reference = self.tree.location
             self._location = Location.model_construct(
                 lat=reference.lat,
                 lon=reference.lon,
@@ -159,12 +159,14 @@ class Node(BaseModel):
             yield self
 
     def hash(self) -> bytes:
+        if not self.tree:
+            raise AttributeError("parent tree not set")
         if self._hash is None:
             self._hash = sha1(
                 struct.pack(
                     "dddddd",
-                    self.tree.reference.lat,
-                    self.tree.reference.lon,
+                    self.tree.location.lat,
+                    self.tree.location.lon,
                     self.east,
                     self.north,
                     self.depth,
@@ -178,7 +180,7 @@ class Node(BaseModel):
 
 
 class Octree(BaseModel):
-    reference: Location = Location(lat=0.0, lon=0)
+    location: Location = Location(lat=0.0, lon=0.0)
     size_initial: PositiveFloat = 2 * KM
     size_limit: PositiveFloat = 500
     east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
@@ -190,6 +192,12 @@ class Octree(BaseModel):
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
 
     model_config = ConfigDict(ignored_types=(cached_property,))
+
+    @field_validator("location")
+    def check_reference(cls, location: Location) -> Location:  # noqa: N805
+        if location.lat == 0.0 and location.lon == 0.0:
+            raise ValueError("invalid  location, expected non-zero lat/lon")
+        return location
 
     @field_validator("east_bounds", "north_bounds", "depth_bounds")
     def check_bounds(

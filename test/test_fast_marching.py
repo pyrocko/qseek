@@ -82,7 +82,7 @@ def stations_inside(
 
 def octree_cover(model: VelocityModel3D) -> Octree:
     return Octree(
-        reference=model.center,
+        location=model.center,
         size_initial=2 * KM,
         size_limit=500,
         east_bounds=model.east_bounds,
@@ -96,7 +96,7 @@ def octree_cover(model: VelocityModel3D) -> Octree:
 async def station_travel_times(
     octree: Octree, stations: Stations
 ) -> StationTravelTimeVolume:
-    octree.reference.elevation = 1 * KM
+    octree.location.elevation = 1 * KM
     model = Constant3DVelocityModel(velocity=CONSTANT_VELOCITY, grid_spacing=100.0)
     model_3d = model.get_model(octree)
     return await StationTravelTimeVolume.calculate_from_eikonal(

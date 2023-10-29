@@ -404,12 +404,12 @@ class FastMarchingTracer(RayTracer):
             logger.info("exporting vtk files")
             velocity_model.export_vtk(
                 vtk_dir / f"velocity-model-{self.phase}",
-                reference=octree.reference,
+                reference=octree.location,
             )
             for volume in self._travel_time_volumes.values():
                 volume.export_vtk(
                     vtk_dir / f"travel-times-{volume.station.pretty_nsl}",
-                    reference=octree.reference,
+                    reference=octree.location,
                 )
 
     def _load_cached_tavel_times(self, cache_dir: Path) -> None:
