@@ -45,6 +45,7 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - admonition
+  - def_list
   - attr_list
 
 extra_javascript:

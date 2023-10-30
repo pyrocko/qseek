@@ -130,8 +130,8 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
         if field.description is None:
             continue
         lines += [
-            f"    - **`{name}`**\n",
-            f"        {field.description}",
+            f"    **`{name}`**\n",
+            f"    :   {field.description}\n",
         ]
 
     def dump_json() -> list[str]:
