@@ -72,3 +72,4 @@ nav:
     - Image Function: components/image_function.md
     - Octree: components/octree.md
     - Station Corrections: components/station_corrections.md
+    - EQ Feature Extraction: components/feature_extraction.md
