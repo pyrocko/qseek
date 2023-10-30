@@ -10,6 +10,6 @@ For large data sets use the [Pyrocko Sparrow](https://pyrocko.org) to visualise 
 
 ## QGIS
 
-[QGIS](https://www.qgis.org/) can be used to import `.csv` and explore the data is an interactive fashion. Detections can be rendered by e.g. the detection semblance or the calculated magnitude.
+[QGIS](https://www.qgis.org/) can be used to import `.csv` and explore the data in an interactive fashion. Detections can be rendered by e.g. the detection semblance or the calculated magnitude.
 
 ![QGIS EQ Detections](images/qgis-loaded.webp)

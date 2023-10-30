@@ -29,6 +29,7 @@ theme:
     - search.suggest
     - announce.dismiss
     - content.code.copy
+    - content.action.edit
 
 markdown_extensions:
   - pymdownx.highlight:
