@@ -11,10 +11,6 @@ import nest_asyncio
 from pkg_resources import get_distribution
 
 from lassie.console import console
-from lassie.models import Stations
-from lassie.search import Search
-from lassie.server import WebServer
-from lassie.station_corrections import StationCorrections
 from lassie.utils import CACHE_DIR, setup_rich_logging
 
 nest_asyncio.apply()
@@ -22,7 +18,7 @@ nest_asyncio.apply()
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
+def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lassie",
         description="Lassie - The friendly earthquake detector 🐕",
@@ -122,7 +118,18 @@ def main() -> None:
     )
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
+    return parser
+
+
+def main() -> None:
+    parser = get_parser()
     args = parser.parse_args()
+
+    from lassie.models import Stations
+    from lassie.search import Search
+    from lassie.server import WebServer
+    from lassie.station_corrections import StationCorrections
+
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
     if args.command == "init":

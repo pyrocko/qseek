@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Sequence
 
-from pydantic import PositiveFloat
+from pydantic import Field, PositiveFloat
 
 from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.utils import PhaseDescription, log_call
@@ -23,8 +23,14 @@ class ConstantVelocityArrival(ModelledArrival):
 
 class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
-    phase: PhaseDescription = "constant:P"
-    velocity: PositiveFloat = 5000.0
+    phase: PhaseDescription = Field(
+        default="constant:P",
+        description="Name of the phase.",
+    )
+    velocity: PositiveFloat = Field(
+        default=5000.0,
+        description="Constant velocity of the phase in m/s.",
+    )
 
     def get_available_phases(self) -> tuple[str, ...]:
         return (self.phase,)

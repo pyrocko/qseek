@@ -35,14 +35,14 @@ markdown_extensions:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
-  - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
   - pymdownx.details
+  - pymdownx.tasklist
   - pymdownx.arithmatex:
       generic: true
-  - pymdownx.tasklist
-  - md_in_html
+  - pymdownx.tabbed:
+      alternate_style: true
   - admonition
   - attr_list
 
@@ -58,15 +58,7 @@ plugins:
   - search
   - mkdocstrings:
       default_handler: python
-      handlers:
-        python:
-          paths: [.]
-          options:
-            members_order: source
-            separate_signature: true
-            docstring_options:
-              ignore_init_summary: true
-            merge_init_into_class: true
+  - markdown-exec
 
 nav:
   - Earthquake Detector:
@@ -74,10 +66,9 @@ nav:
     - Getting Started: getting_started.md
     - Visualising Detections: visualizing_results.md
   - Usage:
+    - Configuration: components/configuration.md
     - Seismic Data: components/seismic_data.md
     - Ray Tracer: components/ray_tracer.md
     - Image Function: components/image_function.md
     - Octree: components/octree.md
     - Station Corrections: components/station_corrections.md
-    - CLI:
-      - Interface: cli.md

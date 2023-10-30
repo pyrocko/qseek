@@ -56,11 +56,20 @@ class Station(Location):
 
 
 class Stations(BaseModel):
-    station_xmls: list[Path] = []
-    pyrocko_station_yamls: list[Path] = []
+    pyrocko_station_yamls: list[Path] = Field(
+        default=[],
+        description="List of Pyrocko station yaml files.",
+    )
+    station_xmls: list[Path] = Field(
+        default=[],
+        description="List of StationXML files.",
+    )
 
+    blacklist: set[constr(pattern=NSL_RE)] = Field(
+        default=set(),
+        description="Blacklist as `['NET.STA.LOC', ...]`",
+    )
     stations: list[Station] = []
-    blacklist: set[constr(pattern=NSL_RE)] = set()
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []

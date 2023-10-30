@@ -8,6 +8,14 @@ The installation is straight-forward:
 pip install git+https://github.com/pyrocko/lassie-v2
 ```
 
+## Running Lassie
+
+The main entry point in the executeable is the `lassie` command. The provided command line interface (CLI) and a JSON config file is all what is needed to run the program.
+
+```bash exec='on' result='ansi' source='above'
+lassie -h
+```
+
 ## Initializing a New Project
 
 Once installed you can run the lassie executeable to initialize a new project.
@@ -96,8 +104,6 @@ Check out the `search.json` config file and add your waveform data and velocity 
     "window_length": "PT300S",
     "n_threads_parstack": 0,
     "n_threads_argmax": 4,
-    "plot_octree_surface": false,
-    "created": "2023-10-29T19:17:17.676279Z"
     }
     ```
 

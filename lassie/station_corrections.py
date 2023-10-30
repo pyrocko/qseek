@@ -315,12 +315,32 @@ class StationCorrections(BaseModel):
         default=None,
         description="Lassie rundir to calculate the corrections from.",
     )
-    measure: Literal["median", "average"] = "median"
-    weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
+    measure: Literal["median", "average"] = Field(
+        default="median",
+        description="Arithmetic measure for the traveltime delays. "
+        "Choose from `median` and `average`.",
+    )
+    weighting: ArrivalWeighting = Field(
+        default="mul-PhaseNet-semblance",
+        description="Weighting of the traveltime delays. Choose from `none`, "
+        "`PhaseNet`, `semblance`, `add-PhaseNet-semblance`"
+        " and `mul-PhaseNet-semblance`.",
+    )
 
-    minimum_num_picks: PositiveInt = 5
-    minimum_distance_border: PositiveFloat = 2000.0
-    minimum_depth: PositiveFloat = 3000.0
+    minimum_num_picks: PositiveInt = Field(
+        default=5,
+        description="Minimum number of picks at a station required"
+        " to calculate station corrections.",
+    )
+    minimum_distance_border: PositiveFloat = Field(
+        default=2000.0,
+        description="Minimum distance to the octree border "
+        "to be considered for correction.",
+    )
+    minimum_depth: PositiveFloat = Field(
+        default=3000.0,
+        description="Minimum depth of the detection to be considered for correction.",
+    )
 
     _station_corrections: dict[str, StationCorrection] = PrivateAttr({})
     _traveltime_delay_cache: dict[tuple[NSL, PhaseDescription], float] = PrivateAttr({})

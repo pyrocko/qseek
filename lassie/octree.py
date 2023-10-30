@@ -180,13 +180,35 @@ class Node(BaseModel):
 
 
 class Octree(BaseModel):
-    location: Location = Location(lat=0.0, lon=0.0)
-    size_initial: PositiveFloat = 2 * KM
-    size_limit: PositiveFloat = 500
-    east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
-    north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
-    depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
-    absorbing_boundary: float = Field(default=1 * KM, ge=0.0)
+    location: Location = Field(
+        default=Location(lat=0.0, lon=0.0),
+        description="The reference location of the octree.",
+    )
+    size_initial: PositiveFloat = Field(
+        default=2 * KM,
+        description="Initial size of a cubic octree node in meters.",
+    )
+    size_limit: PositiveFloat = Field(
+        default=500.0,
+        description="Smallest possible size of an octree node in meters.",
+    )
+    east_bounds: tuple[float, float] = Field(
+        default=(-10 * KM, 10 * KM),
+        description="East bounds of the octree in meters.",
+    )
+    north_bounds: tuple[float, float] = Field(
+        default=(-10 * KM, 10 * KM),
+        description="North bounds of the octree in meters.",
+    )
+    depth_bounds: tuple[float, float] = Field(
+        default=(0 * KM, 20 * KM),
+        description="Depth bounds of the octree in meters.",
+    )
+    absorbing_boundary: float = Field(
+        default=1 * KM,
+        ge=0.0,
+        description="Absorbing boundary in meters. Detections inside the boundary will be tagged.",
+    )
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})

@@ -274,19 +274,26 @@ class FastMarchingTracer(RayTracer):
     tracer: Literal["FastMarchingRayTracer"] = "FastMarchingRayTracer"
 
     phase: PhaseDescription = "fm:P"
-    interpolation_method: Literal["nearest", "linear", "cubic"] = "linear"
+    interpolation_method: Literal["nearest", "linear", "cubic"] = Field(
+        default="linear",
+        description="Interpolation method for travel times."
+        "Choose from `nearest`, `linear` or `cubic`.",
+    )
     nthreads: int = Field(
         default=0,
         description="Number of threads to use for travel time."
-        "If set to 0, cpu_count*2 will be used.",
+        " If set to `0`, `cpu_count*2` will be used.",
     )
 
     lut_cache_size: ByteSize = Field(
         default=2 * GiB,
-        description="Size of the LUT cache.",
+        description="Size of the LUT cache. Default is `2G`.",
     )
 
-    velocity_model: VelocityModels = Constant3DVelocityModel()
+    velocity_model: VelocityModels = Field(
+        default=Constant3DVelocityModel(),
+        description="Velocity model for the ray tracer.",
+    )
 
     _travel_time_volumes: dict[str, StationTravelTimeVolume] = PrivateAttr({})
     _velocity_model: VelocityModel3D | None = PrivateAttr(None)

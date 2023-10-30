@@ -12,6 +12,13 @@ $$
 
 This module is used for simple use cases and cross-referencing testing.
 
+```python exec='on'
+from lassie.utils import generate_docs
+from lassie.tracers.constant_velocity import ConstantVelocityTracer
+
+print(generate_docs(ConstantVelocityTracer()))
+```
+
 ## 1D Layered Model
 
 Calculation of travel times in 1D layered media is based on the [Pyrocko Cake](https://pyrocko.org/docs/current/apps/cake/manual.html#command-line-examples) ray tracer.
@@ -19,13 +26,27 @@ Calculation of travel times in 1D layered media is based on the [Pyrocko Cake](h
 ![Pyrocko Cake Ray Tracer](https://pyrocko.org/docs/current/_images/cake_plot_example_2.png)
 *Pyrocko Cake 1D ray tracer for travel time calculation in 1D layered media*
 
-## 3D Velocity Model
+```python exec='on'
+from lassie.utils import generate_docs
+from lassie.tracers.cake import CakeTracer
 
-We implement the fast marching method for calculating first arrivals of waves in 3D volumes.
+print(generate_docs(CakeTracer(), exclude={'earthmodel': {'raw_file_data'}}))
+```
+
+## 3D Fast Marching
+
+We implement the fast marching method for calculating first arrivals of waves in 3D volumes. Currently three different 3D velocity models are supported:
 
 * [x] Import [NonLinLoc](http://alomax.free.fr/nlloc/) 3D velocity model
 * [x] 1D layered model 🥞
 * [x] Constant velocity, mainly for testing purposes 🥼
+
+```python exec='on'
+from lassie.utils import generate_docs
+from lassie.tracers.fast_marching import FastMarchingTracer
+
+print(generate_docs(FastMarchingTracer()))
+```
 
 ### Visualizing 3D Models
 

@@ -81,17 +81,42 @@ class SquirrelPrefetcher:
 
 
 class PyrockoSquirrel(WaveformProvider):
+    """Waveform provider using Pyrocko's Squirrel."""
+
     provider: Literal["PyrockoSquirrel"] = "PyrockoSquirrel"
 
-    environment: Path = Path(".")
-    waveform_dirs: list[Path] = []
-    start_time: AwareDatetime | None = None
-    end_time: AwareDatetime | None = None
+    environment: Path = Field(
+        default=Path("."),
+        description="Path to Squirrel environment.",
+    )
+    waveform_dirs: list[Path] = Field(
+        default=[],
+        description="List of directories holding the waveform files.",
+    )
+    start_time: AwareDatetime | None = Field(
+        default=None,
+        description="Start time for the search.",
+    )
+    end_time: AwareDatetime | None = Field(
+        default=None,
+        description="End time for the search.",
+    )
 
-    highpass: PositiveFloat | None = None
-    lowpass: PositiveFloat | None = None
+    highpass: PositiveFloat | None = Field(
+        default=None,
+        description="Highpass filter, corner frequency in Hz.",
+    )
+    lowpass: PositiveFloat | None = Field(
+        default=None,
+        description="Lowpass filter, corner frequency in Hz.",
+    )
 
-    channel_selector: str = Field(default="*", max_length=3)
+    channel_selector: str = Field(
+        default="*",
+        max_length=3,
+        description="Channel selector for Pyrocko's Squirrel, "
+        "use e.g. `EN?` for selection.",
+    )
     async_prefetch_batches: PositiveInt = 4
 
     _squirrel: Squirrel | None = PrivateAttr(None)

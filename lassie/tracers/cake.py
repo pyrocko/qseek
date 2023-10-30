@@ -98,11 +98,11 @@ class EarthModel(BaseModel):
     )
     format: Literal["nd", "hyposat"] = Field(
         default="nd",
-        description="Format of the velocity model. nd or hyposat is supported.",
+        description="Format of the velocity model. `nd` or `hyposat` is supported.",
     )
     crust2_profile: constr(to_upper=True) | tuple[float, float] = Field(
         default="",
-        description="Crust2 profile name or a tuple of (lat, lon) coordinates.",
+        description="Crust2 profile name or a tuple of `(lat, lon)` coordinates.",
     )
 
     raw_file_data: str | None = Field(
@@ -495,18 +495,24 @@ class TravelTimeTree(BaseModel):
 
 class CakeTracer(RayTracer):
     tracer: Literal["CakeTracer"] = "CakeTracer"
-    phases: dict[PhaseDescription, Timing] = {
-        "cake:P": Timing(definition="P,p"),
-        "cake:S": Timing(definition="S,s"),
-    }
-    earthmodel: EarthModel = Field(default_factory=EarthModel)
+    phases: dict[PhaseDescription, Timing] = Field(
+        default={
+            "cake:P": Timing(definition="P,p"),
+            "cake:S": Timing(definition="S,s"),
+        },
+        description="Dictionary of phases and timings to calculate.",
+    )
+    earthmodel: EarthModel = Field(
+        default_factory=EarthModel,
+        description="Earth model to calculate travel times for.",
+    )
     trim_earth_model_depth: bool = Field(
         default=True,
         description="Trim earth model to max depth of the octree.",
     )
     lut_cache_size: ByteSize = Field(
         default=2 * GiB,
-        description="Size of the LUT cache.",
+        description="Size of the LUT cache. Default is `2G`.",
     )
 
     _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
