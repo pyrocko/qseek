@@ -87,7 +87,7 @@ class PyrockoSquirrel(WaveformProvider):
 
     environment: Path = Field(
         default=Path("."),
-        description="Path to Squirrel environment.",
+        description="Path to a Squirrel environment.",
     )
     waveform_dirs: list[Path] = Field(
         default=[],
@@ -95,11 +95,13 @@ class PyrockoSquirrel(WaveformProvider):
     )
     start_time: AwareDatetime | None = Field(
         default=None,
-        description="Start time for the search.",
+        description="Start time for the search in "
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
     )
     end_time: AwareDatetime | None = Field(
         default=None,
-        description="End time for the search.",
+        description="End time for the search in "
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
     )
 
     highpass: PositiveFloat | None = Field(
@@ -114,8 +116,8 @@ class PyrockoSquirrel(WaveformProvider):
     channel_selector: str = Field(
         default="*",
         max_length=3,
-        description="Channel selector for Pyrocko's Squirrel, "
-        "use e.g. `EN?` for selection.",
+        description="Channel selector for waveforms, "
+        "use e.g. `EN?` for selection of all accelerometer data.",
     )
     async_prefetch_batches: PositiveInt = 4
 

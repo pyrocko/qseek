@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, FilePath, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -56,18 +56,20 @@ class Station(Location):
 
 
 class Stations(BaseModel):
-    pyrocko_station_yamls: list[Path] = Field(
+    pyrocko_station_yamls: list[FilePath] = Field(
         default=[],
-        description="List of Pyrocko station yaml files.",
+        description="List of [Pyrocko station YAML]"
+        "(https://pyrocko.org/docs/current/formats/yaml.html) files.",
     )
-    station_xmls: list[Path] = Field(
+    station_xmls: list[FilePath] = Field(
         default=[],
         description="List of StationXML files.",
     )
 
     blacklist: set[constr(pattern=NSL_RE)] = Field(
         default=set(),
-        description="Blacklist as `['NET.STA.LOC', ...]`",
+        description="Blacklist stations and exclude from detecion. "
+        "Format is `['NET.STA.LOC', ...]`",
     )
     stations: list[Station] = []
 
