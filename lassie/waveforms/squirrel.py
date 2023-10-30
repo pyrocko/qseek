@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
 
 from pydantic import (
     AwareDatetime,
+    DirectoryPath,
     Field,
     PositiveFloat,
     PositiveInt,
@@ -85,11 +86,11 @@ class PyrockoSquirrel(WaveformProvider):
 
     provider: Literal["PyrockoSquirrel"] = "PyrockoSquirrel"
 
-    environment: Path = Field(
+    environment: DirectoryPath = Field(
         default=Path("."),
         description="Path to a Squirrel environment.",
     )
-    waveform_dirs: list[Path] = Field(
+    waveform_dirs: list[DirectoryPath] = Field(
         default=[],
         description="List of directories holding the waveform files.",
     )
