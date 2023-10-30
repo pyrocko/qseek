@@ -1,5 +1,7 @@
 site_name: Lassie - Earthquake Detector
 site_description: The friendly earthquake detector
+site_author: Marius Paul Isken
+
 repo_url: https://github.com/pyrocko/lassie-v2
 repo_name: pyrocko/lassie-v2
 edit_uri: edit/main/docs/
@@ -36,11 +38,12 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
-  - admonition
   - pymdownx.details
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.tasklist
+  - md_in_html
+  - admonition
   - attr_list
 
 extra_javascript:
@@ -66,12 +69,15 @@ plugins:
             merge_init_into_class: true
 
 nav:
-  - 🐕‍🦺 Earthquake Detector:
+  - Earthquake Detector:
     - Welcome: index.md
     - Getting Started: getting_started.md
     - Visualising Detections: visualizing_results.md
-  - Components:
+  - Usage:
     - Seismic Data: components/seismic_data.md
     - Ray Tracer: components/ray_tracer.md
     - Image Function: components/image_function.md
     - Octree: components/octree.md
+    - Station Corrections: components/station_corrections.md
+    - CLI:
+      - Interface: cli.md

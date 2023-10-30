@@ -313,7 +313,7 @@ class StationCorrection(BaseModel):
 class StationCorrections(BaseModel):
     rundir: DirectoryPath | None = Field(
         default=None,
-        description="The rundir to load the detections from",
+        description="Lassie rundir to calculate the corrections from.",
     )
     measure: Literal["median", "average"] = "median"
     weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
@@ -410,8 +410,7 @@ class StationCorrections(BaseModel):
         Returns:
             float: The traveltime delay in seconds.
         """
-
-        def get_delay() -> float:
+        if (station_nsl, phase) not in self._traveltime_delay_cache:
             try:
                 station = self.get_station(station_nsl)
             except KeyError:
@@ -425,8 +424,6 @@ class StationCorrections(BaseModel):
                 return station.get_median_delay(phase, self.weighting)
             raise ValueError(f"unknown measure {self.measure!r}")
 
-        if (station_nsl, phase) not in self._traveltime_delay_cache:
-            self._traveltime_delay_cache[station_nsl, phase] = get_delay()
         return self._traveltime_delay_cache[station_nsl, phase]
 
     def get_delays(
@@ -443,7 +440,9 @@ class StationCorrections(BaseModel):
         Returns:
             np.ndarray: The traveltime delays for the given stations and phase.
         """
-        return np.array([self.get_delay(nsl, phase) for nsl in station_nsls])
+        return np.fromiter(
+            (self.get_delay(nsl, phase) for nsl in station_nsls), dtype=float
+        )
 
     def save_plots(self, folder: Path) -> None:
         folder.mkdir(exist_ok=True)

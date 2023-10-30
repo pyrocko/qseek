@@ -101,9 +101,11 @@ Check out the `search.json` config file and add your waveform data and velocity 
     }
     ```
 
+For more details and information about the component, head over to [details of the modules](components/seismic_data.md).
 
 ## Starting the Search
-Once happy, start the search with
+
+Once happy, start the lassie CLI.
 
 ```sh title="Start earthquake detection"
 lassie search search.json

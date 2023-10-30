@@ -1,3 +1,3 @@
 # Octree
 
-We search the for energy in a 3D octree structure to simultaneously speed up the search and improve the resolution of the localisations.
+A 3D space is searched for sources of seismic energy. Lassie created an octree structure which is iteratively refined when energy is detected, to focus on the source' location. This speeds up the search and improves the resolution of the localisations.
