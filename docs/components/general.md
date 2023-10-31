@@ -8,7 +8,7 @@ Paths can be relative to the location of the config file or absolute. **File pat
 
 Serialisation of time, dates and date times and durations follow [ISO8601](https://en.wikipedia.org/wiki/ISO_8601) format with timezone information. E.g. `2023-10-28T01:21:21.003+00:00`.
 
-Duration are serialized like `PT600S`, this example shows 600 seconds - 10 minutes.
+Duration are serialized like `PT600S`, this example shows a duration of 600 seconds, 10 minutes.
 
 ```json title="Example of datetimes and durations"
 {

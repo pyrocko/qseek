@@ -73,6 +73,7 @@ nav:
     - Welcome: index.md
     - Getting Started 🚀: getting_started.md
     - Visualising Detections: visualizing_results.md
+    - Benchmark: benchmark.md
   - Usage:
     - The Search: components/configuration.md
     - Seismic Data: components/seismic_data.md

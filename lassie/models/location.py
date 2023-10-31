@@ -16,8 +16,18 @@ CoordSystem = Literal["cartesian", "geographic"]
 
 
 class Location(BaseModel):
-    lat: float = Field(..., description="Latitude in degrees.")
-    lon: float = Field(..., description="Longitude in degrees.")
+    lat: float = Field(
+        ...,
+        ge=-90.0,
+        le=90.0,
+        description="Latitude in degrees.",
+    )
+    lon: float = Field(
+        ...,
+        ge=-180.0,
+        le=180.0,
+        description="Longitude in degrees.",
+    )
     east_shift: float = Field(
         default=0.0,
         description="East shift towards geographical reference in meters.",

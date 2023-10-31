@@ -70,7 +70,11 @@ class Search(BaseModel):
         description="Data provider for waveform data.",
     )
 
-    octree: Octree = Octree()
+    octree: Octree = Field(
+        default=Octree(),
+        description="Octree volume for the search.",
+    )
+
     image_functions: ImageFunctions = Field(
         default=ImageFunctions(),
         description="Image functions for waveform processing and "
@@ -84,7 +88,7 @@ class Search(BaseModel):
     )
     station_corrections: StationCorrections | None = Field(
         default=None,
-        description="Apply station corrections from a previous run.",
+        description="Apply station corrections extracted from a previous run.",
     )
     event_features: list[FeatureExtractors] = [
         GroundMotionExtractor(),
