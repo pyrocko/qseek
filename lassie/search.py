@@ -61,31 +61,75 @@ class SearchProgress(BaseModel):
 
 class Search(BaseModel):
     project_dir: Path = Path(".")
-    stations: Stations = Stations()
-    data_provider: WaveformProviderType = PyrockoSquirrel()
+    stations: Stations = Field(
+        default=Stations(),
+        description="Station inventory from StationXML or Pyrocko Station YAML.",
+    )
+    data_provider: WaveformProviderType = Field(
+        default=PyrockoSquirrel(),
+        description="Data provider for waveform data.",
+    )
 
     octree: Octree = Octree()
-    image_functions: ImageFunctions = ImageFunctions()
-    ray_tracers: RayTracers = RayTracers(
-        root=[ConstantVelocityTracer(), CakeTracer(), FastMarchingTracer()]
+    image_functions: ImageFunctions = Field(
+        default=ImageFunctions(),
+        description="Image functions for waveform processing and "
+        "phase on-set detection.",
     )
-    station_corrections: StationCorrections = StationCorrections()
+    ray_tracers: RayTracers = Field(
+        default=RayTracers(
+            root=[ConstantVelocityTracer(), CakeTracer(), FastMarchingTracer()]
+        ),
+        description="List of ray tracers for travel time calculation.",
+    )
+    station_corrections: StationCorrections | None = Field(
+        default=None,
+        description="Apply station corrections from a previous run.",
+    )
     event_features: list[FeatureExtractors] = [
         GroundMotionExtractor(),
         LocalMagnitudeExtractor(),
     ]
 
-    sampling_rate: SamplingRate = 100
-    detection_threshold: PositiveFloat = 0.05
-    detection_blinding: timedelta = timedelta(seconds=2.0)
+    sampling_rate: SamplingRate = Field(
+        default=100,
+        description="Sampling rate for the image function. "
+        "Choose from 10, 20, 25, 50, 100 Hz.",
+    )
+    detection_threshold: PositiveFloat = Field(
+        default=0.05,
+        description="Detection threshold for semblance.",
+    )
+    node_split_threshold: float = Field(
+        default=0.9,
+        gt=0.0,
+        lt=1.0,
+        description="Threshold for splitting octree nodes,"
+        " relative to the maximum detected semblance.",
+    )
 
-    image_mean_p: float = Field(default=1, ge=1.0, le=2.0)
+    detection_blinding: timedelta = Field(
+        default=timedelta(seconds=2.0),
+        description="Blinding in seconds before and after the detection peak.",
+    )
 
-    node_split_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
-    window_length: timedelta = timedelta(minutes=5)
+    image_mean_p: float = Field(default=1.0, ge=1.0, le=2.0)
 
-    n_threads_parstack: int = Field(default=0, ge=0)
-    n_threads_argmax: PositiveInt = 4
+    window_length: timedelta = Field(
+        default=timedelta(minutes=5),
+        description="Window length for processing. Default is 5 minutes.",
+    )
+
+    n_threads_parstack: int = Field(
+        default=0,
+        ge=0,
+        description="Number of threads for stacking and migration. "
+        "`0` uses all available cores.",
+    )
+    n_threads_argmax: PositiveInt = Field(
+        default=4,
+        description="Number of threads for argmax. Default is `4`.",
+    )
 
     plot_octree_surface: bool = False
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
@@ -412,7 +456,7 @@ class SearchTraces:
             station_delays = parent.station_corrections.get_delays(
                 image.stations.get_all_nsl(), image.phase
             )
-            traveltimes += station_delays[np.newaxis, :]
+            traveltimes -= station_delays[np.newaxis, :]
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0

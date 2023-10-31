@@ -129,9 +129,12 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     for name, field in model.model_fields.items():
         if field.description is None:
             continue
+        default = str(field.default)
+        if isinstance(field.default, BaseModel):
+            default = field.default.__class__.__name__
         lines += [
             f"    **`{name}`**\n",
-            f"    :   {field.description}\n",
+            f"    :   {field.description} Default is *`{default}`*.\n",
         ]
 
     def dump_json() -> list[str]:

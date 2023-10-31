@@ -16,23 +16,23 @@ CoordSystem = Literal["cartesian", "geographic"]
 
 
 class Location(BaseModel):
-    lat: float
-    lon: float
+    lat: float = Field(..., description="Latitude in degrees.")
+    lon: float = Field(..., description="Longitude in degrees.")
     east_shift: float = Field(
         default=0.0,
-        description="east shift towards geographical reference in meters.",
+        description="East shift towards geographical reference in meters.",
     )
     north_shift: float = Field(
         default=0.0,
-        description="north shift towards geographical reference in meters.",
+        description="North shift towards geographical reference in meters.",
     )
     elevation: float = Field(
         default=0.0,
-        description="elevation in meters.",
+        description="Elevation in meters.",
     )
     depth: float = Field(
         default=0.0,
-        description="depth in meters, positive is down.",
+        description="Depth in meters, **positive is down**.",
     )
 
     _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)

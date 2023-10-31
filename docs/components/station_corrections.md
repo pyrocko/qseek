@@ -4,7 +4,7 @@ Station corrections can be extract from previous runs to refine the localisation
 
 ```python exec='on'
 from lassie.utils import generate_docs
-from lassie.models.station import Stations
+from lassie.station_corrections import StationCorrections
 
-print(generate_docs(Stations()))
+print(generate_docs(StationCorrections()))
 ```

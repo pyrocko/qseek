@@ -37,7 +37,13 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.tilde
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
   - pymdownx.details
   - pymdownx.tasklist
   - pymdownx.arithmatex:
@@ -65,13 +71,14 @@ plugins:
 nav:
   - Earthquake Detector:
     - Welcome: index.md
-    - Getting Started: getting_started.md
+    - Getting Started 🚀: getting_started.md
     - Visualising Detections: visualizing_results.md
   - Usage:
-    - Configuration: components/configuration.md
+    - The Search: components/configuration.md
     - Seismic Data: components/seismic_data.md
     - Ray Tracer: components/ray_tracer.md
     - Image Function: components/image_function.md
     - Octree: components/octree.md
     - Station Corrections: components/station_corrections.md
     - EQ Feature Extraction: components/feature_extraction.md
+    - General Configuration: components/general.md

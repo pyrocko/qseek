@@ -69,7 +69,7 @@ class Stations(BaseModel):
     blacklist: set[constr(pattern=NSL_RE)] = Field(
         default=set(),
         description="Blacklist stations and exclude from detecion. "
-        "Format is `['NET.STA.LOC', ...]`",
+        "Format is `['NET.STA.LOC', ...]`.",
     )
     stations: list[Station] = []
 
