@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -10,10 +11,6 @@ import nest_asyncio
 from pkg_resources import get_distribution
 
 from lassie.console import console
-from lassie.models import Stations
-from lassie.search import Search
-from lassie.server import WebServer
-from lassie.station_corrections import StationCorrections
 from lassie.utils import CACHE_DIR, setup_rich_logging
 
 nest_asyncio.apply()
@@ -21,17 +18,18 @@ nest_asyncio.apply()
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
+def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lassie",
-        description="The friendly earthquake detector - V2",
+        description="Lassie - The friendly earthquake detector 🐕",
     )
     parser.add_argument(
         "--verbose",
         "-v",
         action="count",
         default=0,
-        help="increase verbosity of the log messages, default level is INFO",
+        help="increase verbosity of the log messages, repeat to increase. "
+        "Default level is INFO",
     )
     parser.add_argument(
         "--version",
@@ -40,11 +38,28 @@ def main() -> None:
         help="show version and exit",
     )
 
-    subparsers = parser.add_subparsers(title="commands", required=True, dest="command")
+    subparsers = parser.add_subparsers(
+        title="commands",
+        required=True,
+        dest="command",
+        description="Available commands to run Lassie. Get command help with "
+        "`lassie <command> --help`.",
+    )
+
+    init_project = subparsers.add_parser(
+        "init",
+        help="initialize a new Lassie project",
+        description="initialze a new project with a default configuration file. ",
+    )
+    init_project.add_argument(
+        "folder",
+        type=Path,
+        help="folder to initialize project in",
+    )
 
     run = subparsers.add_parser(
-        "run",
-        help="start a new detection run",
+        "search",
+        help="start a search",
         description="detect, localize and characterize earthquakes in a dataset",
     )
     run.add_argument("config", type=Path, help="path to config file")
@@ -61,14 +76,6 @@ def main() -> None:
         description="continue a run from an existing rundir",
     )
     continue_run.add_argument("rundir", type=Path, help="existing runding to continue")
-
-    init_project = subparsers.add_parser(
-        "init",
-        help="initialize a new Lassie project",
-    )
-    init_project.add_argument(
-        "folder", type=Path, help="folder to initialize project in"
-    )
 
     features = subparsers.add_parser(
         "feature-extraction",
@@ -100,15 +107,29 @@ def main() -> None:
     subparsers.add_parser(
         "clear-cache",
         help="clear the cach directory",
+        description="clear all data in the cache directory",
     )
 
     dump_schemas = subparsers.add_parser(
         "dump-schemas",
         help="dump data models to json-schema (development)",
+        description="dump data models to json-schema, "
+        "this is for development purposes only",
     )
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
+    return parser
+
+
+def main() -> None:
+    parser = get_parser()
     args = parser.parse_args()
+
+    from lassie.models import Stations
+    from lassie.search import Search
+    from lassie.server import WebServer
+    from lassie.station_corrections import StationCorrections
+
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
     if args.command == "init":
@@ -120,11 +141,7 @@ def main() -> None:
         pyrocko_stations = folder / "pyrocko-stations.yaml"
         pyrocko_stations.touch()
 
-        config = Search(
-            stations=Stations(
-                pyrocko_station_yamls=[pyrocko_stations.relative_to(folder)]
-            )
-        )
+        config = Search(stations=Stations(pyrocko_station_yamls=[pyrocko_stations]))
 
         config_file = folder / f"{folder.name}.json"
         config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
@@ -132,7 +149,7 @@ def main() -> None:
         logger.info("initialized new project in folder %s", folder)
         logger.info("start detection with: lassie run %s", config_file.name)
 
-    elif args.command == "run":
+    elif args.command == "search":
         search = Search.from_config(args.config)
 
         webserver = WebServer(search)
@@ -174,7 +191,9 @@ def main() -> None:
         station_corrections = StationCorrections(rundir=rundir)
         if args.plot:
             station_corrections.save_plots(rundir / "station_corrections")
-        station_corrections.save_csv(filename=rundir / "station_corrections_stats.csv")
+        station_corrections.export_csv(
+            filename=rundir / "station_corrections_stats.csv"
+        )
 
     elif args.command == "serve":
         search = Search.load_rundir(args.rundir)
@@ -196,10 +215,12 @@ def main() -> None:
 
         file = args.folder / "search.schema.json"
         print(f"writing JSON schemas to {args.folder}")
-        file.write_text(Search.model_json_schema(indent=2))
+        file.write_text(json.dumps(Search.model_json_schema(), indent=2))
 
         file = args.folder / "detections.schema.json"
-        file.write_text(EventDetections.model_json_schema(indent=2))
+        file.write_text(json.dumps(EventDetections.model_json_schema(), indent=2))
+    else:
+        parser.error(f"unknown command: {args.command}")
 
 
 if __name__ == "__main__":

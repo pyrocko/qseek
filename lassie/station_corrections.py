@@ -313,14 +313,34 @@ class StationCorrection(BaseModel):
 class StationCorrections(BaseModel):
     rundir: DirectoryPath | None = Field(
         default=None,
-        description="The rundir to load the detections from",
+        description="Lassie rundir to calculate the corrections from.",
     )
-    measure: Literal["median", "average"] = "median"
-    weighting: ArrivalWeighting = "mul-PhaseNet-semblance"
+    measure: Literal["median", "average"] = Field(
+        default="median",
+        description="Arithmetic measure for the traveltime delays. "
+        "Choose from `median` and `average`.",
+    )
+    weighting: ArrivalWeighting = Field(
+        default="mul-PhaseNet-semblance",
+        description="Weighting of the traveltime delays. Choose from `none`, "
+        "`PhaseNet`, `semblance`, `add-PhaseNet-semblance`"
+        " and `mul-PhaseNet-semblance`.",
+    )
 
-    minimum_num_picks: PositiveInt = 5
-    minimum_distance_border: PositiveFloat = 2000.0
-    minimum_depth: PositiveFloat = 3000.0
+    minimum_num_picks: PositiveInt = Field(
+        default=5,
+        description="Minimum number of picks at a station required"
+        " to calculate station corrections.",
+    )
+    minimum_distance_border: PositiveFloat = Field(
+        default=2000.0,
+        description="Minimum distance to the octree border "
+        "to be considered for correction.",
+    )
+    minimum_depth: PositiveFloat = Field(
+        default=3000.0,
+        description="Minimum depth of the detection to be considered for correction.",
+    )
 
     _station_corrections: dict[str, StationCorrection] = PrivateAttr({})
     _traveltime_delay_cache: dict[tuple[NSL, PhaseDescription], float] = PrivateAttr({})
@@ -410,8 +430,7 @@ class StationCorrections(BaseModel):
         Returns:
             float: The traveltime delay in seconds.
         """
-
-        def get_delay() -> float:
+        if (station_nsl, phase) not in self._traveltime_delay_cache:
             try:
                 station = self.get_station(station_nsl)
             except KeyError:
@@ -425,8 +444,6 @@ class StationCorrections(BaseModel):
                 return station.get_median_delay(phase, self.weighting)
             raise ValueError(f"unknown measure {self.measure!r}")
 
-        if (station_nsl, phase) not in self._traveltime_delay_cache:
-            self._traveltime_delay_cache[station_nsl, phase] = get_delay()
         return self._traveltime_delay_cache[station_nsl, phase]
 
     def get_delays(
@@ -443,7 +460,9 @@ class StationCorrections(BaseModel):
         Returns:
             np.ndarray: The traveltime delays for the given stations and phase.
         """
-        return np.array([self.get_delay(nsl, phase) for nsl in station_nsls])
+        return np.fromiter(
+            (self.get_delay(nsl, phase) for nsl in station_nsls), dtype=float
+        )
 
     def save_plots(self, folder: Path) -> None:
         folder.mkdir(exist_ok=True)
@@ -454,7 +473,7 @@ class StationCorrections(BaseModel):
                 filename=folder / f"corrections-{correction.station.pretty_nsl}.png"
             )
 
-    def save_csv(self, filename: Path) -> None:
+    def export_csv(self, filename: Path) -> None:
         """Save the station corrections to a CSV file.
 
         Args:
@@ -464,10 +483,10 @@ class StationCorrections(BaseModel):
         csv_data = [correction.get_csv_data() for correction in self]
         columns = set(chain.from_iterable(data.keys() for data in csv_data))
         with filename.open("w") as file:
-            file.write(f"{', '.join(columns)}\n")
+            file.write(f"{','.join(columns)}\n")
             for data in csv_data:
                 file.write(
-                    f"{', '.join(str(data.get(key, -9999.9)) for key in columns)}\n"
+                    f"{','.join(str(data.get(key, -9999.9)) for key in columns)}\n"
                 )
 
     def __iter__(self) -> Iterator[StationCorrection]:

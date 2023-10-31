@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, Field, FilePath, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
 if TYPE_CHECKING:
-    from pyrocko.trace import Trace
     from pyrocko.squirrel import Squirrel
+    from pyrocko.trace import Trace
 
 from lassie.models.location import CoordSystem, Location
 
@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class Station(Location):
-    network: constr(max_length=2)
-    station: constr(max_length=5)
-    location: constr(max_length=2) = ""
+    network: str = Field(..., max_length=2)
+    station: str = Field(..., max_length=5)
+    location: str = Field(default="", max_length=2)
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:
@@ -56,11 +56,22 @@ class Station(Location):
 
 
 class Stations(BaseModel):
-    station_xmls: list[Path] = []
-    pyrocko_station_yamls: list[Path] = []
+    pyrocko_station_yamls: list[FilePath] = Field(
+        default=[],
+        description="List of [Pyrocko station YAML]"
+        "(https://pyrocko.org/docs/current/formats/yaml.html) files.",
+    )
+    station_xmls: list[FilePath] = Field(
+        default=[],
+        description="List of StationXML files.",
+    )
 
+    blacklist: set[constr(pattern=NSL_RE)] = Field(
+        default=set(),
+        description="Blacklist stations and exclude from detecion. "
+        "Format is `['NET.STA.LOC', ...]`",
+    )
     stations: list[Station] = []
-    blacklist: set[constr(pattern=NSL_RE)] = set()
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
@@ -183,7 +194,7 @@ class Stations(BaseModel):
             [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
         )
 
-    def dump_pyrocko_stations(self, filename: Path) -> None:
+    def export_pyrocko_stations(self, filename: Path) -> None:
         """Dump stations to pyrocko station yaml file.
 
         Args:
@@ -194,7 +205,7 @@ class Stations(BaseModel):
             filename=str(filename.expanduser()),
         )
 
-    def dump_csv(self, filename: Path) -> None:
+    def export_csv(self, filename: Path) -> None:
         """Dump stations to CSV file.
 
         Args:
@@ -207,6 +218,9 @@ class Stations(BaseModel):
                     f"{sta.network},{sta.station},{sta.location},"
                     f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
                 )
+
+    def export_vtk(self, reference: Location | None = None) -> None:
+        ...
 
     def __hash__(self) -> int:
         return hash(sta for sta in self)

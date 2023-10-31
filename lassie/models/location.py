@@ -5,7 +5,7 @@ import math
 import struct
 from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
 
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 from pyrocko import orthodrome as od
 from typing_extensions import Self
 
@@ -18,10 +18,22 @@ CoordSystem = Literal["cartesian", "geographic"]
 class Location(BaseModel):
     lat: float
     lon: float
-    east_shift: float = 0.0
-    north_shift: float = 0.0
-    elevation: float = 0.0
-    depth: float = 0.0
+    east_shift: float = Field(
+        default=0.0,
+        description="east shift towards geographical reference in meters.",
+    )
+    north_shift: float = Field(
+        default=0.0,
+        description="north shift towards geographical reference in meters.",
+    )
+    elevation: float = Field(
+        default=0.0,
+        description="elevation in meters.",
+    )
+    depth: float = Field(
+        default=0.0,
+        description="depth in meters, positive is down.",
+    )
 
     _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
 
@@ -107,7 +119,7 @@ class Location(BaseModel):
         return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
     def offset_from(self, other: Location) -> tuple[float, float, float]:
-        """Return offset vector (east, north, depth) to other location in [m]
+        """Return offset vector (east, north, depth) from other location in [m]
 
         Args:
             other (Location): The other location.

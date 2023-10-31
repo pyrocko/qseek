@@ -30,6 +30,22 @@ class WaveformBatch:
     def duration(self) -> timedelta:
         return self.end_time - self.start_time
 
+    @property
+    def cumulative_duration(self) -> timedelta:
+        """Cumulative duration of the traces in the batch.
+
+        Returns:
+            timedelta: Cumulative duration of the traces in the batch.
+        """
+        seconds = 0.0
+        for tr in self.traces:
+            seconds += tr.tmax - tr.tmin
+        return timedelta(seconds=seconds)
+
+    @property
+    def cumulative_bytes(self) -> int:
+        return sum(tr.ydata.nbytes for tr in self.traces)
+
     def is_empty(self) -> bool:
         """Check if the batch is empty.
 
@@ -44,6 +60,10 @@ class WaveformBatch:
             if not tr.ydata.size or not np.all(np.isfinite(tr.ydata)):
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 self.traces.remove(tr)
+
+    def log_str(self) -> str:
+        """Log the batch."""
+        return f"{self.i_batch+1}/{self.n_batches or '?'} {self.start_time}"
 
 
 class WaveformProvider(BaseModel):

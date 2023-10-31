@@ -9,9 +9,12 @@ from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
 
 from pydantic import (
     AwareDatetime,
+    DirectoryPath,
+    Field,
+    PositiveFloat,
     PositiveInt,
     PrivateAttr,
-    constr,
+    field_validator,
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
@@ -28,44 +31,113 @@ logger = logging.getLogger(__name__)
 
 
 class SquirrelPrefetcher:
-    def __init__(self, iterator: Iterator[Batch], queue_size: int = 4) -> None:
+    def __init__(
+        self,
+        iterator: Iterator[Batch],
+        queue_size: int = 4,
+        highpass: float | None = None,
+        lowpass: float | None = None,
+    ) -> None:
         self.iterator = iterator
         self.queue: asyncio.Queue[Batch | None] = asyncio.Queue(maxsize=queue_size)
+        self.highpass = highpass
+        self.lowpass = lowpass
+        self._fetched_batches = 0
 
         self._task = asyncio.create_task(self.prefetch_worker())
 
     async def prefetch_worker(self) -> None:
-        logger.info("start prefetching squirrel data")
+        logger.info("start prefetching data, queue size %d", self.queue.maxsize)
+
+        def filter_freqs(batch: Batch) -> Batch:
+            # Filter traces in-place
+            start = None
+            if self.highpass:
+                start = datetime_now()
+                for tr in batch.traces:
+                    tr.highpass(4, corner=self.highpass)
+            if self.lowpass:
+                start = start or datetime_now()
+                for tr in batch.traces:
+                    tr.lowpass(4, corner=self.lowpass)
+            if start:
+                logger.debug("filtered traces in %s", datetime_now() - start)
+            return batch
+
         while True:
             start = datetime_now()
             batch = await asyncio.to_thread(lambda: next(self.iterator, None))
-            logger.debug("prefetched waveforms in %s", datetime_now() - start)
             if batch is None:
                 logger.debug("squirrel prefetcher finished")
                 await self.queue.put(None)
                 break
+
+            await asyncio.to_thread(filter_freqs, batch)
+            logger.debug("prefetched waveforms in %s", datetime_now() - start)
+            if self.queue.empty() and self._fetched_batches:
+                logger.warning("queue ran empty, prefetching is too slow")
+
+            self._fetched_batches += 1
             await self.queue.put(batch)
 
 
 class PyrockoSquirrel(WaveformProvider):
+    """Waveform provider using Pyrocko's Squirrel."""
+
     provider: Literal["PyrockoSquirrel"] = "PyrockoSquirrel"
 
-    environment: Path = Path(".")
-    waveform_dirs: list[Path] = []
-    start_time: AwareDatetime | None = None
-    end_time: AwareDatetime | None = None
+    environment: DirectoryPath = Field(
+        default=Path("."),
+        description="Path to a Squirrel environment.",
+    )
+    waveform_dirs: list[DirectoryPath] = Field(
+        default=[],
+        description="List of directories holding the waveform files.",
+    )
+    start_time: AwareDatetime | None = Field(
+        default=None,
+        description="Start time for the search in "
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
+    )
+    end_time: AwareDatetime | None = Field(
+        default=None,
+        description="End time for the search in "
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
+    )
 
-    channel_selector: constr(max_length=3) = "*"
+    highpass: PositiveFloat | None = Field(
+        default=None,
+        description="Highpass filter, corner frequency in Hz.",
+    )
+    lowpass: PositiveFloat | None = Field(
+        default=None,
+        description="Lowpass filter, corner frequency in Hz.",
+    )
+
+    channel_selector: str = Field(
+        default="*",
+        max_length=3,
+        description="Channel selector for waveforms, "
+        "use e.g. `EN?` for selection of all accelerometer data.",
+    )
     async_prefetch_batches: PositiveInt = 4
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr()
 
     @model_validator(mode="after")
-    def _validate_time_span(self) -> Self:  # noqa: N805
+    def _validate_model(self) -> Self:
         if self.start_time and self.end_time and self.start_time > self.end_time:
             raise ValueError("start_time must be before end_time")
+        if self.highpass and self.lowpass and self.highpass > self.lowpass:
+            raise ValueError("freq_min must be less than freq_max")
         return self
+
+    @field_validator("waveform_dirs")
+    def check_dirs(cls, dirs: list[Path]) -> list[Path]:  # noqa: N805
+        if not dirs:
+            raise ValueError("no waveform directories provided!")
+        return dirs
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
@@ -121,7 +193,12 @@ class PyrockoSquirrel(WaveformProvider):
                 (*nsl, self.channel_selector) for nsl in self._stations.get_all_nsl()
             ],
         )
-        prefetcher = SquirrelPrefetcher(iterator, self.async_prefetch_batches)
+        prefetcher = SquirrelPrefetcher(
+            iterator,
+            self.async_prefetch_batches,
+            self.highpass,
+            self.lowpass,
+        )
 
         while True:
             batch = await prefetcher.queue.get()
@@ -138,5 +215,3 @@ class PyrockoSquirrel(WaveformProvider):
             )
 
             prefetcher.queue.task_done()
-
-        logger.info("squirrel search finished")

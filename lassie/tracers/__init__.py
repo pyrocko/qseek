@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
 from pydantic import Field, RootModel
@@ -40,18 +41,30 @@ class RayTracers(RootModel):
         octree: Octree,
         stations: Stations,
         phases: tuple[PhaseDescription, ...],
+        rundir: Path | None = None,
     ) -> None:
-        logger.info("preparing ray tracers")
+        prepared_tracers = []
         for phase in phases:
             tracer = self.get_phase_tracer(phase)
-            await tracer.prepare(octree, stations)
+            if tracer in prepared_tracers:
+                continue
+            phases = tracer.get_available_phases()
+            logger.info(
+                "preparing ray tracer %s for phase %s", tracer.tracer, ", ".join(phases)
+            )
+            await tracer.prepare(octree, stations, rundir)
+            prepared_tracers.append(tracer)
 
-    def get_available_phases(self) -> tuple[str]:
+    def get_available_phases(self) -> tuple[str, ...]:
         phases = []
         for tracer in self:
             phases.extend([*tracer.get_available_phases()])
         if len(set(phases)) != len(phases):
-            raise ValueError("A phase was provided twice")
+            duplicate_phases = {phase for phase in phases if phases.count(phase) > 1}
+            raise ValueError(
+                f"Phases {', '.join(duplicate_phases)} was provided twice."
+                " Rename or remove the duplicate phases from the tracers."
+            )
         return tuple(phases)
 
     def get_phase_tracer(self, phase: str) -> RayTracer:
@@ -60,13 +73,16 @@ class RayTracers(RootModel):
                 return tracer
         raise ValueError(
             f"No tracer found for phase {phase}."
-            f" Available phases: {', '.join(self.get_available_phases())}"
+            " Please add a tracer for this phase or rename the phase to match a tracer."
+            f" Available phases: {', '.join(self.get_available_phases())}."
         )
 
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.root
 
-    def iter_phase_tracer(self) -> Iterator[tuple[PhaseDescription, RayTracer]]:
-        for tracer in self:
-            for phase in tracer.get_available_phases():
-                yield (phase, tracer)
+    def iter_phase_tracer(
+        self, phases: tuple[PhaseDescription, ...]
+    ) -> Iterator[tuple[PhaseDescription, RayTracer]]:
+        for phase in phases:
+            tracer = self.get_phase_tracer(phase)
+            yield (phase, tracer)

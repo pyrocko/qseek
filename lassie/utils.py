@@ -7,7 +7,7 @@ from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Awaitable, Callable, ParamSpec, TypeVar
 
-from pydantic import constr
+from pydantic import BaseModel, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
@@ -105,3 +105,42 @@ def human_readable_bytes(size: int | float) -> str:
 
 def datetime_now() -> datetime:
     return datetime.now(tz=timezone.utc)
+
+
+def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
+    """Takes model and dumps markdown for documentation"""
+
+    def generate_submodel(model: BaseModel) -> list[str]:
+        lines = []
+        for name, field in model.model_fields.items():
+            if field.description is None:
+                continue
+            lines += [
+                f"        - **`{name}`** *`{field.annotation}`*\n",
+                f"            {field.description}",
+            ]
+        return lines
+
+    model_name = model.__class__.__name__
+    lines = [f"### {model_name} Module"]
+    if model.__class__.__doc__ is not None:
+        lines += [f"{model.__class__.__doc__}\n"]
+    lines += [f'=== "Config {model_name}"']
+    for name, field in model.model_fields.items():
+        if field.description is None:
+            continue
+        lines += [
+            f"    **`{name}`**\n",
+            f"    :   {field.description}\n",
+        ]
+
+    def dump_json() -> list[str]:
+        dump = model.model_dump_json(by_alias=False, indent=2, exclude=exclude)
+        lines = dump.split("\n")
+        return [f"    {line}" for line in lines]
+
+    lines += ['=== "JSON Block"']
+    lines += [f"    ```json title='JSON block for {model_name}'"]
+    lines.extend(dump_json())
+    lines += ["    ```"]
+    return "\n".join(lines)

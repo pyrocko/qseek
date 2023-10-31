@@ -35,7 +35,7 @@ class ImageFunction(BaseModel):
         """Blinding duration for the image function. Added to padded waveforms."""
         raise NotImplementedError("must be implemented by subclass")
 
-    def get_provided_phases(self) -> tuple[str, ...]:
+    def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
         ...
 
 
@@ -104,6 +104,15 @@ class WaveformImage:
         return np.round((offsets - reference.timestamp()) / self.delta_t).astype(
             np.int32
         )
+
+    def apply_exponent(self, exponent: float) -> None:
+        """Apply exponent to all traces.
+
+        Args:
+            exponent (float): Exponent to apply.
+        """
+        for tr in self.traces:
+            tr.ydata **= exponent
 
     def search_phase_arrival(
         self,

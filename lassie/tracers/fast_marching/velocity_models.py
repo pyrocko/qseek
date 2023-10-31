@@ -4,6 +4,7 @@ import logging
 import re
 from hashlib import sha1
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Union
 
 import numpy as np
@@ -16,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic.dataclasses import dataclass
+from pyevtk.hl import gridToVTK
+from pyrocko.cake import LayeredModel, load_model
 from scipy.interpolate import RegularGridInterpolator
 from typing_extensions import Self
 
@@ -38,11 +41,11 @@ class VelocityModel3D(BaseModel):
     north_bounds: tuple[float, float]
     depth_bounds: tuple[float, float]
 
-    _east_coords: np.ndarray = PrivateAttr(None)
-    _north_coords: np.ndarray = PrivateAttr(None)
-    _depth_coords: np.ndarray = PrivateAttr(None)
+    _east_coords: np.ndarray = PrivateAttr()
+    _north_coords: np.ndarray = PrivateAttr()
+    _depth_coords: np.ndarray = PrivateAttr()
 
-    _velocity_model: np.ndarray = PrivateAttr(None)
+    _velocity_model: np.ndarray = PrivateAttr()
 
     _hash: str | None = PrivateAttr(None)
 
@@ -87,6 +90,30 @@ class VelocityModel3D(BaseModel):
             raise ValueError("Velocity model not set.")
         return self._velocity_model
 
+    @property
+    def east_coords(self) -> np.ndarray:
+        return self._east_coords
+
+    @property
+    def north_coords(self) -> np.ndarray:
+        return self._north_coords
+
+    @property
+    def depth_coords(self) -> np.ndarray:
+        return self._depth_coords
+
+    @property
+    def east_size(self) -> float:
+        return self._east_coords.size * self.grid_spacing
+
+    @property
+    def north_size(self) -> float:
+        return self._north_coords.size * self.grid_spacing
+
+    @property
+    def depth_size(self) -> float:
+        return self._depth_coords.size * self.grid_spacing
+
     def hash(self) -> str:
         """Return hash of velocity model.
 
@@ -94,8 +121,7 @@ class VelocityModel3D(BaseModel):
             str: The hash.
         """
         if self._hash is None:
-            sha1_hash = sha1(self._velocity_model.tobytes())
-            self._hash = sha1_hash.hexdigest()
+            self._hash = sha1(self._velocity_model.tobytes()).hexdigest()
         return self._hash
 
     def _get_location_indices(self, location: Location) -> tuple[int, int, int]:
@@ -113,7 +139,7 @@ class VelocityModel3D(BaseModel):
         east_idx = np.argmin(np.abs(self._east_coords - station_offset[0]))
         north_idx = np.argmin(np.abs(self._north_coords - station_offset[1]))
         depth_idx = np.argmin(np.abs(self._depth_coords - station_offset[2]))
-        return int(east_idx), int(north_idx), int(depth_idx)
+        return int(round(east_idx)), int(round(north_idx)), int(round(depth_idx))
 
     def get_velocity(self, location: Location) -> float:
         """Return velocity at location in [m/s], nearest neighbor.
@@ -153,11 +179,11 @@ class VelocityModel3D(BaseModel):
         Returns:
             bool: True if location is inside velocity model.
         """
-        offset_to_center = location.offset_from(self.center)
+        offset_from_center = location.offset_from(self.center)
         return (
-            self.east_bounds[0] <= offset_to_center[0] <= self.east_bounds[1]
-            and self.north_bounds[0] <= offset_to_center[1] <= self.north_bounds[1]
-            and self.depth_bounds[0] <= offset_to_center[2] <= self.depth_bounds[1]
+            self.east_bounds[0] <= offset_from_center[0] <= self.east_bounds[1]
+            and self.north_bounds[0] <= offset_from_center[1] <= self.north_bounds[1]
+            and self.depth_bounds[0] <= offset_from_center[2] <= self.depth_bounds[1]
         )
 
     def get_meshgrid(self) -> list[np.ndarray]:
@@ -214,14 +240,26 @@ class VelocityModel3D(BaseModel):
         )
         return resampled_model
 
+    def export_vtk(self, filename: Path, reference: Location | None = None) -> None:
+        offset = reference.offset_from(self.center) if reference else np.zeros(3)
+
+        out_file = gridToVTK(
+            str(filename),
+            self._east_coords + offset[0],
+            self._north_coords + offset[1],
+            np.array((-self._depth_coords + offset[2])[::-1]),
+            pointData={"velocity": np.array(self._velocity_model[:, :, ::-1])},
+        )
+        logger.info("vtk: exported velocity model to %s", out_file)
+
 
 class VelocityModelFactory(BaseModel):
     model: Literal["VelocityModelFactory"] = "VelocityModelFactory"
 
-    grid_spacing: PositiveFloat | Literal["quadtree"] = Field(
-        default="quadtree",
+    grid_spacing: PositiveFloat | Literal["octree"] = Field(
+        default="octree",
         description="Grid spacing in meters."
-        " If 'quadtree' defaults to smallest octreee node size.",
+        " If 'octree' defaults to smallest octreee node size.",
     )
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
@@ -236,13 +274,13 @@ class Constant3DVelocityModel(VelocityModelFactory):
     velocity: PositiveFloat = 5000.0
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
-        if self.grid_spacing == "quadtree":
+        if self.grid_spacing == "octree":
             grid_spacing = octree.smallest_node_size()
         else:
             grid_spacing = self.grid_spacing
 
         model = VelocityModel3D(
-            center=octree.reference,
+            center=octree.location,
             grid_spacing=grid_spacing,
             east_bounds=octree.east_bounds,
             north_bounds=octree.north_bounds,
@@ -260,6 +298,8 @@ DTYPE_MAP = {"FLOAT": np.float32, "DOUBLE": float}
 
 @dataclass
 class NonLinLocHeader:
+    """Helper class representing a NonLinLoc header file."""
+
     origin: Location
     nx: int
     ny: int
@@ -311,7 +351,7 @@ class NonLinLocHeader:
             raise ValueError("NonLinLoc velocity model must have equal spacing.")
 
         if reference_location:
-            origin = reference_location
+            origin = reference_location.model_copy()
             origin.east_shift += float(orig_x) * KM
             origin.north_shift += float(orig_y) * KM
             origin.elevation -= float(orig_z) * KM
@@ -336,10 +376,12 @@ class NonLinLocHeader:
 
     @property
     def dtype(self) -> np.dtype:
+        """dtype of the grid."""
         return DTYPE_MAP[self.grid_dtype]
 
     @property
     def grid_spacing(self) -> float:
+        """grid spacing, homogeneous in three directions."""
         return self.delta_x
 
     @property
@@ -355,7 +397,7 @@ class NonLinLocHeader:
     @property
     def depth_bounds(self) -> tuple[float, float]:
         """Relative to center location."""
-        return (0, self.delta_z * self.nz)
+        return 0, self.delta_z * self.nz
 
     @property
     def center(self) -> Location:
@@ -375,51 +417,45 @@ class NonLinLocVelocityModel(VelocityModelFactory):
 
     header_file: FilePath = Field(
         ...,
-        description="Path to NonLinLoc model header file file."
-        "The file should be in the format of a NonLinLoc velocity model header file.",
-    )
-    buffer_file: FilePath | None = Field(
-        default=None,
-        description="Path to NonLinLoc model buffer file. If none, the filename will be"
-        "infered from the header file.",
+        description="Path to NonLinLoc model header file file. "
+        "The file should be in the format of a NonLinLoc velocity model header file. "
+        "Binary data has to have the same name and `.buf` suffix.",
     )
 
-    grid_spacing: PositiveFloat | Literal["quadtree", "input"] = Field(
+    grid_spacing: PositiveFloat | Literal["octree", "input"] = Field(
         default="input",
-        description="Grid spacing in meters."
-        " If 'quadtree' defaults to smallest octreee node size. If 'input' uses the"
+        description="Grid spacing in meters. "
+        "If 'octree' defaults to smallest octreee node size. If 'input' uses the"
         " grid spacing from the NonLinLoc header file.",
     )
     interpolation: Literal["nearest", "linear", "cubic"] = Field(
         default="linear",
-        description="Interpolation method for resampling the grid "
-        "for the fast-marching method.",
+        description="Interpolation method for resampling the grid"
+        " for the fast-marching method.",
     )
 
     reference_location: Location | None = Field(
         default=None,
-        description="relative location of NonLinLoc model, "
-        "used for models with relative coordinates.",
+        description="relative location of NonLinLoc model,"
+        " used for models with relative coordinates.",
     )
 
     _header: NonLinLocHeader = PrivateAttr()
     _velocity_model: np.ndarray = PrivateAttr()
 
     @model_validator(mode="after")
-    def load_header(self) -> Self:
+    def load_model(self) -> Self:
         self._header = NonLinLocHeader.from_header_file(
             self.header_file,
             reference_location=self.reference_location,
         )
-        self.buffer_file = self.buffer_file or self.header_file.with_suffix(".buf")
-        if not self.buffer_file.exists():
-            raise FileNotFoundError(f"Buffer file {self.buffer_file} not found.")
+        buffer_file = self.header_file.with_suffix(".buf")
+        if not buffer_file.exists():
+            raise FileNotFoundError(f"Buffer file {buffer_file} not found.")
 
-        logger.debug(
-            "loading NonLinLoc velocity model buffer file %s", self.buffer_file
-        )
+        logger.debug("loading NonLinLoc velocity model buffer file %s", buffer_file)
         self._velocity_model = np.fromfile(
-            self.buffer_file, dtype=self._header.dtype
+            buffer_file, dtype=self._header.dtype
         ).reshape((self._header.nx, self._header.ny, self._header.nz))
 
         if self._header.grid_type == "SLOW_LEN":
@@ -441,12 +477,14 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         return self
 
     def get_model(self, octree: Octree) -> VelocityModel3D:
-        if self.grid_spacing == "quadtree":
+        if self.grid_spacing == "octree":
             grid_spacing = octree.smallest_node_size()
-        if self.grid_spacing == "input":
+        elif self.grid_spacing == "input":
             grid_spacing = self._header.grid_spacing
-        else:
+        elif isinstance(self.grid_spacing, float):
             grid_spacing = self.grid_spacing
+        else:
+            raise ValueError(f"Invalid grid_spacing {self.grid_spacing}")
 
         header = self._header
 
@@ -461,7 +499,77 @@ class NonLinLocVelocityModel(VelocityModelFactory):
         return velocity_model.resample(grid_spacing, self.interpolation)
 
 
+class VelocityModelLayered(VelocityModelFactory):
+    # For mere testing purposes of the 3D tracer against Pyrocko cake 2D travel times
+    model: Literal["VelocityModel2D"] = "VelocityModel2D"
+    velocity: Literal["vp", "vs"] = Field(
+        default="vp",
+        description="velocity to extract from the 2D model, choose from 'vp' or 'vs'.",
+    )
+    format: Literal["nd", "hyposat"] = Field(
+        default="nd",
+        description="Format of the velocity model. nd or hyposat is supported.",
+    )
+    filename: FilePath = Field(
+        ...,
+        description="Path to `.nd` file holding the 2D velocity model information.",
+    )
+    raw_file_data: str | None = Field(
+        default=None,
+        description="Raw `.nd` file data.",
+    )
+
+    _layered_model: LayeredModel = PrivateAttr()
+
+    @model_validator(mode="after")
+    def load_model(self) -> VelocityModelLayered:
+        if self.filename is not None:
+            logger.info("loading velocity model from %s", self.filename)
+            self.raw_file_data = self.filename.read_text()
+
+        if self.raw_file_data is not None:
+            with NamedTemporaryFile("w") as tmpfile:
+                tmpfile.write(self.raw_file_data)
+                tmpfile.flush()
+                self._layered_model = load_model(
+                    tmpfile.name,
+                    format=self.format,
+                )
+        else:
+            raise AttributeError("No velocity model or crust2 profile defined.")
+        return self
+
+    def get_model(self, octree: Octree) -> VelocityModel3D:
+        if self.grid_spacing == "octree":
+            grid_spacing = octree.smallest_node_size()
+        else:
+            grid_spacing = self.grid_spacing
+
+        model = VelocityModel3D(
+            center=octree.location,
+            grid_spacing=grid_spacing,
+            east_bounds=octree.east_bounds,
+            north_bounds=octree.north_bounds,
+            depth_bounds=octree.depth_bounds,
+        )
+
+        velocities = []
+        for depth in model.depth_coords:
+            material = self._layered_model.material(z=depth)
+            if self.velocity == "vp":
+                velocities.append(material.vp)
+            elif self.velocity == "vs":
+                velocities.append(material.vs)
+            else:
+                raise ValueError(f"Invalid velocity {self.velocity}")
+
+        velocities = np.array(velocities)
+
+        model.velocity_model[:, :, :] = velocities[np.newaxis, np.newaxis, :]
+        return model
+
+
 VelocityModels = Annotated[
-    Union[Constant3DVelocityModel, NonLinLocVelocityModel],
+    Union[Constant3DVelocityModel, NonLinLocVelocityModel, VelocityModelLayered],
     Field(..., discriminator="model"),
 ]

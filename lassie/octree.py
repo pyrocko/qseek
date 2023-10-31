@@ -15,7 +15,6 @@ from pydantic import (
     Field,
     PositiveFloat,
     PrivateAttr,
-    confloat,
     field_validator,
     model_validator,
 )
@@ -66,7 +65,7 @@ class Node(BaseModel):
     semblance: float = 0.0
 
     tree: Octree | None = Field(None, exclude=True)
-    children: tuple[Node, ...] = Field((), exclude=True)
+    children: tuple[Node, ...] = Field(default=(), exclude=True)
 
     _hash: bytes | None = PrivateAttr(None)
     _children_cached: tuple[Node, ...] = PrivateAttr(())
@@ -141,7 +140,7 @@ class Node(BaseModel):
         if not self.tree:
             raise AttributeError("parent tree not set")
         if not self._location:
-            reference = self.tree.reference
+            reference = self.tree.location
             self._location = Location.model_construct(
                 lat=reference.lat,
                 lon=reference.lon,
@@ -160,12 +159,14 @@ class Node(BaseModel):
             yield self
 
     def hash(self) -> bytes:
+        if not self.tree:
+            raise AttributeError("parent tree not set")
         if self._hash is None:
             self._hash = sha1(
                 struct.pack(
                     "dddddd",
-                    self.tree.reference.lat,
-                    self.tree.reference.lon,
+                    self.tree.location.lat,
+                    self.tree.location.lon,
                     self.east,
                     self.north,
                     self.depth,
@@ -179,18 +180,46 @@ class Node(BaseModel):
 
 
 class Octree(BaseModel):
-    reference: Location = Location(lat=0.0, lon=0)
-    size_initial: PositiveFloat = 2 * KM
-    size_limit: PositiveFloat = 500
-    east_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
-    north_bounds: tuple[float, float] = (-10 * KM, 10 * KM)
-    depth_bounds: tuple[float, float] = (0 * KM, 20 * KM)
-    absorbing_boundary: confloat(ge=0.0) = 1 * KM
+    location: Location = Field(
+        default=Location(lat=0.0, lon=0.0),
+        description="The reference location of the octree.",
+    )
+    size_initial: PositiveFloat = Field(
+        default=2 * KM,
+        description="Initial size of a cubic octree node in meters.",
+    )
+    size_limit: PositiveFloat = Field(
+        default=500.0,
+        description="Smallest possible size of an octree node in meters.",
+    )
+    east_bounds: tuple[float, float] = Field(
+        default=(-10 * KM, 10 * KM),
+        description="East bounds of the octree in meters.",
+    )
+    north_bounds: tuple[float, float] = Field(
+        default=(-10 * KM, 10 * KM),
+        description="North bounds of the octree in meters.",
+    )
+    depth_bounds: tuple[float, float] = Field(
+        default=(0 * KM, 20 * KM),
+        description="Depth bounds of the octree in meters.",
+    )
+    absorbing_boundary: float = Field(
+        default=1 * KM,
+        ge=0.0,
+        description="Absorbing boundary in meters. Detections inside the boundary will be tagged.",
+    )
 
     _root_nodes: list[Node] = PrivateAttr([])
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
 
     model_config = ConfigDict(ignored_types=(cached_property,))
+
+    @field_validator("location")
+    def check_reference(cls, location: Location) -> Location:  # noqa: N805
+        if location.lat == 0.0 and location.lon == 0.0:
+            raise ValueError("invalid  location, expected non-zero lat/lon")
+        return location
 
     @field_validator("east_bounds", "north_bounds", "depth_bounds")
     def check_bounds(
@@ -209,6 +238,7 @@ class Octree(BaseModel):
                 f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
                 " expected size_limit <= size_initial"
             )
+        # self.reference = self.reference.shifted_origin()
         return self
 
     def model_post_init(self, __context: Any) -> None:
@@ -380,18 +410,23 @@ class Octree(BaseModel):
         """
         return len(self._root_nodes) * (8 ** self.n_levels())
 
-    def maximum_number_nodes(self) -> int:
-        """Returns the maximum number of nodes.
+    def cached_bottom(self) -> Self:
+        """Returns a copy of the octree refined to the cached bottom nodes.
+
+        Raises:
+            EnvironmentError: If the octree has never been split.
 
         Returns:
-            int: Maximum number of nodes.
+            Self: Copy of the octree with cached bottom nodes.
         """
-        return int(
-            (self.east_bounds[1] - self.east_bounds[0])
-            * (self.north_bounds[1] - self.north_bounds[0])
-            * (self.depth_bounds[1] - self.depth_bounds[0])
-            / (self.smallest_node_size() ** 3)
-        )
+        tree = self.copy(deep=True)
+        split_nodes = []
+        for node in tree:
+            if node._children_cached:
+                split_nodes.extend(node.split())
+        if not split_nodes:
+            raise EnvironmentError("octree has never been split.")
+        return tree
 
     def copy(self, deep=False) -> Self:
         tree = super().model_copy(deep=deep)

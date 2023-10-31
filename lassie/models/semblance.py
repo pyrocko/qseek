@@ -132,6 +132,15 @@ class Semblance:
         """Median absolute deviation of the maximum semblance."""
         return float(stats.median_abs_deviation(self.maximum_semblance))
 
+    def apply_exponent(self, exponent: float) -> None:
+        """Apply exponent to the maximum semblance.
+
+        Args:
+            exponent (float): Exponent
+        """
+        self.semblance_unpadded **= exponent
+        self._clear_cache()
+
     def median_mask(self, level: float = 3.0) -> np.ndarray:
         """Median mask above a level from the maximum semblance.
 

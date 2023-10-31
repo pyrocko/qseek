@@ -1,3 +1,4 @@
+
 [build-system]
 requires = [
     "wheel",
@@ -31,37 +32,38 @@ dependencies = [
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
     "seisbench>=0.5.0",
-    "pydantic>=2.3",
+    "pydantic>=2.4.2",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
     "lru-dict>=1.2",
     "rich>=13.4",
     "nest_asyncio>=1.5",
+    "pyevtk>=1.6",
 ]
 
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "Topic :: Scientific/Engineering :: Atmospheric Science",
-    "Topic :: Scientific/Engineering :: Image Recognition",
     "Topic :: Scientific/Engineering :: Physics",
-    "Topic :: Scientific/Engineering :: Visualization",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: C",
+    "Topic :: Scientific/Engineering :: Information Analysis",
     "Operating System :: POSIX",
     "Operating System :: MacOS",
+    "Typing :: Typed",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit",
-    "black",
-    "ruff",
-    "pytest",
-    "pytest-asyncio",
-    "mkdocs-material",
-    "mkdocstrings-python",
+    "pre-commit>=3.4",
+    "black>=23.7",
+    "ruff>=0.1",
+    "pytest>=7.4",
+    "pytest-asyncio>=0.21",
+    "mkdocs-material>=9.4",
+    "mkdocstrings[python]>=0.23",
 ]
 
 [project.scripts]
@@ -81,8 +83,22 @@ Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
 [tool.setuptools_scm]
 
 [tool.ruff]
-extend-select = ['W', 'N', 'DTZ', 'FA', 'G', 'RET', 'SIM', 'B', 'RET', 'C4']
+extend-select = [
+    'W',
+    'N',
+    'DTZ',
+    'FA',
+    'G',
+    'RET',
+    'SIM',
+    'B',
+    'RET',
+    'C4',
+    'I',
+    'RUF',
+]
 target-version = 'py310'
+ignore = ["RUF012", "RUF009"]
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]

@@ -1,14 +1,77 @@
-site_name: Lassie
+site_name: Lassie - Earthquake Detector
 site_description: The friendly earthquake detector
-repo_url: https://github.com/miili/lassie-v2
-repo_name: miili/lassie-v2
+site_author: Marius Paul Isken
 
-
+repo_url: https://github.com/pyrocko/lassie-v2
+repo_name: pyrocko/lassie-v2
+edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: docs/theme
   palette:
-    scheme: slate
+  - scheme: default
+    primary: blue grey
+    toggle:
+       icon: material/toggle-switch
+       name: Switch to dark mode
+    # Palette toggle for dark mode
+  - scheme: slate
+    primary: blue grey
+    toggle:
+      icon: material/toggle-switch-off-outline
+      name: Switch to light mode
   icon:
     repo: fontawesome/brands/git-alt
-  logo: logos/lassie.webp
+  logo: images/logo.webp
+  features:
+    - navigation.tabs
+    - search.suggest
+    - announce.dismiss
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tasklist
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - def_list
+  - attr_list
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+watch:
+  - lassie
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+  - markdown-exec
+
+nav:
+  - Earthquake Detector:
+    - Welcome: index.md
+    - Getting Started: getting_started.md
+    - Visualising Detections: visualizing_results.md
+  - Usage:
+    - Configuration: components/configuration.md
+    - Seismic Data: components/seismic_data.md
+    - Ray Tracer: components/ray_tracer.md
+    - Image Function: components/image_function.md
+    - Octree: components/octree.md
+    - Station Corrections: components/station_corrections.md
+    - EQ Feature Extraction: components/feature_extraction.md

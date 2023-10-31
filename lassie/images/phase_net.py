@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from obspy import Stream
-from pydantic import PositiveFloat, PositiveInt, PrivateAttr, conint
+from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import obspy_compat
 from seisbench import logger
 
@@ -82,21 +82,60 @@ class PhaseNetImage(WaveformImage):
 
 
 class PhaseNet(ImageFunction):
+    """PhaseNet image function. For more details see SeisBench documentation."""
+
     image: Literal["PhaseNet"] = "PhaseNet"
-    model: ModelName = "ethz"
-    window_overlap_samples: conint(ge=1000, le=3000) = 2000
-    torch_use_cuda: bool = False
-    torch_cpu_threads: PositiveInt = 4
-    batch_size: conint(ge=64) = 64
-    stack_method: StackMethod = "avg"
-    phase_map: dict[PhaseName, str] = {
-        "P": "constant:P",
-        "S": "constant:S",
-    }
-    weights: dict[PhaseName, PositiveFloat] = {
-        "P": 1.0,
-        "S": 1.0,
-    }
+    model: ModelName = Field(
+        default="ethz",
+        description="SeisBench pre-trained PhaseNet model to use. "
+        "Choose from `ethz`, `geofon`, `instance`, `iquique`, `lendb`, `neic`, `obs`,"
+        " `original`, `scedc`, `stead`."
+        " For more details see SeisBench documentation",
+    )
+    window_overlap_samples: int = Field(
+        default=2000,
+        ge=1000,
+        le=3000,
+        description="Window overlap in samples.",
+    )
+    torch_use_cuda: bool = Field(
+        default=False,
+        description="Use CUDA for inference.",
+    )
+    torch_cpu_threads: PositiveInt = Field(
+        default=4,
+        description="Number of CPU threads to use if only CPU is used.",
+    )
+    batch_size: int = Field(
+        default=64,
+        ge=64,
+        description="Batch size for inference, larger values can improve performance.",
+    )
+    stack_method: StackMethod = Field(
+        default="avg",
+        description="Method to stack the overlaping blocks internally. "
+        "Choose from `avg` and `max`.",
+    )
+    upscale_input: PositiveInt = Field(
+        default=1,
+        description="Upscale input by factor. "
+        "This augments the input data from e.g. 100 Hz to 50 Hz (factor: `2`). Can be"
+        " useful for high-frequency earthquake signals.",
+    )
+    phase_map: dict[PhaseName, str] = Field(
+        default={
+            "P": "constant:P",
+            "S": "constant:S",
+        },
+        description="Phase mapping from SeisBench PhaseNet to Lassie phases.",
+    )
+    weights: dict[PhaseName, PositiveFloat] = Field(
+        default={
+            "P": 1.0,
+            "S": 1.0,
+        },
+        description="Weights for each phase.",
+    )
 
     _phase_net: PhaseNetSeisBench = PrivateAttr(None)
 
@@ -118,12 +157,22 @@ class PhaseNet(ImageFunction):
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
+        if self.upscale_input > 1:
+            scale = self.upscale_input
+            for tr in stream:
+                tr.stats.sampling_rate = tr.stats.sampling_rate / scale
+
         annotations: Stream = self._phase_net.annotate(
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size
             # parallelism=self.seisbench_subprocesses,
         )
+
+        if self.upscale_input > 1:
+            scale = self.upscale_input
+            for tr in annotations:
+                tr.stats.sampling_rate = tr.stats.sampling_rate * scale
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()

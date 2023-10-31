@@ -24,7 +24,6 @@ from lassie.models import Stations
 from lassie.models.detection import EventDetection, EventDetections, PhaseDetection
 from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
-from lassie.plot.octree import plot_octree_surface_tiles
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
 from lassie.tracers import (
@@ -33,7 +32,13 @@ from lassie.tracers import (
     FastMarchingTracer,
     RayTracers,
 )
-from lassie.utils import PhaseDescription, alog_call, datetime_now, time_to_path
+from lassie.utils import (
+    PhaseDescription,
+    alog_call,
+    datetime_now,
+    human_readable_bytes,
+    time_to_path,
+)
 from lassie.waveforms import PyrockoSquirrel, WaveformProviderType
 
 if TYPE_CHECKING:
@@ -70,10 +75,13 @@ class Search(BaseModel):
         LocalMagnitudeExtractor(),
     ]
 
-    sampling_rate: SamplingRate = 50
+    sampling_rate: SamplingRate = 100
     detection_threshold: PositiveFloat = 0.05
-    node_split_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
     detection_blinding: timedelta = timedelta(seconds=2.0)
+
+    image_mean_p: float = Field(default=1, ge=1.0, le=2.0)
+
+    node_split_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
     window_length: timedelta = timedelta(minutes=5)
 
     n_threads_parstack: int = Field(default=0, ge=0)
@@ -97,11 +105,14 @@ class Search(BaseModel):
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
-    _batch_processing_durations: Deque[timedelta] = PrivateAttr(
+    _batch_proc_time: Deque[timedelta] = PrivateAttr(
+        default_factory=lambda: deque(maxlen=25)
+    )
+    _batch_cum_durations: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
 
-    def init_rundir(self, force=False) -> None:
+    def init_rundir(self, force: bool = False) -> None:
         rundir = (
             self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
         )
@@ -121,12 +132,15 @@ class Search(BaseModel):
         if not rundir.exists():
             rundir.mkdir()
 
-        file_logger = logging.FileHandler(self._rundir / "lassie.log")
-        logging.root.addHandler(file_logger)
         self.write_config()
+        self._init_logging()
 
         logger.info("created new rundir %s", rundir)
         self._detections = EventDetections(rundir=rundir)
+
+    def _init_logging(self) -> None:
+        file_logger = logging.FileHandler(self._rundir / "lassie.log")
+        logging.root.addHandler(file_logger)
 
     def write_config(self, path: Path | None = None) -> None:
         rundir = self._rundir
@@ -136,8 +150,11 @@ class Search(BaseModel):
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
 
         logger.debug("dumping stations...")
-        self.stations.dump_pyrocko_stations(rundir / "pyrocko-stations.yaml")
-        self.stations.dump_csv(rundir / "stations.csv")
+        self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
+
+        csv_dir = rundir / "csv"
+        csv_dir.mkdir(exist_ok=True)
+        self.stations.export_csv(csv_dir / "stations.csv")
 
     @property
     def semblance_stats(self) -> SemblanceStats:
@@ -155,7 +172,9 @@ class Search(BaseModel):
         self._distance_range = (distances.min(), distances.max())
 
         # Timing ranges
-        for phase, tracer in self.ray_tracers.iter_phase_tracer():
+        for phase, tracer in self.ray_tracers.iter_phase_tracer(
+            phases=self.image_functions.get_phases()
+        ):
             traveltimes = tracer.get_travel_times(phase, self.octree, self.stations)
             self._travel_time_ranges[phase] = (
                 timedelta(seconds=np.nanmin(traveltimes)),
@@ -181,7 +200,7 @@ class Search(BaseModel):
         if self.window_length < 2 * self._window_padding + self._shift_range:
             raise ValueError(
                 f"window length {self.window_length} is too short for the "
-                f"theoretical shift range {self._shift_range} and "
+                f"theoretical travel time range {self._shift_range} and "
                 f"cummulative window padding of {self._window_padding}."
                 " Increase the window_length time."
             )
@@ -193,22 +212,6 @@ class Search(BaseModel):
             *self._distance_range,
         )
 
-    def _plot_octree_surface(
-        self,
-        octree: Octree,
-        time: datetime,
-        detections: list[EventDetection] | None = None,
-    ) -> None:
-        logger.info("plotting octree surface...")
-        filename = (
-            self._rundir
-            / "figures"
-            / "octree_surface"
-            / f"{time_to_path(time)}-nodes-{octree.n_nodes}.png"
-        )
-        filename.parent.mkdir(parents=True, exist_ok=True)
-        plot_octree_surface_tiles(octree, filename=filename, detections=detections)
-
     async def prepare(self) -> None:
         logger.info("preparing search...")
         self.data_provider.prepare(self.stations)
@@ -216,13 +219,18 @@ class Search(BaseModel):
             self.octree,
             self.stations,
             phases=self.image_functions.get_phases(),
+            rundir=self._rundir,
         )
         self.init_boundaries()
 
     async def start(self, force_rundir: bool = False) -> None:
+        if not self.has_rundir():
+            self.init_rundir(force=force_rundir)
+
         await self.prepare()
-        self.init_rundir(force_rundir)
+
         logger.info("starting search...")
+        batch_processing_start = datetime_now()
         processing_start = datetime_now()
 
         if self._progress.time_progress:
@@ -236,11 +244,15 @@ class Search(BaseModel):
             batch.clean_traces()
 
             if batch.is_empty():
-                logger.warning("batch is empty")
+                logger.warning("empty batch %s", batch.log_str())
                 continue
 
             if batch.duration < 2 * self._window_padding:
-                logger.warning("batch duration is too short")
+                logger.warning(
+                    "duration of batch %s too short %s",
+                    batch.log_str(),
+                    batch.duration,
+                )
                 continue
 
             search_block = SearchTraces(
@@ -259,37 +271,50 @@ class Search(BaseModel):
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
 
-            if batch.i_batch % 50 == 0:
+            if self._detections.n_detections and batch.i_batch % 50 == 0:
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
 
-            processing_time = datetime_now() - processing_start
-            self._batch_processing_durations.append(processing_time)
-            if batch.n_batches:
-                percent_processed = ((batch.i_batch + 1) / batch.n_batches) * 100
-            else:
-                percent_processed = 0.0
+            processing_time = datetime_now() - batch_processing_start
+            self._batch_proc_time.append(processing_time)
+            self._batch_cum_durations.append(batch.cumulative_duration)
+
+            processed_percent = (
+                ((batch.i_batch + 1) / batch.n_batches) * 100
+                if batch.n_batches
+                else 0.0
+            )
+            # processing_rate = (
+            #     sum(self._batch_cum_durations, timedelta())
+            #     / sum(self._batch_proc_time, timedelta()).total_seconds()
+            # )
+            processing_rate_bytes = human_readable_bytes(
+                batch.cumulative_bytes / processing_time.total_seconds()
+            )
+
             logger.info(
-                "%s%% processed - batch %d/%s - %s in %s",
-                f"{percent_processed:.1f}" if percent_processed else "??",
-                batch.i_batch + 1,
-                str(batch.n_batches or "?"),
-                batch.start_time,
+                "%s%% processed - batch %s in %s",
+                f"{processed_percent:.1f}" if processed_percent else "??",
+                batch.log_str(),
                 processing_time,
             )
             if batch.n_batches:
-                remaining_time = (
-                    sum(self._batch_processing_durations, timedelta())
-                    / len(self._batch_processing_durations)
-                    * (batch.n_batches - batch.i_batch - 1)
+                remaining_time = sum(self._batch_proc_time, timedelta()) / len(
+                    self._batch_proc_time
                 )
+                remaining_time *= batch.n_batches - batch.i_batch - 1
                 logger.info(
-                    "%s remaining - estimated finish at %s",
+                    "processing rate %s/s - %s remaining - finish at %s",
+                    processing_rate_bytes,
                     remaining_time,
                     datetime.now() + remaining_time,  # noqa: DTZ005
                 )
 
-            processing_start = datetime_now()
+            batch_processing_start = datetime_now()
             self.set_progress(batch.end_time)
+
+        self._detections.dump_detections(jitter_location=self.octree.size_limit)
+        logger.info("finished search in %s", datetime_now() - processing_start)
+        logger.info("found %d detections", self._detections.n_detections)
 
     async def add_features(self, event: EventDetection) -> None:
         try:
@@ -313,6 +338,8 @@ class Search(BaseModel):
             search._progress = SearchProgress.model_validate_json(
                 progress_file.read_text()
             )
+
+        search._init_logging()
         return search
 
     @classmethod
@@ -331,7 +358,11 @@ class Search(BaseModel):
         model._config_stem = filename.stem
         return model
 
+    def has_rundir(self) -> bool:
+        return hasattr(self, "_rundir") and self._rundir.exists()
+
     def __del__(self) -> None:
+        # FIXME: Replace with signal overserver?
         if hasattr(self, "_detections"):
             with contextlib.suppress(Exception):
                 self._detections.dump_detections(jitter_location=self.octree.size_limit)
@@ -385,10 +416,10 @@ class SearchTraces:
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
-        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=float)
+        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
-        weights = np.full_like(shifts, fill_value=image.weight, dtype=float)
+        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
 
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -423,6 +454,7 @@ class SearchTraces:
         if None not in self._images:
             images = await self.parent.image_functions.process_traces(self.traces)
             images.set_stations(self.parent.stations)
+            images.apply_exponent(self.parent.image_mean_p)
             self._images[None] = images
 
         if sampling_rate not in self._images:
@@ -475,20 +507,17 @@ class SearchTraces:
                 semblance_data=semblance.semblance_unpadded,
                 n_samples_semblance=semblance.n_samples_unpadded,
             )
+        semblance.apply_exponent(1.0 / parent.image_mean_p)
         semblance.normalize(images.cumulative_weight())
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.debug("semblance stats: %s", parent.semblance_stats)
 
         detection_idx, detection_semblance = semblance.find_peaks(
-            height=parent.detection_threshold,
-            prominence=parent.detection_threshold,
+            height=parent.detection_threshold**parent.image_mean_p,
+            prominence=parent.detection_threshold**parent.image_mean_p,
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
         )
-
-        if parent.plot_octree_surface:
-            octree.map_semblance(semblance.maximum_node_semblance())
-            parent._plot_octree_surface(octree, time=self.start_time)
 
         if detection_idx.size == 0:
             return [], semblance.get_trace()
@@ -550,7 +579,7 @@ class SearchTraces:
                     phase=image.phase,
                     event_time=time,
                     source=source_location,
-                    receivers=image.stations.stations,
+                    receivers=image.stations,
                 )
                 arrivals_observed = image.search_phase_arrivals(
                     modelled_arrivals=[
@@ -565,7 +594,7 @@ class SearchTraces:
                     for mod, obs in zip(arrivals_model, arrivals_observed, strict=True)
                 ]
                 detection.receivers.add_receivers(
-                    stations=image.stations.stations,
+                    stations=image.stations,
                     phase_arrivals=phase_detections,
                 )
 

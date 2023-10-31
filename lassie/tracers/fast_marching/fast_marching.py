@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 import numpy as np
 from lru import LRU
-from pydantic import BaseModel, ByteSize, Field, PrivateAttr
+from pydantic import BaseModel, ByteSize, Field, PrivateAttr, ValidationError
+from pyevtk.hl import gridToVTK
 from pyrocko.modelling import eikonal
 from rich.progress import Progress
 from scipy.interpolate import RegularGridInterpolator
@@ -149,7 +150,6 @@ class StationTravelTimeVolume(BaseModel):
             return station_travel_times
 
         loop = asyncio.get_running_loop()
-
         work = functools.partial(
             eikonal_wrapper,
             model,
@@ -217,7 +217,7 @@ class StationTravelTimeVolume(BaseModel):
             raise AttributeError("travel times have not been calculated yet")
 
         file = path / self.filename if path.is_dir() else path
-        logger.debug("saving travel times to %s...", file)
+        logger.debug("saving travel times to %s", file)
 
         with zipfile.ZipFile(str(file), "w") as archive:
             archive.writestr("model.json", self.model_dump_json(indent=2))
@@ -238,7 +238,7 @@ class StationTravelTimeVolume(BaseModel):
         Returns:
             Self: 3D travel times
         """
-        logger.debug("loading travel times from %s...", file)
+        logger.debug("loading travel times from %s", file)
         with zipfile.ZipFile(file, "r") as archive:
             path = zipfile.Path(archive)
             model_file = path / "model.json"
@@ -253,24 +253,47 @@ class StationTravelTimeVolume(BaseModel):
         with zipfile.ZipFile(self._file, "r") as archive:
             return np.load(archive.open("travel_times.npy", "r"))
 
+    def export_vtk(self, filename: Path, reference: Location | None = None) -> None:
+        offset = reference.offset_from(self.center) if reference else np.zeros(3)
+
+        out_file = gridToVTK(
+            str(filename),
+            self._east_coords + offset[0],
+            self._north_coords + offset[1],
+            np.array((-self._depth_coords + offset[2])[::-1]),
+            pointData={"travel_time": np.array(self.travel_times[:, :, ::-1])},
+        )
+        logger.debug(
+            "vtk: exported travel times of %s to %s",
+            self.station.pretty_nsl,
+            out_file,
+        )
+
 
 class FastMarchingTracer(RayTracer):
     tracer: Literal["FastMarchingRayTracer"] = "FastMarchingRayTracer"
 
     phase: PhaseDescription = "fm:P"
-    interpolation_method: Literal["nearest", "linear", "cubic"] = "linear"
+    interpolation_method: Literal["nearest", "linear", "cubic"] = Field(
+        default="linear",
+        description="Interpolation method for travel times."
+        "Choose from `nearest`, `linear` or `cubic`.",
+    )
     nthreads: int = Field(
         default=0,
         description="Number of threads to use for travel time."
-        "If set to 0, cpu_count*2 will be used.",
+        " If set to `0`, `cpu_count*2` will be used.",
     )
 
     lut_cache_size: ByteSize = Field(
         default=2 * GiB,
-        description="Size of the LUT cache.",
+        description="Size of the LUT cache. Default is `2G`.",
     )
 
-    velocity_model: VelocityModels = Constant3DVelocityModel()
+    velocity_model: VelocityModels = Field(
+        default=Constant3DVelocityModel(),
+        description="Velocity model for the ray tracer.",
+    )
 
     _travel_time_volumes: dict[str, StationTravelTimeVolume] = PrivateAttr({})
     _velocity_model: VelocityModel3D | None = PrivateAttr(None)
@@ -303,9 +326,20 @@ class FastMarchingTracer(RayTracer):
         self,
         octree: Octree,
         stations: Stations,
+        rundir: Path | None = None,
     ) -> None:
-        logger.info("preparing fast-marching tracer for %s phase...", self.phase)
+        logger.info("loading velocity model %s", self.velocity_model.model)
         velocity_model = self.velocity_model.get_model(octree)
+
+        logger.info(
+            "3D velocity model dimensions: "
+            " north-south %.1f m, east-west %.1f m , depth %.1f m, grid spacing %s m",
+            velocity_model.north_size,
+            velocity_model.east_size,
+            velocity_model.depth_size,
+            velocity_model.grid_spacing,
+        )
+        logger.info("3D velocity model reference location %s", velocity_model.center)
         self._velocity_model = velocity_model
 
         for station in stations:
@@ -318,10 +352,10 @@ class FastMarchingTracer(RayTracer):
 
         for station in stations:
             velocity_station = velocity_model.get_velocity(station)
-            if velocity_station < 0.0:
+            if velocity_station <= 0.0:
                 raise ValueError(
-                    f"station {station.pretty_nsl} has negative velocity"
-                    f" {velocity_station}"
+                    f"station {station.pretty_nsl} has negative or zero velocity"
+                    f" {velocity_station} m/s"
                 )
             logger.info(
                 "velocity at station %s: %.1f m/s",
@@ -370,13 +404,28 @@ class FastMarchingTracer(RayTracer):
         ]
         await self._calculate_travel_times(calc_stations, cache_dir)
 
+        if rundir is not None:
+            vtk_dir = rundir / "vtk"
+            vtk_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info("exporting vtk files")
+            velocity_model.export_vtk(
+                vtk_dir / f"velocity-model-{self.phase}",
+                reference=octree.location,
+            )
+            for volume in self._travel_time_volumes.values():
+                volume.export_vtk(
+                    vtk_dir / f"travel-times-{volume.station.pretty_nsl}",
+                    reference=octree.location,
+                )
+
     def _load_cached_tavel_times(self, cache_dir: Path) -> None:
         logger.debug("loading travel times volumes from cache %s...", cache_dir)
         volumes: dict[str, StationTravelTimeVolume] = {}
         for file in cache_dir.glob("*.3dtt"):
             try:
                 travel_times = StationTravelTimeVolume.load(file)
-            except zipfile.BadZipFile:
+            except (zipfile.BadZipFile, ValidationError):
                 logger.warning("removing bad travel time file %s", file)
                 file.unlink()
                 continue
@@ -402,7 +451,7 @@ class FastMarchingTracer(RayTracer):
 
         async def worker_station_travel_time(station: Station) -> None:
             volume = await StationTravelTimeVolume.calculate_from_eikonal(
-                self._velocity_model,  # noqa
+                self._velocity_model,
                 station,
                 save=cache_dir,
                 executor=executor,
@@ -435,8 +484,8 @@ class FastMarchingTracer(RayTracer):
         if phase != self.phase:
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
-        station_travel_times = self.get_travel_time_volume(receiver)
-        return station_travel_times.interpolate_travel_time(
+        volume = self.get_travel_time_volume(receiver)
+        return volume.interpolate_travel_time(
             source,
             method=self.interpolation_method,
         )
@@ -496,7 +545,7 @@ class FastMarchingTracer(RayTracer):
         travel_times = np.array(travel_times).T
 
         for node, station_travel_times in zip(nodes, travel_times, strict=True):
-            self._node_lut[node.hash()] = station_travel_times
+            self._node_lut[node.hash()] = station_travel_times.copy()
 
     def get_arrivals(
         self,
