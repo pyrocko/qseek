@@ -307,7 +307,6 @@ async def test_non_lin_loc_travel_times(data_dir: Path, octree: Octree) -> None:
     plt.show()
 
 
-@pytest.mark.asyncio
 def test_non_lin_loc_geometry(
     data_dir: Path,
     tmp_path: Path,

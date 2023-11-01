@@ -362,7 +362,7 @@ class StationCorrections(BaseModel):
 
     def add_event(self, detection: EventDetection) -> None:
         if (
-            not detection.distance_border < self.minimum_distance_border
+            detection.distance_border < self.minimum_distance_border
             or detection.depth < self.minimum_depth
         ):
             return

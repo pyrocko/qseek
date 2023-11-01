@@ -259,6 +259,7 @@ class Octree(BaseModel):
     def _get_root_nodes(self, size: float) -> list[Node]:
         len = size
         ext_east, ext_north, ext_depth = self.extent()
+        # FIXME: this is not correct, the nodes should be centered
         east_nodes = np.arange(ext_east // len) * len + len / 2 + self.east_bounds[0]
         north_nodes = np.arange(ext_north // len) * len + len / 2 + self.north_bounds[0]
         depth_nodes = np.arange(ext_depth // len) * len + len / 2 + self.depth_bounds[0]
