@@ -460,7 +460,7 @@ class SearchTraces:
             station_delays = parent.station_corrections.get_delays(
                 image.stations.get_all_nsl(), image.phase
             )
-            traveltimes -= station_delays[np.newaxis, :]
+            traveltimes += station_delays[np.newaxis, :]
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
