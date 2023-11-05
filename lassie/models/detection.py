@@ -304,14 +304,33 @@ class EventFeatures(BaseModel):
 class EventDetection(Location):
     uid: UUID = Field(default_factory=uuid4)
 
-    time: datetime
-    semblance: float
-    distance_border: float
+    time: datetime = Field(
+        ...,
+        description="Detection time",
+    )
+    semblance: float = Field(
+        ...,
+        description="Detection semblance",
+    )
+    distance_border: float = Field(
+        ...,
+        description="Distance to the nearest border in meters. "
+        "Only distance to NW, SW and bottom border is considered.",
+    )
 
-    in_bounds: bool = True
+    in_bounds: bool = Field(
+        True,
+        description="Is detection in bounds, and inside the configured border.",
+    )
 
-    magnitude: float | None = None
-    magnitude_type: str | None = None
+    magnitude: float | None = Field(
+        None,
+        description="Detection magnitude or semblance.",
+    )
+    magnitude_type: str | None = Field(
+        None,
+        description="Magnitude type.",
+    )
 
     features: EventFeatures = EventFeatures()
 

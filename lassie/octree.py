@@ -105,6 +105,17 @@ class Node(BaseModel):
 
     @property
     def distance_border(self) -> float:
+        """Distance to the closest EW, NS or bottom border of the tree.
+
+        !!! note
+            Surface distance is excluded.
+
+        Raises:
+            AttributeError: If the parent tree is not set.
+
+        Returns:
+            float: Distance to the closest border.
+        """
         if not self.tree:
             raise AttributeError("parent tree not set")
         tree = self.tree
@@ -113,7 +124,6 @@ class Node(BaseModel):
             tree.north_bounds[1] - self.north,
             self.east - tree.east_bounds[0],
             tree.east_bounds[1] - self.east,
-            self.depth - tree.depth_bounds[0],
             tree.depth_bounds[1] - self.depth,
         )
 
@@ -238,7 +248,12 @@ class Octree(BaseModel):
                 f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
                 " expected size_limit <= size_initial"
             )
-        # self.reference = self.reference.shifted_origin()
+        for ext in self.extent():
+            if ext % self.size_initial:
+                raise ValueError(
+                    f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
+                    " expected size_initial to be a multiple of the extent"
+                )
         return self
 
     def model_post_init(self, __context: Any) -> None:
@@ -250,23 +265,28 @@ class Octree(BaseModel):
         self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def extent(self) -> tuple[float, float, float]:
+        """Returns the extent of the octree.
+
+        Returns:
+            tuple[float, float, float]: EW, NS and depth extent of the octree in meters.
+        """
         return (
             self.east_bounds[1] - self.east_bounds[0],
             self.north_bounds[1] - self.north_bounds[0],
             self.depth_bounds[1] - self.depth_bounds[0],
         )
 
-    def _get_root_nodes(self, size: float) -> list[Node]:
-        len = size
+    def _get_root_nodes(self, length: float) -> list[Node]:
+        ln = length
         ext_east, ext_north, ext_depth = self.extent()
         # FIXME: this is not correct, the nodes should be centered
-        east_nodes = np.arange(ext_east // len) * len + len / 2 + self.east_bounds[0]
-        north_nodes = np.arange(ext_north // len) * len + len / 2 + self.north_bounds[0]
-        depth_nodes = np.arange(ext_depth // len) * len + len / 2 + self.depth_bounds[0]
+        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds[0]
+        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds[0]
+        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds[0]
 
         return [
             Node.model_construct(
-                east=east, north=north, depth=depth, size=len, tree=self
+                east=east, north=north, depth=depth, size=ln, tree=self
             )
             for east in east_nodes
             for north in north_nodes
@@ -385,10 +405,7 @@ class Octree(BaseModel):
         Returns:
             float: Smallest possible node size.
         """
-        size = self.size_initial
-        while size >= self.size_limit * 2:
-            size /= 2
-        return size
+        return self.size_initial / (2 ** self.n_levels())
 
     def n_levels(self) -> int:
         """Returns the number of levels in the octree.
@@ -396,12 +413,7 @@ class Octree(BaseModel):
         Returns:
             int: Number of levels.
         """
-        levels = 0
-        size = self.size_initial
-        while size >= self.size_limit * 2:
-            levels += 1
-            size /= 2
-        return levels
+        return int(np.floor(np.log2(self.size_initial / self.size_limit)))
 
     def total_number_nodes(self) -> int:
         """Returns the total number of nodes of all levels.

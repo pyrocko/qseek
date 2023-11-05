@@ -284,28 +284,19 @@ class Search(BaseModel):
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
 
-        async for batch in self.data_provider.iter_batches(
+        waveform_iterator = self.data_provider.iter_batches(
             window_increment=self.window_length,
             window_padding=self._window_padding,
             start_time=self._progress.time_progress,
-        ):
-            batch.clean_traces()
+            min_length=2 * self._window_padding,
+        )
 
-            if batch.is_empty():
-                logger.warning("empty batch %s", batch.log_str())
-                continue
-
-            if batch.duration < 2 * self._window_padding:
-                logger.warning(
-                    "duration of batch %s too short %s",
-                    batch.log_str(),
-                    batch.duration,
-                )
-                continue
-
+        async for images, batch in self.image_functions.iter_images(waveform_iterator):
+            images.set_stations(self.stations)
+            images.apply_exponent(self.image_mean_p)
             search_block = SearchTraces(
                 parent=self,
-                traces=batch.traces,
+                images=images,
                 start_time=batch.start_time,
                 end_time=batch.end_time,
             )
@@ -320,7 +311,9 @@ class Search(BaseModel):
                 await self._new_detection.emit(detection)
 
             if self._detections.n_detections and batch.i_batch % 50 == 0:
-                self._detections.dump_detections(jitter_location=self.octree.size_limit)
+                self._detections.dump_detections(
+                    jitter_location=self.octree.smallest_node_size()
+                )
 
             processing_time = datetime_now() - batch_processing_start
             self._batch_proc_time.append(processing_time)
@@ -422,12 +415,12 @@ class SearchTraces:
     def __init__(
         self,
         parent: Search,
-        traces: list[Trace],
+        images: WaveformImages,
         start_time: datetime,
         end_time: datetime,
     ) -> None:
         self.parent = parent
-        self.traces = traces
+        self.images = images
         self.start_time = start_time
         self.end_time = end_time
 
@@ -500,9 +493,7 @@ class SearchTraces:
             WaveformImages: The waveform images for the specified sampling rate.
         """
         if None not in self._images:
-            images = await self.parent.image_functions.process_traces(self.traces)
-            images.set_stations(self.parent.stations)
-            images.apply_exponent(self.parent.image_mean_p)
+            images = self.images
             self._images[None] = images
 
         if sampling_rate not in self._images:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from itertools import chain
-from typing import TYPE_CHECKING, Annotated, Any, Iterator, Union
+from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple, Union
 
-from pydantic import Field, RootModel
+from pydantic import Field, PrivateAttr, RootModel
 
 from lassie.images.base import ImageFunction, PickedArrival
 from lassie.images.phase_net import PhaseNet, PhaseNetPick
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
     from lassie.images.base import WaveformImage
     from lassie.models.station import Stations
+    from lassie.waveforms.base import WaveformBatch
 
 
 logger = logging.getLogger(__name__)
@@ -38,11 +40,14 @@ ImageFunctionPick = Annotated[
 class ImageFunctions(RootModel):
     root: list[ImageFunctionType] = [PhaseNet()]
 
+    _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr()
+
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice
         phases = self.get_phases()
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
+        self._queue = asyncio.Queue(maxsize=4)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
@@ -51,6 +56,36 @@ class ImageFunctions(RootModel):
             images.extend(await function.process_traces(traces))
 
         return WaveformImages(root=images)
+
+    async def iter_images(
+        self,
+        batch_iterator: AsyncIterator[WaveformBatch],
+    ) -> AsyncIterator[Tuple[WaveformImages, WaveformBatch]]:
+        """Iterate over images from batches.
+
+        Args:
+            batches (AsyncIterator[Batch]): Async iterator over batches.
+
+        Yields:
+            AsyncIterator[WaveformImages]: Async iterator over images.
+        """
+
+        async def worker() -> None:
+            logger.info("start prefetching data, queue size %d", self._queue.maxsize)
+            async for batch in batch_iterator:
+                images = await self.process_traces(batch.traces)
+                await self._queue.put((images, batch))
+            await self._queue.put(None)
+
+        task = asyncio.create_task(worker())
+
+        while True:
+            ret = await self._queue.get()
+            if ret is None:
+                break
+            yield ret
+
+        await task
 
     def get_phases(self) -> tuple[PhaseDescription, ...]:
         """Get all phases that are available in the image functions.

@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 class SquirrelPrefetcher:
+    queue: asyncio.Queue[Batch | None]
+    highpass: float | None
+    lowpass: float | None
+    _fetched_batches: int
+    _task: asyncio.Task[None]
+
     def __init__(
         self,
         iterator: Iterator[Batch],
@@ -39,7 +45,7 @@ class SquirrelPrefetcher:
         lowpass: float | None = None,
     ) -> None:
         self.iterator = iterator
-        self.queue: asyncio.Queue[Batch | None] = asyncio.Queue(maxsize=queue_size)
+        self.queue = asyncio.Queue(maxsize=queue_size)
         self.highpass = highpass
         self.lowpass = lowpass
         self._fetched_batches = 0
@@ -166,6 +172,7 @@ class PyrockoSquirrel(WaveformProvider):
         window_padding: timedelta,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
+        min_length: timedelta | None = None,
     ) -> AsyncIterator[WaveformBatch]:
         if not self._stations:
             raise ValueError("no stations provided. has prepare() been called?")
@@ -201,17 +208,33 @@ class PyrockoSquirrel(WaveformProvider):
         )
 
         while True:
-            batch = await prefetcher.queue.get()
-            if batch is None:
+            pyrocko_batch = await prefetcher.queue.get()
+            if pyrocko_batch is None:
                 prefetcher.queue.task_done()
                 break
 
-            yield WaveformBatch(
-                traces=batch.traces,
-                start_time=to_datetime(batch.tmin),
-                end_time=to_datetime(batch.tmax),
-                i_batch=batch.i,
-                n_batches=batch.n,
+            batch = WaveformBatch(
+                traces=pyrocko_batch.traces,
+                start_time=to_datetime(pyrocko_batch.tmin),
+                end_time=to_datetime(pyrocko_batch.tmax),
+                i_batch=pyrocko_batch.i,
+                n_batches=pyrocko_batch.n,
             )
+
+            batch.clean_traces()
+
+            if batch.is_empty():
+                logger.warning("empty batch %s", batch.log_str())
+                continue
+
+            if min_length and batch.duration < min_length:
+                logger.warning(
+                    "duration of batch %s too short %s",
+                    batch.log_str(),
+                    batch.duration,
+                )
+                continue
+
+            yield batch
 
             prefetcher.queue.task_done()

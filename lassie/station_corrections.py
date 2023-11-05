@@ -356,7 +356,7 @@ class StationCorrections(BaseModel):
             for event in detections:
                 self.add_event(event)
 
-        console.log(f"aggregated {self.n_stations} station corrections")
+        logger.info("aggregated %d station corrections", self.n_stations)
         if not self.n_stations:
             raise ValueError("no station detections found")
 

@@ -82,6 +82,7 @@ class WaveformProvider(BaseModel):
         window_increment: timedelta,
         window_padding: timedelta,
         start_time: datetime | None = None,
+        min_length: timedelta | None = None,
     ) -> AsyncIterator[WaveformBatch]:
         yield
         raise NotImplementedError
