@@ -81,13 +81,16 @@ def stations_inside(
 
 
 def octree_cover(model: VelocityModel3D) -> Octree:
+    east_excess = KM - model.east_size % (1 * KM)
+    north_excess = KM - model.north_size % (1 * KM)
+    depth_excess = KM - model.depth_size % (1 * KM)
     return Octree(
         location=model.center,
-        size_initial=2 * KM,
+        size_initial=1 * KM,
         size_limit=500,
-        east_bounds=model.east_bounds,
-        north_bounds=model.north_bounds,
-        depth_bounds=model.depth_bounds,
+        east_bounds=(model.east_bounds[0], model.east_bounds[1] + east_excess),
+        north_bounds=(model.north_bounds[0], model.north_bounds[1] + north_excess),
+        depth_bounds=(model.depth_bounds[0], model.depth_bounds[1] + depth_excess),
         absorbing_boundary=0,
     )
 

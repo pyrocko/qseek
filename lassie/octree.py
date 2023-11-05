@@ -245,14 +245,16 @@ class Octree(BaseModel):
         """Check that the size limits are valid."""
         if self.size_limit > self.size_initial:
             raise ValueError(
-                f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
-                " expected size_limit <= size_initial"
+                f"invalid octree size limits ({self.size_initial}, {self.size_limit}):"
+                " Expected size_limit <= size_initial"
             )
-        for ext in self.extent():
+        for dimension, ext in zip(
+            ("east", "north", "depth"), self.extent(), strict=True
+        ):
             if ext % self.size_initial:
                 raise ValueError(
-                    f"invalid octree size limits ({self.size_initial}, {self.size_limit}),"
-                    " expected size_initial to be a multiple of the extent"
+                    f"invalid octree initial_size {self.size_initial}:"
+                    f" Not a multiple in {dimension} with size {ext}"
                 )
         return self
 

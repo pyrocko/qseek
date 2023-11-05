@@ -104,15 +104,15 @@ class VelocityModel3D(BaseModel):
 
     @property
     def east_size(self) -> float:
-        return self._east_coords.size * self.grid_spacing
+        return self.east_bounds[1] - self.east_bounds[0]
 
     @property
     def north_size(self) -> float:
-        return self._north_coords.size * self.grid_spacing
+        return self.north_bounds[1] - self.north_bounds[0]
 
     @property
     def depth_size(self) -> float:
-        return self._depth_coords.size * self.grid_spacing
+        return self.depth_bounds[1] - self.depth_bounds[0]
 
     def hash(self) -> str:
         """Return hash of velocity model.
@@ -387,17 +387,19 @@ class NonLinLocHeader:
     @property
     def east_bounds(self) -> tuple[float, float]:
         """Relative to center location."""
-        return -self.delta_x * self.nx / 2, self.delta_x * self.nx / 2
+        size = self.delta_x * (self.nx - 1)
+        return -size / 2, size / 2
 
     @property
     def north_bounds(self) -> tuple[float, float]:
         """Relative to center location."""
-        return -self.delta_y * self.ny / 2, self.delta_y * self.ny / 2
+        size = self.delta_y * (self.ny - 1)
+        return -size / 2, size / 2
 
     @property
     def depth_bounds(self) -> tuple[float, float]:
         """Relative to center location."""
-        return 0, self.delta_z * self.nz
+        return 0.0, self.delta_z * self.nz
 
     @property
     def center(self) -> Location:

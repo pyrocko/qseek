@@ -319,16 +319,16 @@ class EventDetection(Location):
     )
 
     in_bounds: bool = Field(
-        True,
+        default=True,
         description="Is detection in bounds, and inside the configured border.",
     )
 
     magnitude: float | None = Field(
-        None,
+        default=None,
         description="Detection magnitude or semblance.",
     )
     magnitude_type: str | None = Field(
-        None,
+        default=None,
         description="Magnitude type.",
     )
 
