@@ -167,7 +167,7 @@ class PhaseNet(ImageFunction):
             self._phase_net.annotate,
             stream,
             overlap=self.window_overlap_samples,
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
             # parallelism=self.seisbench_subprocesses,
         )
 
