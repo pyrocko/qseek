@@ -638,13 +638,5 @@ class SearchTraces:
                 )
 
             detections.append(detection)
-            # detection.plot()
-
-        # plot_octree_movie(octree, semblance, file=Path("/tmp/test.mp4"))
-        if parent.plot_octree_surface:
-            octree.map_semblance(semblance.maximum_node_semblance())
-            parent._plot_octree_surface(
-                octree, time=self.start_time, detections=detections
-            )
 
         return detections, semblance.get_trace()

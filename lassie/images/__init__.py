@@ -139,11 +139,16 @@ class WaveformImages:
             image.apply_exponent(exponent)
 
     def set_stations(self, stations: Stations) -> None:
-        """Set the images stations."""
+        """Set the images stations.
+
+        Args:
+            stations (Stations): Stations to set.
+        """
         for image in self:
             image.set_stations(stations)
 
     def cumulative_weight(self) -> float:
+        """Get the cumulative weight of all images."""
         return sum(image.weight for image in self)
 
     def snuffle(self) -> None:

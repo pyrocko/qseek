@@ -51,21 +51,27 @@ class VelocityModel3D(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         grid_spacing = self.grid_spacing
+        neast = int(round(self.east_size / grid_spacing)) + 1
+        nnorth = int(round(self.north_size / grid_spacing)) + 1
+        ndepth = int(round(self.depth_size / grid_spacing)) + 1
 
-        self._east_coords = np.arange(
+        self._east_coords = np.linspace(
             self.east_bounds[0],
             self.east_bounds[1],
-            grid_spacing,
+            neast,
+            endpoint=True,
         )
-        self._north_coords = np.arange(
+        self._north_coords = np.linspace(
             self.north_bounds[0],
             self.north_bounds[1],
-            grid_spacing,
+            nnorth,
+            endpoint=True,
         )
-        self._depth_coords = np.arange(
+        self._depth_coords = np.linspace(
             self.depth_bounds[0],
             self.depth_bounds[1],
-            grid_spacing,
+            ndepth,
+            endpoint=True,
         )
 
         self._velocity_model = np.zeros(
@@ -399,7 +405,7 @@ class NonLinLocHeader:
     @property
     def depth_bounds(self) -> tuple[float, float]:
         """Relative to center location."""
-        return 0.0, self.delta_z * self.nz
+        return 0.0, self.delta_z * (self.nz - 1)
 
     @property
     def center(self) -> Location:

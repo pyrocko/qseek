@@ -87,21 +87,30 @@ class StationTravelTimeVolume(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         grid_spacing = self.grid_spacing
+        size_east = self.east_bounds[1] - self.east_bounds[0]
+        size_north = self.north_bounds[1] - self.north_bounds[0]
+        size_depth = self.depth_bounds[1] - self.depth_bounds[0]
+        neast = int(round(size_east / grid_spacing)) + 1
+        nnorth = int(round(size_north / grid_spacing)) + 1
+        ndepth = int(round(size_depth / grid_spacing)) + 1
 
-        self._east_coords = np.arange(
+        self._east_coords = np.linspace(
             self.east_bounds[0],
             self.east_bounds[1],
-            grid_spacing,
+            neast,
+            endpoint=True,
         )
-        self._north_coords = np.arange(
+        self._north_coords = np.linspace(
             self.north_bounds[0],
             self.north_bounds[1],
-            grid_spacing,
+            nnorth,
+            endpoint=True,
         )
-        self._depth_coords = np.arange(
+        self._depth_coords = np.linspace(
             self.depth_bounds[0],
             self.depth_bounds[1],
-            grid_spacing,
+            ndepth,
+            endpoint=True,
         )
 
     @classmethod
