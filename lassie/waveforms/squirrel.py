@@ -81,7 +81,7 @@ class SquirrelPrefetcher:
             await asyncio.to_thread(filter_freqs, batch)
             logger.debug("prefetched waveforms in %s", datetime_now() - start)
             if self.queue.empty() and self._fetched_batches:
-                logger.warning("queue ran empty, prefetching is too slow")
+                logger.warning("waveform queue ran empty, prefetching is too slow")
 
             self._fetched_batches += 1
             await self.queue.put(batch)
@@ -126,7 +126,10 @@ class PyrockoSquirrel(WaveformProvider):
         description="Channel selector for waveforms, "
         "use e.g. `EN?` for selection of all accelerometer data.",
     )
-    async_prefetch_batches: PositiveInt = 4
+    async_prefetch_batches: PositiveInt = Field(
+        4,
+        description="Queue size for asynchronous pre-fetcher.",
+    )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr()

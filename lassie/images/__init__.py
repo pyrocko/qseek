@@ -41,6 +41,7 @@ class ImageFunctions(RootModel):
     root: list[ImageFunctionType] = [PhaseNet()]
 
     _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr()
+    _processed_images: int = PrivateAttr(0)
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice
@@ -71,10 +72,16 @@ class ImageFunctions(RootModel):
         """
 
         async def worker() -> None:
-            logger.info("start prefetching data, queue size %d", self._queue.maxsize)
+            logger.info(
+                "start pre-processing images, queue size %d", self._queue.maxsize
+            )
             async for batch in batch_iterator:
                 images = await self.process_traces(batch.traces)
+                if self._queue.empty() and self._processed_images:
+                    logger.warning("image queue ran empty, prefetching is too slow")
+                self._processed_images += 1
                 await self._queue.put((images, batch))
+
             await self._queue.put(None)
 
         task = asyncio.create_task(worker())
@@ -82,6 +89,7 @@ class ImageFunctions(RootModel):
         while True:
             ret = await self._queue.get()
             if ret is None:
+                logger.debug("image function finished")
                 break
             yield ret
 
