@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
@@ -163,8 +162,7 @@ class PhaseNet(ImageFunction):
             for tr in stream:
                 tr.stats.sampling_rate = tr.stats.sampling_rate / scale
 
-        annotations: Stream = await asyncio.to_thread(
-            self._phase_net.annotate,
+        annotations: Stream = await self._phase_net.annotate_async(
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size

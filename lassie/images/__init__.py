@@ -78,7 +78,7 @@ class ImageFunctions(RootModel):
             async for batch in batch_iterator:
                 images = await self.process_traces(batch.traces)
                 if self._queue.empty() and self._processed_images:
-                    logger.warning("image queue ran empty, prefetching is too slow")
+                    logger.warning("image queue ran empty, processing is slow")
                 self._processed_images += 1
                 await self._queue.put((images, batch))
 
