@@ -8,14 +8,15 @@ from typing import TYPE_CHECKING, Any, Literal
 from obspy import Stream
 from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import obspy_compat
-from seisbench import logger
+from seisbench import logger as seisbench_logger
 
 from lassie.images.base import ImageFunction, PickedArrival, WaveformImage
 from lassie.utils import alog_call, to_datetime
 
 obspy_compat.plant()
 
-logger.setLevel(logging.CRITICAL)
+seisbench_logger.setLevel(logging.CRITICAL)
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -146,6 +147,14 @@ class PhaseNet(ImageFunction):
 
         torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
+        try:
+            logger.info("Compiling PhaseNet model...")
+            self._phase_net = torch.compile(self._phase_net)
+        except RuntimeError as exc:
+            logger.info(
+                "Failed to compile PhaseNet model, using uncompiled model.",
+                exc_info=exc,
+            )
         if self.torch_use_cuda:
             self._phase_net.cuda()
         self._phase_net.eval()
