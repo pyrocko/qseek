@@ -10,6 +10,8 @@ import numpy as np
 from pydantic import BaseModel, PrivateAttr
 from pyrocko.trace import Trace
 
+from lassie.stats import Stats
+
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
 
@@ -61,15 +63,12 @@ class WaveformBatch:
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 self.traces.remove(tr)
 
-    def log_str(self) -> str:
-        """Log the batch."""
-        return f"{self.i_batch+1}/{self.n_batches or '?'} {self.start_time}"
-
 
 class WaveformProvider(BaseModel):
     provider: Literal["WaveformProvider"] = "WaveformProvider"
 
     _queue: Queue[WaveformBatch | None] = PrivateAttr(default_factory=lambda: Queue())
+    _stats: Stats = PrivateAttr(default_factory=Stats)
 
     def get_squirrel(self) -> Squirrel:
         raise NotImplementedError

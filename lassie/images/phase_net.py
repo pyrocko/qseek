@@ -171,7 +171,6 @@ class PhaseNet(ImageFunction):
             scale = self.upscale_input
             for tr in stream:
                 tr.stats.sampling_rate = tr.stats.sampling_rate / scale
-
         annotations: Stream = await asyncio.to_thread(
             self._phase_net.annotate,
             stream,

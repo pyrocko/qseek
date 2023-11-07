@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, PrivateAttr
+from pydantic import (
+    BaseModel,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    PrivateAttr,
+    computed_field,
+)
 from pyrocko import parstack
 
 from lassie.features import (
@@ -26,6 +33,7 @@ from lassie.models.semblance import Semblance, SemblanceStats
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
+from lassie.stats import RuntimeStats, Stats
 from lassie.tracers import (
     CakeTracer,
     ConstantVelocityTracer,
@@ -40,6 +48,7 @@ from lassie.utils import (
     time_to_path,
 )
 from lassie.waveforms import PyrockoSquirrel, WaveformProviderType
+from lassie.waveforms.base import WaveformBatch
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -52,6 +61,71 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100]
+
+
+class SearchStats(Stats):
+    batch_time: datetime = datetime.min
+    batch_count: int = 0
+    batch_count_total: int = 0
+    processing_rate_bytes: float = 0.0
+
+    _batch_processing_times: Deque[timedelta] = PrivateAttr(
+        default_factory=lambda: deque(maxlen=25)
+    )
+
+    @computed_field
+    @property
+    def time_remaining(self) -> timedelta:
+        if not self.batch_count:
+            return timedelta()
+
+        remaining_batches = self.batch_count_total - self.batch_count
+        if not remaining_batches:
+            return timedelta()
+
+        return (
+            sum(self._batch_processing_times, timedelta())
+            / len(self._batch_processing_times)
+            * remaining_batches
+        )
+
+    @computed_field
+    @property
+    def processed_percent(self) -> float:
+        if not self.batch_count_total:
+            return 0.0
+        return self.batch_count / self.batch_count_total * 100.0
+
+    def add_processed_batch(
+        self,
+        batch: WaveformBatch,
+        duration: timedelta,
+        log: bool = False,
+    ) -> None:
+        self.batch_count = batch.i_batch
+        self.batch_count_total = batch.n_batches
+        self.batch_time = batch.end_time
+        self._batch_processing_times.append(duration)
+        self.processing_rate_bytes = batch.cumulative_bytes / duration.total_seconds()
+        if log:
+            self.log()
+
+    def log(self) -> None:
+        log_str = (
+            f"{self.batch_count+1}/{self.batch_count_total or '?'} {self.batch_time}"
+        )
+        logger.info(
+            "%s%% processed - batch %s in %s",
+            f"{self.processed_percent:.1f}" if self.processed_percent else "??",
+            log_str,
+            self._batch_processing_times[-1],
+        )
+        logger.info(
+            "processing rate %s/s - %s remaining - finish at %s",
+            human_readable_bytes(self.processing_rate_bytes),
+            self.time_remaining,
+            datetime.now() + self.time_remaining,  # noqa: DTZ005
+        )
 
 
 class SearchProgress(BaseModel):
@@ -153,12 +227,14 @@ class Search(BaseModel):
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
-    _batch_proc_time: Deque[timedelta] = PrivateAttr(
-        default_factory=lambda: deque(maxlen=25)
-    )
-    _batch_cum_durations: Deque[timedelta] = PrivateAttr(
-        default_factory=lambda: deque(maxlen=25)
-    )
+
+    _stats: SearchStats = PrivateAttr(SearchStats())
+    _runtime_stats: RuntimeStats = PrivateAttr(default_factory=RuntimeStats.new)
+
+    def model_post_init(self, *args) -> None:
+        self._runtime_stats.add_stats(self._stats)
+        self._runtime_stats.add_stats(self.data_provider._stats)
+        self._runtime_stats.add_stats(self.image_functions._stats)
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (
@@ -278,6 +354,7 @@ class Search(BaseModel):
         await self.prepare()
 
         logger.info("starting search...")
+        stats = self._stats
         batch_processing_start = datetime_now()
         processing_start = datetime_now()
 
@@ -290,6 +367,8 @@ class Search(BaseModel):
             start_time=self._progress.time_progress,
             min_length=2 * self._window_padding,
         )
+
+        # console = asyncio.create_task(self._runtime_stats.live_view())
 
         async for images, batch in self.image_functions.iter_images(waveform_iterator):
             images.set_stations(self.stations)
@@ -316,43 +395,12 @@ class Search(BaseModel):
                 )
 
             processing_time = datetime_now() - batch_processing_start
-            self._batch_proc_time.append(processing_time)
-            self._batch_cum_durations.append(batch.cumulative_duration)
-
-            processed_percent = (
-                ((batch.i_batch + 1) / batch.n_batches) * 100
-                if batch.n_batches
-                else 0.0
-            )
-            # processing_rate = (
-            #     sum(self._batch_cum_durations, timedelta())
-            #     / sum(self._batch_proc_time, timedelta()).total_seconds()
-            # )
-            processing_rate_bytes = human_readable_bytes(
-                batch.cumulative_bytes / processing_time.total_seconds()
-            )
-
-            logger.info(
-                "%s%% processed - batch %s in %s",
-                f"{processed_percent:.1f}" if processed_percent else "??",
-                batch.log_str(),
-                processing_time,
-            )
-            if batch.n_batches:
-                remaining_time = sum(self._batch_proc_time, timedelta()) / len(
-                    self._batch_proc_time
-                )
-                remaining_time *= batch.n_batches - batch.i_batch - 1
-                logger.info(
-                    "processing rate %s/s - %s remaining - finish at %s",
-                    processing_rate_bytes,
-                    remaining_time,
-                    datetime.now() + remaining_time,  # noqa: DTZ005
-                )
+            stats.add_processed_batch(batch, processing_time, log=True)
 
             batch_processing_start = datetime_now()
             self.set_progress(batch.end_time)
 
+        # console.cancel()
         self._detections.dump_detections(jitter_location=self.octree.size_limit)
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("found %d detections", self._detections.n_detections)

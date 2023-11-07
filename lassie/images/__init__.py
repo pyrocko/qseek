@@ -3,18 +3,18 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from itertools import chain
 from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple, Union
 
-from pydantic import Field, PrivateAttr, RootModel
+from pydantic import Field, PositiveInt, PrivateAttr, RootModel
 
 from lassie.images.base import ImageFunction, PickedArrival
 from lassie.images.phase_net import PhaseNet, PhaseNetPick
-from lassie.utils import PhaseDescription
+from lassie.stats import Stats
+from lassie.utils import PhaseDescription, datetime_now
 
 if TYPE_CHECKING:
-    from datetime import timedelta
-
     from pyrocko.trace import Trace
 
     from lassie.images.base import WaveformImage
@@ -37,11 +37,18 @@ ImageFunctionPick = Annotated[
 ]
 
 
+class ImageFunctionsStats(Stats):
+    queue_size: PositiveInt = 0
+    queue_max_size: PositiveInt = 0
+    time_per_batch: timedelta = timedelta()
+
+
 class ImageFunctions(RootModel):
     root: list[ImageFunctionType] = [PhaseNet()]
 
     _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr()
     _processed_images: int = PrivateAttr(0)
+    _stats = PrivateAttr(ImageFunctionsStats())
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice
@@ -49,6 +56,7 @@ class ImageFunctions(RootModel):
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
         self._queue = asyncio.Queue(maxsize=4)
+        self._stats.queue_max_size = self._queue.maxsize
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
@@ -71,6 +79,8 @@ class ImageFunctions(RootModel):
             AsyncIterator[WaveformImages]: Async iterator over images.
         """
 
+        stats = self._stats
+
         async def worker() -> None:
             logger.info(
                 "start pre-processing images, queue size %d", self._queue.maxsize
@@ -87,7 +97,10 @@ class ImageFunctions(RootModel):
         task = asyncio.create_task(worker())
 
         while True:
+            stats.queue_size = self._queue.qsize()
+            start_time = datetime_now()
             ret = await self._queue.get()
+            stats.time_per_batch = datetime_now() - start_time
             if ret is None:
                 logger.debug("image function finished")
                 break

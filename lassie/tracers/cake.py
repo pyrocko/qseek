@@ -29,9 +29,9 @@ from pyrocko import orthodrome as od
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, load_model, m2d
 from pyrocko.gf import meta
-from rich.progress import Progress
 
 from lassie.octree import get_node_coordinates
+from lassie.stats import PROGRESS
 from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.utils import (
     CACHE_DIR,
@@ -467,16 +467,17 @@ class TravelTimeTree(BaseModel):
             coordinates.append(np.asarray(node_receivers_distances).T)
 
         n_nodes = len(coordinates)
-        with Progress() as progress:
-            status = progress.add_task(
-                f"interpolating {self.timing.definition} travel times "
-                f"for {n_nodes} nodes",
-                total=len(coordinates),
-            )
-            traveltimes = []
-            for coords in coordinates:
-                traveltimes.append(self._interpolate_traveltimes_sptree(coords))
-                progress.update(status, advance=1)
+        status = PROGRESS.add_task(
+            f"interpolating {self.timing.definition} travel times "
+            f"for {n_nodes} nodes",
+            total=len(coordinates),
+        )
+        traveltimes = []
+        for coords in coordinates:
+            traveltimes.append(self._interpolate_traveltimes_sptree(coords))
+            PROGRESS.update(status, advance=1)
+
+        PROGRESS.remove_task()
 
         return np.asarray(traveltimes).astype(float)
 

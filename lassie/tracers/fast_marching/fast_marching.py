@@ -15,13 +15,13 @@ from lru import LRU
 from pydantic import BaseModel, ByteSize, Field, PrivateAttr, ValidationError
 from pyevtk.hl import gridToVTK
 from pyrocko.modelling import eikonal
-from rich.progress import Progress
 from scipy.interpolate import RegularGridInterpolator
 from typing_extensions import Self
 
 from lassie.models.location import Location
 from lassie.models.station import Station, Stations
 from lassie.octree import Node
+from lassie.stats import PROGRESS
 from lassie.tracers.base import ModelledArrival, RayTracer
 from lassie.tracers.fast_marching.velocity_models import (
     Constant3DVelocityModel,
@@ -473,15 +473,18 @@ class FastMarchingTracer(RayTracer):
 
         start = datetime_now()
         tasks = [asyncio.create_task(work) for work in calculate_work]
-        with Progress() as progress:
-            status = progress.add_task(
-                f"calculating travel time volumes for {len(tasks)} stations"
-                f" ({nthreads} threads)",
-                total=len(tasks),
-            )
-            for _task in asyncio.as_completed(tasks):
-                await _task
-                progress.advance(status)
+        status = PROGRESS.add_task(
+            f"calculating travel time volumes for {len(tasks)} stations"
+            f" ({nthreads} threads)",
+            total=len(tasks),
+        )
+        PROGRESS.update(status, visible=False)
+        for _task in asyncio.as_completed(tasks):
+            await _task
+            PROGRESS.advance(status)
+
+        PROGRESS.remove_task(status)
+
         logger.info("calculated travel time volumes in %s", datetime_now() - start)
 
     def get_travel_time_location(
@@ -541,15 +544,15 @@ class FastMarchingTracer(RayTracer):
         travel_times = []
         n_nodes = len(nodes)
 
-        with Progress() as progress:
-            status = progress.add_task(
-                f"interpolating {self.phase} travel times for {n_nodes} nodes",
-                total=self._cached_stations.n_stations,
-            )
-            for station in self._cached_stations:
-                volume = self.get_travel_time_volume(station)
-                travel_times.append(volume.interpolate_nodes(nodes))
-                progress.advance(status)
+        status = PROGRESS.add_task(
+            f"interpolating {self.phase} travel times for {n_nodes} nodes",
+            total=self._cached_stations.n_stations,
+        )
+        for station in self._cached_stations:
+            volume = self.get_travel_time_volume(station)
+            travel_times.append(volume.interpolate_nodes(nodes))
+            PROGRESS.advance(status)
+        PROGRESS.remove_task(status)
 
         travel_times = np.array(travel_times).T
 
