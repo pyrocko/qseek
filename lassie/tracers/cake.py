@@ -477,7 +477,7 @@ class TravelTimeTree(BaseModel):
             traveltimes.append(self._interpolate_traveltimes_sptree(coords))
             PROGRESS.update(status, advance=1)
 
-        PROGRESS.remove_task()
+        PROGRESS.remove_task(status)
 
         return np.asarray(traveltimes).astype(float)
 
