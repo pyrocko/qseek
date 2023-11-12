@@ -7,15 +7,16 @@ from datetime import timedelta
 from itertools import chain
 from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple, Union
 
-from pydantic import Field, PositiveInt, PrivateAttr, RootModel
+from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
 from lassie.images.base import ImageFunction, PickedArrival
 from lassie.images.phase_net import PhaseNet, PhaseNetPick
 from lassie.stats import Stats
-from lassie.utils import PhaseDescription, datetime_now
+from lassie.utils import PhaseDescription, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from rich.table import Table
 
     from lassie.images.base import WaveformImage
     from lassie.models.station import Stations
@@ -38,9 +39,36 @@ ImageFunctionPick = Annotated[
 
 
 class ImageFunctionsStats(Stats):
-    queue_size: PositiveInt = 0
-    queue_max_size: PositiveInt = 0
     time_per_batch: timedelta = timedelta()
+    bytes_per_second: float = 0.0
+
+    _queue: asyncio.Queue[WaveformImages | None] | None = PrivateAttr(None)
+
+    def set_queue(self, queue: asyncio.Queue[WaveformImages | None]) -> None:
+        self._queue = queue
+
+    @computed_field
+    @property
+    def queue_size(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.qsize()
+
+    @computed_field
+    @property
+    def queue_size_max(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.maxsize
+
+    def _populate_table(self, table: Table) -> None:
+        prefix = "[red][bold]" if not self.queue_size else ""
+        table.add_row("Queue", f"{prefix}{self.queue_size}/{self.queue_size_max}")
+        table.add_row(
+            "Time per batch",
+            f"{self.time_per_batch}"
+            f" ({human_readable_bytes(self.bytes_per_second)}/s)",
+        )
 
 
 class ImageFunctions(RootModel):
@@ -48,7 +76,7 @@ class ImageFunctions(RootModel):
 
     _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr()
     _processed_images: int = PrivateAttr(0)
-    _stats = PrivateAttr(ImageFunctionsStats())
+    _stats = PrivateAttr(default_factory=ImageFunctionsStats)
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice
@@ -56,7 +84,7 @@ class ImageFunctions(RootModel):
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
         self._queue = asyncio.Queue(maxsize=4)
-        self._stats.queue_max_size = self._queue.maxsize
+        self._stats.set_queue(self._queue)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
@@ -89,8 +117,9 @@ class ImageFunctions(RootModel):
                 start_time = datetime_now()
                 images = await self.process_traces(batch.traces)
                 stats.time_per_batch = datetime_now() - start_time
-                if self._queue.empty() and self._processed_images:
-                    logger.warning("image queue ran empty, processing is slow")
+                stats.bytes_per_second = (
+                    batch.cumulative_bytes / stats.time_per_batch.total_seconds()
+                )
                 self._processed_images += 1
                 await self._queue.put((images, batch))
 
@@ -99,7 +128,6 @@ class ImageFunctions(RootModel):
         task = asyncio.create_task(worker())
 
         while True:
-            stats.queue_size = self._queue.qsize()
             ret = await self._queue.get()
             if ret is None:
                 logger.debug("image function finished")
@@ -129,7 +157,13 @@ class WaveformImages:
 
     @property
     def n_images(self) -> int:
+        """Number of image functions."""
         return len(self.root)
+
+    @property
+    def n_stations(self) -> int:
+        """Number of stations in the images."""
+        return max(0, *(image.stations.n_stations for image in self if image.stations))
 
     def downsample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Downsample traces in-place.
@@ -165,6 +199,7 @@ class WaveformImages:
         return sum(image.weight for image in self)
 
     def snuffle(self) -> None:
+        """Open Pyrocko Snuffler on the image traces."""
         from pyrocko.trace import snuffle
 
         traces = []

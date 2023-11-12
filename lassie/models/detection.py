@@ -14,6 +14,7 @@ from pyevtk.hl import pointsToVTK
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
+from rich.table import Table
 from typing_extensions import Self
 
 from lassie.console import console
@@ -21,6 +22,7 @@ from lassie.features import EventFeaturesTypes, ReceiverFeaturesTypes
 from lassie.images import ImageFunctionPick
 from lassie.models.location import Location
 from lassie.models.station import Station, Stations
+from lassie.stats import Stats
 from lassie.tracers import RayTracerArrival
 from lassie.utils import PhaseDescription, Symbols, time_to_path
 
@@ -332,6 +334,11 @@ class EventDetection(Location):
         description="Magnitude type.",
     )
 
+    n_stations: int = Field(
+        default=0,
+        description="Number of stations in the detection.",
+    )
+
     features: EventFeatures = EventFeatures()
 
     _receivers: EventReceivers | None = PrivateAttr(None)
@@ -447,9 +454,25 @@ class EventDetection(Location):
         return str(self.time)
 
 
+class DetectionStats(Stats):
+    n_detections: int = 0
+    max_semblance: float = 0.0
+
+    _position: int = 2
+
+    def new_detection(self, detection: EventDetection):
+        self.n_detections += 1
+        self.max_semblance = max(self.max_semblance, detection.semblance)
+
+    def _populate_table(self, table: Table) -> None:
+        table.add_row("No. Detections", f"[bold]{self.n_detections}")
+        table.add_row("Maximum semblance", f"{self.max_semblance:.4f}")
+
+
 class EventDetections(BaseModel):
     rundir: Path
     detections: list[EventDetection] = []
+    _stats: DetectionStats = PrivateAttr(default_factory=DetectionStats)
 
     def model_post_init(self, __context: Any) -> None:
         EventDetection._rundir = self.rundir
@@ -494,6 +517,7 @@ class EventDetections(BaseModel):
             detection.distance_border,
             detection.semblance,
         )
+        self._stats.new_detection(detection)
         # This has to happen after the markers are saved
         detection.dump_append(self.rundir, self.n_detections - 1)
 
@@ -551,6 +575,10 @@ class EventDetections(BaseModel):
                 detections.detections.append(detection)
 
         console.log(f"loaded {detections.n_detections} detections")
+        detections._stats.n_detections = detections.n_detections
+        detections._stats.max_semblance = max(
+            detection.semblance for detection in detections
+        )
         return detections
 
     def export_csv(self, file: Path, jitter_location: float = 0.0) -> None:

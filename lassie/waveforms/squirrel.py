@@ -14,6 +14,7 @@ from pydantic import (
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -22,11 +23,12 @@ from typing_extensions import Self
 
 from lassie.models.station import Stations
 from lassie.stats import Stats
-from lassie.utils import datetime_now, to_datetime
+from lassie.utils import datetime_now, human_readable_bytes, to_datetime
 from lassie.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
     from pyrocko.squirrel.base import Batch
+    from rich.table import Table
 
 logger = logging.getLogger(__name__)
 
@@ -84,19 +86,44 @@ class SquirrelPrefetcher:
 
             await asyncio.to_thread(filter_freqs, batch)
             logger.debug("prefetched waveforms in %s", self.fetch_time)
-            if self.queue.empty() and self._fetched_batches:
-                logger.warning("waveform queue ran empty, prefetching is too slow")
 
             self._fetched_batches += 1
             await self.queue.put(batch)
 
 
 class SquirrelStats(Stats):
-    queue_size: PositiveInt = 0
-    queue_size_max: PositiveInt = 0
     empty_batches: PositiveInt = 0
     short_batches: PositiveInt = 0
-    time_per_batch: timedelta = timedelta(seconds=0)
+    time_per_batch: timedelta = timedelta(seconds=0.0)
+    bytes_per_seconds: float = 0.0
+
+    _queue: asyncio.Queue[Batch | None] | None = PrivateAttr(None)
+
+    def set_queue(self, queue: asyncio.Queue[Batch | None]) -> None:
+        self._queue = queue
+
+    @computed_field
+    @property
+    def queue_size(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.qsize()
+
+    @computed_field
+    @property
+    def queue_size_max(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.maxsize
+
+    def _populate_table(self, table: Table) -> None:
+        prefix = "[red][bold]" if not self.queue_size else ""
+        table.add_row("Queue", f"{prefix}{self.queue_size}/{self.queue_size_max}")
+        table.add_row(
+            "Batch load time",
+            f"{self.time_per_batch}"
+            f" ({human_readable_bytes(self.bytes_per_seconds)}/s)",
+        )
 
 
 class PyrockoSquirrel(WaveformProvider):
@@ -145,7 +172,7 @@ class PyrockoSquirrel(WaveformProvider):
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr()
-    _stats: SquirrelStats = PrivateAttr(SquirrelStats())
+    _stats: SquirrelStats = PrivateAttr(default_factory=SquirrelStats)
 
     @model_validator(mode="after")
     def _validate_model(self) -> Self:
@@ -180,7 +207,6 @@ class PyrockoSquirrel(WaveformProvider):
         logger.info("preparing squirrel waveform provider")
         squirrel = self.get_squirrel()
         stations.weed_from_squirrel_waveforms(squirrel)
-        self._stats.queue_size_max = self.async_prefetch_batches
         self._stations = stations
 
     async def iter_batches(
@@ -224,9 +250,9 @@ class PyrockoSquirrel(WaveformProvider):
             self.highpass,
             self.lowpass,
         )
+        stats.set_queue(prefetcher.queue)
 
         while True:
-            stats.queue_size = prefetcher.queue.qsize()
             pyrocko_batch = await prefetcher.queue.get()
             stats.time_per_batch = prefetcher.fetch_time
             if pyrocko_batch is None:
@@ -242,6 +268,9 @@ class PyrockoSquirrel(WaveformProvider):
             )
 
             batch.clean_traces()
+            stats.bytes_per_seconds = (
+                batch.cumulative_bytes / prefetcher.fetch_time.total_seconds()
+            )
 
             if batch.is_empty():
                 logger.warning("empty batch %d", batch.i_batch)

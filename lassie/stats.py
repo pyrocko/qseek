@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterator, Type
+from typing import Any, Iterator, NoReturn, Self, Type
 from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, PrivateAttr, create_model
@@ -12,8 +12,6 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.progress import Progress
 from rich.table import Table
-
-from lassie.utils import CONSOLE
 
 logger = logging.getLogger(__name__)
 
@@ -30,41 +28,47 @@ def titelify(name: str) -> str:
 
 class RuntimeStats(BaseModel):
     @classmethod
-    def new(cls) -> RuntimeStats:
+    def model(cls) -> Type[Self]:
         return create_model(
             "RuntimeStats",
-            **{
-                stats.__name__: (stats, STATS_INSTANCES.get(stats.__name__, None))
-                for stats in STATS_CLASSES
-            },
+            **{stats.__name__: (stats, None) for stats in STATS_CLASSES},
             __base__=cls,
-        )()
-
-    def __rich__(self) -> Group:
-        return Group(
-            *(
-                getattr(self, stat_name)
-                for stat_name in self.model_fields
-                if getattr(self, stat_name, None)
-            ),
-            PROGRESS,
         )
 
-    async def live_view(self):
+    @classmethod
+    def current(cls) -> Self:
+        """Get the current runtime stats instance."""
+        return cls.model()(**STATS_INSTANCES)
+
+    @classmethod
+    async def live_view(cls) -> NoReturn:
+        def generate_table() -> Group:
+            """Make a new table."""
+            table = Table(show_header=False, box=None)
+            stats_instaces = sorted(
+                STATS_INSTANCES.values(),
+                key=lambda s: s._position,
+            )
+            for stats in stats_instaces:
+                table.add_row(
+                    f"{stats.__class__.__name__.removesuffix('Stats')}", style="bold"
+                )
+                table.add_section()
+                stats._populate_table(table)
+            return Group(PROGRESS, table)
+
         with Live(
-            self,
-            console=CONSOLE,
-            refresh_per_second=10,
-            auto_refresh=True,
-            redirect_stdout=True,
-            redirect_stderr=True,
-        ) as _:
+            generate_table(),
+            refresh_per_second=4,
+            # screen=True,
+        ) as live:
             while True:
-                await asyncio.sleep(1.0)
+                live.update(generate_table())
+                await asyncio.sleep(0.4)
 
 
 class Stats(BaseModel):
-    _position: int = PrivateAttr(0)
+    _position: int = PrivateAttr(10)
 
     def __init_subclass__(cls: Type[Stats], **kwargs) -> None:
         STATS_CLASSES.add(cls)
@@ -72,10 +76,14 @@ class Stats(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         STATS_INSTANCES[self.__class__.__name__] = self
 
-    def populate_table(self, table: Table) -> None:
+    def _populate_table(self, table: Table) -> None:
         for name, field in self.iter_fields():
             title = field.title or titelify(name)
-            table.add_row(title, str(getattr(self, name)))
+            table.add_row(
+                title,
+                str(getattr(self, name)),
+                style="dim",
+            )
 
     def iter_fields(self) -> Iterator[tuple[str, FieldInfo | ComputedFieldInfo]]:
         yield from self.model_fields.items()
@@ -83,5 +91,5 @@ class Stats(BaseModel):
 
     def __rich__(self) -> Panel:
         table = Table(box=None, row_styles=["", "dim"])
-        self.populate_table(table)
+        self._populate_table(table)
         return Panel(table, title=self.__class__.__name__)

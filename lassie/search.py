@@ -52,6 +52,7 @@ from lassie.waveforms.base import WaveformBatch
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from rich.table import Table
     from typing_extensions import Self
 
     from lassie.images.base import WaveformImage
@@ -72,6 +73,7 @@ class SearchStats(Stats):
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
+    _position: int = PrivateAttr(0)
 
     @computed_field
     @property
@@ -125,6 +127,22 @@ class SearchStats(Stats):
             human_readable_bytes(self.processing_rate_bytes),
             self.time_remaining,
             datetime.now() + self.time_remaining,  # noqa: DTZ005
+        )
+
+    def _populate_table(self, table: Table) -> None:
+        table.add_row(
+            "Batch",
+            f'[bold]{self.batch_count+1}[/bold]/{self.batch_count_total or "?"}'
+            f' ({self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
+        )
+        table.add_row(
+            "Processing rate",
+            f"{human_readable_bytes(self.processing_rate_bytes)}/s",
+        )
+        table.add_row(
+            "Remaining Time",
+            f"{self.time_remaining}, "
+            f"finish at {datetime.now() + self.time_remaining}",  # noqa: DTZ005
         )
 
 
@@ -228,8 +246,7 @@ class Search(BaseModel):
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
-    _stats: SearchStats = PrivateAttr(SearchStats())
-    _runtime_stats: RuntimeStats = PrivateAttr(None)
+    _stats: SearchStats = PrivateAttr(default_factory=SearchStats)
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (
@@ -350,7 +367,6 @@ class Search(BaseModel):
         await self.prepare()
 
         logger.info("starting search...")
-        self._runtime_stats = RuntimeStats.new()
         stats = self._stats
 
         batch_processing_start = datetime_now()
@@ -366,7 +382,7 @@ class Search(BaseModel):
             min_length=2 * self._window_padding,
         )
 
-        console = asyncio.create_task(self._runtime_stats.live_view())
+        console = asyncio.create_task(RuntimeStats.live_view())
 
         async for images, batch in self.image_functions.iter_images(waveform_iterator):
             images.set_stations(self.stations)
@@ -392,10 +408,11 @@ class Search(BaseModel):
                     jitter_location=self.octree.smallest_node_size()
                 )
 
+            # Update stats
             processing_time = datetime_now() - batch_processing_start
             stats.add_processed_batch(batch, processing_time, log=True)
-
             batch_processing_start = datetime_now()
+
             self.set_progress(batch.end_time)
 
         console.cancel()
@@ -654,6 +671,7 @@ class SearchTraces:
                 semblance=float(semblance_detection),
                 distance_border=source_node.distance_border,
                 in_bounds=octree.is_node_in_bounds(source_node),
+                n_stations=images.n_stations,
                 **source_location.model_dump(),
             )
 

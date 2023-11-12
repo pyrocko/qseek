@@ -4,11 +4,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field
 
 from lassie.models.phase_arrival import PhaseArrival
 from lassie.models.station import Stations
-from lassie.stats import Stats
 from lassie.utils import PhaseDescription, downsample
 
 if TYPE_CHECKING:
@@ -23,8 +22,6 @@ class PickedArrival(PhaseArrival):
 
 class ImageFunction(BaseModel):
     image: Literal["base"] = "base"
-
-    _stats: Stats = PrivateAttr(Stats())
 
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         ...
