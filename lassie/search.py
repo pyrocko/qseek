@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import cProfile
 import logging
 from collections import deque
 from copy import deepcopy
@@ -63,8 +62,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100]
-
-prof = cProfile.Profile()
 
 
 class SearchStats(Stats):
@@ -396,10 +393,7 @@ class Search(BaseModel):
                 start_time=batch.start_time,
                 end_time=batch.end_time,
             )
-            prof.enable()
             detections, semblance_trace = await search_block.search()
-            prof.disable()
-            prof.dump_stats(self._rundir / "search.prof")
 
             self._detections.add_semblance(semblance_trace)
             for detection in detections:
