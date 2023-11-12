@@ -42,7 +42,7 @@ class RuntimeStats(BaseModel):
 
     @classmethod
     async def live_view(cls) -> NoReturn:
-        def generate_table() -> Group:
+        def generate_table() -> Table:
             """Make a new table."""
             table = Table(show_header=False, box=None)
             stats_instaces = sorted(
@@ -55,7 +55,10 @@ class RuntimeStats(BaseModel):
                 )
                 table.add_section()
                 stats._populate_table(table)
-            return Group(PROGRESS, table)
+            grid = table.grid(expand=True)
+            grid.add_row(PROGRESS)
+            grid.add_row(Group(Panel(table)))
+            return grid
 
         with Live(
             generate_table(),

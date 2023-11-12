@@ -138,6 +138,8 @@ class Semblance:
         Args:
             exponent (float): Exponent
         """
+        if exponent == 1.0:
+            return
         self.semblance_unpadded **= exponent
         self._clear_cache()
 

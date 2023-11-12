@@ -454,7 +454,7 @@ class EventDetection(Location):
         return str(self.time)
 
 
-class DetectionStats(Stats):
+class DetectionsStats(Stats):
     n_detections: int = 0
     max_semblance: float = 0.0
 
@@ -465,14 +465,14 @@ class DetectionStats(Stats):
         self.max_semblance = max(self.max_semblance, detection.semblance)
 
     def _populate_table(self, table: Table) -> None:
-        table.add_row("No. Detections", f"[bold]{self.n_detections}")
+        table.add_row("No. Detections", f"[bold]{self.n_detections} :dim_button:")
         table.add_row("Maximum semblance", f"{self.max_semblance:.4f}")
 
 
 class EventDetections(BaseModel):
     rundir: Path
     detections: list[EventDetection] = []
-    _stats: DetectionStats = PrivateAttr(default_factory=DetectionStats)
+    _stats: DetectionsStats = PrivateAttr(default_factory=DetectionsStats)
 
     def model_post_init(self, __context: Any) -> None:
         EventDetection._rundir = self.rundir

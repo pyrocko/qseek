@@ -69,6 +69,7 @@ class SearchStats(Stats):
     batch_count: int = 0
     batch_count_total: int = 0
     processing_rate_bytes: float = 0.0
+    processing_rate_time: timedelta = timedelta(seconds=0.0)
 
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
@@ -109,6 +110,7 @@ class SearchStats(Stats):
         self.batch_time = batch.end_time
         self._batch_processing_times.append(duration)
         self.processing_rate_bytes = batch.cumulative_bytes / duration.total_seconds()
+        self.processing_rate_time = batch.duration / duration.total_seconds()
         if log:
             self.log()
 
@@ -133,17 +135,18 @@ class SearchStats(Stats):
         table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
-            f"([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'} / "
+            f" ([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'},"
             f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
         )
         table.add_row(
             "Processing rate",
-            f"{human_readable_bytes(self.processing_rate_bytes)}/s",
+            f"{human_readable_bytes(self.processing_rate_bytes)}/s"
+            f" ({self.processing_rate_time} t/s)",
         )
         table.add_row(
             "Remaining Time",
             f"{self.time_remaining}, "
-            f"finish at {datetime.now() + self.time_remaining}",  # noqa: DTZ005
+            f"finish at {datetime.now() + self.time_remaining:%c}",  # noqa: DTZ005
         )
 
 

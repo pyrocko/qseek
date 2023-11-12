@@ -45,7 +45,7 @@ class SquirrelPrefetcher:
     def __init__(
         self,
         iterator: Iterator[Batch],
-        queue_size: int = 4,
+        queue_size: int = 5,
         highpass: float | None = None,
         lowpass: float | None = None,
     ) -> None:
@@ -117,8 +117,8 @@ class SquirrelStats(Stats):
         return self._queue.maxsize
 
     def _populate_table(self, table: Table) -> None:
-        prefix = "[red][bold]" if not self.queue_size else ""
-        table.add_row("Queue", f"{prefix}{self.queue_size}/{self.queue_size_max}")
+        prefix = "[bold red]" if self.queue_size <= 1 else ""
+        table.add_row("Queue", f"{prefix}{self.queue_size} / {self.queue_size_max}")
         table.add_row(
             "Waveform loading",
             f"{human_readable_bytes(self.bytes_per_seconds)}/s",
@@ -165,7 +165,7 @@ class PyrockoSquirrel(WaveformProvider):
         "use e.g. `EN?` for selection of all accelerometer data.",
     )
     async_prefetch_batches: PositiveInt = Field(
-        default=4,
+        default=5,
         description="Queue size for asynchronous pre-fetcher.",
     )
 
