@@ -512,6 +512,7 @@ class SearchTraces:
         ray_tracer: RayTracer,
         n_samples_semblance: int,
         semblance_data: np.ndarray,
+        cache_mask: np.ndarray | None = None,
     ) -> np.ndarray:
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
@@ -535,6 +536,9 @@ class SearchTraces:
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
         weights[traveltimes_bad] = 0.0
+
+        if cache_mask is not None:
+            weights[cache_mask] = 0.0
 
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
@@ -579,6 +583,7 @@ class SearchTraces:
     async def search(
         self,
         octree: Octree | None = None,
+        semblance_cache: dict[bytes, np.ndarray] | None = None,
     ) -> tuple[list[EventDetection], Trace]:
         """Searches for events in the given traces.
 
@@ -600,7 +605,7 @@ class SearchTraces:
             round(parent._window_padding.total_seconds() * sampling_rate)
         )
         semblance = Semblance(
-            n_nodes=octree.n_nodes,
+            nodes=octree,
             n_samples=self._n_samples_semblance(),
             start_time=self.start_time,
             sampling_rate=sampling_rate,
@@ -614,14 +619,19 @@ class SearchTraces:
                 ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
                 semblance_data=semblance.semblance_unpadded,
                 n_samples_semblance=semblance.n_samples_unpadded,
+                cache_mask=semblance.get_cache_mask(semblance_cache)
+                if semblance_cache
+                else None,
             )
+        semblance.apply_cache(semblance_cache or {})
+
         semblance.apply_exponent(1.0 / parent.image_mean_p)
         semblance.normalize(images.cumulative_weight())
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.debug("semblance stats: %s", parent.semblance_stats)
 
-        detection_idx, detection_semblance = semblance.find_peaks(
+        detection_idx, detection_semblance = await semblance.find_peaks(
             height=parent.detection_threshold**parent.image_mean_p,
             prominence=parent.detection_threshold**parent.image_mean_p,
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
@@ -657,9 +667,9 @@ class SearchTraces:
                     node.split()
                 except NodeSplitError:
                     continue
-
+            cache = semblance.get_cache()
             del semblance
-            return await self.search(octree)
+            return await self.search(octree, semblance_cache=cache)
 
         detections = []
         for time_idx, semblance_detection in zip(

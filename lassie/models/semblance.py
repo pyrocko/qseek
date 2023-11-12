@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
 from pydantic import BaseModel, PrivateAttr
@@ -15,6 +15,8 @@ from lassie.utils import human_readable_bytes
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from lassie.octree import Node
 
 
 logger = logging.getLogger(__name__)
@@ -46,10 +48,11 @@ class SemblanceStats(BaseModel):
 class Semblance:
     _max_semblance: np.ndarray | None = None
     _node_idx_max: np.ndarray | None = None
+    _node_hashes: list[bytes]
 
     def __init__(
         self,
-        n_nodes: int,
+        nodes: Iterable[Node],
         n_samples: int,
         start_time: datetime,
         sampling_rate: float,
@@ -59,6 +62,8 @@ class Semblance:
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
+        self._node_hashes = [node.hash() for node in nodes]
+        n_nodes = len(self._node_hashes)
 
         self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
         logger.debug(
@@ -95,6 +100,22 @@ class Semblance:
         if self._max_semblance is None:
             self._max_semblance = self.semblance.max(axis=0)
         return self._max_semblance
+
+    def get_cache(self) -> dict[bytes, np.ndarray]:
+        return {
+            node_hash: self.semblance_unpadded[i, :]
+            for i, node_hash in enumerate(self._node_hashes)
+        }
+
+    def get_cache_mask(self, cache: dict[bytes, np.ndarray]) -> np.ndarray:
+        return np.array([node in cache for node in self._node_hashes])
+
+    def apply_cache(self, cache: dict[bytes, np.ndarray]):
+        if not cache:
+            return
+        mask = self.get_cache_mask(cache)
+        data = [cache[node] for node in self._node_hashes if node in cache]
+        self.semblance_unpadded[mask, :] = np.stack(data)
 
     def maximum_node_semblance(self) -> np.ndarray:
         return self.semblance.max(axis=1)
@@ -156,7 +177,7 @@ class Semblance:
         """
         return self.maximum_semblance < (self.median() * level)
 
-    def find_peaks(
+    async def find_peaks(
         self,
         height: float,
         prominence: float,
@@ -177,7 +198,8 @@ class Semblance:
         Returns:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
         """
-        detection_idx, _ = signal.find_peaks(
+        detection_idx, _ = await asyncio.to_thread(
+            signal.find_peaks,
             self.semblance_unpadded.max(axis=0),
             height=height,
             prominence=prominence,
