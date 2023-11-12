@@ -131,9 +131,10 @@ class SearchStats(Stats):
 
     def _populate_table(self, table: Table) -> None:
         table.add_row(
-            "Batch",
-            f'[bold]{self.batch_count+1}[/bold]/{self.batch_count_total or "?"}'
-            f' ({self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
+            "Progress ",
+            f"[bold]{self.processed_percent:.1f}%[/bold]"
+            f"([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'} / "
+            f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
         )
         table.add_row(
             "Processing rate",

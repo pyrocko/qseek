@@ -65,9 +65,8 @@ class ImageFunctionsStats(Stats):
         prefix = "[red][bold]" if not self.queue_size else ""
         table.add_row("Queue", f"{prefix}{self.queue_size}/{self.queue_size_max}")
         table.add_row(
-            "Time per batch",
-            f"{self.time_per_batch}"
-            f" ({human_readable_bytes(self.bytes_per_second)}/s)",
+            "Waveform processing",
+            f"{human_readable_bytes(self.bytes_per_second)}/s",
         )
 
 
@@ -83,7 +82,7 @@ class ImageFunctions(RootModel):
         phases = self.get_phases()
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
-        self._queue = asyncio.Queue(maxsize=4)
+        self._queue = asyncio.Queue(maxsize=10)
         self._stats.set_queue(self._queue)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:

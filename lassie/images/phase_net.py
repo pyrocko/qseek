@@ -149,7 +149,7 @@ class PhaseNet(ImageFunction):
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
         try:
             logger.info("Compiling PhaseNet model...")
-            self._phase_net = torch.compile(self._phase_net)
+            self._phase_net = torch.compile(self._phase_net, mode="reduce-overhead")
         except RuntimeError as exc:
             logger.info(
                 "Failed to compile PhaseNet model, using uncompiled model.",
@@ -176,7 +176,6 @@ class PhaseNet(ImageFunction):
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,
-            # parallelism=self.seisbench_subprocesses,
         )
 
         if self.upscale_input > 1:

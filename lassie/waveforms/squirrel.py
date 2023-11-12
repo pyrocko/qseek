@@ -120,9 +120,8 @@ class SquirrelStats(Stats):
         prefix = "[red][bold]" if not self.queue_size else ""
         table.add_row("Queue", f"{prefix}{self.queue_size}/{self.queue_size_max}")
         table.add_row(
-            "Batch load time",
-            f"{self.time_per_batch}"
-            f" ({human_readable_bytes(self.bytes_per_seconds)}/s)",
+            "Waveform loading",
+            f"{human_readable_bytes(self.bytes_per_seconds)}/s",
         )
 
 
