@@ -229,12 +229,7 @@ class Search(BaseModel):
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     _stats: SearchStats = PrivateAttr(SearchStats())
-    _runtime_stats: RuntimeStats = PrivateAttr(default_factory=RuntimeStats.new)
-
-    def model_post_init(self, *args) -> None:
-        self._runtime_stats.add_stats(self._stats)
-        self._runtime_stats.add_stats(self.data_provider._stats)
-        self._runtime_stats.add_stats(self.image_functions._stats)
+    _runtime_stats: RuntimeStats = PrivateAttr(None)
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (
@@ -326,7 +321,8 @@ class Search(BaseModel):
                 f"window length {self.window_length} is too short for the "
                 f"theoretical travel time range {self._shift_range} and "
                 f"cummulative window padding of {self._window_padding}."
-                " Increase the window_length time."
+                " Increase the window_length time to at least "
+                f"{self._shift_range +2*self._window_padding }"
             )
 
         logger.info("using trace window padding: %s", self._window_padding)
@@ -354,7 +350,9 @@ class Search(BaseModel):
         await self.prepare()
 
         logger.info("starting search...")
+        self._runtime_stats = RuntimeStats.new()
         stats = self._stats
+
         batch_processing_start = datetime_now()
         processing_start = datetime_now()
 
@@ -368,7 +366,7 @@ class Search(BaseModel):
             min_length=2 * self._window_padding,
         )
 
-        # console = asyncio.create_task(self._runtime_stats.live_view())
+        console = asyncio.create_task(self._runtime_stats.live_view())
 
         async for images, batch in self.image_functions.iter_images(waveform_iterator):
             images.set_stations(self.stations)
@@ -400,7 +398,7 @@ class Search(BaseModel):
             batch_processing_start = datetime_now()
             self.set_progress(batch.end_time)
 
-        # console.cancel()
+        console.cancel()
         self._detections.dump_detections(jitter_location=self.octree.size_limit)
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("found %d detections", self._detections.n_detections)

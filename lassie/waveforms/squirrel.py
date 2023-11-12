@@ -108,7 +108,7 @@ class PyrockoSquirrel(WaveformProvider):
         default=Path("."),
         description="Path to a Squirrel environment.",
     )
-    waveform_dirs: list[DirectoryPath] = Field(
+    waveform_dirs: list[Path] = Field(
         default=[],
         description="List of directories holding the waveform files.",
     )

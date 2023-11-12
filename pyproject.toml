@@ -40,7 +40,6 @@ dependencies = [
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
-    "pytorch>=2.1",
 
 ]
 

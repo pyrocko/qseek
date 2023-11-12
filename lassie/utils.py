@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Annotated, Awaitable, Callable, ParamSpec, Typ
 
 from pydantic import BaseModel, constr
 from pyrocko.util import UnavailableDecimation
+from rich.console import Console
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 FORMAT = "%(message)s"
+
+CONSOLE = Console()
 
 
 PhaseDescription = Annotated[str, constr(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
@@ -41,7 +44,10 @@ class ANSI:
 
 def setup_rich_logging(level: int) -> None:
     logging.basicConfig(
-        level=level, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+        level=level,
+        format=FORMAT,
+        datefmt="[%X]",
+        handlers=[RichHandler()],
     )
 
 
