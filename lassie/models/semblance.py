@@ -111,7 +111,7 @@ class Semblance:
         if self._node_idx_max is None:
             self._node_idx_max = await asyncio.to_thread(
                 parstack.argmax,
-                self.semblance.astype(np.float64),
+                np.ascontiguousarray(self.semblance),
                 nparallel=nparallel,
             )
         return self._node_idx_max

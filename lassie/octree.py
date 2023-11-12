@@ -4,6 +4,7 @@ import contextlib
 import logging
 import struct
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import cached_property
 from hashlib import sha1
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
@@ -57,19 +58,20 @@ class NodeSplitError(Exception):
     ...
 
 
-class Node(BaseModel):
+@dataclass(slots=True)
+class Node:
     east: float
     north: float
     depth: float
     size: float
     semblance: float = 0.0
 
-    tree: Octree | None = Field(None, exclude=True)
-    children: tuple[Node, ...] = Field(default=(), exclude=True)
+    tree: Octree | None = None
+    children: tuple[Node, ...] = ()
 
-    _hash: bytes | None = PrivateAttr(None)
-    _children_cached: tuple[Node, ...] = PrivateAttr(())
-    _location: Location | None = PrivateAttr(None)
+    _hash: bytes | None = None
+    _children_cached: tuple[Node, ...] = ()
+    _location: Location | None = None
 
     def split(self) -> tuple[Node, ...]:
         if not self.tree:
@@ -82,7 +84,7 @@ class Node(BaseModel):
             half_size = self.size / 2
 
             self._children_cached = tuple(
-                Node.model_construct(
+                Node(
                     east=self.east + east * half_size / 2,
                     north=self.north + north * half_size / 2,
                     depth=self.depth + depth * half_size / 2,
@@ -287,9 +289,7 @@ class Octree(BaseModel):
         depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds[0]
 
         return [
-            Node.model_construct(
-                east=east, north=north, depth=depth, size=ln, tree=self
-            )
+            Node(east=east, north=north, depth=depth, size=ln, tree=self)
             for east in east_nodes
             for north in north_nodes
             for depth in depth_nodes
