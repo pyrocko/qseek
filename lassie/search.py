@@ -125,10 +125,7 @@ class SearchStats(Stats):
             self._batch_processing_times[-1],
         )
         logger.info(
-            "processing rate %s/s - %s remaining - finish at %s",
-            human_readable_bytes(self.processing_rate_bytes),
-            self.time_remaining,
-            datetime.now() + self.time_remaining,  # noqa: DTZ005
+            "processing rate %s/s", human_readable_bytes(self.processing_rate_bytes)
         )
 
     def _populate_table(self, table: Table) -> None:
@@ -623,10 +620,11 @@ class SearchTraces:
                 if semblance_cache
                 else None,
             )
-        semblance.apply_cache(semblance_cache or {})
 
         semblance.apply_exponent(1.0 / parent.image_mean_p)
         semblance.normalize(images.cumulative_weight())
+
+        semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 
         parent.semblance_stats.update(semblance.get_stats())
         logger.debug("semblance stats: %s", parent.semblance_stats)

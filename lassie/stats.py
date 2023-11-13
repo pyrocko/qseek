@@ -42,7 +42,7 @@ class RuntimeStats(BaseModel):
 
     @classmethod
     async def live_view(cls) -> NoReturn:
-        def generate_table() -> Table:
+        def generate_grid() -> Table:
             """Make a new table."""
             table = Table(show_header=False, box=None)
             stats_instaces = sorted(
@@ -57,16 +57,16 @@ class RuntimeStats(BaseModel):
                 stats._populate_table(table)
             grid = table.grid(expand=True)
             grid.add_row(PROGRESS)
-            grid.add_row(Group(Panel(table)))
+            grid.add_row(Group(Panel(table, title="QuakeHog")))
             return grid
 
         with Live(
-            generate_table(),
+            generate_grid(),
             refresh_per_second=4,
             # screen=True,
         ) as live:
             while True:
-                live.update(generate_table())
+                live.update(generate_grid())
                 await asyncio.sleep(0.4)
 
 

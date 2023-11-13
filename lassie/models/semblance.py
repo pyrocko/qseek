@@ -108,13 +108,14 @@ class Semblance:
         }
 
     def get_cache_mask(self, cache: dict[bytes, np.ndarray]) -> np.ndarray:
-        return np.array([node in cache for node in self._node_hashes])
+        return np.array([hash in cache for hash in self._node_hashes])
 
     def apply_cache(self, cache: dict[bytes, np.ndarray]):
         if not cache:
             return
         mask = self.get_cache_mask(cache)
-        data = [cache[node] for node in self._node_hashes if node in cache]
+        logger.debug("applying cache for %d nodes", mask.sum())
+        data = [cache[hash] for hash in self._node_hashes if hash in cache]
         self.semblance_unpadded[mask, :] = np.stack(data)
 
     def maximum_node_semblance(self) -> np.ndarray:
