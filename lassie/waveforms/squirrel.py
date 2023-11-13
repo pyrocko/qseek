@@ -37,6 +37,7 @@ class SquirrelPrefetcher:
     queue: asyncio.Queue[Batch | None]
     highpass: float | None
     lowpass: float | None
+    downsample_to: float | None
     _fetched_batches: int
     _task: asyncio.Task[None]
 
@@ -45,12 +46,14 @@ class SquirrelPrefetcher:
     def __init__(
         self,
         iterator: Iterator[Batch],
-        queue_size: int = 5,
+        queue_size: int = 10,
+        downsample_to: float | None = None,
         highpass: float | None = None,
         lowpass: float | None = None,
     ) -> None:
         self.iterator = iterator
         self.queue = asyncio.Queue(maxsize=queue_size)
+        self.downsample_to = downsample_to
         self.highpass = highpass
         self.lowpass = lowpass
         self._fetched_batches = 0
@@ -60,17 +63,32 @@ class SquirrelPrefetcher:
     async def prefetch_worker(self) -> None:
         logger.info("start prefetching data, queue size %d", self.queue.maxsize)
 
-        def filter_freqs(batch: Batch) -> Batch:
+        def post_processing(batch: Batch) -> Batch:
             # Filter traces in-place
             start = None
+
+            # SeisBench would call obspy's downsampling.
+            # Downsampling is much faster in Pyrocko, so we do it here.
+            if self.downsample_to:
+                try:
+                    start = datetime_now()
+                    desired_deltat = 1.0 / self.downsample_to
+                    for tr in batch.traces:
+                        if tr.deltat < desired_deltat:
+                            tr.downsample_to(desired_deltat, allow_upsample_max=2)
+                except Exception as exc:
+                    logger.exception(exc)
+
             if self.highpass:
-                start = datetime_now()
+                start = start or datetime_now()
                 for tr in batch.traces:
                     tr.highpass(4, corner=self.highpass)
+
             if self.lowpass:
                 start = start or datetime_now()
                 for tr in batch.traces:
                     tr.lowpass(4, corner=self.lowpass)
+
             if start:
                 logger.debug("filtered traces in %s", datetime_now() - start)
             return batch
@@ -84,7 +102,7 @@ class SquirrelPrefetcher:
                 await self.queue.put(None)
                 break
 
-            await asyncio.to_thread(filter_freqs, batch)
+            await asyncio.to_thread(post_processing, batch)
             logger.debug("prefetched waveforms in %s", self.fetch_time)
 
             self._fetched_batches += 1
@@ -157,6 +175,10 @@ class PyrockoSquirrel(WaveformProvider):
         default=None,
         description="Lowpass filter, corner frequency in Hz.",
     )
+    downsample_to: PositiveFloat | None = Field(
+        default=100.0,
+        description="Downsample the data to a desired frequency",
+    )
 
     channel_selector: str = Field(
         default="*",
@@ -165,7 +187,7 @@ class PyrockoSquirrel(WaveformProvider):
         "use e.g. `EN?` for selection of all accelerometer data.",
     )
     async_prefetch_batches: PositiveInt = Field(
-        default=5,
+        default=10,
         description="Queue size for asynchronous pre-fetcher.",
     )
 
@@ -246,8 +268,9 @@ class PyrockoSquirrel(WaveformProvider):
         prefetcher = SquirrelPrefetcher(
             iterator,
             self.async_prefetch_batches,
-            self.highpass,
-            self.lowpass,
+            downsample_to=self.downsample_to,
+            highpass=self.highpass,
+            lowpass=self.lowpass,
         )
         stats.set_queue(prefetcher.queue)
 
