@@ -71,6 +71,7 @@ class SearchStats(Stats):
     processing_rate_bytes: float = 0.0
     processing_rate_time: timedelta = timedelta(seconds=0.0)
 
+    _search_start: datetime = PrivateAttr(default_factory=datetime_now)
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
@@ -86,11 +87,8 @@ class SearchStats(Stats):
         if not remaining_batches:
             return timedelta()
 
-        return (
-            sum(self._batch_processing_times, timedelta())
-            / len(self._batch_processing_times)
-            * remaining_batches
-        )
+        duration = datetime_now() - self._search_start
+        return duration / self.batch_count * remaining_batches
 
     @computed_field
     @property

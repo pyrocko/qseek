@@ -8,14 +8,13 @@ This enables high throughput of seismic data in different scenarios.
 
 | Number Stations | Throughput in MB | Throughput in Waveform data |
 | --------------- | ---------------- | ----------------------------|
-| 300+            | 30 MB/sec        | 12 hours/sec                |
-| 50              | 20 MB/sec        |  6 hours/sec                |
+| 300+            | 40 MB/sec        | 12 hours/sec                |
+| 50              | 30 MB/sec        |  6 hours/sec                |
 
-Scanning a 600 GB (~700 years of waveforms) data set costs **~2.5 days on a 64 cores machine equipped with an Nvidia A100 GPU**.
+Scanning a 600 GB (~700 years of waveforms) data set costs **~2 days on a 64 cores machine equipped with an Nvidia A100 GPU**.
 
 !!! note
-    The peformance depends heavily on the octree resolution and the number of events detected in the data set.
-
+    The performance depends heavily on the octree resolution and the number of events detected in the data set.
 
 ## Related Projects
 
@@ -38,7 +37,6 @@ QuakeMigrate uses a waveform migration and stacking algorithm to search for cohe
 LOKI (LOcation of seismic events through traveltime staKIng) is a code that performs earthquake detection and location using waveform coherence analysis (waveform stacking).
 
 [Loki on GitHub](https://github.com/wulwife/LOKI)
-
 
 ### MALMI
 
