@@ -59,13 +59,10 @@ class SquirrelPrefetcher:
         self._task = asyncio.create_task(self.prefetch_worker())
 
     async def prefetch_worker(self) -> None:
-        nthreads = max(2, int(round(self.queue.maxsize / 2) + 1))
         logger.info(
-            "start prefetching data, queue size %d, threads %d",
+            "start prefetching data, queue size %d",
             self.queue.maxsize,
-            nthreads,
         )
-        threads = asyncio.Semaphore(nthreads)
         done = asyncio.Event()
 
         def post_processing(batch: Batch) -> Batch:
@@ -99,29 +96,20 @@ class SquirrelPrefetcher:
             return batch
 
         async def load_next() -> None:
-            print("loading")
-            async with threads:
-                start = datetime_now()
-                batch = await asyncio.to_thread(lambda: next(self.iterator, None))
-                if batch is None:
-                    done.set()
-                    return
-                fetch_time = datetime_now() - start
+            start = datetime_now()
+            batch = await asyncio.to_thread(lambda: next(self.iterator, None))
+            if batch is None:
+                done.set()
+                return
+            fetch_time = datetime_now() - start
 
-                logger.debug("fetched waveform batch in %s", fetch_time)
-                await asyncio.to_thread(post_processing, batch)
-                self._fetched_batches += 1
-                await self.queue.put(batch)
+            logger.info("fetched waveform batch in %s", fetch_time)
+            await asyncio.to_thread(post_processing, batch)
+            self._fetched_batches += 1
+            await self.queue.put(batch)
 
-        async def test() -> None:
-            print("asdasdasd")
-
-        async with asyncio.TaskGroup() as tg:
-            while not done.is_set():
-                async with threads:
-                    print("starting task1223123")
-                    # tg.create_task(load_next())
-                    tg.create_task(test())
+        while not done.is_set():
+            await load_next()
         await self.queue.put(None)
 
 

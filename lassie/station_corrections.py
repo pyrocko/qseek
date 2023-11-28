@@ -384,7 +384,7 @@ class StationCorrections(BaseModel):
                 self._station_corrections[receiver.pretty_nsl] = sta_correction
 
             sta_correction.add_event(
-                StationEvent(
+                StationEvent.model_construct(
                     phase_arrivals=phase_arrivals,
                     **detection.model_dump(
                         exclude={
