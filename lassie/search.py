@@ -7,6 +7,7 @@ from collections import deque
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import chain
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Literal
 
@@ -368,7 +369,6 @@ class Search(BaseModel):
         logger.info("starting search...")
         stats = self._stats
 
-        batch_processing_start = datetime_now()
         processing_start = datetime_now()
 
         if self._progress.time_progress:
@@ -384,6 +384,7 @@ class Search(BaseModel):
         console = asyncio.create_task(RuntimeStats.live_view())
 
         async for images, batch in self.image_functions.iter_images(waveform_iterator):
+            batch_processing_start = datetime_now()
             images.set_stations(self.stations)
             images.apply_exponent(self.image_mean_p)
             search_block = SearchTraces(
@@ -412,7 +413,6 @@ class Search(BaseModel):
                 duration=datetime_now() - batch_processing_start,
                 log=True,
             )
-            batch_processing_start = datetime_now()
 
             self.set_progress(batch.end_time)
 
@@ -535,6 +535,7 @@ class SearchTraces:
         if cache_mask is not None:
             weights[cache_mask] = 0.0
 
+        threads = parent.n_threads_argmax or max(1, os.cpu_count() - 4)  # Hold threads back for I/O
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
             arrays=image.get_trace_data(),
@@ -545,7 +546,7 @@ class SearchTraces:
             result=semblance_data,
             dtype=np.float32,
             method=0,
-            nparallel=parent.n_threads_parstack,
+            nparallel=threads,
         )
         return semblance_data
 

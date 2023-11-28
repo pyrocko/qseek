@@ -41,12 +41,10 @@ class SquirrelPrefetcher:
     _fetched_batches: int
     _task: asyncio.Task[None]
 
-    fetch_time: timedelta = timedelta(seconds=0)
-
     def __init__(
         self,
         iterator: Iterator[Batch],
-        queue_size: int = 10,
+        queue_size: int = 8,
         downsample_to: float | None = None,
         highpass: float | None = None,
         lowpass: float | None = None,
@@ -61,7 +59,14 @@ class SquirrelPrefetcher:
         self._task = asyncio.create_task(self.prefetch_worker())
 
     async def prefetch_worker(self) -> None:
-        logger.info("start prefetching data, queue size %d", self.queue.maxsize)
+        nthreads = max(2, int(round(self.queue.maxsize / 2) + 1))
+        logger.info(
+            "start prefetching data, queue size %d, threads %d",
+            self.queue.maxsize,
+            nthreads,
+        )
+        threads = asyncio.Semaphore(nthreads)
+        done = asyncio.Event()
 
         def post_processing(batch: Batch) -> Batch:
             # Filter traces in-place
@@ -93,20 +98,31 @@ class SquirrelPrefetcher:
                 logger.debug("filtered traces in %s", datetime_now() - start)
             return batch
 
-        while True:
-            start = datetime_now()
-            batch = await asyncio.to_thread(lambda: next(self.iterator, None))
-            self.fetch_time = datetime_now() - start
-            if batch is None:
-                logger.debug("squirrel prefetcher finished")
-                await self.queue.put(None)
-                break
+        async def load_next() -> None:
+            print("loading")
+            async with threads:
+                start = datetime_now()
+                batch = await asyncio.to_thread(lambda: next(self.iterator, None))
+                if batch is None:
+                    done.set()
+                    return
+                fetch_time = datetime_now() - start
 
-            await asyncio.to_thread(post_processing, batch)
-            logger.debug("prefetched waveforms in %s", self.fetch_time)
+                logger.debug("fetched waveform batch in %s", fetch_time)
+                await asyncio.to_thread(post_processing, batch)
+                self._fetched_batches += 1
+                await self.queue.put(batch)
 
-            self._fetched_batches += 1
-            await self.queue.put(batch)
+        async def test() -> None:
+            print("asdasdasd")
+
+        async with asyncio.TaskGroup() as tg:
+            while not done.is_set():
+                async with threads:
+                    print("starting task1223123")
+                    # tg.create_task(load_next())
+                    tg.create_task(test())
+        await self.queue.put(None)
 
 
 class SquirrelStats(Stats):
@@ -267,7 +283,7 @@ class PyrockoSquirrel(WaveformProvider):
         )
         prefetcher = SquirrelPrefetcher(
             iterator,
-            self.async_prefetch_batches,
+            queue_size=self.async_prefetch_batches,
             downsample_to=self.downsample_to,
             highpass=self.highpass,
             lowpass=self.lowpass,
@@ -275,8 +291,8 @@ class PyrockoSquirrel(WaveformProvider):
         stats.set_queue(prefetcher.queue)
 
         while True:
+            start = datetime_now()
             pyrocko_batch = await prefetcher.queue.get()
-            stats.time_per_batch = prefetcher.fetch_time
             if pyrocko_batch is None:
                 prefetcher.queue.task_done()
                 break
@@ -290,8 +306,10 @@ class PyrockoSquirrel(WaveformProvider):
             )
 
             batch.clean_traces()
+
+            stats.time_per_batch = datetime_now() - start
             stats.bytes_per_seconds = (
-                batch.cumulative_bytes / prefetcher.fetch_time.total_seconds()
+                batch.cumulative_bytes / stats.time_per_batch.total_seconds()
             )
 
             if batch.is_empty():

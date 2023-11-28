@@ -148,11 +148,11 @@ class PhaseNet(ImageFunction):
         torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
         try:
-            logger.info("Compiling PhaseNet model...")
+            logger.info("compiling PhaseNet model...")
             self._phase_net = torch.compile(self._phase_net, mode="reduce-overhead")
         except RuntimeError as exc:
-            logger.info(
-                "Failed to compile PhaseNet model, using uncompiled model.",
+            logger.warning(
+                "failed to compile PhaseNet model, using uncompiled model.",
                 exc_info=exc,
             )
         if self.torch_use_cuda:
