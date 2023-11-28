@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections import deque
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import chain
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Literal
 
@@ -98,11 +98,14 @@ class SearchStats(Stats):
             return 0.0
         return self.batch_count / self.batch_count_total * 100.0
 
+    def reset_start_time(self) -> None:
+        self._search_start = datetime_now()
+
     def add_processed_batch(
         self,
         batch: WaveformBatch,
         duration: timedelta,
-        log: bool = False,
+        show_log: bool = False,
     ) -> None:
         self.batch_count = batch.i_batch
         self.batch_count_total = batch.n_batches
@@ -110,7 +113,7 @@ class SearchStats(Stats):
         self._batch_processing_times.append(duration)
         self.processing_rate_bytes = batch.cumulative_bytes / duration.total_seconds()
         self.processing_rate_time = batch.duration / duration.total_seconds()
-        if log:
+        if show_log:
             self.log()
 
     def log(self) -> None:
@@ -368,6 +371,7 @@ class Search(BaseModel):
 
         logger.info("starting search...")
         stats = self._stats
+        stats.reset_start_time()
 
         processing_start = datetime_now()
 
@@ -411,7 +415,7 @@ class Search(BaseModel):
             stats.add_processed_batch(
                 batch,
                 duration=datetime_now() - batch_processing_start,
-                log=True,
+                show_log=True,
             )
 
             self.set_progress(batch.end_time)
@@ -535,7 +539,9 @@ class SearchTraces:
         if cache_mask is not None:
             weights[cache_mask] = 0.0
 
-        threads = parent.n_threads_argmax or max(1, os.cpu_count() - 4)  # Hold threads back for I/O
+        threads = parent.n_threads_argmax or max(
+            1, os.cpu_count() - 4
+        )  # Hold threads back for I/O
         semblance_data, offsets = await asyncio.to_thread(
             parstack.parstack,
             arrays=image.get_trace_data(),
