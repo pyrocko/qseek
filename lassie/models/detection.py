@@ -544,7 +544,7 @@ class EventDetections(BaseModel):
                 jitter_location=jitter_location,
             )
 
-    def add_semblance(self, trace: Trace) -> None:
+    def add_semblance_trace(self, trace: Trace) -> None:
         """Add semblance trace to detection and save to file.
 
         Args:
@@ -561,10 +561,11 @@ class EventDetections(BaseModel):
     def load_rundir(cls, rundir: Path) -> EventDetections:
         """Load detections from files in the detections directory."""
         detection_file = rundir / FILENAME_DETECTIONS
-        if not detection_file.exists():
-            raise FileNotFoundError(f"cannot find {detection_file}")
-
         detections = cls(rundir=rundir)
+
+        if not detection_file.exists():
+            logger.warning("cannot find %s", detection_file)
+            return detections
 
         with console.status(f"loading detections from {rundir}..."), open(
             detection_file

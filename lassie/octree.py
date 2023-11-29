@@ -315,11 +315,12 @@ class Octree(BaseModel):
         with contextlib.suppress(AttributeError):
             del self.n_nodes
 
-    def reset(self) -> None:
+    def reset(self) -> Self:
         """Reset the octree to its initial state"""
         logger.debug("resetting tree")
         self._clear_cache()
         self._root_nodes = self._get_root_nodes(self.size_initial)
+        return self
 
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
         """Reduce the octree's nodes to the surface

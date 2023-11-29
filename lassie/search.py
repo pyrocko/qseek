@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import cProfile
 import logging
 import os
 from collections import deque
-from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
@@ -20,7 +20,6 @@ from pydantic import (
     PrivateAttr,
     computed_field,
 )
-from pyrocko import parstack
 
 from lassie.features import (
     FeatureExtractors,
@@ -30,7 +29,7 @@ from lassie.features import (
 from lassie.images import ImageFunctions, WaveformImages
 from lassie.models import Stations
 from lassie.models.detection import EventDetection, EventDetections, PhaseDetection
-from lassie.models.semblance import Semblance, SemblanceStats
+from lassie.models.semblance import Semblance
 from lassie.octree import NodeSplitError, Octree
 from lassie.signals import Signal
 from lassie.station_corrections import StationCorrections
@@ -63,6 +62,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100]
+p = cProfile.Profile()
 
 
 class SearchStats(Stats):
@@ -131,6 +131,9 @@ class SearchStats(Stats):
         )
 
     def _populate_table(self, table: Table) -> None:
+        def tts(time: timedelta) -> str:
+            return str(time).split(".")[0]
+
         table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
@@ -140,18 +143,17 @@ class SearchStats(Stats):
         table.add_row(
             "Processing rate",
             f"{human_readable_bytes(self.processing_rate_bytes)}/s"
-            f" ({self.processing_rate_time} t/s)",
+            f" ({tts(self.processing_rate_time)} t/s)",
         )
         table.add_row(
             "Remaining Time",
-            f"{self.time_remaining}, "
+            f"{tts(self.time_remaining)}, "
             f"finish at {datetime.now() + self.time_remaining:%c}",  # noqa: DTZ005
         )
 
 
 class SearchProgress(BaseModel):
     time_progress: datetime | None = None
-    semblance_stats: SemblanceStats = SemblanceStats()
 
 
 class Search(BaseModel):
@@ -295,10 +297,6 @@ class Search(BaseModel):
         csv_dir.mkdir(exist_ok=True)
         self.stations.export_csv(csv_dir / "stations.csv")
 
-    @property
-    def semblance_stats(self) -> SemblanceStats:
-        return self._progress.semblance_stats
-
     def set_progress(self, time: datetime) -> None:
         self._progress.time_progress = time
         progress_file = self._rundir / "progress.json"
@@ -397,9 +395,10 @@ class Search(BaseModel):
                 start_time=batch.start_time,
                 end_time=batch.end_time,
             )
+
             detections, semblance_trace = await search_block.search()
 
-            self._detections.add_semblance(semblance_trace)
+            self._detections.add_semblance_trace(semblance_trace)
             for detection in detections:
                 if detection.in_bounds:
                     await self.add_features(detection)
@@ -509,10 +508,9 @@ class SearchTraces:
         octree: Octree,
         image: WaveformImage,
         ray_tracer: RayTracer,
-        n_samples_semblance: int,
-        semblance_data: np.ndarray,
-        cache_mask: np.ndarray | None = None,
-    ) -> np.ndarray:
+        semblance: Semblance,
+        semblance_cache: dict[bytes, np.ndarray] | None = None,
+    ) -> None:
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
@@ -536,25 +534,17 @@ class SearchTraces:
             weights /= station_contribution[:, np.newaxis]
         weights[traveltimes_bad] = 0.0
 
-        if cache_mask is not None:
+        if semblance_cache:
+            cache_mask = semblance.get_cache_mask(semblance_cache)
             weights[cache_mask] = 0.0
 
-        threads = parent.n_threads_argmax or max(
-            1, os.cpu_count() - 4
-        )  # Hold threads back for I/O
-        semblance_data, offsets = await asyncio.to_thread(
-            parstack.parstack,
-            arrays=image.get_trace_data(),
+        await semblance.calculate_semblance(
+            trace_data=image.get_trace_data(),
             offsets=image.get_offsets(self.start_time - parent._window_padding),
             shifts=shifts,
             weights=weights,
-            lengthout=n_samples_semblance,
-            result=semblance_data,
-            dtype=np.float32,
-            method=0,
-            nparallel=threads,
+            threads=self.parent.n_threads_parstack,
         )
-        return semblance_data
 
     async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
         """
@@ -567,20 +557,16 @@ class SearchTraces:
         Returns:
             WaveformImages: The waveform images for the specified sampling rate.
         """
-        if None not in self._images:
-            images = self.images
-            self._images[None] = images
+        if sampling_rate is None:
+            return self.images
 
-        if sampling_rate not in self._images:
-            if not isinstance(sampling_rate, float):
-                raise TypeError("sampling rate has to be a float or int")
-            images_resampled = deepcopy(self._images[None])
+        if not isinstance(sampling_rate, float):
+            raise TypeError("sampling rate has to be a float or int")
 
-            logger.debug("downsampling images to %g Hz", sampling_rate)
-            images_resampled.downsample(sampling_rate, max_normalize=True)
-            self._images[sampling_rate] = images_resampled
+        logger.debug("downsampling images to %g Hz", sampling_rate)
+        self.images.downsample(sampling_rate, max_normalize=True)
 
-        return self._images[sampling_rate]
+        return self.images
 
     async def search(
         self,
@@ -600,7 +586,7 @@ class SearchTraces:
         parent = self.parent
         sampling_rate = parent.sampling_rate
 
-        octree = octree or parent.octree.copy(deep=True)
+        octree = octree or parent.octree.reset()
         images = await self.get_images(sampling_rate=float(sampling_rate))
 
         padding_samples = int(
@@ -619,20 +605,14 @@ class SearchTraces:
                 octree=octree,
                 image=image,
                 ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
-                semblance_data=semblance.semblance_unpadded,
-                n_samples_semblance=semblance.n_samples_unpadded,
-                cache_mask=semblance.get_cache_mask(semblance_cache)
-                if semblance_cache
-                else None,
+                semblance=semblance,
+                semblance_cache=semblance_cache,
             )
 
         semblance.apply_exponent(1.0 / parent.image_mean_p)
         semblance.normalize(images.cumulative_weight())
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
-
-        parent.semblance_stats.update(semblance.get_stats())
-        logger.debug("semblance stats: %s", parent.semblance_stats)
 
         detection_idx, detection_semblance = await semblance.find_peaks(
             height=parent.detection_threshold**parent.image_mean_p,

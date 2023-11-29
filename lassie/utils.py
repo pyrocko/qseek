@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -104,6 +105,18 @@ def human_readable_bytes(size: int | float) -> str:
 
 def datetime_now() -> datetime:
     return datetime.now(tz=timezone.utc)
+
+
+def get_cpu_count() -> int:
+    return int(
+        os.environ.get(
+            "SLURM_CPUS_PER_TASK",
+            os.environ.get(
+                "PBS_NUM_PPN",
+                os.cpu_count() or 0,
+            ),
+        )
+    )
 
 
 def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:

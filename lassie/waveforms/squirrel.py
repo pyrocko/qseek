@@ -38,6 +38,8 @@ class SquirrelPrefetcher:
     highpass: float | None
     lowpass: float | None
     downsample_to: float | None
+    load_time: timedelta = timedelta(seconds=0.0)
+
     _fetched_batches: int
     _task: asyncio.Task[None]
 
@@ -92,20 +94,20 @@ class SquirrelPrefetcher:
                     tr.lowpass(4, corner=self.lowpass)
 
             if start:
-                logger.debug("filtered traces in %s", datetime_now() - start)
+                logger.debug("filtered waveform batch in %s", datetime_now() - start)
             return batch
 
         async def load_next() -> None:
             start = datetime_now()
-            batch = await asyncio.to_thread(lambda: next(self.iterator, None))
+            batch = await asyncio.to_thread(next, self.iterator, None)
             if batch is None:
                 done.set()
                 return
-            fetch_time = datetime_now() - start
+            logger.debug("read waveform batch in %s", datetime_now() - start)
 
-            logger.info("fetched waveform batch in %s", fetch_time)
             await asyncio.to_thread(post_processing, batch)
             self._fetched_batches += 1
+            self.load_time = datetime_now() - start
             await self.queue.put(batch)
 
         while not done.is_set():
@@ -297,7 +299,7 @@ class PyrockoSquirrel(WaveformProvider):
 
             stats.time_per_batch = datetime_now() - start
             stats.bytes_per_seconds = (
-                batch.cumulative_bytes / stats.time_per_batch.total_seconds()
+                batch.cumulative_bytes / prefetcher.load_time.total_seconds()
             )
 
             if batch.is_empty():

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import cProfile
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
-from pydantic import BaseModel, PrivateAttr
+from pydantic import computed_field
 from pyrocko import parstack
 from pyrocko.trace import Trace
+from rich.table import Table
 from scipy import signal, stats
 
-from lassie.utils import human_readable_bytes
+from lassie.stats import Stats
+from lassie.utils import datetime_now, get_cpu_count, human_readable_bytes
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -19,36 +22,70 @@ if TYPE_CHECKING:
     from lassie.octree import Node
 
 
+p = cProfile.Profile()
 logger = logging.getLogger(__name__)
 
 
-class SemblanceStats(BaseModel):
-    median: float = 0.0
-    mean: float = 0.0
-    std: float = 0.0
-    median_abs_deviation: float = 0.0
+class SemblanceStats(Stats):
+    total_nodes_stacked: int = 0
+    total_stacking_time: timedelta = timedelta()
+    last_nodes_stacked: int = 0
+    last_stacking_time: timedelta = timedelta()
+    semblance_size_bytes: int = 0
 
-    _updates: int = PrivateAttr(0)
+    _position: int = 30
 
-    def update(self, other: SemblanceStats) -> None:
-        updates = self._updates + 1
+    def add_stacking_time(self, calculation_time: timedelta, n_nodes: int) -> None:
+        self.last_stacking_time = calculation_time
+        self.last_nodes_stacked = n_nodes
+        self.total_nodes_stacked += n_nodes
+        self.total_stacking_time += calculation_time
 
-        def mean(old_attr, new_attr) -> float:
-            return (old_attr * self._updates + new_attr) / updates
+    @computed_field
+    @property
+    def average_nodes_per_second(self) -> float:
+        if not self.total_stacking_time:
+            return 0.0
+        return self.total_nodes_stacked / self.total_stacking_time.total_seconds()
 
-        self.median = mean(self.median, other.median)
-        self.mean = mean(self.mean, other.mean)
-        self.std = mean(self.std, other.std)
-        self.median_abs_deviation = mean(
-            self.median_abs_deviation, other.median_abs_deviation
+    @computed_field
+    @property
+    def nodes_per_second(self) -> float:
+        if not self.last_stacking_time:
+            return 0.0
+        return self.last_nodes_stacked / self.last_stacking_time.total_seconds()
+
+    @computed_field
+    @property
+    def bytes_per_second(self) -> float:
+        if not self.last_stacking_time:
+            return 0.0
+        return self.semblance_size_bytes / self.last_stacking_time.total_seconds()
+
+    def _populate_table(self, table: Table) -> None:
+        table.add_row(
+            "Node stacking rate",
+            f"{self.nodes_per_second:.0f} nodes/s"
+            f" (avg {self.average_nodes_per_second:.1f} nodes/s)",
         )
-        self._updates += 1
+        table.add_row(
+            "Trace stacking rate",
+            f"{human_readable_bytes(self.bytes_per_second)}/s",
+        )
+        table.add_row(
+            "Semblance size",
+            f"{human_readable_bytes(self.semblance_size_bytes)}"
+            f" ({self.last_nodes_stacked} nodes)",
+        )
 
 
 class Semblance:
     _max_semblance: np.ndarray | None = None
     _node_idx_max: np.ndarray | None = None
     _node_hashes: list[bytes]
+    _offset_samples: int = 0
+
+    _stats: SemblanceStats = SemblanceStats()
 
     def __init__(
         self,
@@ -58,14 +95,19 @@ class Semblance:
         sampling_rate: float,
         padding_samples: int = 0,
     ) -> None:
-        self.start_time = start_time
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
+
+        self._start_time = start_time
         self._node_hashes = [node.hash() for node in nodes]
         n_nodes = len(self._node_hashes)
 
         self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
+        self._cached_semblance = self.semblance_unpadded
+
+        self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes
+
         logger.debug(
             "allocated volume for %d nodes and %d samples (%s)",
             n_nodes,
@@ -100,6 +142,13 @@ class Semblance:
         if self._max_semblance is None:
             self._max_semblance = self.semblance.max(axis=0)
         return self._max_semblance
+
+    @property
+    def start_time(self) -> datetime:
+        """Start time of the volume."""
+        return self._start_time + timedelta(
+            seconds=self._offset_samples / self.sampling_rate
+        )
 
     def get_cache(self) -> dict[bytes, np.ndarray]:
         return {
@@ -217,19 +266,6 @@ class Semblance:
 
         return detection_idx, semblance
 
-    def get_stats(self) -> SemblanceStats:
-        """Get statistics, like medianm, mean, std.
-
-        Returns:
-            SemblanceStats: Calculated statistics.
-        """
-        return SemblanceStats(
-            median=self.median(),
-            mean=self.mean(),
-            std=self.std(),
-            median_abs_deviation=self.median_abs_deviation(),
-        )
-
     def get_trace(self, padded: bool = True) -> Trace:
         """Get aggregated maximum semblance as a Pyrocko trace.
 
@@ -256,6 +292,48 @@ class Semblance:
     def _clear_cache(self) -> None:
         self._node_idx_max = None
         self._max_semblance = None
+
+    async def calculate_semblance(
+        self,
+        trace_data: list[np.ndarray],
+        offsets: np.ndarray,
+        shifts: np.ndarray,
+        weights: np.ndarray,
+        threads: int = 0,
+    ) -> None:
+        # Hold threads back for I/O
+        first_elem = self.semblance_unpadded[0, 0]
+        threads = threads or max(1, get_cpu_count() - 6)
+
+        start_time = datetime_now()
+        _, offset_samples = await asyncio.to_thread(
+            parstack.parstack,
+            arrays=trace_data,
+            offsets=offsets,
+            shifts=shifts,
+            weights=weights,
+            lengthout=self.n_samples_unpadded,
+            result=self.semblance_unpadded,
+            dtype=self.semblance_unpadded.dtype,
+            method=0,
+            nparallel=threads,
+        )
+        self._stats.add_stacking_time(datetime_now() - start_time, self.n_nodes)
+        print(
+            f"""{datetime_now() - start_time}
+nnodes {self.n_nodes}
+nbytes {self.semblance_unpadded.nbytes}
+first_elem {first_elem}
+n_weights {np.count_nonzero(weights)}
+"""
+        )
+        if self._offset_samples and self._offset_samples != offset_samples:
+            logging.warning(
+                "offset samples changed from %d to %d",
+                self._offset_samples,
+                offset_samples,
+            )
+        self._offset_samples = offset_samples
 
     def add(self, data: np.ndarray) -> None:
         """Add samblance matrix.
