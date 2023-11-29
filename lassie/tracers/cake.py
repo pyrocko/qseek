@@ -369,7 +369,11 @@ class TravelTimeTree(BaseModel):
         )
 
     def init_lut(self, octree: Octree, stations: Stations) -> None:
-        logger.debug("initializing LUT for %d stations and %d nodes", stations.n_stations, octree.n_nodes)
+        logger.debug(
+            "initializing LUT for %d stations and %d nodes",
+            stations.n_stations,
+            octree.n_nodes,
+        )
         self._cached_stations = stations
         self._cached_station_indeces = {
             sta.pretty_nsl: idx for idx, sta in enumerate(stations)

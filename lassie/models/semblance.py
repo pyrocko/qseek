@@ -302,7 +302,6 @@ class Semblance:
         threads: int = 0,
     ) -> None:
         # Hold threads back for I/O
-        first_elem = self.semblance_unpadded[0, 0]
         threads = threads or max(1, get_cpu_count() - 6)
 
         start_time = datetime_now()
@@ -319,14 +318,6 @@ class Semblance:
             nparallel=threads,
         )
         self._stats.add_stacking_time(datetime_now() - start_time, self.n_nodes)
-        print(
-            f"""{datetime_now() - start_time}
-nnodes {self.n_nodes}
-nbytes {self.semblance_unpadded.nbytes}
-first_elem {first_elem}
-n_weights {np.count_nonzero(weights)}
-"""
-        )
         if self._offset_samples and self._offset_samples != offset_samples:
             logging.warning(
                 "offset samples changed from %d to %d",
@@ -334,15 +325,6 @@ n_weights {np.count_nonzero(weights)}
                 offset_samples,
             )
         self._offset_samples = offset_samples
-
-    def add(self, data: np.ndarray) -> None:
-        """Add samblance matrix.
-
-        Args:
-            data (np.ndarray): Incoming semblance
-        """
-        self.semblance_unpadded += data
-        self._clear_cache()
 
     def normalize(self, factor: int | float) -> None:
         """Normalize semblance by a factor.
