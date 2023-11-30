@@ -4,7 +4,7 @@ import asyncio
 import cProfile
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, ClassVar, Iterable
 
 import numpy as np
 from pydantic import computed_field
@@ -64,12 +64,12 @@ class SemblanceStats(Stats):
 
     def _populate_table(self, table: Table) -> None:
         table.add_row(
-            "Node stacking rate",
+            "Node stacking",
             f"{self.nodes_per_second:.0f} nodes/s"
             f" (avg {self.average_nodes_per_second:.1f} nodes/s)",
         )
         table.add_row(
-            "Trace stacking rate",
+            "Trace stacking",
             f"{human_readable_bytes(self.bytes_per_second)}/s",
         )
         table.add_row(
@@ -85,7 +85,8 @@ class Semblance:
     _node_hashes: list[bytes]
     _offset_samples: int = 0
 
-    _stats: SemblanceStats = SemblanceStats()
+    _stats: ClassVar[SemblanceStats] = SemblanceStats()
+    _cached_semblance: ClassVar[np.ndarray | None] = None
 
     def __init__(
         self,
@@ -103,8 +104,17 @@ class Semblance:
         self._node_hashes = [node.hash() for node in nodes]
         n_nodes = len(self._node_hashes)
 
-        self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
-        self._cached_semblance = self.semblance_unpadded
+        if self._cached_semblance is not None and self._cached_semblance.shape == (
+            n_nodes,
+            n_samples,
+        ):
+            logger.debug("recycling semblance memory")
+            self._cached_semblance.fill(0.0)
+            self.semblance_unpadded = self._cached_semblance
+        else:
+            logger.debug("re-allocating semblance")
+            self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
+            Semblance._cached_semblance = self.semblance_unpadded
 
         self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes
 
