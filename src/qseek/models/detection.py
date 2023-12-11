@@ -26,11 +26,11 @@ from typing_extensions import Self
 
 from qseek.console import console
 from qseek.features import EventFeaturesTypes, ReceiverFeaturesTypes
-from qseek.images import ImageFunctionPick
+from qseek.images.images import ImageFunctionPick
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.stats import Stats
-from qseek.tracers import RayTracerArrival
+from qseek.tracers.tracers import RayTracerArrival
 from qseek.utils import PhaseDescription, Symbols, time_to_path
 
 if TYPE_CHECKING:

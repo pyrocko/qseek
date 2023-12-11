@@ -46,7 +46,7 @@ We implement the fast marching method for calculating first arrivals of waves in
 
 ```python exec='on'
 from lassie.utils import generate_docs
-from lassie.tracers.fast_marching import FastMarchingTracer
+from lassie.insights.tracers.fast_marching import FastMarchingTracer
 
 print(generate_docs(FastMarchingTracer()))
 ```

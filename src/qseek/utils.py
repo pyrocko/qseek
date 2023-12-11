@@ -161,10 +161,10 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     return "\n".join(lines)
 
 
-def import_extra() -> None:
+def import_insights() -> None:
     try:
-        import qseek.extra  # noqa: F401
+        import qseek.insights  # noqa: F401
 
-        logger.info("imported extra package")
+        logger.info("imported qseek.insights package")
     except ImportError:
-        ...
+        logger.info("package qseek.insights not found")

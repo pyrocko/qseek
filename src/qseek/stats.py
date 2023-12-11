@@ -15,7 +15,6 @@ from rich.table import Table
 
 logger = logging.getLogger(__name__)
 
-STATS_CLASSES: set[Type[Stats]] = set()
 STATS_INSTANCES: WeakValueDictionary[str, Stats] = WeakValueDictionary()
 
 
@@ -31,7 +30,7 @@ class RuntimeStats(BaseModel):
     def model(cls) -> Type[Self]:
         return create_model(
             "RuntimeStats",
-            **{stats.__name__: (stats, None) for stats in STATS_CLASSES},
+            **{stats.__name__: (stats, None) for stats in Stats.get_subclasses()},
             __base__=cls,
         )
 
@@ -73,8 +72,9 @@ class RuntimeStats(BaseModel):
 class Stats(BaseModel):
     _position: int = PrivateAttr(10)
 
-    def __init_subclass__(cls: Type[Stats], **kwargs) -> None:
-        STATS_CLASSES.add(cls)
+    @classmethod
+    def get_subclasses(cls) -> set[type[Stats]]:
+        return set(cls.__subclasses__())
 
     def model_post_init(self, __context: Any) -> None:
         STATS_INSTANCES[self.__class__.__name__] = self

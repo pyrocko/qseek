@@ -20,20 +20,20 @@ from pydantic import (
     computed_field,
 )
 
+from qseek.corrections.pick_corrections import PickCorrections
 from qseek.features import (
     FeatureExtractors,
     GroundMotionExtractor,
     LocalMagnitudeExtractor,
 )
-from qseek.images import ImageFunctions, WaveformImages
+from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.models import Stations
 from qseek.models.detection import EventDetection, EventDetections, PhaseDetection
 from qseek.models.semblance import Semblance
 from qseek.octree import NodeSplitError, Octree
 from qseek.signals import Signal
-from qseek.station_corrections import StationCorrections
 from qseek.stats import RuntimeStats, Stats
-from qseek.tracers import RayTracer, RayTracers
+from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
     PhaseDescription,
     alog_call,
@@ -41,8 +41,8 @@ from qseek.utils import (
     human_readable_bytes,
     time_to_path,
 )
-from qseek.waveforms import PyrockoSquirrel, WaveformProviderType
 from qseek.waveforms.base import WaveformBatch
+from qseek.waveforms.providers import PyrockoSquirrel, WaveformProviderType
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -171,10 +171,10 @@ class Search(BaseModel):
         "phase on-set detection.",
     )
     ray_tracers: RayTracers = Field(
-        default=RayTracers(root=[]),
+        default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
         description="List of ray tracers for travel time calculation.",
     )
-    station_corrections: StationCorrections | None = Field(
+    station_corrections: PickCorrections | None = Field(
         default=None,
         description="Apply station corrections extracted from a previous run.",
     )

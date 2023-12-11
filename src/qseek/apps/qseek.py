@@ -11,7 +11,7 @@ import nest_asyncio
 from pkg_resources import get_distribution
 
 from qseek.console import console
-from qseek.utils import CACHE_DIR, setup_rich_logging
+from qseek.utils import CACHE_DIR, import_insights, setup_rich_logging
 
 nest_asyncio.apply()
 
@@ -122,16 +122,14 @@ def get_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    import_insights()
     parser = get_parser()
     args = parser.parse_args()
-    from qseek.utils import import_extra
 
-    import_extra()
-
+    from qseek.corrections.pick_corrections import PickCorrections
     from qseek.models import Stations
     from qseek.search import Search
     from qseek.server import WebServer
-    from qseek.station_corrections import StationCorrections
 
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
@@ -191,7 +189,7 @@ def main() -> None:
 
     elif args.command == "corrections":
         rundir = Path(args.rundir)
-        station_corrections = StationCorrections(rundir=rundir)
+        station_corrections = PickCorrections(rundir=rundir)
         if args.plot:
             station_corrections.save_plots(rundir / "station_corrections")
         station_corrections.export_csv(
