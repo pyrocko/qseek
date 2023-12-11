@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING, Annotated, Iterator, Union
 from pydantic import Field, RootModel
 
 from qseek.tracers.base import ModelledArrival, RayTracer
+from qseek.tracers.cake import CakeArrival, CakeTracer  # noqa: F401
+from qseek.tracers.constant_velocity import (  # noqa: F401
+    ConstantVelocityArrival,
+    ConstantVelocityTracer,
+)
 
 if TYPE_CHECKING:
     from qseek.models.station import Stations

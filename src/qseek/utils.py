@@ -159,3 +159,12 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     lines.extend(dump_json())
     lines += ["    ```"]
     return "\n".join(lines)
+
+
+def import_extra() -> None:
+    try:
+        import qseek.extra  # noqa: F401
+
+        logger.info("imported extra package")
+    except ImportError:
+        ...

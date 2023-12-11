@@ -347,7 +347,7 @@ class StationCorrections(BaseModel):
         description="Creation time of the corrections.",
     )
 
-    station_corrections: dict[str, StationCorrection] = PrivateAttr({})
+    station_corrections: dict[str, StationCorrection] = {}
     _traveltime_delay_cache: dict[tuple[NSL, PhaseDescription], float] = PrivateAttr({})
 
     def model_post_init(self, __context: Any) -> None:

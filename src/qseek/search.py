@@ -33,12 +33,7 @@ from qseek.octree import NodeSplitError, Octree
 from qseek.signals import Signal
 from qseek.station_corrections import StationCorrections
 from qseek.stats import RuntimeStats, Stats
-from qseek.tracers import (
-    CakeTracer,
-    ConstantVelocityTracer,
-    FastMarchingTracer,
-    RayTracers,
-)
+from qseek.tracers import RayTracer, RayTracers
 from qseek.utils import (
     PhaseDescription,
     alog_call,
@@ -56,7 +51,6 @@ if TYPE_CHECKING:
 
     from qseek.images.base import WaveformImage
     from qseek.octree import Node
-    from qseek.tracers.base import RayTracer
 
 logger = logging.getLogger(__name__)
 
@@ -177,9 +171,7 @@ class Search(BaseModel):
         "phase on-set detection.",
     )
     ray_tracers: RayTracers = Field(
-        default=RayTracers(
-            root=[ConstantVelocityTracer(), CakeTracer(), FastMarchingTracer()]
-        ),
+        default=RayTracers(root=[]),
         description="List of ray tracers for travel time calculation.",
     )
     station_corrections: StationCorrections | None = Field(

@@ -17,17 +17,11 @@ nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
 
-_PARSER = None
-
 
 def get_parser() -> argparse.ArgumentParser:
-    global _PARSER
-    if _PARSER is not None:
-        return _PARSER
-
     parser = argparse.ArgumentParser(
         prog="qseek",
-        description="qseek - The earthquake detector 🚀",
+        description="qseek - The wholesome earthquake detector 🚀",
     )
     parser.add_argument(
         "--verbose",
@@ -124,13 +118,15 @@ def get_parser() -> argparse.ArgumentParser:
     )
     dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
 
-    _PARSER = parser
-    return _PARSER
+    return parser
 
 
 def main() -> None:
     parser = get_parser()
     args = parser.parse_args()
+    from qseek.utils import import_extra
+
+    import_extra()
 
     from qseek.models import Stations
     from qseek.search import Search
