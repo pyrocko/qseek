@@ -13,7 +13,7 @@ NSL = tuple[str, str, str]
 
 
 class StationCorrections(BaseModel):
-    corrections: Literal["SimpleCorrections"] = "SimpleCorrections"
+    corrections: Literal["StationCorrectionsBase"] = "StationCorrectionsBase"
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[StationCorrections], ...]:

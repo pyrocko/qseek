@@ -165,6 +165,6 @@ def import_insights() -> None:
     try:
         import qseek.insights  # noqa: F401
 
-        logger.info("imported qseek.insights package")
+        logger.warning("imported qseek.insights package")
     except ImportError:
-        logger.info("package qseek.insights not found")
+        logger.warning("package qseek.insights not installed")

@@ -126,7 +126,6 @@ def main() -> None:
     parser = get_parser()
     args = parser.parse_args()
 
-    from qseek.corrections.pick_corrections import PickCorrections
     from qseek.models import Stations
     from qseek.search import Search
     from qseek.server import WebServer
@@ -189,6 +188,8 @@ def main() -> None:
 
     elif args.command == "corrections":
         rundir = Path(args.rundir)
+        from qseek.insights.corrections.pick_corrections import PickCorrections
+
         station_corrections = PickCorrections(rundir=rundir)
         if args.plot:
             station_corrections.save_plots(rundir / "station_corrections")

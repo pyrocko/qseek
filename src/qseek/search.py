@@ -20,12 +20,8 @@ from pydantic import (
     computed_field,
 )
 
-from qseek.corrections.pick_corrections import PickCorrections
-from qseek.features import (
-    FeatureExtractorType,
-    GroundMotionExtractor,
-    LocalMagnitudeExtractor,
-)
+from qseek.corrections.corrections import StationCorrectionType
+from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.models import Stations
 from qseek.models.detection import EventDetection, EventDetections, PhaseDetection
@@ -174,14 +170,11 @@ class Search(BaseModel):
         default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
         description="List of ray tracers for travel time calculation.",
     )
-    station_corrections: PickCorrections | None = Field(
+    station_corrections: StationCorrectionType | None = Field(
         default=None,
         description="Apply station corrections extracted from a previous run.",
     )
-    event_features: list[FeatureExtractorType] = [
-        GroundMotionExtractor(),
-        LocalMagnitudeExtractor(),
-    ]
+    event_features: list[FeatureExtractorType] = []
 
     sampling_rate: SamplingRate = Field(
         default=100,

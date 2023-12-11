@@ -34,9 +34,12 @@ class EventUncertainty(BaseModel):
             The calculated uncertainty.
         """
         nodes = octree.get_nodes(semblance_threshold=width)
-        eastings = np.array([node.east for node in nodes]) - source_node.east
-        northings = np.array([node.north for node in nodes]) - source_node.north
-        depths = np.array([node.depth for node in nodes]) - source_node.depth
+        vicinity_coords = np.array(
+            [(node.east, node.north, node.depth) for node in nodes]
+        )
+        eastings = vicinity_coords[:, 0] - source_node.east
+        northings = vicinity_coords[:, 1] - source_node.north
+        depths = vicinity_coords[:, 2] - source_node.depth
         return cls(
             east_uncertainties=(float(np.min(eastings)), float(np.max(eastings))),
             north_uncertainties=(float(np.min(northings)), float(np.max(northings))),
