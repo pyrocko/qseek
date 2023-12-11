@@ -20,12 +20,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 RayTracerType = Annotated[
-    Union[RayTracer.get_subclasses()],
+    Union[(RayTracer, *RayTracer.get_subclasses())],
     Field(..., discriminator="tracer"),
 ]
 
 RayTracerArrival = Annotated[
-    Union[ModelledArrival.get_subclasses()],
+    Union[(ModelledArrival, *ModelledArrival.get_subclasses())],
     Field(..., discriminator="tracer"),
 ]
 

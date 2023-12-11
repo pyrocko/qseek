@@ -20,10 +20,7 @@ class ReceiverFeature(BaseModel):
         Returns:
             list[type]: The subclasses of this class.
         """
-        subclasses = list(cls.__subclasses__())
-        if len(subclasses) == 1:
-            subclasses.append(cls)
-        return tuple(subclasses)
+        return tuple(cls.__subclasses__())
 
 
 class EventFeature(BaseModel):
@@ -36,10 +33,7 @@ class EventFeature(BaseModel):
         Returns:
             list[type]: The subclasses of this class.
         """
-        subclasses = list(cls.__subclasses__())
-        if len(subclasses) == 1:
-            subclasses.append(cls)
-        return tuple(subclasses)
+        return tuple(cls.__subclasses__())
 
 
 class FeatureExtractor(BaseModel):
@@ -52,10 +46,7 @@ class FeatureExtractor(BaseModel):
         Returns:
             list[type]: The subclasses of this class.
         """
-        subclasses = list(cls.__subclasses__())
-        if len(subclasses) == 1:
-            subclasses.append(cls)
-        return tuple(subclasses)
+        return tuple(cls.__subclasses__())
 
     async def add_features(
         self,

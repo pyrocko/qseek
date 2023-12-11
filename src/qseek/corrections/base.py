@@ -20,12 +20,9 @@ class StationCorrections(BaseModel):
         """Get the subclasses of this class.
 
         Returns:
-            list[type]: The subclasses of this class.
+            tuple[type]: The subclasses of this class.
         """
-        subclasses = list(cls.__subclasses__())
-        if len(subclasses) == 1:
-            subclasses.append(cls)
-        return tuple(subclasses)
+        return tuple(cls.__subclasses__())
 
     @property
     def n_stations(self) -> int:

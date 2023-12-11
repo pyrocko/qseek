@@ -31,8 +31,6 @@ class RayTracer(BaseModel):
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[RayTracer], ...]:
-        for c in cls.__subclasses__():
-            print(c)
         return tuple(cls.__subclasses__())
 
     async def prepare(
