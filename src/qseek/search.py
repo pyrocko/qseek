@@ -22,7 +22,7 @@ from pydantic import (
 
 from qseek.corrections.pick_corrections import PickCorrections
 from qseek.features import (
-    FeatureExtractors,
+    FeatureExtractorType,
     GroundMotionExtractor,
     LocalMagnitudeExtractor,
 )
@@ -178,7 +178,7 @@ class Search(BaseModel):
         default=None,
         description="Apply station corrections extracted from a previous run.",
     )
-    event_features: list[FeatureExtractors] = [
+    event_features: list[FeatureExtractorType] = [
         GroundMotionExtractor(),
         LocalMagnitudeExtractor(),
     ]
