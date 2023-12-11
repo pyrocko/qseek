@@ -1,4 +1,3 @@
-
 [build-system]
 requires = [
     "wheel",
@@ -9,12 +8,12 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lassie"
+name = "qseek"
 requires-python = ">=3.10"
 license = { text = "GPLv3" }
 dynamic = ["version"]
 
-description = "Lassie - The friendly earthquake detector."
+description = "qseek - The earthquake detector."
 readme = "README.md"
 authors = [
     { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
@@ -63,23 +62,21 @@ dev = [
     "ruff>=0.1",
     "pytest>=7.4",
     "pytest-asyncio>=0.21",
-    "mkdocs-material>=9.4.8",
-    "mkdocstrings[python]>=0.23",
 ]
 
+docs = ["mkdocs-material>=9.4.8", "mkdocstrings[python]>=0.23", "qseek-extra"]
+
 [project.scripts]
-lassie = "lassie.apps.lassie:main"
+qseek = "qseek.apps.qseek:main"
 
 [tool.setuptools.packages.find]
-include = ["lassie*"]
+where = ["src/"]
+include = ["qseek"]
 
 [project.urls]
 Home = "https://pyrocko.org"
-GitHub = "https://git.pyrocko.org/pyrocko/lassie"
-Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
-
-[tool.setuptools.package-data]
-"lassie.data" = ["*.wav"]
+GitHub = "https://github.com/pyrocko/qseek"
+Issues = "https://github.com/pyrocko/qseek/issues"
 
 [tool.setuptools_scm]
 
