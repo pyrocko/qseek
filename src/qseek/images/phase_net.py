@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from obspy import Stream
 from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
@@ -141,7 +141,13 @@ class PhaseNet(ImageFunction):
 
     _phase_net: PhaseNetSeisBench = PrivateAttr(None)
 
-    def model_post_init(self, __context: Any) -> None:
+    @property
+    def phase_net(self) -> PhaseNetSeisBench:
+        if self._phase_net is None:
+            self._prepare()
+        return self._phase_net
+
+    def _prepare(self) -> None:
         import torch
         from seisbench.models import PhaseNet as PhaseNetSeisBench
 
@@ -161,7 +167,7 @@ class PhaseNet(ImageFunction):
 
     @property
     def blinding(self) -> timedelta:
-        blinding_samples = max(self._phase_net.default_args["blinding"])
+        blinding_samples = max(self.phase_net.default_args["blinding"])
         return timedelta(seconds=blinding_samples / 100)  # Hz PhaseNet sampling rate
 
     @alog_call
@@ -172,7 +178,7 @@ class PhaseNet(ImageFunction):
             for tr in stream:
                 tr.stats.sampling_rate = tr.stats.sampling_rate / scale
         annotations: Stream = await asyncio.to_thread(
-            self._phase_net.annotate,
+            self.phase_net.annotate,
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,

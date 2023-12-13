@@ -164,12 +164,12 @@ def main() -> None:
 
             webserver = WebServer(search)
 
-            async def _run() -> None:
+            async def run() -> None:
                 http = asyncio.create_task(webserver.start())
                 await search.start(force_rundir=args.force)
                 await http
 
-            asyncio.run(_run())
+            asyncio.run(run())
 
         case "continue":
             search = Search.load_rundir(args.rundir)
@@ -180,12 +180,12 @@ def main() -> None:
 
             webserver = WebServer(search)
 
-            async def _run() -> None:
+            async def run() -> None:
                 http = asyncio.create_task(webserver.start())
                 await search.start()
                 await http
 
-            asyncio.run(_run())
+            asyncio.run(run())
 
         case "feature-extraction":
             search = Search.load_rundir(args.rundir)
