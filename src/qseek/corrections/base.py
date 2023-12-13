@@ -7,7 +7,10 @@ from pydantic import BaseModel
 from qseek.utils import PhaseDescription
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import numpy as np
+    from rich.console import Console
 
 NSL = tuple[str, str, str]
 
@@ -57,3 +60,8 @@ class StationCorrections(BaseModel):
             np.ndarray: The traveltime delays for the given stations and phase.
         """
         ...
+
+    @classmethod
+    async def prepare(cls, rundir: Path, console: Console) -> None:
+        """Prepare the station corrections for the console."""
+        console.print("This module does not require any preparation.")

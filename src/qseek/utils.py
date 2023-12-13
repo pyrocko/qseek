@@ -161,10 +161,15 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     return "\n".join(lines)
 
 
+def camel_case_to_snake_case(name: str) -> str:
+    """Convert camel case to snake case"""
+    return "".join(["_" + i.lower() if i.isupper() else i for i in name]).lstrip("_")
+
+
 def import_insights() -> None:
     try:
         import qseek.insights  # noqa: F401
 
-        logger.warning("imported qseek.insights package")
+        logger.debug("imported qseek.insights package")
     except ImportError:
-        logger.warning("package qseek.insights not installed")
+        logger.debug("package qseek.insights not installed")

@@ -70,6 +70,10 @@ class WaveformProvider(BaseModel):
     _queue: Queue[WaveformBatch | None] = PrivateAttr(default_factory=lambda: Queue())
     _stats: Stats = PrivateAttr(default_factory=Stats)
 
+    @classmethod
+    def get_subclasses(cls) -> tuple[type[WaveformProvider], ...]:
+        return tuple(cls.__subclasses__())
+
     def get_squirrel(self) -> Squirrel:
         raise NotImplementedError
 

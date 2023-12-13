@@ -9,6 +9,9 @@ from pathlib import Path
 
 import nest_asyncio
 from pkg_resources import get_distribution
+from rich import box
+from rich.prompt import IntPrompt
+from rich.table import Table
 
 from qseek.console import console
 from qseek.utils import CACHE_DIR, import_insights, setup_rich_logging
@@ -97,6 +100,12 @@ def get_parser() -> argparse.ArgumentParser:
     )
     station_corrections.add_argument("rundir", type=Path, help="path of existing run")
 
+    subparsers.add_parser(
+        "modules",
+        help="list available modules",
+        description="list all available modules",
+    )
+
     serve = subparsers.add_parser(
         "serve",
         help="start webserver and serve results from an existing run",
@@ -132,97 +141,136 @@ def main() -> None:
 
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
-    if args.command == "init":
-        folder: Path = args.folder
-        if folder.exists():
-            raise FileExistsError(f"Folder {folder} already exists")
-        folder.mkdir()
+    match args.command:
+        case "init":
+            folder: Path = args.folder
+            if folder.exists():
+                raise FileExistsError(f"Folder {folder} already exists")
+            folder.mkdir()
 
-        pyrocko_stations = folder / "pyrocko-stations.yaml"
-        pyrocko_stations.touch()
+            pyrocko_stations = folder / "pyrocko-stations.yaml"
+            pyrocko_stations.touch()
 
-        config = Search(stations=Stations(pyrocko_station_yamls=[pyrocko_stations]))
+            config = Search(stations=Stations(pyrocko_station_yamls=[pyrocko_stations]))
 
-        config_file = folder / f"{folder.name}.json"
-        config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
+            config_file = folder / f"{folder.name}.json"
+            config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
 
-        logger.info("initialized new project in folder %s", folder)
-        logger.info("start detection with: qseek run %s", config_file.name)
+            logger.info("initialized new project in folder %s", folder)
+            logger.info("start detection with: qseek run %s", config_file.name)
 
-    elif args.command == "search":
-        search = Search.from_config(args.config)
+        case "search":
+            search = Search.from_config(args.config)
 
-        webserver = WebServer(search)
+            webserver = WebServer(search)
 
-        async def _run() -> None:
-            http = asyncio.create_task(webserver.start())
-            await search.start(force_rundir=args.force)
-            await http
+            async def _run() -> None:
+                http = asyncio.create_task(webserver.start())
+                await search.start(force_rundir=args.force)
+                await http
 
-        asyncio.run(_run())
+            asyncio.run(_run())
 
-    elif args.command == "continue":
-        search = Search.load_rundir(args.rundir)
-        if search._progress.time_progress:
-            console.rule(f"Continuing search from {search._progress.time_progress}")
-        else:
-            console.rule("Starting search from scratch")
+        case "continue":
+            search = Search.load_rundir(args.rundir)
+            if search._progress.time_progress:
+                console.rule(f"Continuing search from {search._progress.time_progress}")
+            else:
+                console.rule("Starting search from scratch")
 
-        webserver = WebServer(search)
+            webserver = WebServer(search)
 
-        async def _run() -> None:
-            http = asyncio.create_task(webserver.start())
-            await search.start()
-            await http
+            async def _run() -> None:
+                http = asyncio.create_task(webserver.start())
+                await search.start()
+                await http
 
-        asyncio.run(_run())
+            asyncio.run(_run())
 
-    elif args.command == "feature-extraction":
-        search = Search.load_rundir(args.rundir)
+        case "feature-extraction":
+            search = Search.load_rundir(args.rundir)
 
-        async def extract() -> None:
-            for detection in search._detections.detections:
-                await search.add_features(detection)
+            async def extract() -> None:
+                for detection in search._detections.detections:
+                    await search.add_features(detection)
 
-        asyncio.run(extract())
+            asyncio.run(extract())
 
-    elif args.command == "corrections":
-        rundir = Path(args.rundir)
-        from qseek.insights.corrections.pick_corrections import PickCorrections
+        case "corrections":
+            rundir = Path(args.rundir)
+            from qseek.corrections.base import StationCorrections
 
-        station_corrections = PickCorrections(rundir=rundir)
-        if args.plot:
-            station_corrections.save_plots(rundir / "station_corrections")
-        station_corrections.export_csv(
-            filename=rundir / "station_corrections_stats.csv"
-        )
+            corrections_modules = StationCorrections.get_subclasses()
 
-    elif args.command == "serve":
-        search = Search.load_rundir(args.rundir)
-        webserver = WebServer(search)
+            console.print("[bold]Available travel time corrections modules")
+            for imodule, module in enumerate(corrections_modules):
+                console.print(f"{imodule}: {module.__name__}")
 
-        loop = asyncio.get_event_loop()
-        loop.create_task(webserver.start())
-        loop.run_forever()
+            module_choice = IntPrompt.ask(
+                "Choose correction module",
+                choices=[str(i) for i in range(len(corrections_modules))],
+                default="0",
+                console=console,
+            )
+            corrections = corrections_modules[int(module_choice)]
+            asyncio.run(corrections.prepare(rundir, console))
 
-    elif args.command == "clear-cache":
-        logger.info("clearing cache directory %s", CACHE_DIR)
-        shutil.rmtree(CACHE_DIR)
+        case "serve":
+            search = Search.load_rundir(args.rundir)
+            webserver = WebServer(search)
 
-    elif args.command == "dump-schemas":
-        from qseek.models.detection import EventDetections
+            loop = asyncio.get_event_loop()
+            loop.create_task(webserver.start())
+            loop.run_forever()
 
-        if not args.folder.exists():
-            raise EnvironmentError(f"folder {args.folder} does not exist")
+        case "clear-cache":
+            logger.info("clearing cache directory %s", CACHE_DIR)
+            shutil.rmtree(CACHE_DIR)
 
-        file = args.folder / "search.schema.json"
-        print(f"writing JSON schemas to {args.folder}")
-        file.write_text(json.dumps(Search.model_json_schema(), indent=2))
+        case "modules":
+            from qseek.corrections.base import StationCorrections
+            from qseek.features.base import FeatureExtractor
+            from qseek.tracers.base import RayTracer
+            from qseek.waveforms.base import WaveformProvider
 
-        file = args.folder / "detections.schema.json"
-        file.write_text(json.dumps(EventDetections.model_json_schema(), indent=2))
-    else:
-        parser.error(f"unknown command: {args.command}")
+            table = Table(box=box.SIMPLE, header_style=None)
+
+            table.add_column("Module")
+            table.add_column("Description")
+
+            def is_insight(module: type) -> bool:
+                return "insight" in module.__module__
+
+            for modules in (
+                RayTracer,
+                FeatureExtractor,
+                WaveformProvider,
+                StationCorrections,
+            ):
+                table.add_row(f"[bold]{modules.__name__}")
+                for module in modules.get_subclasses():
+                    name = module.__name__
+                    if is_insight(module):
+                        name += " 🔑"
+                    table.add_row(f" {name}", module.__doc__, style="dim")
+                table.add_section()
+
+            console.print(table)
+
+        case "dump-schemas":
+            from qseek.models.detection import EventDetections
+
+            if not args.folder.exists():
+                raise EnvironmentError(f"folder {args.folder} does not exist")
+
+            file = args.folder / "search.schema.json"
+            print(f"writing JSON schemas to {args.folder}")
+            file.write_text(json.dumps(Search.model_json_schema(), indent=2))
+
+            file = args.folder / "detections.schema.json"
+            file.write_text(json.dumps(EventDetections.model_json_schema(), indent=2))
+        case _:
+            parser.error(f"unknown command: {args.command}")
 
 
 if __name__ == "__main__":
