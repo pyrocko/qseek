@@ -25,6 +25,7 @@ from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.models import Stations
 from qseek.models.detection import EventDetection, EventDetections, PhaseDetection
+from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.semblance import Semblance
 from qseek.octree import NodeSplitError, Octree
 from qseek.signals import Signal
@@ -682,6 +683,11 @@ class SearchTraces:
                 detection.receivers.add_receivers(
                     stations=image.stations,
                     phase_arrivals=phase_detections,
+                )
+
+                detection.uncertainty = DetectionUncertainty.from_event(
+                    source_node=source_node,
+                    octree=octree,
                 )
 
             detections.append(detection)

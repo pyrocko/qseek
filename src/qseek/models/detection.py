@@ -27,6 +27,7 @@ from typing_extensions import Self
 from qseek.console import console
 from qseek.features import EventFeaturesTypes, ReceiverFeaturesTypes
 from qseek.images.images import ImageFunctionPick
+from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.stats import Stats
@@ -346,6 +347,7 @@ class EventDetection(Location):
         description="Number of stations in the detection.",
     )
 
+    uncertainty: DetectionUncertainty | None = None
     features: EventFeatures = EventFeatures()
 
     _receivers: EventReceivers | None = PrivateAttr(None)
