@@ -16,6 +16,7 @@ class StationMagnitude(NamedTuple):
     station_nsl: tuple[str, str, str]
     magnitude: float
     magnitude_error: float
+    peak_amp_mm: float
     distance_epi: float
     distance_hypo: float
 

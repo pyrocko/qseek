@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+from math import log10
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, Union
 
 import numpy as np
@@ -46,7 +47,7 @@ WOOD_ANDERSON = trace.PoleZeroResponse(
 
 KM = 1e3
 MM = 1e3
-MM2NN = 1e6
+MM2NM = 1e6
 
 
 class LocalMagnitude(EventMagnitude):
@@ -218,9 +219,9 @@ class LocalMagnitudeModel(BaseModel):
 
         log_amp_0 = self.get_amp_0(dist_hypo / KM, dist_epi / KM)
         with np.errstate(divide="ignore"):
-            local_magnitude = np.log10(amp_max) + log_amp_0
-            magnitude_error_upper = np.log10(amp_max + amp_noise) + log_amp_0
-            magnitude_error_lower = np.log10(amp_max - amp_noise) + log_amp_0
+            local_magnitude = log10(amp_max) + log_amp_0
+            magnitude_error_upper = log10(amp_max + amp_noise) + log_amp_0
+            magnitude_error_lower = log10(amp_max - amp_noise) + log_amp_0
 
         if not np.isfinite(local_magnitude):
             return None
@@ -234,6 +235,7 @@ class LocalMagnitudeModel(BaseModel):
             station_nsl=receiver.nsl,
             magnitude=local_magnitude,
             magnitude_error=(magnitude_error_upper - magnitude_error_lower) / 2,
+            peak_amp_mm=amp_max,
             distance_epi=dist_epi,
             distance_hypo=dist_hypo,
         )
@@ -247,7 +249,7 @@ class SouthernCalifornia(LocalMagnitudeModel):
     trace_selector = ChannelSelectors.Horizontal
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.11 * np.log10(dist_hypo_km / 100) + 0.00189 * (dist_hypo_km - 100) + 3
+        return 1.11 * log10(dist_hypo_km / 100) + 0.00189 * (dist_hypo_km - 100) + 3
 
 
 class IASPEISouthernCalifornia(LocalMagnitudeModel):
@@ -268,8 +270,8 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
             return None
 
         def model(amp: float, dist_hyp: float) -> float:
-            amp *= NM  # mm to nm
-            return np.log10(amp) + 1.11 * np.log10(dist_hyp) + 0.00189 * dist_hyp - 2.09
+            amp *= MM2NM  # mm to nm
+            return log10(amp) + 1.11 * log10(dist_hyp) + 0.00189 * dist_hyp - 2.09
 
         dist_hypo = event.distance_to(receiver) / KM
         with np.errstate(divide="ignore"):
@@ -289,6 +291,7 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
             station_nsl=receiver.nsl,
             magnitude=local_magnitude,
             magnitude_error=(magnitude_error_upper - magnitude_error_lower) / 2,
+            peak_amp_mm=amp_max,
             distance_epi=event.surface_distance_to(receiver),
             distance_hypo=event.distance_to(receiver),
         )
@@ -302,7 +305,7 @@ class EasternNorthAmerica(LocalMagnitudeModel):
     trace_selector = ChannelSelectors.Horizontal
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.55 * np.log10(dist_epi_km) - 0.22
+        return 1.55 * log10(dist_epi_km) - 0.22
 
 
 class Albania(LocalMagnitudeModel):
@@ -313,7 +316,7 @@ class Albania(LocalMagnitudeModel):
     trace_selector = ChannelSelectors.Horizontal
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.6627 * np.log10(dist_epi_km) + 0.0008 * dist_epi_km - 0.433
+        return 1.6627 * log10(dist_epi_km) + 0.0008 * dist_epi_km - 0.433
 
 
 class SouthWestGermany(LocalMagnitudeModel):
@@ -324,7 +327,7 @@ class SouthWestGermany(LocalMagnitudeModel):
     trace_selector = ChannelSelectors.Vertical
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.11 * np.log10(dist_hypo_km) + 0.95 * dist_hypo_km * 1e-3 + 0.69
+        return 1.11 * log10(dist_hypo_km) + 0.95 * dist_hypo_km * 1e-3 + 0.69
 
 
 class SouthAustralia(LocalMagnitudeModel):
@@ -335,7 +338,7 @@ class SouthAustralia(LocalMagnitudeModel):
     trace_selector = ChannelSelectors.Vertical
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.1 * np.log10(dist_epi_km) + 0.0013 * dist_epi_km + 0.7
+        return 1.1 * log10(dist_epi_km) + 0.0013 * dist_epi_km + 0.7
 
 
 class NorwayFennoscandia(LocalMagnitudeModel):
@@ -346,7 +349,7 @@ class NorwayFennoscandia(LocalMagnitudeModel):
     trace_selector = ChannelSelectors.Vertical
 
     def get_amp_0(self, dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 0.91 * np.log10(dist_hypo_km) + 0.00087 * dist_hypo_km + 1.01
+        return 0.91 * log10(dist_hypo_km) + 0.00087 * dist_hypo_km + 1.01
 
 
 EstimatorType = Annotated[
