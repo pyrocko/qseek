@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from qseek.search.base import Search
+    from qseek.search import Search
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
@@ -51,9 +51,9 @@ async def parse_pydantic_request(
                 else:
                     query[key] = value
 
-            data = model.parse_obj(query)
+            data = model.model_validate(query)
         elif request.method in ("POST", "PUT"):
-            data = model.parse_obj(await request.post())
+            data = model.model_validate(await request.post())
         else:
             raise web.HTTPMethodNotAllowed(
                 request.method, allowed_methods=("GET", "POST", "PUT")
@@ -70,11 +70,12 @@ async def parse_pydantic_request(
 def pydantic_response(
     model: BaseModel,
     headers: dict[str, Any] | None = None,
-    exclude: AbstractSetIntStr | MappingIntStrAny | None = None,
+    exclude: dict | None = None,
 ) -> web.Response:
     try:
         return web.json_response(
-            text=model.json(exclude=exclude).replace("NaN", "null"), headers=headers
+            text=model.model_dump_json(exclude=exclude).replace("NaN", "null"),
+            headers=headers,
         )
     except TypeError as exc:
         return web.HTTPServerError(reason=str(exc))

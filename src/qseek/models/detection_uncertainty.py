@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,15 +15,15 @@ THRESHOLD = 1.0 / np.sqrt(np.e)
 
 
 class DetectionUncertainty(BaseModel):
-    east_uncertainties: tuple[float, float] = Field(
+    east: tuple[float, float] = Field(
         ...,
         description="Uncertainty in east direction in [m].",
     )
-    north_uncertainties: tuple[float, float] = Field(
+    north: tuple[float, float] = Field(
         ...,
         description="Uncertainty in north direction in [m].",
     )
-    depth_uncertainties: tuple[float, float] = Field(
+    depth: tuple[float, float] = Field(
         ...,
         description="Uncertainty in depth in [m].",
     )
@@ -40,7 +42,10 @@ class DetectionUncertainty(BaseModel):
         Returns:
             The calculated uncertainty.
         """
-        nodes = octree.get_nodes(semblance_threshold=width)
+        if not source_node.semblance:
+            raise ValueError("Source node must have semblance value.")
+
+        nodes = octree.get_nodes(semblance_threshold=source_node.semblance * width)
         vicinity_coords = np.array(
             [(node.east, node.north, node.depth) for node in nodes]
         )
@@ -51,7 +56,7 @@ class DetectionUncertainty(BaseModel):
         max_offsets = np.max(relative_node_offsets, axis=0)
 
         return cls(
-            east_uncertainties=(float(min_offsets[0]), float(max_offsets[0])),
-            north_uncertainties=(float(min_offsets[1]), float(max_offsets[1])),
-            depth_uncertainties=(float(min_offsets[2]), float(max_offsets[2])),
+            east=(float(min_offsets[0]), float(max_offsets[0])),
+            north=(float(min_offsets[1]), float(max_offsets[1])),
+            depth=(float(min_offsets[2]), float(max_offsets[2])),
         )

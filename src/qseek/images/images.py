@@ -82,7 +82,7 @@ class ImageFunctions(RootModel):
         phases = self.get_phases()
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
-        self._queue = asyncio.Queue(maxsize=10)
+        self._queue = asyncio.Queue(maxsize=8)
         self._stats.set_queue(self._queue)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:

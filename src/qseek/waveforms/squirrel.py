@@ -97,21 +97,28 @@ class SquirrelPrefetcher:
                 logger.debug("filtered waveform batch in %s", datetime_now() - start)
             return batch
 
-        async def load_next() -> None:
+        async def load_next() -> None | Batch:
             start = datetime_now()
             batch = await asyncio.to_thread(next, self.iterator, None)
             if batch is None:
                 done.set()
-                return
+                return None
             logger.debug("read waveform batch in %s", datetime_now() - start)
-
-            await asyncio.to_thread(post_processing, batch)
             self._fetched_batches += 1
             self.load_time = datetime_now() - start
+            return batch
+
+        async def post_process_batch(batch: Batch) -> None:
+            await asyncio.to_thread(post_processing, batch)
             await self.queue.put(batch)
 
-        while not done.is_set():
-            await load_next()
+        async with asyncio.TaskGroup() as group:
+            while not done.is_set():
+                batch = await load_next()
+                if batch is None:
+                    break
+                group.create_task(post_process_batch(batch))
+
         await self.queue.put(None)
 
 
@@ -198,7 +205,7 @@ class PyrockoSquirrel(WaveformProvider):
     )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
-    _stations: Stations = PrivateAttr()
+    _stations: Stations = PrivateAttr(None)
     _stats: SquirrelStats = PrivateAttr(default_factory=SquirrelStats)
 
     @model_validator(mode="after")
@@ -217,7 +224,7 @@ class PyrockoSquirrel(WaveformProvider):
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
-            logger.debug("initializing squirrel")
+            logger.info("initializing squirrel waveform provider")
             squirrel = Squirrel(str(self.environment.expanduser()))
             paths = []
             for path in self.waveform_dirs:
@@ -227,14 +234,18 @@ class PyrockoSquirrel(WaveformProvider):
                     paths.append(str(path.expanduser()))
 
             squirrel.add(paths, check=False)
+            if self._stations:
+                for path in self._stations.station_xmls:
+                    logger.info("loading responses from %s", path)
+                    squirrel.add(str(path), check=False)
             self._squirrel = squirrel
         return self._squirrel
 
     def prepare(self, stations: Stations) -> None:
         logger.info("preparing squirrel waveform provider")
+        self._stations = stations
         squirrel = self.get_squirrel()
         stations.weed_from_squirrel_waveforms(squirrel)
-        self._stations = stations
 
     async def iter_batches(
         self,

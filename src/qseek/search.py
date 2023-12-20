@@ -23,6 +23,7 @@ from pydantic import (
 from qseek.corrections.corrections import StationCorrectionType
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
+from qseek.magnitudes import EventMagnitudeCalculatorType
 from qseek.models import Stations
 from qseek.models.detection import EventDetection, EventDetections, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
@@ -175,7 +176,14 @@ class Search(BaseModel):
         default=None,
         description="Apply station corrections extracted from a previous run.",
     )
-    event_features: list[FeatureExtractorType] = []
+    magnitudes: list[EventMagnitudeCalculatorType] = Field(
+        default=[],
+        description="Magnitude calculators to use.",
+    )
+    features: list[FeatureExtractorType] = Field(
+        default=[],
+        description="Event features to extract.",
+    )
 
     sampling_rate: SamplingRate = Field(
         default=100,
@@ -386,7 +394,7 @@ class Search(BaseModel):
             self._detections.add_semblance_trace(semblance_trace)
             for detection in detections:
                 if detection.in_bounds:
-                    await self.add_features(detection)
+                    await self.add_magnitude_and_features(detection)
 
                 self._detections.add(detection)
                 await self._new_detection.emit(detection)
@@ -409,15 +417,19 @@ class Search(BaseModel):
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("found %d detections", self._detections.n_detections)
 
-    async def add_features(self, event: EventDetection) -> None:
+    async def add_magnitude_and_features(self, event: EventDetection) -> None:
         try:
             squirrel = self.data_provider.get_squirrel()
         except NotImplementedError:
             return
 
-        for extractor in self.event_features:
-            logger.info("adding features from %s", extractor.feature)
-            await extractor.add_features(squirrel, event)
+        for mag_calculator in self.magnitudes:
+            logger.info("adding magnitude from %s", mag_calculator.magnitude)
+            await mag_calculator.add_magnitude(squirrel, event)
+
+        for feature_calculator in self.features:
+            logger.info("adding features from %s", feature_calculator.feature)
+            await feature_calculator.add_features(squirrel, event)
 
     @classmethod
     def load_rundir(cls, rundir: Path) -> Self:
@@ -680,14 +692,15 @@ class SearchTraces:
                     else None
                     for mod, obs in zip(arrivals_model, arrivals_observed, strict=True)
                 ]
-                detection.receivers.add_receivers(
+                detection.receivers.add(
                     stations=image.stations,
                     phase_arrivals=phase_detections,
                 )
-
-                detection.uncertainty = DetectionUncertainty.from_event(
-                    source_node=source_node,
-                    octree=octree,
+                detection.set_uncertainty(
+                    DetectionUncertainty.from_event(
+                        source_node=source_node,
+                        octree=octree,
+                    )
                 )
 
             detections.append(detection)

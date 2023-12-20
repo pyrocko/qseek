@@ -112,7 +112,7 @@ class Semblance:
             self._cached_semblance.fill(0.0)
             self.semblance_unpadded = self._cached_semblance
         else:
-            logger.debug("re-allocating semblance")
+            logger.debug("re-allocating semblance memory")
             self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
             Semblance._cached_semblance = self.semblance_unpadded
 

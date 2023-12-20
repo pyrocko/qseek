@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class ReceiverFeature(BaseModel):
-    feature: Literal["Feature"] = "Feature"
+    feature: Literal["ReceiverFeature"] = "ReceiverFeature"
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[ReceiverFeature], ...]:
@@ -24,7 +24,7 @@ class ReceiverFeature(BaseModel):
 
 
 class EventFeature(BaseModel):
-    feature: Literal["Feature"] = "Feature"
+    feature: Literal["EventFeature"] = "EventFeature"
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[EventFeature], ...]:

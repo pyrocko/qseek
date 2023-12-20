@@ -14,6 +14,7 @@ from rich.prompt import IntPrompt
 from rich.table import Table
 
 from qseek.console import console
+from qseek.magnitudes.base import EventMagnitudeCalculator
 from qseek.utils import CACHE_DIR, import_insights, setup_rich_logging
 
 nest_asyncio.apply()
@@ -80,12 +81,12 @@ def get_parser() -> argparse.ArgumentParser:
     )
     continue_run.add_argument("rundir", type=Path, help="existing runding to continue")
 
-    features = subparsers.add_parser(
+    features_extract = subparsers.add_parser(
         "feature-extraction",
         help="extract features from an existing run",
         description="modify the search.json for re-evaluation of the event's features",
     )
-    features.add_argument("rundir", type=Path, help="path of existing run")
+    features_extract.add_argument("rundir", type=Path, help="path of existing run")
 
     station_corrections = subparsers.add_parser(
         "corrections",
@@ -100,10 +101,17 @@ def get_parser() -> argparse.ArgumentParser:
     )
     station_corrections.add_argument("rundir", type=Path, help="path of existing run")
 
-    subparsers.add_parser(
+    modules = subparsers.add_parser(
         "modules",
         help="list available modules",
         description="list all available modules",
+    )
+    modules.add_argument(
+        "--json",
+        "-j",
+        type=str,
+        help="print module's JSON config",
+        default="",
     )
 
     serve = subparsers.add_parser(
@@ -189,10 +197,11 @@ def main() -> None:
 
         case "feature-extraction":
             search = Search.load_rundir(args.rundir)
+            search.data_provider.prepare(search.stations)
 
             async def extract() -> None:
                 for detection in search._detections.detections:
-                    await search.add_features(detection)
+                    await search.add_magnitude_and_features(detection)
 
             asyncio.run(extract())
 
@@ -238,15 +247,27 @@ def main() -> None:
             table.add_column("Module")
             table.add_column("Description")
 
+            module_classes = (
+                RayTracer,
+                FeatureExtractor,
+                EventMagnitudeCalculator,
+                WaveformProvider,
+                StationCorrections,
+            )
+
+            if args.json:
+                for module in module_classes:
+                    for subclass in module.get_subclasses():
+                        if subclass.__name__ == args.json:
+                            console.print_json(subclass().model_dump_json(indent=2))
+                            parser.exit()
+                else:
+                    parser.error(f"unknown module: {args.json}")
+
             def is_insight(module: type) -> bool:
                 return "insight" in module.__module__
 
-            for modules in (
-                RayTracer,
-                FeatureExtractor,
-                WaveformProvider,
-                StationCorrections,
-            ):
+            for modules in module_classes:
                 table.add_row(f"[bold]{modules.__name__}")
                 for module in modules.get_subclasses():
                     name = module.__name__

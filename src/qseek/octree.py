@@ -5,8 +5,9 @@ import logging
 import struct
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, reduce
 from hashlib import sha1
+from operator import mul
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
 import numpy as np
@@ -74,6 +75,7 @@ class Node:
     _location: Location | None = None
 
     def split(self) -> tuple[Node, ...]:
+        """Split the node into 8 children"""
         if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
@@ -130,25 +132,51 @@ class Node:
         )
 
     def can_split(self) -> bool:
+        """Check if the node can be split.
+
+        Raises:
+            AttributeError: If the parent tree is not set.
+
+        Returns:
+            bool: True if the node can be split.
+        """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        half_size = self.size / 2
-        return half_size >= self.tree.size_limit
+        return self.size > self.tree.smallest_node_size()
 
     def reset(self) -> None:
+        """Reset the node to its initial state."""
         self._children_cached = self.children
         self.children = ()
         self.semblance = 0.0
 
     def set_parent(self, tree: Octree) -> None:
+        """Set the parent tree of the node.
+
+        Args:
+            tree (Octree): The parent tree.
+        """
         self.tree = tree
         for child in self.children:
             child.set_parent(tree)
 
     def distance_to_location(self, location: Location) -> float:
+        """Distance to a location.
+
+        Args:
+            location (Location): Location to calculate distance to.
+
+        Returns:
+            float: Distance to location.
+        """
         return location.distance_to(self.as_location())
 
     def as_location(self) -> Location:
+        """Returns the location of the node.
+
+        Returns:
+            Location: Location of the node.
+        """
         if not self.tree:
             raise AttributeError("parent tree not set")
         if not self._location:
@@ -263,7 +291,9 @@ class Octree(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
         logger.info(
-            "initializing octree, smallest node size: %.1f m",
+            "initializing octree of %d nodes and %.1f km³, smallest node size: %.1f m",
+            self.n_nodes,
+            self.volume / (KM**3),
             self.smallest_node_size(),
         )
         self._root_nodes = self._get_root_nodes(self.size_initial)
@@ -299,6 +329,11 @@ class Octree(BaseModel):
     def n_nodes(self) -> int:
         """Number of nodes in the octree"""
         return sum(1 for _ in self)
+
+    @property
+    def volume(self) -> float:
+        """Volume of the octree in cubic meters"""
+        return reduce(mul, self.extent(), 0.0)
 
     def __iter__(self) -> Iterator[Node]:
         for node in self._root_nodes:
