@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NamedTuple, Union
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import numpy as np
 from matplotlib.ticker import FuncFormatter
-from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr, computed_field
+from pydantic import Field, PositiveFloat, PrivateAttr, computed_field, model_validator
 from pyrocko import trace
 from typing_extensions import Self
 
@@ -15,6 +15,12 @@ from qseek.features.utils import ChannelSelector, ChannelSelectors
 from qseek.magnitudes.base import (
     EventMagnitude,
     EventMagnitudeCalculator,
+)
+from qseek.magnitudes.local_magnitude_model import (
+    LocalMagnitudeModel,
+    ModelName,
+    Range,
+    StationLocalMagnitude,
 )
 
 if TYPE_CHECKING:
@@ -27,16 +33,6 @@ if TYPE_CHECKING:
 # Page 5
 logger = logging.getLogger(__name__)
 
-Component = Literal["horizontal", "vertical"]
-
-WOOD_ANDERSON = trace.PoleZeroResponse(
-    poles=[
-        -5.49779 - 5.60886j,
-        -5.49779 + 5.60886j,
-    ],
-    zeros=[0.0 + 0.0j, 0.0 + 0.0j],
-    constant=2080.0,
-)
 
 WOOD_ANDERSON = trace.PoleZeroResponse(
     poles=[
@@ -49,12 +45,6 @@ WOOD_ANDERSON = trace.PoleZeroResponse(
 
 KM = 1e3
 MM = 1e3
-MM2NM = 1e6
-
-
-class Range(NamedTuple):
-    min: float
-    max: float
 
 
 class WoodAndersonAmplitude(NamedTuple):
@@ -135,210 +125,17 @@ class StationAmplitudes(NamedTuple):
         )
 
 
-class StationLocalMagnitude(NamedTuple):
-    station_nsl: tuple[str, str, str]
-    magnitude: float
-    magnitude_error: float
-    peak_amp_mm: float
-    distance_epi: float
-    distance_hypo: float
-
-
-class LocalMagnitudeModel(BaseModel):
-    model: Literal["local-magnitude-model"] = "local-magnitude-model"
-
-    epicentral_range: ClassVar[Range | None] = None
-    hypocentral_range: ClassVar[Range | None] = None
-
-    component: ClassVar[Component] = "horizontal"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        """Get the amplitude attenuation for a given distance."""
-        raise NotImplementedError
-
-    def get_local_magnitude(
-        self, amplitude: float, distance_hypo: float, distance_epi: float
-    ) -> float:
-        """Get the magnitude from a given amplitude."""
-        return np.log10(amplitude) + self.get_amp_attenuation(
-            distance_hypo / KM, distance_epi / KM
-        )
-
-    def get_station_magnitudes(
-        self, stations: list[StationAmplitudes]
-    ) -> list[StationLocalMagnitude]:
-        """Calculate the local magnitude for a given event and receiver.
-
-        Args:
-            event (EventDetection): The event to calculate the magnitude for.
-            receiver (Receiver): The seismic station to calculate the magnitude for.
-            traces (list[Trace]): The traces to calculate the magnitude for.
-
-        Returns:
-            StationMagnitude | None: The calculated magnitude or None if the magnitude.
-        """
-        station_magnitudes = []
-        for sta in stations:
-            if not sta.in_range(self.epicentral_range, self.hypocentral_range):
-                continue
-
-            amps = (
-                sta.amplitudes_horizontal
-                if self.component == "horizontal"
-                else sta.amplitudes_vertical
-            )
-
-            # Discard stations with no amplitude or low ANR
-            if not amps.peak_mm or amps.anr < 1.0:
-                continue
-
-            with np.errstate(divide="ignore"):
-                local_magnitude = self.get_local_magnitude(
-                    amps.peak_mm, sta.distance_hypo, sta.distance_epi
-                )
-                magnitude_error_upper = self.get_local_magnitude(
-                    amps.peak_mm + amps.noise_mm, sta.distance_hypo, sta.distance_epi
-                )
-                magnitude_error_lower = self.get_local_magnitude(
-                    amps.peak_mm - amps.noise_mm, sta.distance_hypo, sta.distance_epi
-                )
-
-            if not np.isfinite(local_magnitude):
-                continue
-
-            if not np.isfinite(magnitude_error_lower):
-                magnitude_error_lower = local_magnitude - (
-                    magnitude_error_upper - local_magnitude
-                )
-
-            magnitude = StationLocalMagnitude(
-                station_nsl=sta.station_nsl,
-                magnitude=local_magnitude,
-                magnitude_error=(magnitude_error_upper - magnitude_error_lower) / 2,
-                peak_amp_mm=amps.peak_mm,
-                distance_epi=sta.distance_epi,
-                distance_hypo=sta.distance_hypo,
-            )
-            station_magnitudes.append(magnitude)
-        return station_magnitudes
-
-
-class SouthernCalifornia(LocalMagnitudeModel):
-    """After Hutton&Boore (1987)"""
-
-    model: Literal["southern-california"] = "southern-california"
-    hypocentral_range = Range(10.0 * KM, 700.0 * KM)
-    component = "horizontal"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.11 * np.log10(dist_hypo_km / 100) + 0.00189 * (dist_hypo_km - 100) + 3
-
-
-class IASPEISouthernCalifornia(LocalMagnitudeModel):
-    """After Hutton&Boore (1987)"""
-
-    model: Literal["iaspei-southern-california"] = "iaspei-southern-california"
-    hypocentral_range = Range(10.0 * KM, 700.0 * KM)
-    component = "horizontal"
-
-    def get_local_magnitude(
-        self, amplitude: float, distance_hypo: float, distance_epi: float
-    ) -> float:
-        amp = amplitude * MM2NM  # mm to nm
-        return (
-            np.log10(amp / WOOD_ANDERSON.constant)
-            + 1.11 * np.log10(distance_hypo / KM)
-            + 0.00189 * (distance_hypo / KM)
-            - 2.09
-        )
-
-
-class EasternNorthAmerica(LocalMagnitudeModel):
-    """After Kim (1998)"""
-
-    model: Literal["eastern-north-america"] = "eastern-north-america"
-    epicentral_range = Range(100.0 * KM, 800.0 * KM)
-    component = "horizontal"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.55 * np.log10(dist_epi_km) - 0.22
-
-
-class Albania(LocalMagnitudeModel):
-    """After Muco&Minga (1991)"""
-
-    model: Literal["albania"] = "albania"
-    epicentral_range = Range(10.0 * KM, 600.0 * KM)
-    component = "horizontal"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.6627 * np.log10(dist_epi_km) + 0.0008 * dist_epi_km - 0.433
-
-
-class SouthWestGermany(LocalMagnitudeModel):
-    """After Stange (2006)"""
-
-    model: Literal["south-west-germany"] = "south-west-germany"
-    hypocentral_range = Range(10.0 * KM, 1000.0 * KM)
-    component = "vertical"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.11 * np.log10(dist_hypo_km) + 0.95 * dist_hypo_km * 1e-3 + 0.69
-
-
-class SouthAustralia(LocalMagnitudeModel):
-    """After Greenhalgh&Singh (1986)"""
-
-    model: Literal["south-australia"] = "south-australia"
-    epicentral_range = Range(40.0 * KM, 700.0 * KM)
-    component = "vertical"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.1 * np.log10(dist_epi_km) + 0.0013 * dist_epi_km + 0.7
-
-
-class NorwayFennoscandia(LocalMagnitudeModel):
-    """After Alsaker et al. (1991)"""
-
-    model: Literal["norway-fennoskandia"] = "norway-fennoskandia"
-    hypocentral_range = Range(0.0 * KM, 1500.0 * KM)
-    component = "vertical"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 0.91 * np.log10(dist_hypo_km) + 0.00087 * dist_hypo_km + 1.01
-
-
-LocalMagnitudeType = Annotated[
-    Union[
-        IASPEISouthernCalifornia,
-        SouthernCalifornia,
-        EasternNorthAmerica,
-        Albania,
-        SouthWestGermany,
-        SouthAustralia,
-        NorwayFennoscandia,
-    ],
-    Field(
-        ...,
-        discriminator="model",
-    ),
-]
-
-
 class LocalMagnitude(EventMagnitude):
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
     station_amplitudes: list[StationAmplitudes] = []
+    model: ModelName = Field(
+        default="iaspei-southern-california",
+        description="The estimator to use for calculating the local magnitude.",
+    )
 
     _station_magnitudes: list[StationLocalMagnitude] = PrivateAttr([])
-    _model: LocalMagnitudeModel = PrivateAttr(default_factory=IASPEISouthernCalifornia)
+    _model: LocalMagnitudeModel = PrivateAttr()
 
     def add_receiver(
         self,
@@ -350,8 +147,13 @@ class LocalMagnitude(EventMagnitude):
             StationAmplitudes.from_receiver(receiver, traces, event)
         )
 
-    def set_model(self, model: LocalMagnitudeModel) -> None:
-        self._model = model
+    @model_validator(mode="after")
+    def load_model(self) -> Self:
+        self.set_model(self.model)
+        return self
+
+    def set_model(self, model: str) -> None:
+        self._model = LocalMagnitudeModel().get_subclass_by_name(model)()
         self.calculate()
 
     def calculate(self) -> None:
@@ -372,12 +174,12 @@ class LocalMagnitude(EventMagnitude):
         return np.array([sta.magnitude_error for sta in self.station_magnitudes])
 
     @property
-    def n_magnitudes(self) -> int:
+    def n_observations(self) -> int:
         return len(self._station_magnitudes)
 
     @property
     def model_name(self) -> str:
-        return self._model.model
+        return self._model.model_name()
 
     @computed_field
     @property
@@ -440,11 +242,11 @@ class LocalMagnitude(EventMagnitude):
         ax.set_ylabel("$M_L$")
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: x / KM))
         ax.grid(alpha=0.3)
-        ax.legend(title=f"Estimator: {self._model.model}", loc="lower right")
+        ax.legend(title=f"Estimator: {self._model.model_name}", loc="lower right")
         ax.text(
             0.05,
             0.05,
-            f"{self.n_magnitudes} Stations",
+            f"{self.n_observations} Stations",
             transform=ax.transAxes,
             alpha=0.5,
         )
@@ -457,8 +259,8 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
     seconds_before: PositiveFloat = 10.0
     seconds_after: PositiveFloat = 10.0
     padding_seconds: PositiveFloat = 10.0
-    model: LocalMagnitudeType = Field(
-        default_factory=IASPEISouthernCalifornia,
+    model: ModelName = Field(
+        default="iaspei-southern-california",
         description="The estimator to use for calculating the local magnitude.",
     )
 

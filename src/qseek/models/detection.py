@@ -444,7 +444,7 @@ class EventDetection(Location):
             east_shift=self.east_shift,
             north_shift=self.north_shift,
             depth=self.effective_depth,
-            magnitude=magnitude.value if magnitude else self.semblance,
+            magnitude=magnitude.average if magnitude else self.semblance,
             magnitude_type=magnitude.magnitude if magnitude else "semblance",
         )
 
