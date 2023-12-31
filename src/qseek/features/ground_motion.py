@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 
 from qseek.features.base import EventFeature, FeatureExtractor, ReceiverFeature
-from qseek.features.utils import TraceSelectors
+from qseek.features.utils import ChannelSelectors
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -66,9 +66,9 @@ class GroundMotionExtractor(FeatureExtractor):
                     seconds_before=self.seconds_before,
                     quantity="velocity",
                 )
-                pga = _get_maximum(TraceSelectors.All(traces_acc))
-                pha = _get_maximum(TraceSelectors.Horizontal(traces_acc))
-                pgv = _get_maximum(TraceSelectors.All(traces_vel))
+                pga = _get_maximum(ChannelSelectors.All(traces_acc))
+                pha = _get_maximum(ChannelSelectors.Horizontal(traces_acc))
+                pgv = _get_maximum(ChannelSelectors.All(traces_vel))
 
                 ground_motion = ReceiverGroundMotion(
                     seconds_before=self.seconds_before,

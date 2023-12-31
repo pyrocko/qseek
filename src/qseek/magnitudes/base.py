@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -12,6 +12,15 @@ if TYPE_CHECKING:
 
 class EventMagnitude(BaseModel):
     magnitude: Literal["EventMagnitude"] = "EventMagnitude"
+
+    average: float = Field(
+        default=0.0,
+        description="Average local magnitude.",
+    )
+    error: float = Field(
+        default=0.0,
+        description="Average error of local magnitude.",
+    )
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[EventMagnitude], ...]:
@@ -25,14 +34,6 @@ class EventMagnitude(BaseModel):
     @property
     def name(self) -> str:
         return self.__class__.__name__
-
-    @property
-    def average(self) -> float:
-        raise NotImplementedError
-
-    @property
-    def error(self) -> float:
-        raise NotImplementedError
 
     def csv_row(self) -> dict[str, float]:
         return {
