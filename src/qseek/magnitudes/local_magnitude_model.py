@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 KM = 1e3
 MM = 1e3
+UM = 1e6
 M2NM = 1e9
 
 Component = Literal["all", "horizontal-abs", "vertical", "north-east-separate"]
@@ -233,6 +234,29 @@ class LocalMagnitudeModel:
             peak_amp=sta.peak,
             distance_epi=sta.distance_epi,
             distance_hypo=sta.distance_hypo,
+        )
+
+
+class WebnetWesternBohemia(LocalMagnitudeModel):
+    author = "Horálek et al. (2000)"
+    doi = "10.1023/A:1022198406514"
+
+    hypocentral_range = Range(0.0 * KM, 100.0 * KM)
+    component = "horizontal-abs"
+    max_amplitude = "velocity"
+
+    def get_magnitude(
+        self,
+        amplitude: float,
+        distance_hypo: float,
+        distance_epi: float,
+    ) -> float:
+        amplitude = amplitude * UM
+        return (
+            np.log10(amplitude)
+            - np.log10(2 * np.pi)
+            + 2.1 * np.log10(distance_hypo / KM)
+            - 1.7
         )
 
 
