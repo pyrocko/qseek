@@ -25,7 +25,7 @@ class ChannelSelector:
     __call__ = get_traces
 
 
-class ChannelSelectors:
+class TraceSelectors:
     All = ChannelSelector("ENZ0123", 3)
     Horizontal = ChannelSelector("EN23", 2)
     Vertical = ChannelSelector("Z0", 1)

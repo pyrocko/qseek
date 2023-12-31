@@ -39,7 +39,7 @@ dependencies = [
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
-
+    "aiofiles>=23.0",
 ]
 
 classifiers = [
@@ -65,6 +65,7 @@ dev = [
 ]
 
 docs = ["mkdocs-material>=9.4.8", "mkdocstrings[python]>=0.23", "qseek-extra"]
+completion = ["argcomplete>=3.2"]
 
 [project.scripts]
 qseek = "qseek.apps.qseek:main"

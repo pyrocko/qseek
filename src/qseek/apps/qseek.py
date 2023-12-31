@@ -1,171 +1,188 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import shutil
 from pathlib import Path
 
 import nest_asyncio
 from pkg_resources import get_distribution
-from rich import box
-from rich.prompt import IntPrompt
-from rich.table import Table
-
-from qseek.console import console
-from qseek.magnitudes.base import EventMagnitudeCalculator
-from qseek.utils import CACHE_DIR, import_insights, setup_rich_logging
 
 nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
 
 
-def get_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="qseek",
-        description="qseek - The wholesome earthquake detector 🚀",
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="count",
-        default=0,
-        help="increase verbosity of the log messages, repeat to increase. "
-        "Default level is INFO",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=get_distribution("qseek").version,
-        help="show version and exit",
-    )
+parser = argparse.ArgumentParser(
+    prog="qseek",
+    description="qseek - The wholesome earthquake detector 🚀",
+)
+parser.add_argument(
+    "--verbose",
+    "-v",
+    action="count",
+    default=0,
+    help="increase verbosity of the log messages, repeat to increase. "
+    "Default level is INFO",
+)
+parser.add_argument(
+    "--version",
+    action="version",
+    version=get_distribution("qseek").version,
+    help="show version and exit",
+)
 
-    subparsers = parser.add_subparsers(
-        title="commands",
-        required=True,
-        dest="command",
-        description="Available commands to run qseek. Get command help with "
-        "`qseek <command> --help`.",
-    )
+subparsers = parser.add_subparsers(
+    title="commands",
+    required=True,
+    dest="command",
+    description="Available commands to run qseek. Get command help with "
+    "`qseek <command> --help`.",
+)
 
-    init_project = subparsers.add_parser(
-        "init",
-        help="initialize a new qseek project",
-        description="initialze a new project with a default configuration file. ",
-    )
-    init_project.add_argument(
-        "folder",
-        type=Path,
-        help="folder to initialize project in",
-    )
+subparsers.add_parser(
+    "config",
+    help="print a new config",
+    description="initialze a new default config configuration file.",
+)
 
-    run = subparsers.add_parser(
-        "search",
-        help="start a search",
-        description="detect, localize and characterize earthquakes in a dataset",
-    )
-    run.add_argument("config", type=Path, help="path to config file")
-    run.add_argument(
-        "--force",
-        action="store_true",
-        default=False,
-        help="backup old rundir and create a new",
-    )
+run = subparsers.add_parser(
+    "search",
+    help="start a search",
+    description="detect, localize and characterize earthquakes in a dataset",
+)
+config_arg = run.add_argument(
+    "config",
+    type=Path,
+    help="path to config file",
+)
+run.add_argument(
+    "--force",
+    action="store_true",
+    default=False,
+    help="backup old rundir and create a new",
+)
 
-    continue_run = subparsers.add_parser(
-        "continue",
-        help="continue an aborted run",
-        description="continue a run from an existing rundir",
-    )
-    continue_run.add_argument("rundir", type=Path, help="existing runding to continue")
+continue_run = subparsers.add_parser(
+    "continue",
+    help="continue an aborted run",
+    description="continue a run from an existing rundir",
+)
+rundir_continue = continue_run.add_argument(
+    "rundir",
+    type=Path,
+    help="existing runding to continue",
+)
 
-    features_extract = subparsers.add_parser(
-        "feature-extraction",
-        help="extract features from an existing run",
-        description="modify the search.json for re-evaluation of the event's features",
-    )
-    features_extract.add_argument("rundir", type=Path, help="path of existing run")
+features_extract = subparsers.add_parser(
+    "feature-extraction",
+    help="extract features from an existing run",
+    description="modify the search.json for re-evaluation of the event's features",
+)
+rundir_features = features_extract.add_argument(
+    "rundir",
+    type=Path,
+    help="path of existing run",
+)
 
-    station_corrections = subparsers.add_parser(
-        "corrections",
-        help="analyse station corrections from existing run",
-        description="analyze and plot station corrections from a finished run",
-    )
-    station_corrections.add_argument(
-        "--plot",
-        action="store_true",
-        default=False,
-        help="plot station correction results and save to rundir",
-    )
-    station_corrections.add_argument("rundir", type=Path, help="path of existing run")
+station_corrections = subparsers.add_parser(
+    "corrections",
+    help="analyse station corrections from existing run",
+    description="analyze and plot station corrections from a finished run",
+)
+station_corrections.add_argument(
+    "--plot",
+    action="store_true",
+    default=False,
+    help="plot station correction results and save to rundir",
+)
+rundir_corrections = station_corrections.add_argument(
+    "rundir",
+    type=Path,
+    help="path of existing run",
+)
 
-    modules = subparsers.add_parser(
-        "modules",
-        help="list available modules",
-        description="list all available modules",
-    )
-    modules.add_argument(
-        "--json",
-        "-j",
-        type=str,
-        help="print module's JSON config",
-        default="",
-    )
+modules = subparsers.add_parser(
+    "modules",
+    help="list available modules",
+    description="list all available modules",
+)
+modules.add_argument(
+    "--json",
+    "-j",
+    type=str,
+    help="print module's JSON config",
+    default="",
+)
 
-    serve = subparsers.add_parser(
-        "serve",
-        help="start webserver and serve results from an existing run",
-        description="start a webserver and serve detections and results from a run",
-    )
-    serve.add_argument("rundir", type=Path, help="rundir to serve")
+serve = subparsers.add_parser(
+    "serve",
+    help="start webserver and serve results from an existing run",
+    description="start a webserver and serve detections and results from a run",
+)
+serve.add_argument(
+    "rundir",
+    type=Path,
+    help="rundir to serve",
+)
 
-    subparsers.add_parser(
-        "clear-cache",
-        help="clear the cach directory",
-        description="clear all data in the cache directory",
-    )
+subparsers.add_parser(
+    "clear-cache",
+    help="clear the cach directory",
+    description="clear all data in the cache directory",
+)
 
-    dump_schemas = subparsers.add_parser(
-        "dump-schemas",
-        help="dump data models to json-schema (development)",
-        description="dump data models to json-schema, "
-        "this is for development purposes only",
-    )
-    dump_schemas.add_argument("folder", type=Path, help="folder to dump schemas to")
+dump_schemas = subparsers.add_parser(
+    "dump-schemas",
+    help="dump data models to json-schema (development)",
+    description="dump data models to json-schema, "
+    "this is for development purposes only",
+)
+dump_dir = dump_schemas.add_argument(
+    "folder",
+    type=Path,
+    help="folder to dump schemas to",
+)
 
-    return parser
+
+try:
+    import argcomplete
+    from argcomplete.completers import DirectoriesCompleter, FilesCompleter
+
+    config_arg.completer = FilesCompleter(["*.json"])
+    rundir_continue.completer = DirectoriesCompleter()
+    rundir_features.completer = DirectoriesCompleter()
+    rundir_corrections.completer = DirectoriesCompleter()
+    dump_dir.completer = DirectoriesCompleter()
+
+    argcomplete.autocomplete(parser)
+except ImportError:
+    pass
 
 
 def main() -> None:
-    import_insights()
-    parser = get_parser()
-    args = parser.parse_args()
+    from rich import box
+    from rich.progress import track
+    from rich.prompt import IntPrompt
+    from rich.table import Table
 
-    from qseek.models import Stations
+    from qseek.console import console
     from qseek.search import Search
     from qseek.server import WebServer
+    from qseek.utils import CACHE_DIR, load_insights, setup_rich_logging
+
+    load_insights()
+    args = parser.parse_args()
 
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
 
     match args.command:
-        case "init":
-            folder: Path = args.folder
-            if folder.exists():
-                raise FileExistsError(f"Folder {folder} already exists")
-            folder.mkdir()
-
-            pyrocko_stations = folder / "pyrocko-stations.yaml"
-            pyrocko_stations.touch()
-
-            config = Search(stations=Stations(pyrocko_station_yamls=[pyrocko_stations]))
-
-            config_file = folder / f"{folder.name}.json"
-            config_file.write_text(config.model_dump_json(by_alias=False, indent=2))
-
-            logger.info("initialized new project in folder %s", folder)
-            logger.info("start detection with: qseek run %s", config_file.name)
+        case "config":
+            config = Search()
+            console.print_json(config.model_dump_json(by_alias=False, indent=2))
 
         case "search":
             search = Search.from_config(args.config)
@@ -200,14 +217,31 @@ def main() -> None:
             search.data_provider.prepare(search.stations)
 
             async def extract() -> None:
-                for detection in search._detections.detections:
-                    await search.add_magnitude_and_features(detection)
+                iterator = asyncio.as_completed(
+                    tuple(
+                        search.add_magnitude_and_features(detection)
+                        for detection in search._detections
+                    )
+                )
+                for result in track(
+                    iterator,
+                    description="Extracting features",
+                    total=search._detections.n_detections,
+                ):
+                    detection = await result
+                    await detection.dump_detection(update=True)
+
+                await search._detections.export_detections(
+                    jitter_location=search.octree.smallest_node_size()
+                )
 
             asyncio.run(extract())
 
         case "corrections":
             rundir = Path(args.rundir)
             from qseek.corrections.base import StationCorrections
+
+            search = Search.load_rundir(rundir)
 
             corrections_modules = StationCorrections.get_subclasses()
 
@@ -216,13 +250,22 @@ def main() -> None:
                 console.print(f"{imodule}: {module.__name__}")
 
             module_choice = IntPrompt.ask(
-                "Choose correction module",
+                "Choose station corrections module",
                 choices=[str(i) for i in range(len(corrections_modules))],
                 default="0",
                 console=console,
             )
-            corrections = corrections_modules[int(module_choice)]
-            asyncio.run(corrections.prepare(rundir, console))
+            corrections_class = corrections_modules[int(module_choice)]
+            corrections = asyncio.run(corrections_class.prepare(rundir, console))
+            search.corrections = corrections
+
+            new_config_file = rundir.parent / f"{rundir.name}-corrections.json"
+            console.print("writing new config file")
+            console.print(
+                "to use this config file, run [bold]`qseek search %s`",
+                new_config_file,
+            )
+            new_config_file.write_text(search.model_dump_json(by_alias=False, indent=2))
 
         case "serve":
             search = Search.load_rundir(args.rundir)
@@ -239,6 +282,7 @@ def main() -> None:
         case "modules":
             from qseek.corrections.base import StationCorrections
             from qseek.features.base import FeatureExtractor
+            from qseek.magnitudes.base import EventMagnitudeCalculator
             from qseek.tracers.base import RayTracer
             from qseek.waveforms.base import WaveformProvider
 
@@ -279,6 +323,8 @@ def main() -> None:
             console.print(table)
 
         case "dump-schemas":
+            import json
+
             from qseek.models.detection import EventDetections
 
             if not args.folder.exists():

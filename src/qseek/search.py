@@ -241,6 +241,8 @@ class Search(BaseModel):
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
+    _feature_semaphore: asyncio.Semaphore = PrivateAttr(asyncio.Semaphore(8))
+
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
@@ -392,17 +394,8 @@ class Search(BaseModel):
             detections, semblance_trace = await search_block.search()
 
             self._detections.add_semblance_trace(semblance_trace)
-            for detection in detections:
-                if detection.in_bounds:
-                    await self.add_magnitude_and_features(detection)
-
-                self._detections.add(detection)
-                await self._new_detection.emit(detection)
-
-            if self._detections.n_detections and batch.i_batch % 50 == 0:
-                self._detections.dump_detections(
-                    jitter_location=self.octree.smallest_node_size()
-                )
+            if detections:
+                await self.new_detections(detections)
 
             stats.add_processed_batch(
                 batch,
@@ -413,23 +406,54 @@ class Search(BaseModel):
             self.set_progress(batch.end_time)
 
         console.cancel()
-        self._detections.dump_detections(jitter_location=self.octree.size_limit)
+        await self._detections.export_detections(jitter_location=self.octree.size_limit)
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("found %d detections", self._detections.n_detections)
 
-    async def add_magnitude_and_features(self, event: EventDetection) -> None:
+    async def new_detections(self, detections: list[EventDetection]) -> None:
+        """
+        Process new detections.
+
+        Args:
+            detections (list[EventDetection]): List of new event detections.
+        """
+        await asyncio.gather(
+            *(self.add_magnitude_and_features(det) for det in detections)
+        )
+
+        for detection in detections:
+            await self._detections.add(detection)
+            await self._new_detection.emit(detection)
+
+        if self._detections.n_detections and self._detections.n_detections % 100 == 0:
+            await self._detections.export_detections(
+                jitter_location=self.octree.smallest_node_size()
+            )
+
+    async def add_magnitude_and_features(self, event: EventDetection) -> EventDetection:
+        """
+        Adds magnitude and features to the given event.
+
+        Args:
+            event (EventDetection): The event to add magnitude and features to.
+        """
+        if not event.in_bounds:
+            return event
+
         try:
             squirrel = self.data_provider.get_squirrel()
         except NotImplementedError:
-            return
+            return event
 
-        for mag_calculator in self.magnitudes:
-            logger.info("adding magnitude from %s", mag_calculator.magnitude)
-            await mag_calculator.add_magnitude(squirrel, event)
+        async with self._feature_semaphore:
+            for mag_calculator in self.magnitudes:
+                logger.debug("adding magnitude from %s", mag_calculator.magnitude)
+                await mag_calculator.add_magnitude(squirrel, event)
 
-        for feature_calculator in self.features:
-            logger.info("adding features from %s", feature_calculator.feature)
-            await feature_calculator.add_features(squirrel, event)
+            for feature_calculator in self.features:
+                logger.debug("adding features from %s", feature_calculator.feature)
+                await feature_calculator.add_features(squirrel, event)
+        return event
 
     @classmethod
     def load_rundir(cls, rundir: Path) -> Self:
@@ -470,7 +494,11 @@ class Search(BaseModel):
         # FIXME: Replace with signal overserver?
         if hasattr(self, "_detections"):
             with contextlib.suppress(Exception):
-                self._detections.dump_detections(jitter_location=self.octree.size_limit)
+                asyncio.ensure_future(  # noqa: RUF006
+                    self._detections.export_detections(
+                        jitter_location=self.octree.size_limit
+                    )
+                )
 
 
 class SearchTraces:

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def octree_to_rectangles(
     octree: Octree,
-    cmap: str | Colormap = "Oranges",
+    cmap: str | Colormap = "magma_r",
     normalize: bool = False,
 ) -> PatchCollection:
     if isinstance(cmap, str):
@@ -54,6 +54,7 @@ def octree_to_rectangles(
     if normalize:
         semblances /= semblances.max()
     colors = cmap(semblances)
+
     return PatchCollection(
         patches=rectangles,
         facecolors=colors,
@@ -118,7 +119,7 @@ def plot_octree_3d(octree: Octree, cmap: str = "Oranges") -> None:
 def plot_octree_scatter(
     octree: Octree,
     accumulator: Callable = np.max,
-    cmap: str = "Oranges",
+    cmap: str = "magma_r",
 ) -> None:
     colormap = get_cmap(cmap)
 
@@ -137,11 +138,11 @@ def plot_octree_semblance_movie(
     octree: Octree,
     semblance: np.ndarray,
     file: Path,
-    cmap: str = "Oranges",
+    cmap: str = "magma_r",
 ) -> None:
     fig = plt.figure()
     ax: plt.Axes = fig.add_subplot(projection="3d")
-    colormap = get_cmap("Oranges")
+    colormap = get_cmap(cmap)
 
     coords = octree.get_coordinates("cartesian").T
     nodes = ax.scatter(coords[0], coords[1], coords[2])

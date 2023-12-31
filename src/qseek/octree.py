@@ -290,13 +290,14 @@ class Octree(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
+        self._root_nodes = self._get_root_nodes(self.size_initial)
         logger.info(
-            "initializing octree of %d nodes and %.1f km³, smallest node size: %.1f m",
+            "initializing octree volume with %d nodes and %.1f km³,"
+            " smallest node size: %.1f m",
             self.n_nodes,
             self.volume / (KM**3),
             self.smallest_node_size(),
         )
-        self._root_nodes = self._get_root_nodes(self.size_initial)
 
     def extent(self) -> tuple[float, float, float]:
         """Returns the extent of the octree.
@@ -333,7 +334,7 @@ class Octree(BaseModel):
     @property
     def volume(self) -> float:
         """Volume of the octree in cubic meters"""
-        return reduce(mul, self.extent(), 0.0)
+        return reduce(mul, self.extent())
 
     def __iter__(self) -> Iterator[Node]:
         for node in self._root_nodes:

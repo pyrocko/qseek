@@ -22,6 +22,24 @@ class EventMagnitude(BaseModel):
         """
         return tuple(cls.__subclasses__())
 
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
+
+    @property
+    def average(self) -> float:
+        raise NotImplementedError
+
+    @property
+    def error(self) -> float:
+        raise NotImplementedError
+
+    def csv_row(self) -> dict[str, float]:
+        return {
+            "magnitude": self.average,
+            "error": self.error,
+        }
+
 
 class EventMagnitudeCalculator(BaseModel):
     magnitude: Literal["MagnitudeCalculator"] = "MagnitudeCalculator"

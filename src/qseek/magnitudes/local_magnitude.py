@@ -11,7 +11,7 @@ from pydantic import Field, PositiveFloat, PrivateAttr, computed_field, model_va
 from pyrocko import trace
 from typing_extensions import Self
 
-from qseek.features.utils import ChannelSelector, ChannelSelectors
+from qseek.features.utils import ChannelSelector, TraceSelectors
 from qseek.magnitudes.base import (
     EventMagnitude,
     EventMagnitudeCalculator,
@@ -29,15 +29,14 @@ if TYPE_CHECKING:
 
     from qseek.models.detection import EventDetection, Receiver
 
-# All models from Bormann and Dewey (2014) https://doi.org/10.2312/GFZ.NMSOP-2_IS_3.3
-# Page 5
 logger = logging.getLogger(__name__)
 
-
+# New corrections from NMSOP 3.3
+# 10.2312/GFZ.NMSOP-2_IS_3.3, Page 5
 WOOD_ANDERSON = trace.PoleZeroResponse(
     poles=[
-        -6.283 - 4.7124j,
-        -6.283 + 4.7124j,
+        -5.49779 + 5.60886j,
+        -5.49779 - 5.60886j,
     ],
     zeros=[0.0 + 0.0j, 0.0 + 0.0j],
     constant=2080.0,
@@ -113,12 +112,12 @@ class StationAmplitudes(NamedTuple):
             amplitudes_horizontal=WoodAndersonAmplitude.from_traces(
                 traces=traces,
                 noise_traces=noise_traces,
-                selector=ChannelSelectors.Horizontal,
+                selector=TraceSelectors.Horizontal,
             ),
             amplitudes_vertical=WoodAndersonAmplitude.from_traces(
                 traces=traces,
                 noise_traces=noise_traces,
-                selector=ChannelSelectors.Vertical,
+                selector=TraceSelectors.Vertical,
             ),
             distance_hypo=receiver.distance_to(event),
             distance_epi=receiver.surface_distance_to(event),
@@ -143,26 +142,40 @@ class LocalMagnitude(EventMagnitude):
         traces: list[Trace],
         event: EventDetection,
     ) -> None:
-        self.station_amplitudes.append(
-            StationAmplitudes.from_receiver(receiver, traces, event)
-        )
+        try:
+            self.station_amplitudes.append(
+                StationAmplitudes.from_receiver(receiver, traces, event)
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not calculate station amplitudes for receiver %s: %s",
+                receiver.nsl,
+                exc_info=exc,
+            )
+
+        self._station_magnitudes.clear()
+
+    @property
+    def name(self) -> str:
+        return f"{self.model_name}"
 
     @model_validator(mode="after")
     def load_model(self) -> Self:
-        self.set_model(self.model)
+        self._model = LocalMagnitudeModel.get_subclass_by_name(self.model)()
         return self
 
-    def set_model(self, model: str) -> None:
-        self._model = LocalMagnitudeModel().get_subclass_by_name(model)()
-        self.calculate()
-
-    def calculate(self) -> None:
-        self._station_magnitudes = self._model.get_station_magnitudes(
-            self.station_amplitudes
-        )
+    def set_model(self, model: ModelName) -> None:
+        self.model = model
+        self._model = LocalMagnitudeModel.get_subclass_by_name(model)()
+        self._station_magnitudes.clear()
 
     @property
     def station_magnitudes(self) -> list[StationLocalMagnitude]:
+        if not self._station_magnitudes:
+            self._station_magnitudes = self._model.get_station_magnitudes(
+                self.station_amplitudes
+            )
+            logger.debug("Calculated magnitude from %d stations", self.n_observations)
         return self._station_magnitudes
 
     @property
@@ -188,13 +201,37 @@ class LocalMagnitude(EventMagnitude):
 
     @computed_field
     @property
+    def error(self) -> float:
+        return float(np.average(self.magnitudes + self.magnitude_errors)) - self.average
+
+    @computed_field
+    @property
+    def error_weighted(self) -> float:
+        return (
+            float(
+                np.average(
+                    self.magnitudes + self.magnitude_errors,
+                    weights=1.0 / self.magnitude_errors,
+                )
+            )
+            - self.average_weighted
+        )
+
+    @computed_field
+    @property
     def average_weighted(self) -> float:
-        return float(np.average(self.magnitudes, weights=1 / self.magnitude_errors))
+        return float(np.average(self.magnitudes, weights=1.0 / self.magnitude_errors))
 
     @computed_field
     @property
     def median(self) -> float:
         return float(np.median(self.magnitudes))
+
+    def csv_row(self) -> dict[str, float]:
+        return {
+            f"ML_{self.name}": self.average,
+            f"ML_error_{self.name}": self.error,
+        }
 
     def plot(self) -> None:
         import matplotlib.pyplot as plt
@@ -229,20 +266,21 @@ class LocalMagnitude(EventMagnitude):
             color="k",
             linestyle="dotted",
             alpha=0.5,
-            label=f"Average $M_L$ {self.average:.2f}",
+            label=rf"Average $M_L$ {self.average:.2f} $\pm${self.error:.2f}",
         )
         ax.axhline(
             self.average_weighted,
             color="k",
             linestyle="-",
             alpha=0.5,
-            label=f"Weighted Average $M_L$ {self.average_weighted:.2f}",
+            label=f"Weighted Average $M_L$ {self.average_weighted:.2f} "
+            rf"$\pm${self.error_weighted:.2f}",
         )
         ax.set_xlabel("Distance to Hypocenter [km]")
         ax.set_ylabel("$M_L$")
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: x / KM))
         ax.grid(alpha=0.3)
-        ax.legend(title=f"Estimator: {self._model.model_name}", loc="lower right")
+        ax.legend(title=f"Estimator: {self._model.model_name()}", loc="lower right")
         ax.text(
             0.05,
             0.05,
@@ -265,8 +303,6 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
     )
 
     async def add_magnitude(self, squirrel: Squirrel, event: EventDetection) -> None:
-        # p.enable()
-
         traces = await event.receivers.get_waveforms_restituted(
             squirrel,
             seconds_before=self.seconds_before,
@@ -275,7 +311,11 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             cut_off_fade=False,
             quantity="displacement",
             phase=None,
+            remove_clipped=True,
         )
+        if not traces:
+            logger.warning("No restituted traces found for event %s", event.time)
+            return
 
         wood_anderson_traces = [
             await asyncio.to_thread(
@@ -289,8 +329,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             for tr in traces
         ]
 
-        local_magnitude = LocalMagnitude()
-        local_magnitude.set_model(self.model)
+        local_magnitude = LocalMagnitude(model=self.model)
 
         for nsl, traces in itertools.groupby(
             wood_anderson_traces, key=lambda tr: tr.nslc_id[:3]
@@ -301,6 +340,9 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
                 event=event,
             )
 
-        local_magnitude.calculate()
-        local_magnitude.plot()
+        if not np.isfinite(local_magnitude.average):
+            logger.warning("Local magnitude is NaN, skipping event %s", event.time)
+            return
+
+        logger.info("Ml %.1f for event %s", local_magnitude.average, event.time)
         event.add_magnitude(local_magnitude)

@@ -8,7 +8,8 @@ from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Awaitable, Callable, ParamSpec, TypeVar
 
-from pydantic import BaseModel, ByteSize, constr
+import numpy as np
+from pydantic import ByteSize, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
@@ -50,14 +51,39 @@ def setup_rich_logging(level: int) -> None:
 
 
 def time_to_path(datetime: datetime) -> str:
+    """
+    Converts a datetime object to a string representation of a file path.
+
+    Args:
+        datetime (datetime): The datetime object to convert.
+
+    Returns:
+        str: The string representation of the file path.
+    """
     return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
 
 
 def to_datetime(time: float) -> datetime:
+    """
+    Convert a UNIX timestamp to a datetime object in UTC timezone.
+
+    Args:
+        time (float): The UNIX timestamp to convert.
+
+    Returns:
+        datetime: The corresponding datetime object in UTC timezone.
+    """
     return datetime.fromtimestamp(time, tz=timezone.utc)
 
 
 def downsample(trace: Trace, sampling_rate: float) -> None:
+    """
+    Downsamples the given trace to the specified sampling rate in-place.
+
+    Args:
+        trace (Trace): The trace to be downsampled.
+        sampling_rate (float): The desired sampling rate.
+    """
     deltat = 1.0 / sampling_rate
 
     if trace.deltat == deltat:
@@ -99,15 +125,46 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
 
 
 def human_readable_bytes(size: int | float) -> str:
-    """Return a human readable string representation of bytes"""
+    """
+    Convert a size in bytes to a human-readable string representation.
+
+    Args:
+        size (int | float): The size in bytes.
+
+    Returns:
+        str: The human-readable string representation of the size.
+
+    """
     return ByteSize(size).human_readable()
 
 
 def datetime_now() -> datetime:
+    """
+    Get the current datetime in UTC timezone.
+
+    Returns:
+        datetime: The current datetime in UTC timezone.
+    """
     return datetime.now(tz=timezone.utc)
 
 
 def get_cpu_count() -> int:
+    """
+    Get the number of CPUs available for the current job/task.
+
+    The function first checks if the environment variable SLURM_CPUS_PER_TASK is set.
+    If it is set, the value is returned as the number of CPUs.
+
+    If SLURM_CPUS_PER_TASK is not set, the function then checks if the environment
+    variable PBS_NUM_PPN is set. If it is set, the value is returned as the number of
+    CPUs.
+
+    If neither SLURM_CPUS_PER_TASK nor PBS_NUM_PPN is set, the function returns the
+    number of CPUs available on the system using os.cpu_count().
+
+    Returns:
+        int: The number of CPUs available for the current job/task.
+    """
     return int(
         os.environ.get(
             "SLURM_CPUS_PER_TASK",
@@ -119,57 +176,78 @@ def get_cpu_count() -> int:
     )
 
 
-def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
-    """Takes model and dumps markdown for documentation"""
+def filter_clipped_traces(
+    traces: list[Trace],
+    counts_threshold: int = 20,
+    max_bits: tuple[int, ...] = (24, 32),
+) -> list[Trace]:
+    """
+    Filters out clipped traces from the given list of traces.
 
-    def generate_submodel(model: BaseModel) -> list[str]:
-        lines = []
-        for name, field in model.model_fields.items():
-            if field.description is None:
-                continue
-            lines += [
-                f"        - **`{name}`** *`{field.annotation}`*\n",
-                f"            {field.description}",
-            ]
-        return lines
+    Args:
+        traces (list[Trace]): The list of traces to filter.
+        counts_threshold (int, optional): The threshold for the distance between the
+            maximum value of a trace and the clip value. Defaults to 20.
+        max_bits (tuple[int, ...], optional): The clip bits to check for.
+            Defaults to (24, 32).
 
-    model_name = model.__class__.__name__
-    lines = [f"### {model_name} Module"]
-    if model.__class__.__doc__ is not None:
-        lines += [f"{model.__class__.__doc__}\n"]
-    lines += [f'=== "Config {model_name}"']
-    for name, field in model.model_fields.items():
-        if field.description is None:
+    Raises:
+        TypeError: If a trace is not of type int, np.int32 or np.int64.
+
+    Returns:
+        list[Trace]: The filtered list of traces.
+    """
+    for tr in traces.copy():
+        if tr.ydata is None:
             continue
-        default = str(field.default)
-        if isinstance(field.default, BaseModel):
-            default = field.default.__class__.__name__
-        lines += [
-            f"    **`{name}`**\n",
-            f"    :   {field.description} Default is *`{default}`*.\n",
-        ]
+        if tr.ydata.dtype not in (int, np.int32, np.int64):
+            raise TypeError(f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}")
 
-    def dump_json() -> list[str]:
-        dump = model.model_dump_json(by_alias=False, indent=2, exclude=exclude)
-        lines = dump.split("\n")
-        return [f"    {line}" for line in lines]
-
-    lines += ['=== "JSON Block"']
-    lines += [f"    ```json title='JSON block for {model_name}'"]
-    lines.extend(dump_json())
-    lines += ["    ```"]
-    return "\n".join(lines)
+        max_val = np.abs(tr.ydata).max()
+        for bits in max_bits:
+            clip_value = 2 ** (bits - 1) - 1
+            distance_counts = abs(max_val - clip_value)
+            if distance_counts < counts_threshold:
+                logger.warning(
+                    "trace %s likely clipped, distance to %d bits clip are %d counts",
+                    ".".join(tr.nslc_id),
+                    bits,
+                    distance_counts,
+                )
+                traces.remove(tr)
+    return traces
 
 
 def camel_case_to_snake_case(name: str) -> str:
-    """Convert camel case to snake case"""
+    """
+    Converts a camel case string to snake case.
+
+    Args:
+        name (str): The camel case string to be converted.
+
+    Returns:
+        str: The snake case string.
+
+    Example:
+        >>> camel_case_to_snake_case("camelCaseString")
+        'camel_case_string'
+    """
     return "".join(["_" + i.lower() if i.isupper() else i for i in name]).lstrip("_")
 
 
-def import_insights() -> None:
+def load_insights() -> None:
+    """
+    Imports the qseek.insights package if available.
+
+    This function attempts to import the qseek.insights package and logs a debug message
+    indicating whether the package was successfully imported or not.
+
+    Raises:
+        ImportError: If the qseek.insights package is not installed.
+    """
     try:
         import qseek.insights  # noqa: F401
 
-        logger.debug("imported qseek.insights package")
+        logger.debug("loaded qseek.insights package")
     except ImportError:
         logger.debug("package qseek.insights not installed")

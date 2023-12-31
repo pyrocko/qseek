@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterable, Literal
 
 from pydantic import BaseModel
+from typing_extensions import Self
 
 from qseek.utils import PhaseDescription
 
@@ -62,6 +63,8 @@ class StationCorrections(BaseModel):
         ...
 
     @classmethod
-    async def prepare(cls, rundir: Path, console: Console) -> None:
+    async def prepare(cls, rundir: Path, console: Console | None = None) -> Self:
         """Prepare the station corrections for the console."""
-        console.print("This module does not require any preparation.")
+        if console:
+            console.print("This module does not require any preparation.")
+        return cls()

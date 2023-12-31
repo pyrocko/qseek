@@ -15,6 +15,10 @@ MM2NM = 1e6
 Component = Literal["horizontal", "vertical"]
 WOOD_ANDERSON_CONSTANT = 2080.0
 
+# All models from Bormann (2012) https://doi.org/10.2312/GFZ.NMSOP-2_DS_3.1
+# Page 5
+
+
 class Range(NamedTuple):
     min: float
     max: float
@@ -33,6 +37,7 @@ class LocalMagnitudeModel:
     epicentral_range: ClassVar[Range | None] = None
     hypocentral_range: ClassVar[Range | None] = None
 
+    author: ClassVar[str] = "Unknown"
     component: ClassVar[Component] = "horizontal"
 
     @classmethod
@@ -40,7 +45,7 @@ class LocalMagnitudeModel:
         subclasses = {sub.model_name(): sub for sub in cls.__subclasses__()}
         if name in subclasses:
             return subclasses[name]
-        raise ValueError(f"Model {name} not found.")
+        raise ValueError(f"Model {name} not found. Choose from {', '.join(subclasses)}")
 
     @classmethod
     def model_name(cls) -> str:
@@ -53,7 +58,7 @@ class LocalMagnitudeModel:
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        """Get the amplitude attenuation for a given distance."""
+        """Get the amplitude attenuation for a given distance, known as -log10(A0)."""
         raise NotImplementedError
 
     def get_local_magnitude(
@@ -65,7 +70,7 @@ class LocalMagnitudeModel:
         )
 
     def get_station_magnitudes(
-        self, stations: list[StationAmplitudes]
+        self, amplitudes: list[StationAmplitudes]
     ) -> list[StationLocalMagnitude]:
         """Calculate the local magnitude for a given event and receiver.
 
@@ -78,7 +83,7 @@ class LocalMagnitudeModel:
             StationMagnitude | None: The calculated magnitude or None if the magnitude.
         """
         station_magnitudes = []
-        for sta in stations:
+        for sta in amplitudes:
             if not sta.in_range(self.epicentral_range, self.hypocentral_range):
                 continue
 
@@ -91,6 +96,8 @@ class LocalMagnitudeModel:
             # Discard stations with no amplitude or low ANR
             if not amps.peak_mm or amps.anr < 1.0:
                 continue
+
+            # TODO: Remove clipped stations
 
             with np.errstate(divide="ignore"):
                 local_magnitude = self.get_local_magnitude(
@@ -124,7 +131,7 @@ class LocalMagnitudeModel:
 
 
 class SouthernCalifornia(LocalMagnitudeModel):
-    """After Hutton&Boore (1987)"""
+    author = "Hutton and Boore (1987)"
 
     hypocentral_range = Range(10.0 * KM, 700.0 * KM)
     component = "horizontal"
@@ -134,8 +141,8 @@ class SouthernCalifornia(LocalMagnitudeModel):
         return 1.11 * np.log10(dist_hypo_km / 100) + 0.00189 * (dist_hypo_km - 100) + 3
 
 
-class IASPEISouthernCalifornia(LocalMagnitudeModel):
-    """After Hutton&Boore (1987)"""
+class IaspeiSouthernCalifornia(LocalMagnitudeModel):
+    author = "Hutton and Boore (1987)"
 
     hypocentral_range = Range(10.0 * KM, 700.0 * KM)
     component = "horizontal"
@@ -153,7 +160,7 @@ class IASPEISouthernCalifornia(LocalMagnitudeModel):
 
 
 class EasternNorthAmerica(LocalMagnitudeModel):
-    """After Kim (1998)"""
+    author = "Kim (1998)"
 
     epicentral_range = Range(100.0 * KM, 800.0 * KM)
     component = "horizontal"
@@ -164,7 +171,7 @@ class EasternNorthAmerica(LocalMagnitudeModel):
 
 
 class Albania(LocalMagnitudeModel):
-    """After Muco&Minga (1991)"""
+    author = "Muco and Minga (1991)"
 
     epicentral_range = Range(10.0 * KM, 600.0 * KM)
     component = "horizontal"
@@ -175,7 +182,7 @@ class Albania(LocalMagnitudeModel):
 
 
 class SouthWestGermany(LocalMagnitudeModel):
-    """After Stange (2006)"""
+    author = "Stange (2006)"
 
     hypocentral_range = Range(10.0 * KM, 1000.0 * KM)
     component = "vertical"
@@ -186,7 +193,7 @@ class SouthWestGermany(LocalMagnitudeModel):
 
 
 class SouthAustralia(LocalMagnitudeModel):
-    """After Greenhalgh&Singh (1986)"""
+    author = "Greenhalgh and Singh (1986)"
 
     epicentral_range = Range(40.0 * KM, 700.0 * KM)
     component = "vertical"
@@ -197,7 +204,7 @@ class SouthAustralia(LocalMagnitudeModel):
 
 
 class NorwayFennoscandia(LocalMagnitudeModel):
-    """After Alsaker et al. (1991)"""
+    author = "Alsaker et al. (1991)"
 
     hypocentral_range = Range(0.0 * KM, 1500.0 * KM)
     component = "vertical"
@@ -206,50 +213,60 @@ class NorwayFennoscandia(LocalMagnitudeModel):
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
         return 0.91 * np.log10(dist_hypo_km) + 0.00087 * dist_hypo_km + 1.01
 
-class IcelandAskjaBardabungaCombined(LocalMagnitudeModel):
-
-    """After Greenfield et al. (2020)"""
-    hypocentral_range = Range(0.0 * KM, 150.0 * KM)
-    component = "horizontal"
-
-    @staticmethod
-    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.1999 * np.log10(dist_hypo_km/17) -0.0016*(dist_hypo_km−17) + 2
 
 class IcelandAskja(LocalMagnitudeModel):
+    author = "Greenfield et al. (2020)"
 
-    """After Greenfield et al. (2020)"""
     hypocentral_range = Range(0.0 * KM, 150.0 * KM)
     component = "horizontal"
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.4406 * np.log10(dist_hypo_km/17) -0.003*(dist_hypo_km−17) + 2
+        return 1.4406 * np.log10(dist_hypo_km / 17) - 0.003 * (dist_hypo_km - 17) + 2
+
 
 class IcelandBardabunga(LocalMagnitudeModel):
-    """After Greenfield et al. (2020)"""
+    author = "Greenfield et al. (2020)"
+
     hypocentral_range = Range(0.0 * KM, 150.0 * KM)
     component = "horizontal"
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.2534 * np.log10(dist_hypo_km/17) -0.0032*(dist_hypo_km−17) + 2
+        return 1.2534 * np.log10(dist_hypo_km / 17) - 0.0032 * (dist_hypo_km - 17) + 2
 
-class IcelandReykjanes(LocalMagnitudeModel):
-    """After Greenfield et al. (2020)"""
-    hypocentral_range = Range(0.0 * KM, 40.0 * KM)
+
+class IcelandAskjaBardabungaCombined(LocalMagnitudeModel):
+    author = "Greenfield et al. (2020)"
+
+    hypocentral_range = Range(0.0 * KM, 150.0 * KM)
     component = "horizontal"
+
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 0.6902 * np.log10(dist_hypo_km/17) +0.0318*(dist_hypo_km−17) + 2
+        return 1.1999 * np.log10(dist_hypo_km / 17) - 0.0016 * (dist_hypo_km - 17) + 2
+
+
+class IcelandReykjanes(LocalMagnitudeModel):
+    author = "Greenfield et al. (2022)"
+
+    hypocentral_range = Range(0.0 * KM, 40.0 * KM)
+    component = "horizontal"
+
+    @staticmethod
+    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        return 0.6902 * np.log10(dist_hypo_km / 17) - 0.0318 * (dist_hypo_km - 17) + 2
 
 
 class Azores(LocalMagnitudeModel):
-    """After Gongora et al. (2004)"""
+    author = "Gongora et al. (2004)"
+
     epicentral_range = Range(10.0 * KM, 800.0 * KM)
-    component="horizontal"
+    component = "horizontal"
+
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 0.89 * np.log10(dist_epi_km/100) + 0.00256 * (dist_epi_km-100) + 3
+        return 0.89 * np.log10(dist_epi_km / 100) + 0.00256 * (dist_epi_km - 100) + 3
+
 
 ModelName = Literal[LocalMagnitudeModel.model_names()]
