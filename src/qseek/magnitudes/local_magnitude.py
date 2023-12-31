@@ -302,12 +302,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
     )
 
     async def add_magnitude(self, squirrel: Squirrel, event: EventDetection) -> None:
-        # Check if event already has a local magnitude
-        for magnitude in event.magnitudes:
-            if isinstance(magnitude, LocalMagnitude):
-                magnitude.set_model(self.model)
-                logger.debug("Skipping event %s, already has a local magnitude", event)
-                return
+        local_magnitude = LocalMagnitude(model=self.model)
 
         traces = await event.receivers.get_waveforms_restituted(
             squirrel,
@@ -334,8 +329,6 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             )
             for tr in traces
         ]
-
-        local_magnitude = LocalMagnitude(model=self.model)
 
         for nsl, traces in itertools.groupby(
             wood_anderson_traces, key=lambda tr: tr.nslc_id[:3]

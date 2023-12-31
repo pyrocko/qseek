@@ -12,7 +12,14 @@ KM = 1e3
 MM = 1e3
 MM2NM = 1e6
 
-Component = Literal["horizontal", "vertical"]
+Component = Literal["horizontal", "vertical", "north-east"]
+MaxAmplitudeType = Literal[
+    "acceleration",
+    "velocity",
+    "displacement",
+    "wood-anderson",
+    "wood-anderson-old",
+]
 WOOD_ANDERSON_CONSTANT = 2080.0
 
 # All models from Bormann (2012) https://doi.org/10.2312/GFZ.NMSOP-2_DS_3.1
@@ -37,7 +44,10 @@ class LocalMagnitudeModel:
     epicentral_range: ClassVar[Range | None] = None
     hypocentral_range: ClassVar[Range | None] = None
 
+    max_amplitude: ClassVar[MaxAmplitudeType] = "wood-anderson"
+
     author: ClassVar[str] = "Unknown"
+    doi: ClassVar[str] = "Unknown"
     component: ClassVar[Component] = "horizontal"
 
     @classmethod
@@ -222,7 +232,7 @@ class IcelandAskja(LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.4406 * np.log10(dist_hypo_km / 17) - 0.003 * (dist_hypo_km - 17) + 2
+        return 1.4406 * np.log10(dist_hypo_km / 17) + 0.003 * (dist_hypo_km - 17) + 2
 
 
 class IcelandBardabunga(LocalMagnitudeModel):
@@ -233,7 +243,7 @@ class IcelandBardabunga(LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.2534 * np.log10(dist_hypo_km / 17) - 0.0032 * (dist_hypo_km - 17) + 2
+        return 1.2534 * np.log10(dist_hypo_km / 17) + 0.0032 * (dist_hypo_km - 17) + 2
 
 
 class IcelandAskjaBardabungaCombined(LocalMagnitudeModel):
@@ -244,7 +254,7 @@ class IcelandAskjaBardabungaCombined(LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.1999 * np.log10(dist_hypo_km / 17) - 0.0016 * (dist_hypo_km - 17) + 2
+        return 1.1999 * np.log10(dist_hypo_km / 17) + 0.0016 * (dist_hypo_km - 17) + 2
 
 
 class IcelandReykjanes(LocalMagnitudeModel):
@@ -255,6 +265,7 @@ class IcelandReykjanes(LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        # TODO: check second term
         return 0.6902 * np.log10(dist_hypo_km / 17) + 0.0318 * (dist_hypo_km - 17) + 2
 
 

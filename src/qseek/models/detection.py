@@ -249,20 +249,25 @@ class EventReceivers(BaseModel):
                 receiver.get_arrivals_time_window(phase) for receiver in self
             )
         )
+        accessor_id = "qseek.event_detection"
+
         tmin = min(times).timestamp() - seconds_before
         tmax = max(times).timestamp() + seconds_after
         nslc_ids = [(*receiver.nsl, "*") for receiver in self]
-        traces = squirrel.get_waveforms(
+        traces: list[Trace] = squirrel.get_waveforms(
             codes=nslc_ids,
             tmin=tmin,
             tmax=tmax,
+            accessor_id=accessor_id,
             want_incomplete=False,
         )
         for tr in traces:
-            # Crop to receiver window
+            # Crop to receiver's phase arrival window
             receiver = self.get_receiver(tr.nslc_id[:3])
             tmin, tmax = receiver.get_arrivals_time_window(phase)
             tr.chop(tmin.timestamp() - seconds_before, tmax.timestamp() + seconds_after)
+
+        squirrel.advance_accessor(accessor_id, cache_id="waveform")
         return traces
 
     async def get_waveforms_restituted(
@@ -508,7 +513,7 @@ class EventDetection(Location):
         json_data = self.model_dump_json(exclude={"receivers"})
 
         if update:
-            if not self._detection_idx:
+            if self._detection_idx is None:
                 raise ValueError("cannot update detection without set index")
             logger.debug("updating detection %d", self._detection_idx)
 
@@ -821,7 +826,7 @@ class EventDetections(BaseModel):
                 detection.set_index(idx)
                 detections.detections.append(detection)
 
-        logger.info(f"loaded {detections.n_detections} detections")
+        logger.info("loaded %d detections", detections.n_detections)
         detections._stats.n_detections = detections.n_detections
         detections._stats.max_semblance = max(
             detection.semblance for detection in detections

@@ -278,6 +278,7 @@ class PyrockoSquirrel(WaveformProvider):
             tinc=window_increment.total_seconds(),
             tpad=window_padding.total_seconds(),
             want_incomplete=False,
+            accessor_id="qseek.squirrel",
             codes=[
                 (*nsl, self.channel_selector) for nsl in self._stations.get_all_nsl()
             ],
