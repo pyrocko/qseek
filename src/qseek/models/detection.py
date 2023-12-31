@@ -475,6 +475,15 @@ class EventDetection(Location):
         """
         cls._rundir = rundir
 
+    @property
+    def magnitude(self) -> EventMagnitude | None:
+        """
+        Returns the magnitude of the event.
+
+        If there are no magnitudes available, returns None.
+        """
+        return self.magnitudes[0] if self.magnitudes else None
+
     async def dump_detection(
         self, file: Path | None = None, update: bool = False
     ) -> None:
@@ -598,7 +607,7 @@ class EventDetection(Location):
         Returns:
             Event: Pyrocko event
         """
-        magnitude = self.magnitudes[0] if self.magnitudes else None
+        magnitude = self.magnitude
         return Event(
             name=self.time.isoformat(sep="T"),
             time=self.time.timestamp(),
@@ -609,6 +618,7 @@ class EventDetection(Location):
             depth=self.effective_depth,
             magnitude=magnitude.average if magnitude else self.semblance,
             magnitude_type=magnitude.name if magnitude else "semblance",
+            extras={"semblance": self.semblance},
         )
 
     def get_csv_dict(self) -> dict[str, Any]:
@@ -691,7 +701,6 @@ class EventDetection(Location):
         snuffle(
             traces,
             markers=self.get_pyrocko_markers(),
-            events=[self.as_pyrocko_event()],
             stations=[recv.as_pyrocko_station() for recv in self.receivers],
         )
 
