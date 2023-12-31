@@ -59,7 +59,6 @@ WOOD_ANDERSON = PoleZeroResponse(
     constant=2080.0,
 )
 
-# TODO: Look for old definition
 WOOD_ANDERSON_OLD = PoleZeroResponse(
     poles=[
         -6.283 + 4.7124j,
@@ -67,6 +66,15 @@ WOOD_ANDERSON_OLD = PoleZeroResponse(
     ],
     zeros=[0.0 + 0.0j, 0.0 + 0.0j],
     constant=2080.0,
+)
+
+WOOD_ANDERSON_PIDSA = PoleZeroResponse(
+    poles=[
+        -6.283 + 4.7124j,
+        -6.283 - 4.7124j,
+    ],
+    zeros=[0.0 + 0.0j, 0.0 + 0.0j],
+    constant=2800.0,
 )
 
 
