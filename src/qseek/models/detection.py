@@ -70,13 +70,18 @@ class PhaseDetection(BaseModel):
 
     @property
     def traveltime_delay(self) -> timedelta | None:
-        """Traveltime delay between observed and modelled arrival."""
+        """Traveltime delay between observed and modelled arrival.
+
+        Returns:
+            timedelta | None: The time difference between the observed and modelled arrival,
+            or None if the observed time is not available.
+        """
         if self.observed:
             return self.observed.time - self.model.time
         return None
 
     def get_arrival_time(self) -> datetime:
-        """Get observed time or modelled time, if observed is not set.
+        """Get observed time or modelled time, observed phase has priority.
 
         Returns:
             datetime: Arrival time
@@ -95,6 +100,13 @@ class PhaseDetection(BaseModel):
         return csv_dict
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+        """
+        Convert the observed and modeled arrivals to a list of Pyrocko PhaseMarkers.
+
+        Returns:
+            list[marker.PhaseMarker]: List of Pyrocko PhaseMarker objects representing
+                the phase detection.
+        """
         phase_picks = [
             marker.PhaseMarker(
                 nslc_ids=[()],  # Patched by Receiver.as_pyrocko_marker
@@ -138,6 +150,12 @@ class Receiver(Station):
         raise TypeError(f"cannot find feature of type {feature_type.__class__}")
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+        """
+        Convert the phase arrivals to Pyrocko markers.
+
+        Returns:
+            A list of Pyrocko PhaseMarker objects.
+        """
         picks = []
         for pick in chain.from_iterable(
             (arr.as_pyrocko_markers() for arr in self.phase_arrivals.values())
@@ -149,6 +167,18 @@ class Receiver(Station):
     def get_arrivals_time_window(
         self, phase: PhaseDescription | None = None
     ) -> tuple[datetime, datetime]:
+        """
+        Get the time window for phase arrivals.
+
+        Args:
+            phase (PhaseDescription | None): Optional phase description.
+                If None, the time window for all arrivals is returned.
+                Defaults to None.
+
+        Returns:
+            tuple[datetime, datetime]: A tuple containing the start and end time of
+                the phase arrivals.
+        """
         if phase:
             arrival = self.phase_arrivals[phase]
             start_time = arrival.get_arrival_time()
@@ -350,12 +380,31 @@ class EventReceivers(BaseModel):
             receiver.add_phase_detection(arrival)
 
     def get_by_nsl(self, nsl: tuple[str, str, str]) -> Receiver:
+        """
+        Retrieves a receiver object by its NSL (network, station, location) tuple.
+
+        Args:
+            nsl (tuple[str, str, str]): The NSL tuple representing
+                the network, station, and location.
+
+        Returns:
+            Receiver: The receiver object matching the NSL tuple.
+
+        Raises:
+            KeyError: If no receiver is found with the specified NSL tuple.
+        """
         for receiver in self:
             if receiver.nsl == nsl:
                 return receiver
         raise KeyError(f"cannot find station {nsl}")
 
     def get_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+        """
+        Get a list of Pyrocko phase markers from all receivers.
+
+        Returns:
+            A list of Pyrocko phase markers.
+        """
         return list(
             chain.from_iterable((receiver.as_pyrocko_markers() for receiver in self))
         )
@@ -460,7 +509,7 @@ class EventDetection(Location):
 
                 lines[self._detection_idx] = f"{json_data}\n"
                 async with aiofiles.open(file, "w") as f:
-                    await f.writelines(lines)
+                    await asyncio.shield(f.writelines(lines))
         else:
             logger.debug("appending detection %d", self._detection_idx)
             async with aiofiles.open(file, "a") as f:
@@ -468,7 +517,7 @@ class EventDetection(Location):
 
             receiver_file = self._rundir / FILENAME_RECEIVERS
             async with aiofiles.open(receiver_file, "a") as f:
-                await f.write(f"{self.receivers.model_dump_json()}\n")
+                await asyncio.shield(f.write(f"{self.receivers.model_dump_json()}\n"))
 
             self._receivers = None  # Free the memory
 
@@ -639,7 +688,12 @@ class EventDetection(Location):
             if not restituted
             else self.receivers.get_waveforms_restituted(squirrel)
         )
-        snuffle(traces, markers=self.get_pyrocko_markers())
+        snuffle(
+            traces,
+            markers=self.get_pyrocko_markers(),
+            events=[self.as_pyrocko_event()],
+            stations=[recv.as_pyrocko_station() for recv in self.receivers],
+        )
 
     def __str__(self) -> str:
         # TODO: Add more information

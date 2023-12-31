@@ -146,14 +146,13 @@ class LocalMagnitude(EventMagnitude):
             self.station_amplitudes.append(
                 StationAmplitudes.from_receiver(receiver, traces, event)
             )
+            self._station_magnitudes.clear()
         except Exception as exc:
             logger.warning(
                 "Could not calculate station amplitudes for receiver %s: %s",
-                receiver.nsl,
-                exc_info=exc,
+                receiver.nsl_pretty,
+                exc,
             )
-
-        self._station_magnitudes.clear()
 
     @property
     def name(self) -> str:
@@ -303,6 +302,13 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
     )
 
     async def add_magnitude(self, squirrel: Squirrel, event: EventDetection) -> None:
+        # Check if event already has a local magnitude
+        for magnitude in event.magnitudes:
+            if isinstance(magnitude, LocalMagnitude):
+                magnitude.set_model(self.model)
+                logger.debug("Skipping event %s, already has a local magnitude", event)
+                return
+
         traces = await event.receivers.get_waveforms_restituted(
             squirrel,
             seconds_before=self.seconds_before,
@@ -344,5 +350,10 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             logger.warning("Local magnitude is NaN, skipping event %s", event.time)
             return
 
-        logger.info("Ml %.1f for event %s", local_magnitude.average, event.time)
+        logger.info(
+            "Ml %.1f (±%.2f) for event %s",
+            local_magnitude.average,
+            local_magnitude.error,
+            event.time,
+        )
         event.add_magnitude(local_magnitude)

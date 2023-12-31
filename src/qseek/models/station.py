@@ -40,7 +40,7 @@ class Station(Location):
             depth=station.depth,
         )
 
-    def to_pyrocko_station(self) -> PyrockoStation:
+    def as_pyrocko_station(self) -> PyrockoStation:
         return PyrockoStation(**self.model_dump(exclude={"effective_lat_lon"}))
 
     @property
@@ -205,7 +205,7 @@ class Stations(BaseModel):
             filename (Path): Path to yaml file.
         """
         dump_stations_yaml(
-            [sta.to_pyrocko_station() for sta in self],
+            [sta.as_pyrocko_station() for sta in self],
             filename=str(filename.expanduser()),
         )
 
