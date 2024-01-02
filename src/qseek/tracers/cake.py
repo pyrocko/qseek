@@ -412,15 +412,15 @@ class TravelTimeTree(BaseModel):
                 "was the LUT initialized with `TravelTimeTree.init_lut`?"
             ) from exc
 
-        stations_traveltimes = []
+        stations_travel_times = []
         fill_nodes = []
         for node in octree:
             try:
-                node_traveltimes = self._node_lut[node.hash()][station_indices]
+                node_travel_times = self._node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
                 continue
-            stations_traveltimes.append(node_traveltimes)
+            stations_travel_times.append(node_travel_times)
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
@@ -434,7 +434,7 @@ class TravelTimeTree(BaseModel):
             )
             return self.get_travel_times(octree, stations)
 
-        return np.asarray(stations_traveltimes).astype(float, copy=False)
+        return np.asarray(stations_travel_times).astype(float, copy=False)
 
     def interpolate_travel_times(
         self,
@@ -476,14 +476,14 @@ class TravelTimeTree(BaseModel):
             f"for {n_nodes} nodes",
             total=len(coordinates),
         )
-        traveltimes = []
+        travel_times = []
         for coords in coordinates:
-            traveltimes.append(self._interpolate_traveltimes_sptree(coords))
+            travel_times.append(self._interpolate_traveltimes_sptree(coords))
             PROGRESS.update(status, advance=1)
 
         PROGRESS.remove_task(status)
 
-        return np.asarray(traveltimes).astype(float)
+        return np.asarray(travel_times).astype(float)
 
     def get_travel_time(self, source: Location, receiver: Location) -> float:
         coordinates = [
@@ -492,10 +492,10 @@ class TravelTimeTree(BaseModel):
             receiver.surface_distance_to(source),
         ]
         try:
-            traveltime = self._get_sptree().interpolate(coordinates) or np.nan
+            travel_time = self._get_sptree().interpolate(coordinates) or np.nan
         except spit.OutOfBounds:
-            traveltime = np.nan
-        return float(traveltime)
+            travel_time = np.nan
+        return float(travel_time)
 
 
 class CakeTracer(RayTracer):
@@ -520,7 +520,7 @@ class CakeTracer(RayTracer):
         description="Size of the LUT cache. Default is `2G`.",
     )
 
-    _traveltime_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
+    _travel_time_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
     @property
     def cache_dir(self) -> Path:
@@ -530,7 +530,7 @@ class CakeTracer(RayTracer):
 
     def clear_cache(self) -> None:
         """Clear cached SPTreeModels from user's cache."""
-        logging.info("clearing traveltime cached trees in %s", self.cache_dir)
+        logging.info("clearing cached travel time trees in %s", self.cache_dir)
         for file in self.cache_dir.glob("*.sptree"):
             file.unlink()
 
@@ -590,18 +590,18 @@ class CakeTracer(RayTracer):
         for phase_descr, timing in self.phases.items():
             for tree in cached_trees:
                 if tree.is_suited(timing=timing, **traveltime_tree_args):
-                    logger.info("using cached traveltime tree for %s", phase_descr)
+                    logger.info("using cached travel time tree for %s", phase_descr)
                     break
             else:
-                logger.info("pre-calculating traveltime tree for %s", phase_descr)
+                logger.info("pre-calculating travel time tree for %s", phase_descr)
                 tree = TravelTimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
             tree.init_lut(octree, stations)
-            self._traveltime_trees[phase_descr] = tree
+            self._travel_time_trees[phase_descr] = tree
 
     def _get_sptree_model(self, phase: str) -> TravelTimeTree:
-        return self._traveltime_trees[phase]
+        return self._travel_time_trees[phase]
 
     def _load_cached_trees(self) -> list[TravelTimeTree]:
         trees = []
@@ -609,7 +609,7 @@ class CakeTracer(RayTracer):
             try:
                 tree = TravelTimeTree.load(file)
             except ValidationError:
-                logger.warning("deleting invalid cached tree %s", file)
+                logger.warning("deleting invalid cached travel time tree %s", file)
                 file.unlink()
                 continue
             trees.append(tree)
@@ -635,7 +635,7 @@ class CakeTracer(RayTracer):
         stations: Stations,
     ) -> np.ndarray:
         if phase not in self.phases:
-            raise ValueError(f"Phase  {phase} is not defined.")
+            raise ValueError(f"Phase {phase} is not defined.")
         return self._get_sptree_model(phase).get_travel_times(octree, stations)
 
     def get_arrivals(

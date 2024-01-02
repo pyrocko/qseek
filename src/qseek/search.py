@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import cProfile
 import logging
 from collections import deque
@@ -33,6 +32,7 @@ from qseek.signals import Signal
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
+    BackgroundTasks,
     PhaseDescription,
     alog_call,
     datetime_now,
@@ -393,9 +393,9 @@ class Search(BaseModel):
 
             detections, semblance_trace = await search_block.search()
 
-            self._detections.add_semblance_trace(semblance_trace)
+            self._detections.save_semblance_trace(semblance_trace)
             if detections:
-                await self.new_detections(detections)
+                BackgroundTasks.create_task(self.new_detections(detections))
 
             stats.add_processed_batch(
                 batch,
@@ -405,6 +405,7 @@ class Search(BaseModel):
 
             self.set_progress(batch.end_time)
 
+        await BackgroundTasks.wait_all()
         console.cancel()
         await self._detections.export_detections(jitter_location=self.octree.size_limit)
         logger.info("finished search in %s", datetime_now() - processing_start)
@@ -490,15 +491,15 @@ class Search(BaseModel):
     def has_rundir(self) -> bool:
         return hasattr(self, "_rundir") and self._rundir.exists()
 
-    def __del__(self) -> None:
-        # FIXME: Replace with signal overserver?
-        if hasattr(self, "_detections"):
-            with contextlib.suppress(Exception):
-                asyncio.ensure_future(  # noqa: RUF006
-                    self._detections.export_detections(
-                        jitter_location=self.octree.size_limit
-                    )
-                )
+    # def __del__(self) -> None:
+    # FIXME: Replace with signal overserver?
+    # if hasattr(self, "_detections"):
+    # with contextlib.suppress(Exception):
+    #     asyncio.run(
+    #         self._detections.export_detections(
+    #             jitter_location=self.octree.size_limit
+    #         )
+    #     )
 
 
 class SearchTraces:

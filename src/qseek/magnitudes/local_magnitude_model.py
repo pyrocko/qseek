@@ -384,7 +384,7 @@ class IcelandBardabunga(WoodAnderson, LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.2534 * np.log10(dist_hypo_km / 17) + 0.0032 * (dist_hypo_km - 17) + 2
+        return 1.2534 * np.log10(dist_hypo_km / 17) - 0.0032 * (dist_hypo_km - 17) + 2
 
 
 class IcelandAskjaBardabungaCombined(WoodAnderson, LocalMagnitudeModel):
@@ -395,7 +395,7 @@ class IcelandAskjaBardabungaCombined(WoodAnderson, LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        return 1.1999 * np.log10(dist_hypo_km / 17) + 0.0016 * (dist_hypo_km - 17) + 2
+        return 1.1999 * np.log10(dist_hypo_km / 17) - 0.0016 * (dist_hypo_km - 17) + 2
 
 
 class IcelandReykjanes(WoodAnderson, LocalMagnitudeModel):

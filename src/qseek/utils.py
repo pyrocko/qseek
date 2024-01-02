@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Awaitable, Callable, ParamSpec, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Awaitable,
+    Callable,
+    ClassVar,
+    Coroutine,
+    ParamSpec,
+    TypeVar,
+)
 
 import numpy as np
 from pydantic import ByteSize, constr
@@ -14,6 +25,8 @@ from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
+    from contextvars import Context
+
     from pyrocko.trace import Trace
 
 logger = logging.getLogger(__name__)
@@ -32,13 +45,7 @@ class Symbols:
     Target = "🞋"
     Check = "✓"
     CheckerBoard = "🙾"
-
-
-class ANSI:
-    Bold = "\033[1m"
-    Italic = "\033[3m"
-    Underline = "\033[4m"
-    Reset = "\033[0m"
+    Cross = "✗"
 
 
 def setup_rich_logging(level: int) -> None:
@@ -48,6 +55,31 @@ def setup_rich_logging(level: int) -> None:
         datefmt="[%X]",
         handlers=[RichHandler()],
     )
+
+
+class BackgroundTasks:
+    tasks: ClassVar[set[asyncio.Task]] = set()
+
+    @classmethod
+    def create_task(
+        cls,
+        coro: Coroutine,
+        name: str | None = None,
+        context: Context | None = None,
+    ) -> asyncio.Task:
+        task = asyncio.create_task(coro, name=name, context=context)
+        cls.tasks.add(task)
+        task.add_done_callback(cls.tasks.remove)
+        return task
+
+    @classmethod
+    def cancel_all(cls) -> None:
+        for task in cls.tasks:
+            task.cancel()
+
+    @classmethod
+    async def wait_all(cls) -> None:
+        await asyncio.gather(*cls.tasks)
 
 
 def time_to_path(datetime: datetime) -> str:
@@ -232,7 +264,7 @@ def camel_case_to_snake_case(name: str) -> str:
         >>> camel_case_to_snake_case("camelCaseString")
         'camel_case_string'
     """
-    return "".join(["_" + i.lower() if i.isupper() else i for i in name]).lstrip("_")
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
 def load_insights() -> None:

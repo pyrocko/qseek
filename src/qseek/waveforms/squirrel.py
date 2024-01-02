@@ -112,12 +112,14 @@ class SquirrelPrefetcher:
             await asyncio.to_thread(post_processing, batch)
             await self.queue.put(batch)
 
-        async with asyncio.TaskGroup() as group:
-            while not done.is_set():
-                batch = await load_next()
-                if batch is None:
-                    break
-                group.create_task(post_process_batch(batch))
+        post_processing_task: asyncio.Task | None = None
+        while not done.is_set():
+            batch = await load_next()
+            if batch is None:
+                break
+            if post_processing_task:
+                await post_processing_task
+            post_processing_task = asyncio.create_task(post_process_batch(batch))
 
         await self.queue.put(None)
 
@@ -278,7 +280,6 @@ class PyrockoSquirrel(WaveformProvider):
             tinc=window_increment.total_seconds(),
             tpad=window_padding.total_seconds(),
             want_incomplete=False,
-            accessor_id="qseek.squirrel",
             codes=[
                 (*nsl, self.channel_selector) for nsl in self._stations.get_all_nsl()
             ],

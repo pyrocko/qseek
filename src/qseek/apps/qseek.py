@@ -229,7 +229,7 @@ def main() -> None:
                     total=search._detections.n_detections,
                 ):
                     detection = await result
-                    await detection.dump_detection(update=True)
+                    await detection.save(update=True)
 
                 await search._detections.export_detections(
                     jitter_location=search.octree.smallest_node_size()
@@ -238,10 +238,11 @@ def main() -> None:
             asyncio.run(extract())
 
         case "corrections":
-            rundir = Path(args.rundir)
+            import json
+
             from qseek.corrections.base import StationCorrections
 
-            search = Search.load_rundir(rundir)
+            rundir = Path(args.rundir)
 
             corrections_modules = StationCorrections.get_subclasses()
 
@@ -257,15 +258,16 @@ def main() -> None:
             )
             corrections_class = corrections_modules[int(module_choice)]
             corrections = asyncio.run(corrections_class.prepare(rundir, console))
-            search.corrections = corrections
+
+            search = json.loads((rundir / "search.json").read_text())
+            search["corrections"] = corrections.model_dump(mode="json")
 
             new_config_file = rundir.parent / f"{rundir.name}-corrections.json"
             console.print("writing new config file")
             console.print(
-                "to use this config file, run [bold]`qseek search %s`",
-                new_config_file,
+                f"to use this config file, run [bold]qseek search {new_config_file}"
             )
-            new_config_file.write_text(search.model_dump_json(by_alias=False, indent=2))
+            new_config_file.write_text(json.dumps(search, indent=2))
 
         case "serve":
             search = Search.load_rundir(args.rundir)

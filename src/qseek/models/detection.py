@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal, Type, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal
 from uuid import UUID, uuid4
 
 import aiofiles
@@ -27,7 +27,7 @@ from rich.table import Table
 from typing_extensions import Self
 
 from qseek.console import console
-from qseek.features import EventFeaturesType, ReceiverFeaturesType
+from qseek.features import EventFeaturesType
 from qseek.images.images import ImageFunctionPick
 from qseek.magnitudes import EventMagnitudeType
 from qseek.models.detection_uncertainty import DetectionUncertainty
@@ -38,17 +38,14 @@ from qseek.tracers.tracers import RayTracerArrival
 from qseek.utils import PhaseDescription, Symbols, filter_clipped_traces, time_to_path
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Response, Squirrel
+    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
-    from qseek.features.base import EventFeature, ReceiverFeature
+    from qseek.features.base import EventFeature
     from qseek.magnitudes.base import EventMagnitude
 
 
 logger = logging.getLogger(__name__)
-
-_ReceiverFeature = TypeVar("_ReceiverFeature", bound=ReceiverFeaturesType)
-
 
 MeasurementUnit = Literal[
     "displacement",
@@ -56,11 +53,33 @@ MeasurementUnit = Literal[
     "acceleration",
 ]
 
-
 FILENAME_DETECTIONS = "detections.json"
 FILENAME_RECEIVERS = "detections_receivers.json"
 
 UPDATE_LOCK = asyncio.Lock()
+
+
+class ReceiverCache:
+    file: Path
+    lines: list[str] = []
+    mtime: float | None = None
+
+    def __init__(self, file: Path) -> None:
+        self.file = file
+        self.load()
+
+    def load(self) -> None:
+        if not self.file.exists():
+            logger.debug("receiver cache %s does not exist", self.file)
+            return
+        logger.debug("loading receiver cache from %s", self.file)
+        self.lines = self.file.read_text().splitlines()
+        self.mtime = self.file.stat().st_mtime
+
+    def get_row(self, row_index: int) -> str:
+        if self.mtime is None or self.mtime != self.file.stat().st_mtime:
+            self.load()
+        return self.lines[row_index]
 
 
 class PhaseDetection(BaseModel):
@@ -131,23 +150,10 @@ class PhaseDetection(BaseModel):
 
 
 class Receiver(Station):
-    features: list[ReceiverFeaturesType] = []
     phase_arrivals: dict[PhaseDescription, PhaseDetection] = {}
 
     def add_phase_detection(self, arrival: PhaseDetection) -> None:
         self.phase_arrivals[arrival.phase] = arrival
-
-    def add_feature(self, feature: ReceiverFeature) -> None:
-        self.features = [
-            f for f in self.features if not isinstance(feature, f.__class__)
-        ]
-        self.features.append(feature)
-
-    def get_feature(self, feature_type: Type[_ReceiverFeature]) -> _ReceiverFeature:
-        for feature in self.features:
-            if isinstance(feature, feature_type):
-                return feature
-        raise TypeError(f"cannot find feature of type {feature_type.__class__}")
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         """
@@ -185,27 +191,6 @@ class Receiver(Station):
             return start_time, start_time
         times = [arrival.get_arrival_time() for arrival in self.phase_arrivals.values()]
         return min(times), max(times)
-
-    def get_waveforms(
-        self,
-        squirrel: Squirrel,
-        seconds_after: float = 5.0,
-        seconds_before: float = 3.0,
-        phase: PhaseDescription | None = None,
-        load_data: bool = True,
-    ) -> list[Trace]:
-        start_time, end_time = self.get_arrivals_time_window(phase)
-
-        traces = squirrel.get_waveforms(
-            codes=[(*self.nsl, "*")],
-            tmin=(start_time - timedelta(seconds=seconds_before)).timestamp(),
-            tmax=(end_time + timedelta(seconds=seconds_after)).timestamp(),
-            want_incomplete=False,
-            load_data=load_data,
-        )
-        if not traces:
-            raise KeyError
-        return traces
 
     @classmethod
     def from_station(cls, station: Station) -> Self:
@@ -254,20 +239,21 @@ class EventReceivers(BaseModel):
         tmin = min(times).timestamp() - seconds_before
         tmax = max(times).timestamp() + seconds_after
         nslc_ids = [(*receiver.nsl, "*") for receiver in self]
-        traces: list[Trace] = squirrel.get_waveforms(
+        traces = squirrel.get_waveforms(
             codes=nslc_ids,
             tmin=tmin,
             tmax=tmax,
             accessor_id=accessor_id,
             want_incomplete=False,
         )
+        squirrel.clear_accessor(accessor_id, cache_id="waveform")
+
         for tr in traces:
             # Crop to receiver's phase arrival window
             receiver = self.get_receiver(tr.nslc_id[:3])
             tmin, tmax = receiver.get_arrivals_time_window(phase)
             tr.chop(tmin.timestamp() - seconds_before, tmax.timestamp() + seconds_after)
 
-        squirrel.advance_accessor(accessor_id, cache_id="waveform")
         return traces
 
     async def get_waveforms_restituted(
@@ -288,16 +274,16 @@ class EventReceivers(BaseModel):
 
         Args:
             squirrel (Squirrel): The squirrel waveform organizer.
-            seconds_before (float, optional): Number of seconds before the event
+            seconds_before (float, optional): Number of seconds before phase arrival
                 to retrieve. Defaults to 2.0.
-            seconds_after (float, optional): Number of seconds after the event
+            seconds_after (float, optional): Number of seconds after phase arrival
                 to retrieve. Defaults to 5.0.
             seconds_fade (float, optional): Number of seconds for fade in/out.
                 Defaults to 5.0.
             cut_off_fade (bool, optional): Whether to cut off the fade in/out.
                 Defaults to True.
-            phase (PhaseDescription | None, optional): The phase description.
-                Defaults to None.
+            phase (PhaseDescription | None, optional): The phase description. If None,
+                the whole time window is retrieved. Defaults to None.
             quantity (MeasurementUnit, optional): The measurement unit.
                 Defaults to "velocity".
             demean (bool, optional): Whether to demean the waveforms. Defaults to True.
@@ -321,7 +307,7 @@ class EventReceivers(BaseModel):
         restituted_traces = []
         for tr in traces:
             try:
-                response: Response = squirrel.get_response(
+                response = squirrel.get_response(
                     tmin=tr.tmin,
                     tmax=tr.tmax,
                     codes=[tr.nslc_id],
@@ -461,6 +447,7 @@ class EventDetection(Location):
 
     _detection_idx: int | None = PrivateAttr(None)
     _rundir: ClassVar[Path | None] = None
+    _receiver_cache: ClassVar[ReceiverCache | None] = None
 
     @field_validator("features", mode="before")
     @classmethod
@@ -479,6 +466,7 @@ class EventDetection(Location):
             rundir (Path): The path to the rundir.
         """
         cls._rundir = rundir
+        cls._receiver_cache = ReceiverCache(rundir / FILENAME_RECEIVERS)
 
     @property
     def magnitude(self) -> EventMagnitude | None:
@@ -489,9 +477,7 @@ class EventDetection(Location):
         """
         return self.magnitudes[0] if self.magnitudes else None
 
-    async def dump_detection(
-        self, file: Path | None = None, update: bool = False
-    ) -> None:
+    async def save(self, file: Path | None = None, update: bool = False) -> None:
         """
         Dump the detection data to a file.
 
@@ -592,12 +578,12 @@ class EventDetection(Location):
         elif self._detection_idx is None:
             self._receivers = EventReceivers(event_uid=self.uid)
         elif self._rundir and self._detection_idx is not None:
-            logger.debug("fetching receiver information from file")
-            receiver_file = self._rundir / FILENAME_RECEIVERS
-            with receiver_file.open() as f:
-                for _ in range(self._detection_idx):  # Seek to line
-                    next(f)
-                receivers = EventReceivers.model_validate_json(next(f))
+            if self._receiver_cache is None:
+                raise ValueError("cannot fetch receivers without set rundir")
+
+            logger.debug("fetching receiver information from cache")
+            row = self._receiver_cache.get_row(self._detection_idx)
+            receivers = EventReceivers.model_validate_json(row)
 
             if receivers.event_uid != self.uid:
                 raise ValueError(f"uid mismatch: {receivers.event_uid} != {self.uid}")
@@ -634,12 +620,12 @@ class EventDetection(Location):
         """
         csv_line = {
             "time": self.time,
-            "lat": round(self.effective_lat, 5),
-            "lon": round(self.effective_lon, 5),
-            "depth": round(self.effective_depth, 5),
-            "east_shift": round(self.east_shift, 5),
-            "north_shift": round(self.north_shift, 5),
-            "distance_border": round(self.distance_border, 5),
+            "lat": round(self.effective_lat, 6),
+            "lon": round(self.effective_lon, 6),
+            "depth": round(self.effective_depth, 2),
+            "east_shift": round(self.east_shift, 2),
+            "north_shift": round(self.north_shift, 2),
+            "distance_border": round(self.distance_border, 2),
             "in_bounds": self.in_bounds,
             "semblance": self.semblance,
         }
@@ -763,8 +749,8 @@ class EventDetections(BaseModel):
 
         self.detections.append(detection)
         logger.info(
-            "%s event detection #%d %s: %.5f°, %.5f°, depth %.1f m, "
-            "border distance %.1f m, semblance %.3f",
+            "%s event detection %d %s: %.5f°, %.5f°, depth %.1f m, "
+            "border distance %.1f m, semblance %.3f, magnitude %.2f",
             Symbols.Target,
             self.n_detections,
             detection.time,
@@ -772,30 +758,13 @@ class EventDetections(BaseModel):
             detection.depth,
             detection.distance_border,
             detection.semblance,
+            detection.magnitude.average if detection.magnitude else 0.0,
         )
         self._stats.new_detection(detection)
         # This has to happen after the markers are saved, cache is cleared
-        await detection.dump_detection()
+        await detection.save()
 
-    async def export_detections(self, jitter_location: float = 0.0) -> None:
-        """Dump all detections to files in the detection directory."""
-
-        logger.debug("dumping detections")
-
-        await self.export_csv(self.csv_dir / "detections.csv")
-        self.export_pyrocko_events(self.rundir / "pyrocko_detections.list")
-
-        if jitter_location:
-            await self.export_csv(
-                self.csv_dir / "detections_jittered.csv",
-                jitter_location=jitter_location,
-            )
-            self.export_pyrocko_events(
-                self.rundir / "pyrocko_detections_jittered.list",
-                jitter_location=jitter_location,
-            )
-
-    def add_semblance_trace(self, trace: Trace) -> None:
+    def save_semblance_trace(self, trace: Trace) -> None:
         """Add semblance trace to detection and save to file.
 
         Args:
@@ -827,21 +796,52 @@ class EventDetections(BaseModel):
                 detections.detections.append(detection)
 
         logger.info("loaded %d detections", detections.n_detections)
-        detections._stats.n_detections = detections.n_detections
-        detections._stats.max_semblance = max(
-            detection.semblance for detection in detections
-        )
+
+        stats = detections._stats
+        stats.n_detections = detections.n_detections
+        if detections:
+            stats.max_semblance = max(detection.semblance for detection in detections)
         return detections
 
-    async def export_csv(self, file: Path, jitter_location: float = 0.0) -> None:
-        """Export detections to a CSV file
+    async def save(self) -> None:
+        """Save detections to current rundir."""
+        logger.debug("saving %d detections", self.n_detections)
+        async with aiofiles.open(self.rundir / FILENAME_DETECTIONS, "w") as f:
+            for detection in self:
+                await f.write(f"{detection.model_dump_json(exclude={'receivers'})}\n")
+
+    async def export_detections(self, jitter_location: float = 0.0) -> None:
+        """
+        Export detections to CSV and Pyrocko event lists in the current rundir.
 
         Args:
-            file (Path): output filename
-            randomize_meters (float, optional): randomize the location of each detection
+            jitter_location (float): The amount of jitter in [m] to apply
+                to the detection locations. Defaults to 0.0.
+        """
+        logger.debug("dumping detections")
+
+        await self.export_csv(self.csv_dir / "detections.csv")
+        self.export_pyrocko_events(self.rundir / "pyrocko_detections.list")
+
+        if jitter_location:
+            await self.export_csv(
+                self.csv_dir / "detections_jittered.csv",
+                jitter_location=jitter_location,
+            )
+            self.export_pyrocko_events(
+                self.rundir / "pyrocko_detections_jittered.list",
+                jitter_location=jitter_location,
+            )
+
+    async def export_csv(self, file: Path, jitter_location: float = 0.0) -> None:
+        """Export detections to a CSV file.
+
+        Args:
+            file (Path): The output filename.
+            jitter_location (float, optional): Randomize the location of each detection
                 by this many meters. Defaults to 0.0.
         """
-        header = set()
+        header = []
 
         if jitter_location:
             detections = [det.jitter_location(jitter_location) for det in self]
@@ -851,16 +851,19 @@ class EventDetections(BaseModel):
         csv_dicts: list[dict] = []
         for detection in detections:
             csv = detection.get_csv_dict()
-            header.update(csv.keys())
+            for key in csv:
+                if key not in header:
+                    header.append(key)
             csv_dicts.append(csv)
 
-        lines = [
+        header_line = [",".join(header) + "\n"]
+        rows = [
             ",".join(str(csv.get(key, "")) for key in header) + "\n"
             for csv in csv_dicts
         ]
 
-        async with aiofiles.open(file) as f:
-            await f.writelines(lines)
+        async with aiofiles.open(file, "w") as f:
+            await f.writelines(header_line + rows)
 
     def export_pyrocko_events(
         self, filename: Path, jitter_location: float = 0.0
@@ -877,6 +880,7 @@ class EventDetections(BaseModel):
         dump_events(
             [det.as_pyrocko_event() for det in detections],
             filename=str(filename),
+            format="yaml",
         )
 
     def export_pyrocko_markers(self, filename: Path) -> None:

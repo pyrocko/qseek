@@ -80,7 +80,6 @@ class GroundMotionExtractor(FeatureExtractor):
             except Exception:
                 continue
             receiver_motions.append(ground_motion)
-            receiver.add_feature(ground_motion)
 
         event_ground_motions = EventGroundMotion(
             seconds_before=self.seconds_before,
@@ -95,4 +94,4 @@ class GroundMotionExtractor(FeatureExtractor):
                 gm.peak_ground_velocity for gm in receiver_motions
             ),
         )
-        event.features.add_feature(event_ground_motions)
+        event.add_feature(event_ground_motions)

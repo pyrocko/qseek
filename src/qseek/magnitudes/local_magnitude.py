@@ -102,8 +102,8 @@ class LocalMagnitude(EventMagnitude):
 
     def csv_row(self) -> dict[str, float]:
         return {
-            f"ML_{self.model}": self.average,
-            f"ML_error_{self.model}": self.error,
+            f"ML-{self.model}": self.average,
+            f"ML-error-{self.model}": self.error,
         }
 
     def plot(self) -> None:
@@ -245,10 +245,4 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             logger.warning("Local magnitude is NaN, skipping event %s", event.time)
             return
 
-        logger.info(
-            "Ml %.1f (±%.2f) for event %s",
-            local_magnitude.average,
-            local_magnitude.error,
-            event.time,
-        )
         event.add_magnitude(local_magnitude)
