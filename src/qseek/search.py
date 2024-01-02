@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import cProfile
 import logging
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -53,7 +52,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100]
-p = cProfile.Profile()
 
 
 class SearchStats(Stats):

@@ -40,6 +40,7 @@ class SquirrelPrefetcher:
     downsample_to: float | None
     load_time: timedelta = timedelta(seconds=0.0)
 
+    _load_queue: asyncio.Queue[Batch | None]
     _fetched_batches: int
     _task: asyncio.Task[None]
 
@@ -53,6 +54,8 @@ class SquirrelPrefetcher:
     ) -> None:
         self.iterator = iterator
         self.queue = asyncio.Queue(maxsize=queue_size)
+        self._load_queue = asyncio.Queue(maxsize=queue_size)
+
         self.downsample_to = downsample_to
         self.highpass = highpass
         self.lowpass = lowpass
@@ -65,7 +68,6 @@ class SquirrelPrefetcher:
             "start prefetching data, queue size %d",
             self.queue.maxsize,
         )
-        done = asyncio.Event()
 
         def post_processing(batch: Batch) -> Batch:
             # Filter traces in-place
@@ -79,7 +81,7 @@ class SquirrelPrefetcher:
                     desired_deltat = 1.0 / self.downsample_to
                     for tr in batch.traces:
                         if tr.deltat < desired_deltat:
-                            tr.downsample_to(desired_deltat, allow_upsample_max=2)
+                            tr.downsample_to(desired_deltat, allow_upsample_max=3)
                 except Exception as exc:
                     logger.exception(exc)
 
@@ -97,29 +99,30 @@ class SquirrelPrefetcher:
                 logger.debug("filtered waveform batch in %s", datetime_now() - start)
             return batch
 
-        async def load_next() -> None | Batch:
-            start = datetime_now()
-            batch = await asyncio.to_thread(next, self.iterator, None)
-            if batch is None:
-                done.set()
-                return None
-            logger.debug("read waveform batch in %s", datetime_now() - start)
-            self._fetched_batches += 1
-            self.load_time = datetime_now() - start
-            return batch
+        async def load_data() -> None | Batch:
+            while True:
+                start = datetime_now()
+                batch = await asyncio.to_thread(next, self.iterator, None)
+                if batch is None:
+                    return
+                logger.debug("read waveform batch in %s", datetime_now() - start)
+                self._fetched_batches += 1
+                self.load_time = datetime_now() - start
+                await self._load_queue.put(batch)
 
-        async def post_process_batch(batch: Batch) -> None:
-            await asyncio.to_thread(post_processing, batch)
-            await self.queue.put(batch)
+        async def post_process() -> None:
+            while True:
+                batch = await self._load_queue.get()
+                if batch is None:
+                    return
+                await asyncio.to_thread(post_processing, batch)
+                await self.queue.put(batch)
 
-        post_processing_task: asyncio.Task | None = None
-        while not done.is_set():
-            batch = await load_next()
-            if batch is None:
-                break
-            if post_processing_task:
-                await post_processing_task
-            post_processing_task = asyncio.create_task(post_process_batch(batch))
+        post_process_task = asyncio.create_task(post_process())
+        load_task = asyncio.create_task(load_data())
+
+        await load_task
+        await post_process_task
 
         await self.queue.put(None)
 

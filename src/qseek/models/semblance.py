@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import cProfile
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Iterable
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
     from qseek.octree import Node
 
 
-p = cProfile.Profile()
 logger = logging.getLogger(__name__)
 
 
