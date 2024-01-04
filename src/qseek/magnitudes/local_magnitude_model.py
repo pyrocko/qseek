@@ -8,12 +8,13 @@ import numpy as np
 from pyrocko.trace import PoleZeroResponse
 
 from qseek.features.utils import ChannelSelector, ChannelSelectors
+from qseek.utils import MeasurementUnit
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from typing_extensions import Self
 
-    from qseek.models.detection import EventDetection, MeasurementUnit, Receiver
+    from qseek.models.detection import EventDetection, Receiver
 
 logger = logging.getLogger(__name__)
 

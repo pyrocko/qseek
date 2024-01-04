@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 from uuid import UUID, uuid4
 
 import aiofiles
@@ -35,7 +35,13 @@ from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.stats import Stats
 from qseek.tracers.tracers import RayTracerArrival
-from qseek.utils import PhaseDescription, Symbols, filter_clipped_traces, time_to_path
+from qseek.utils import (
+    MeasurementUnit,
+    PhaseDescription,
+    Symbols,
+    filter_clipped_traces,
+    time_to_path,
+)
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -46,12 +52,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-MeasurementUnit = Literal[
-    "displacement",
-    "velocity",
-    "acceleration",
-]
 
 FILENAME_DETECTIONS = "detections.json"
 FILENAME_RECEIVERS = "detections_receivers.json"

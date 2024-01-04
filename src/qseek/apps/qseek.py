@@ -164,6 +164,9 @@ except ImportError:
 
 
 def main() -> None:
+    from qseek.utils import CACHE_DIR, load_insights, setup_rich_logging
+
+    load_insights()
     from rich import box
     from rich.progress import track
     from rich.prompt import IntPrompt
@@ -172,9 +175,7 @@ def main() -> None:
     from qseek.console import console
     from qseek.search import Search
     from qseek.server import WebServer
-    from qseek.utils import CACHE_DIR, load_insights, setup_rich_logging
 
-    load_insights()
     args = parser.parse_args()
 
     setup_rich_logging(level=logging.INFO - args.verbose * 10)
@@ -260,7 +261,7 @@ def main() -> None:
             corrections = asyncio.run(corrections_class.prepare(rundir, console))
 
             search = json.loads((rundir / "search.json").read_text())
-            search["corrections"] = corrections.model_dump(mode="json")
+            search["station_corrections"] = corrections.model_dump(mode="json")
 
             new_config_file = rundir.parent / f"{rundir.name}-corrections.json"
             console.print("writing new config file")

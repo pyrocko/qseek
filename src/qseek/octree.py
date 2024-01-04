@@ -23,6 +23,7 @@ from pydantic import (
 from pyrocko import orthodrome as od
 
 from qseek.models.location import CoordSystem, Location
+from qseek.utils import Range
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -232,15 +233,15 @@ class Octree(BaseModel):
         default=500.0,
         description="Smallest possible size of an octree node in meters.",
     )
-    east_bounds: tuple[float, float] = Field(
+    east_bounds: Range = Field(
         default=(-10 * KM, 10 * KM),
         description="East bounds of the octree in meters.",
     )
-    north_bounds: tuple[float, float] = Field(
+    north_bounds: Range = Field(
         default=(-10 * KM, 10 * KM),
         description="North bounds of the octree in meters.",
     )
-    depth_bounds: tuple[float, float] = Field(
+    depth_bounds: Range = Field(
         default=(0 * KM, 20 * KM),
         description="Depth bounds of the octree in meters.",
     )
@@ -260,15 +261,6 @@ class Octree(BaseModel):
         if location.lat == 0.0 and location.lon == 0.0:
             raise ValueError("invalid  location, expected non-zero lat/lon")
         return location
-
-    @field_validator("east_bounds", "north_bounds", "depth_bounds")
-    def check_bounds(
-        cls,  # noqa: N805
-        bounds: tuple[float, float],
-    ) -> tuple[float, float]:
-        if bounds[0] >= bounds[1]:
-            raise ValueError(f"invalid bounds {bounds}, expected (min, max)")
-        return bounds
 
     @model_validator(mode="after")
     def check_limits(self) -> Octree:
