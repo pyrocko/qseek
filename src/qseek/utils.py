@@ -15,12 +15,13 @@ from typing import (
     Callable,
     ClassVar,
     Coroutine,
+    Literal,
     ParamSpec,
     TypeVar,
 )
 
 import numpy as np
-from pydantic import ByteSize, constr
+from pydantic import AfterValidator, ByteSize, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
@@ -80,6 +81,15 @@ class BackgroundTasks:
     @classmethod
     async def wait_all(cls) -> None:
         await asyncio.gather(*cls.tasks)
+
+
+def _range_validator(v: tuple[float, float]) -> tuple[float, float]:
+    if v[0] > v[1]:
+        raise ValueError(f"Bad range {v}, must be (min, max)")
+    return v
+
+
+Range = Annotated[tuple[float, float], AfterValidator(_range_validator)]
 
 
 def time_to_path(datetime: datetime) -> str:
@@ -280,6 +290,13 @@ def load_insights() -> None:
     try:
         import qseek.insights  # noqa: F401
 
-        logger.debug("loaded qseek.insights package")
-    except ImportError:
-        logger.debug("package qseek.insights not installed")
+        logger.info("loaded qseek.insights package")
+    except ImportError as exc:
+        logger.warning("package qseek.insights not installed", exc_info=exc)
+
+
+MeasurementUnit = Literal[
+    "displacement",
+    "velocity",
+    "acceleration",
+]
