@@ -58,10 +58,11 @@ class SearchStats(Stats):
     batch_time: datetime = datetime.min
     batch_count: int = 0
     batch_count_total: int = 0
-    processing_duration: timedelta = timedelta(seconds=0.0)
+    processed_duration: timedelta = timedelta(seconds=0.0)
     processed_bytes: int = 0
+    processing_time: timedelta = timedelta(seconds=0.0)
     latest_processing_rate: float = 0.0
-    latest_processing_duration: timedelta = timedelta(seconds=0.0)
+    latest_processing_speed: timedelta = timedelta(seconds=0.0)
 
     _search_start: datetime = PrivateAttr(default_factory=datetime_now)
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
@@ -91,9 +92,16 @@ class SearchStats(Stats):
         Returns:
             float: The processing rate in bytes per second.
         """
-        if not self.processing_duration:
+        if not self.processing_time:
             return 0.0
-        return self.processed_bytes / self.processing_duration.total_seconds()
+        return self.processed_bytes / self.processing_time.total_seconds()
+
+    @computed_field
+    @property
+    def processing_speed(self) -> timedelta:
+        if not self.processing_time:
+            return timedelta(seconds=0.0)
+        return self.processed_duration / self.processing_time.total_seconds()
 
     @computed_field
     @property
@@ -121,9 +129,10 @@ class SearchStats(Stats):
         self.batch_count_total = batch.n_batches
         self.batch_time = batch.end_time
         self.processed_bytes += batch.cumulative_bytes
-        self.processing_duration += duration
+        self.processed_duration += batch.duration
+        self.processing_time += duration
         self.latest_processing_rate = batch.cumulative_bytes / duration.total_seconds()
-        self.latest_processing_duration = batch.duration / duration.total_seconds()
+        self.latest_processing_speed = batch.duration / duration.total_seconds()
         self._batch_processing_times.append(duration)
         if show_log:
             self.log()
@@ -143,8 +152,8 @@ class SearchStats(Stats):
         )
 
     def _populate_table(self, table: Table) -> None:
-        def tts(time: timedelta) -> str:
-            return str(time).split(".")[0]
+        def tts(duration: timedelta) -> str:
+            return str(duration).split(".")[0]
 
         table.add_row(
             "Progress ",
@@ -155,12 +164,7 @@ class SearchStats(Stats):
         table.add_row(
             "Processing rate",
             f"{human_readable_bytes(self.processing_rate)}/s"
-            f" ({tts(self.processing_duration / self.batch_count)} tr/s))",
-        )
-        table.add_row(
-            "Last batch",
-            f"{human_readable_bytes(self.latest_processing_rate)}/s"
-            f" ({tts(self.latest_processing_duration)} tr/s)",
+            f" ({tts(self.processing_speed)} tr/s)",
         )
         table.add_row(
             "Remaining Time",
