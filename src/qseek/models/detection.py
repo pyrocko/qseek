@@ -36,6 +36,7 @@ from qseek.models.station import Station, Stations
 from qseek.stats import Stats
 from qseek.tracers.tracers import RayTracerArrival
 from qseek.utils import (
+    NSL,
     MeasurementUnit,
     PhaseDescription,
     Symbols,
@@ -343,7 +344,7 @@ class EventReceivers(BaseModel):
             )
         return restituted_traces
 
-    def get_receiver(self, nsl: tuple[str, str, str]) -> Receiver:
+    def get_receiver(self, nsl: NSL) -> Receiver:
         """
         Get the receiver object based on given NSL tuple.
 
@@ -359,7 +360,7 @@ class EventReceivers(BaseModel):
         for receiver in self:
             if receiver.nsl == nsl:
                 return receiver
-        raise KeyError(f"cannot find station {'.'.join(nsl)}")
+        raise KeyError(f"cannot find station {nsl.pretty}")
 
     def add(
         self,
@@ -385,12 +386,12 @@ class EventReceivers(BaseModel):
                 self.receivers.append(receiver)
             receiver.add_phase_detection(arrival)
 
-    def get_by_nsl(self, nsl: tuple[str, str, str]) -> Receiver:
+    def get_by_nsl(self, nsl: NSL) -> Receiver:
         """
         Retrieves a receiver object by its NSL (network, station, location) tuple.
 
         Args:
-            nsl (tuple[str, str, str]): The NSL tuple representing
+            nsl (NSL): The NSL tuple representing
                 the network, station, and location.
 
         Returns:
@@ -402,7 +403,7 @@ class EventReceivers(BaseModel):
         for receiver in self:
             if receiver.nsl == nsl:
                 return receiver
-        raise KeyError(f"cannot find station {nsl}")
+        raise KeyError(f"cannot find station {nsl.pretty}")
 
     def get_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         """
