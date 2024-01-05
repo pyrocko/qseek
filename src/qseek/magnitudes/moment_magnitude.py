@@ -13,7 +13,7 @@ from qseek.magnitudes.moment_magnitude_store import (
     PeakAmplitudesBase,
     PeakAmplitudesStore,
 )
-from qseek.utils import CACHE_DIR, MeasurementUnit
+from qseek.utils import CACHE_DIR
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -52,23 +52,19 @@ class MomentMagnitude(EventMagnitude):
         raise NotImplementedError
 
 
-"""
-Problems:
-* Set the measurement unit for the traces in the selector.
-* Set the distance range for the selector.
-"""
-
-
 class MomentMagnitudeExtractor(EventMagnitudeCalculator):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
     seconds_before: PositiveFloat = 10.0
     seconds_after: PositiveFloat = 10.0
     padding_seconds: PositiveFloat = 10.0
-    quantity: MeasurementUnit = "displacement"
 
     gf_store_dirs: list[DirectoryPath] = [Path(".")]
-    models: list[PeakAmplitudesBase] = [PeakAmplitudesBase()]
+
+    models: list[PeakAmplitudesBase] = Field(
+        default_factory=list,
+        description="The peak amplitude models to use.",
+    )
 
     _stores: list[PeakAmplitudesStore] = PrivateAttr(default_factory=list)
 

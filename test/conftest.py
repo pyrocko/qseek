@@ -8,14 +8,13 @@ from typing import Generator
 import aiohttp
 import numpy as np
 import pytest
+from qseek.models.detection import EventDetection, EventDetections
+from qseek.models.location import Location
+from qseek.models.station import Station, Stations
+from qseek.octree import Octree
+from qseek.tracers.cake import EarthModel, Timing, TravelTimeTree
+from qseek.utils import datetime_now
 from rich.progress import Progress
-
-from lassie.models.detection import EventDetection, EventDetections
-from lassie.models.location import Location
-from lassie.models.station import Station, Stations
-from lassie.octree import Octree
-from lassie.tracers.cake import EarthModel, Timing, TravelTimeTree
-from lassie.utils import datetime_now
 
 DATA_DIR = Path(__file__).parent / "data"
 

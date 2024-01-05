@@ -92,6 +92,10 @@ class _Range(NamedTuple):
     def inside(self, value: float) -> bool:
         return self.min <= value <= self.max
 
+    @classmethod
+    def from_array(cls, array: np.ndarray) -> _Range:
+        return cls(array.min(), array.max())
+
 
 def _range_validator(v: _Range) -> _Range:
     if v.min > v.max:
@@ -351,7 +355,7 @@ class ChannelSelector:
 
 
 class ChannelSelectors:
-    All = ChannelSelector("ENZ0123", 3)
+    All = ChannelSelector("ENZ0123RT", 3)
     HorizontalAbs = ChannelSelector("EN123RT", 2, normalize=True)
     Horizontal = ChannelSelector("EN123RT", 2)
     Vertical = ChannelSelector("Z0", 1)
