@@ -90,11 +90,30 @@ class _Range(NamedTuple):
     max: float
 
     def inside(self, value: float) -> bool:
+        """
+        Check if a value is inside the range.
+
+        Args:
+            value (float): The value to check.
+
+        Returns:
+            bool: True if the value is inside the range, False otherwise.
+        """
         return self.min <= value <= self.max
 
     @classmethod
-    def from_array(cls, array: np.ndarray) -> _Range:
-        return cls(array.min(), array.max())
+    def from_list(cls, array: np.ndarray | list[float]) -> _Range:
+        """
+        Create a Range object from a numpy array.
+
+        Parameters:
+        - array: numpy.ndarray
+            The array from which to create the Range object.
+
+        Returns:
+        - _Range: The created Range object.
+        """
+        return cls(min=np.min(array), max=np.max(array))
 
 
 def _range_validator(v: _Range) -> _Range:

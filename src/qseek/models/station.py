@@ -102,7 +102,8 @@ class Stations(BaseModel):
         seen_nsls = set()
         for sta in self.stations.copy():
             if sta.lat == 0.0 or sta.lon == 0.0:
-                self.blacklist_station(sta, reason="bad geographical coordinates")
+                logger.warning("removing station %s: bad coordinates", sta.nsl_pretty)
+                self.stations.remove(sta)
                 continue
 
             if sta.nsl_pretty in seen_nsls:
