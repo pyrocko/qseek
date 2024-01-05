@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import (
     ClassVar,
     Coroutine,
     Literal,
+    NamedTuple,
     ParamSpec,
     TypeVar,
 )
@@ -83,13 +85,21 @@ class BackgroundTasks:
         await asyncio.gather(*cls.tasks)
 
 
-def _range_validator(v: tuple[float, float]) -> tuple[float, float]:
-    if v[0] > v[1]:
+class _Range(NamedTuple):
+    min: float
+    max: float
+
+    def inside(self, value: float) -> bool:
+        return self.min <= value <= self.max
+
+
+def _range_validator(v: _Range) -> _Range:
+    if v.min > v.max:
         raise ValueError(f"Bad range {v}, must be (min, max)")
     return v
 
 
-Range = Annotated[tuple[float, float], AfterValidator(_range_validator)]
+Range = Annotated[_Range, AfterValidator(_range_validator)]
 
 
 def time_to_path(datetime: datetime) -> str:
@@ -300,3 +310,49 @@ MeasurementUnit = Literal[
     "velocity",
     "acceleration",
 ]
+
+
+@dataclass
+class ChannelSelector:
+    channels: str
+    number_channels: int
+    normalize: bool = False
+
+    def get_traces(self, traces: list[Trace]) -> list[Trace]:
+        """
+        Filter and normalize a list of traces based on the specified channels.
+
+        Args:
+            traces (list[Trace]): The list of traces to filter.
+
+        Returns:
+            list[Trace]: The filtered and normalized list of traces.
+
+        Raises:
+            KeyError: If the number of channels in the filtered list does not match
+                the expected number of channels.
+        """
+        traces = [tr for tr in traces if tr.channel[-1] in self.channels]
+        if len(traces) != self.number_channels:
+            raise KeyError(
+                f"cannot get {self.number_channels} channels"
+                f" for selector {self.channels}"
+                f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces)}"
+            )
+        if self.normalize:
+            traces_norm = traces[0].copy()
+            traces_norm.ydata = np.linalg.norm(
+                np.array([tr.ydata for tr in traces]), axis=0
+            )
+            return [traces_norm]
+        return traces
+
+    __call__ = get_traces
+
+
+class ChannelSelectors:
+    All = ChannelSelector("ENZ0123", 3)
+    HorizontalAbs = ChannelSelector("EN123RT", 2, normalize=True)
+    Horizontal = ChannelSelector("EN123RT", 2)
+    Vertical = ChannelSelector("Z0", 1)
+    NorthEast = ChannelSelector("NE", 2)

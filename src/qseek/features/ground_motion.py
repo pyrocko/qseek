@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 
 from qseek.features.base import EventFeature, FeatureExtractor, ReceiverFeature
-from qseek.features.utils import ChannelSelectors
+from qseek.utils import ChannelSelectors
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel

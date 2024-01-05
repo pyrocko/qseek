@@ -298,18 +298,17 @@ class Octree(BaseModel):
             tuple[float, float, float]: EW, NS and depth extent of the octree in meters.
         """
         return (
-            self.east_bounds[1] - self.east_bounds[0],
-            self.north_bounds[1] - self.north_bounds[0],
-            self.depth_bounds[1] - self.depth_bounds[0],
+            self.east_bounds.max - self.east_bounds.min,
+            self.north_bounds.max - self.north_bounds.min,
+            self.depth_bounds.max - self.depth_bounds.min,
         )
 
     def _get_root_nodes(self, length: float) -> list[Node]:
         ln = length
         ext_east, ext_north, ext_depth = self.extent()
-        # FIXME: this is not correct, the nodes should be centered
-        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds[0]
-        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds[0]
-        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds[0]
+        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.min
+        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds.min
+        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds.min
 
         return [
             Node(east=east, north=north, depth=depth, size=ln, tree=self)
@@ -391,7 +390,7 @@ class Octree(BaseModel):
         return self._cached_coordinates[system]
 
     def distances_stations(self, stations: Stations) -> np.ndarray:
-        """Returns the distances from all nodes to all stations.
+        """Returns the 3D distances from all nodes to all stations.
 
         Args:
             stations (Stations): Stations to calculate distance to.
@@ -405,6 +404,27 @@ class Octree(BaseModel):
         sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
         return np.linalg.norm(sta_coords - node_coords[:, np.newaxis], axis=2)
+
+    def distances_stations_surface(self, stations: Stations) -> np.ndarray:
+        """Returns the surface distance from all nodes to all stations.
+
+        Args:
+            nodes (Sequence[Node]): Nodes to calculate distance from.
+            stations (Stations): Stations to calculate distance to.
+
+        Returns:
+            np.ndarray: Distances in shape (n-nodes, n-stations).
+        """
+        node_coords = self.get_coordinates(system="geographic")
+        n_nodes = node_coords.shape[0]
+
+        node_coords = np.repeat(node_coords, stations.n_stations, axis=0)
+        sta_coords = np.vstack(
+            n_nodes * [stations.get_coordinates(system="geographic")]
+        )
+        return od.distance_accurate50m_numpy(
+            node_coords[:, 0], node_coords[:, 1], sta_coords[:, 0], sta_coords[:, 1]
+        ).reshape(-1, stations.n_stations)
 
     def get_nodes(self, semblance_threshold: float = 0.0) -> list[Node]:
         """Get all nodes with a semblance above a threshold.

@@ -167,6 +167,23 @@ class Location(BaseModel):
         shifted.north_shift = 0.0
         return shifted
 
+    def shift(self, east: float, north: float, elevation: float) -> Self:
+        """Shift the location by the given offsets.
+
+        Args:
+            east (float): East offset in [m].
+            north (float): North offset in [m].
+            elevation (float): Elevation offset in [m].
+
+        Returns:
+            Self: The shifted location.
+        """
+        shifted = self.model_copy()
+        shifted.east_shift += east
+        shifted.north_shift += north
+        shifted.elevation += elevation
+        return shifted
+
     def __hash__(self) -> int:
         return hash(self.location_hash())
 

@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Type
 import numpy as np
 from pyrocko.trace import PoleZeroResponse
 
-from qseek.features.utils import ChannelSelector, ChannelSelectors
-from qseek.utils import MeasurementUnit
+from qseek.utils import ChannelSelector, ChannelSelectors, MeasurementUnit
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -109,6 +108,8 @@ class StationAmplitudes(NamedTuple):
     @property
     def anr(self) -> float:
         """Amplitude to noise ratio."""
+        if self.noise == 0.0:
+            return 0.0
         return self.peak / self.noise
 
     @classmethod
