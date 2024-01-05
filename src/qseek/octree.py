@@ -234,15 +234,15 @@ class Octree(BaseModel):
         description="Smallest possible size of an octree node in meters.",
     )
     east_bounds: Range = Field(
-        default=(-10 * KM, 10 * KM),
+        default=Range(-10 * KM, 10 * KM),
         description="East bounds of the octree in meters.",
     )
     north_bounds: Range = Field(
-        default=(-10 * KM, 10 * KM),
+        default=Range(-10 * KM, 10 * KM),
         description="North bounds of the octree in meters.",
     )
     depth_bounds: Range = Field(
-        default=(0 * KM, 20 * KM),
+        default=Range(0 * KM, 20 * KM),
         description="Depth bounds of the octree in meters.",
     )
     absorbing_boundary: float = Field(
