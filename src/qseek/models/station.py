@@ -10,6 +10,8 @@ from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
+from qseek.utils import NSL
+
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
@@ -44,18 +46,13 @@ class Station(Location):
         return PyrockoStation(**self.model_dump(exclude={"effective_lat_lon"}))
 
     @property
-    def nsl_pretty(self) -> str:
-        """Pretty NSL code as string"""
-        return ".".join(self.nsl)
-
-    @property
-    def nsl(self) -> tuple[str, str, str]:
+    def nsl(self) -> NSL:
         """Network Station Location code as tuple.
 
         Returns:
             tuple[str, str, str]: Network, Station, Location
         """
-        return self.network, self.station, self.location
+        return NSL(self.network, self.station, self.location)
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.nsl))
@@ -102,22 +99,22 @@ class Stations(BaseModel):
         seen_nsls = set()
         for sta in self.stations.copy():
             if sta.lat == 0.0 or sta.lon == 0.0:
-                logger.warning("removing station %s: bad coordinates", sta.nsl_pretty)
+                logger.warning("removing station %s: bad coordinates", sta.nsl.pretty)
                 self.stations.remove(sta)
                 continue
 
-            if sta.nsl_pretty in seen_nsls:
-                logger.warning("removing duplicate station: %s", sta.nsl_pretty)
+            if sta.nsl.pretty in seen_nsls:
+                logger.warning("removing duplicate station: %s", sta.nsl.pretty)
                 self.stations.remove(sta)
                 continue
-            seen_nsls.add(sta.nsl_pretty)
+            seen_nsls.add(sta.nsl.pretty)
 
         # if not self.stations:
         #     logger.warning("no stations available, add stations to start detection")
 
     def blacklist_station(self, station: Station, reason: str) -> None:
-        logger.warning("blacklisting station %s: %s", station.nsl_pretty, reason)
-        self.blacklist.add(station.nsl_pretty)
+        logger.warning("blacklisting station %s: %s", station.nsl.pretty, reason)
+        self.blacklist.add(station.nsl.pretty)
         if self.n_stations == 0:
             raise ValueError("no stations available, all stations blacklisted")
 
@@ -134,10 +131,10 @@ class Stations(BaseModel):
 
         n_removed_stations = 0
         for sta in self.stations.copy():
-            if sta.nsl_pretty not in available_squirrel_nsls:
+            if sta.nsl.pretty not in available_squirrel_nsls:
                 logger.warning(
                     "removing station %s: no waveforms available in squirrel",
-                    sta.nsl_pretty,
+                    sta.nsl.pretty,
                 )
                 self.stations.remove(sta)
                 n_removed_stations += 1
@@ -148,7 +145,7 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        return (sta for sta in self.stations if sta.nsl_pretty not in self.blacklist)
+        return (sta for sta in self.stations if sta.nsl.pretty not in self.blacklist)
 
     @property
     def n_stations(self) -> int:

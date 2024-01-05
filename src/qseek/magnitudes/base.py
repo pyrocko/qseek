@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
+import numpy as np
 from pydantic import BaseModel, Field
+from pyrocko.trace import Trace
+from typing_extensions import Self
+
+from qseek.models.detection import Receiver
+from qseek.utils import NSL
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -89,3 +95,47 @@ class EventMagnitudeCalculator(BaseModel):
             NotImplementedError: This method must be implemented by subclasses.
         """
         raise NotImplementedError
+
+
+class StationAmplitudes(NamedTuple):
+    station_nsl: NSL
+    peak: float
+    noise: float
+    std_noise: float
+
+    distance_epi: float
+    distance_hypo: float
+
+    @property
+    def anr(self) -> float:
+        """Amplitude to noise ratio."""
+        if self.noise == 0.0:
+            return 0.0
+        return self.peak / self.noise
+
+    @classmethod
+    def create(
+        cls,
+        receiver: Receiver,
+        traces: list[Trace],
+        event: EventDetection,
+        noise_padding: float = 3.0,
+    ) -> Self:
+        time_arrival = min(receiver.get_arrivals_time_window()).timestamp()
+        noise_traces = [
+            tr.chop(tmin=tr.tmin, tmax=time_arrival - noise_padding, inplace=False)
+            for tr in traces
+        ]
+
+        peak_amp = max(np.abs(tr.ydata).max() for tr in traces)
+        noise_amp = max(np.abs(tr.ydata).max() for tr in noise_traces)
+        std_noise = max(np.std(tr.ydata) for tr in noise_traces)
+
+        return cls(
+            station_nsl=receiver.nsl,
+            peak=peak_amp,
+            noise=noise_amp,
+            std_noise=std_noise,
+            distance_hypo=receiver.distance_to(event),
+            distance_epi=receiver.surface_distance_to(event),
+        )

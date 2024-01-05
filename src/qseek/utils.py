@@ -85,6 +85,60 @@ class BackgroundTasks:
         await asyncio.gather(*cls.tasks)
 
 
+class NSL(NamedTuple):
+    network: str
+    station: str
+    location: str
+
+    @property
+    def pretty(self) -> str:
+        return ".".join(self)
+
+    def match(self, other: NSL) -> bool:
+        """
+        Check if the current NSL object matches another NSL object.
+
+        Args:
+            other (NSL): The NSL object to compare with.
+
+        Returns:
+            bool: True if the objects match, False otherwise.
+        """
+        if other.location:
+            return self == other
+        if other.station:
+            return self.network == other.network and self.station == other.station
+        return self.network == other.network
+
+    @classmethod
+    def parse(cls, nsl: str) -> NSL:
+        """
+        Parse the given NSL string and return an NSL object.
+
+        Args:
+            nsl (str): The NSL string to parse.
+
+        Returns:
+            NSL: The parsed NSL object.
+
+        Raises:
+            ValueError: If the NSL string is empty or invalid.
+        """
+        if not nsl:
+            raise ValueError("invalid empty NSL")
+        try:
+            net, sta, loc, *_ = nsl.split(".")
+        except ValueError:
+            try:
+                net, sta = nsl.split(".")
+                loc = ""
+            except ValueError:
+                net = nsl
+                sta = ""
+                loc = ""
+        return cls(network=net, station=sta, location=loc)
+
+
 class _Range(NamedTuple):
     min: float
     max: float

@@ -85,12 +85,8 @@ def trace_amplitude(traces: list[Trace], channel_selector: ChannelSelector) -> f
     if not trace_selection:
         raise KeyError("No traces to normalize.")
 
-    if len(trace_selection) == 1:
-        tr = trace_selection[0].copy()
-        data = np.abs(tr.ydata)
-    else:
-        data = np.array([tr.ydata for tr in trace_selection])
-        data = np.linalg.norm(data, axis=0)
+    data = np.array([tr.ydata for tr in trace_selection])
+    data = np.linalg.norm(data, axis=0)
     return float(data.max())
 
 
@@ -702,7 +698,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         self,
         source_depth: float,
         distance: float,
-        n_amplitudes: int = 10,
+        n_amplitudes: int = 25,
         max_distance: float = 1.0 * KM,
         peak_amplitude: PeakAmplitude = "absolute",
         auto_fill: bool = True,
@@ -713,7 +709,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
 
         Args:
             depth (float): The depth of the event.
-            distance (float): The distance from the event.
+            distance (float): The surface distance from the event.
             n_amplitudes (int, optional): The number of amplitudes to retrieve.
                 Defaults to 10.
             max_distance (float, optional): The maximum distance to consider in [m].
@@ -880,7 +876,8 @@ class PeakAmplitudeStoreCache:
 
     def get_store(self, selector: PeakAmplitudesBase) -> PeakAmplitudesStore:
         """
-        Get the peak amplitude store for the given selector.
+        Get a peak amplitude store for the given selector, either from the cache
+        or by creating a new store.
 
         Args:
             selector (PeakAmplitudesSelector): The selector to use.

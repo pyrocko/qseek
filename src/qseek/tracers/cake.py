@@ -376,7 +376,7 @@ class TravelTimeTree(BaseModel):
         )
         self._cached_stations = stations
         self._cached_station_indeces = {
-            sta.nsl_pretty: idx for idx, sta in enumerate(stations)
+            sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
         station_traveltimes = self.interpolate_travel_times(octree, stations)
 
@@ -403,7 +403,7 @@ class TravelTimeTree(BaseModel):
     def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
         try:
             station_indices = np.fromiter(
-                (self._cached_station_indeces[sta.nsl_pretty] for sta in stations),
+                (self._cached_station_indeces[sta.nsl.pretty] for sta in stations),
                 dtype=int,
             )
         except KeyError as exc:

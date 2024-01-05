@@ -220,25 +220,36 @@ class EventReceivers(BaseModel):
         seconds_before: float = 3.0,
         seconds_after: float = 5.0,
         phase: PhaseDescription | None = None,
+        receivers: list[Receiver] | None = None,
     ) -> list[Trace]:
-        """Get waveforms for all receivers
+        """
+        Retrieves and restitutes waveforms for a given squirrel.
 
         Args:
-            squirrel (Squirrel): The squirrel, holding the data
+            squirrel (Squirrel): The squirrel waveform organizer.
+            seconds_before (float, optional): Number of seconds before phase arrival
+                to retrieve. Defaults to 2.0.
+            seconds_after (float, optional): Number of seconds after phase arrival
+                to retrieve. Defaults to 5.0.
+            phase (PhaseDescription | None, optional): The phase description. If None,
+                the whole time window is retrieved. Defaults to None.
+            receivers (list[Receiver] | None, optional): The receivers to retrieve
+                waveforms for. If None, all receivers are retrieved. Defaults to None.
 
         Returns:
-            list[Trace]: List of traces
+            list[Trace]: The restituted waveforms.
         """
+        receivers = receivers or list(self)
         times = list(
             chain.from_iterable(
-                receiver.get_arrivals_time_window(phase) for receiver in self
+                receiver.get_arrivals_time_window(phase) for receiver in receivers
             )
         )
         accessor_id = "qseek.event_detection"
 
         tmin = min(times).timestamp() - seconds_before
         tmax = max(times).timestamp() + seconds_after
-        nslc_ids = [(*receiver.nsl, "*") for receiver in self]
+        nslc_ids = [(*receiver.nsl, "*") for receiver in receivers]
         traces = squirrel.get_waveforms(
             codes=nslc_ids,
             tmin=tmin,
@@ -268,6 +279,7 @@ class EventReceivers(BaseModel):
         demean: bool = True,
         remove_clipped: bool = False,
         freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 25.0, 35.0),
+        receivers: list[Receiver] | None = None,
     ) -> list[Trace]:
         """
         Retrieves and restitutes waveforms for a given squirrel.
@@ -291,6 +303,8 @@ class EventReceivers(BaseModel):
                 Defaults to False.
             freqlimits (tuple[float, float, float, float], optional):
                 The frequency limits. Defaults to (0.01, 0.1, 25.0, 35.0).
+            receivers (list[Receiver] | None, optional): The receivers to retrieve
+                waveforms for. If None, all receivers are retrieved. Defaults to None.
 
         Returns:
             list[Trace]: The restituted waveforms.
@@ -301,6 +315,7 @@ class EventReceivers(BaseModel):
             phase=phase,
             seconds_after=seconds_after + seconds_fade,
             seconds_before=seconds_before + seconds_fade,
+            receivers=receivers,
         )
         traces = filter_clipped_traces(traces) if remove_clipped else traces
 

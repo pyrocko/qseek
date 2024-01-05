@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Type
 import numpy as np
 from pyrocko.trace import PoleZeroResponse
 
-from qseek.utils import ChannelSelector, ChannelSelectors, MeasurementUnit
+from qseek.magnitudes.base import StationAmplitudes
+from qseek.utils import NSL, ChannelSelector, ChannelSelectors, MeasurementUnit
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
-    from typing_extensions import Self
 
     from qseek.models.detection import EventDetection, Receiver
 
@@ -88,56 +88,12 @@ class Range(NamedTuple):
 
 
 class StationLocalMagnitude(NamedTuple):
-    station_nsl: tuple[str, str, str]
+    station_nsl: NSL
     magnitude: float
     magnitude_error: float
     peak_amp: float
     distance_epi: float
     distance_hypo: float
-
-
-class StationAmplitudes(NamedTuple):
-    station_nsl: tuple[str, str, str]
-    peak: float
-    noise: float
-    std_noise: float
-
-    distance_epi: float
-    distance_hypo: float
-
-    @property
-    def anr(self) -> float:
-        """Amplitude to noise ratio."""
-        if self.noise == 0.0:
-            return 0.0
-        return self.peak / self.noise
-
-    @classmethod
-    def create(
-        cls,
-        receiver: Receiver,
-        traces: list[Trace],
-        event: EventDetection,
-        noise_padding: float = 3.0,
-    ) -> Self:
-        time_arrival = min(receiver.get_arrivals_time_window()).timestamp()
-        noise_traces = [
-            tr.chop(tmin=tr.tmin, tmax=time_arrival - noise_padding, inplace=False)
-            for tr in traces
-        ]
-
-        peak_amp = max(np.abs(tr.ydata).max() for tr in traces)
-        noise_amp = max(np.abs(tr.ydata).max() for tr in noise_traces)
-        std_noise = max(np.std(tr.ydata) for tr in noise_traces)
-
-        return cls(
-            station_nsl=receiver.nsl,
-            peak=peak_amp,
-            noise=noise_amp,
-            std_noise=std_noise,
-            distance_hypo=receiver.distance_to(event),
-            distance_epi=receiver.surface_distance_to(event),
-        )
 
 
 class LocalMagnitudeModel:
@@ -203,7 +159,7 @@ class LocalMagnitudeModel:
         try:
             traces = _COMPONENT_MAP[self.component](traces)
         except KeyError:
-            logger.warning("Could not get channels for %s", receiver.nsl_pretty)
+            logger.warning("Could not get channels for %s", receiver.nsl.pretty)
             return None
         if not traces:
             return None
