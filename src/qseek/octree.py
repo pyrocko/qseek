@@ -282,7 +282,7 @@ class Octree(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
-        self._root_nodes = self._get_root_nodes(self.size_initial)
+        self._root_nodes = self.get_root_nodes(self.size_initial)
         logger.info(
             "initializing octree volume with %d nodes and %.1f km³,"
             " smallest node size: %.1f m",
@@ -303,7 +303,7 @@ class Octree(BaseModel):
             self.depth_bounds.max - self.depth_bounds.min,
         )
 
-    def _get_root_nodes(self, length: float) -> list[Node]:
+    def get_root_nodes(self, length: float) -> list[Node]:
         ln = length
         ext_east, ext_north, ext_depth = self.extent()
         east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.min
@@ -346,7 +346,7 @@ class Octree(BaseModel):
         """Reset the octree to its initial state"""
         logger.debug("resetting tree")
         self._clear_cache()
-        self._root_nodes = self._get_root_nodes(self.size_initial)
+        self._root_nodes = self.get_root_nodes(self.size_initial)
         return self
 
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:

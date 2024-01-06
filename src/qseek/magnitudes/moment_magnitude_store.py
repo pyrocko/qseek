@@ -472,6 +472,19 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
     def source_depth_range(self) -> Range:
         return Range.from_list([sa.source_depth for sa in self.site_amplitudes])
 
+    def has_depth(self, depth: float) -> bool:
+        """
+        Check if the moment magnitude store has a given depth.
+
+        Args:
+            depth (float): The depth to check.
+
+        Returns:
+            bool: True if the store has the given depth, False otherwise.
+        """
+        depths = [sa.source_depth for sa in self.site_amplitudes]
+        return depth in depths
+
     def get_store(self) -> gf.Store:
         """
         Load the GF store for the given store ID.
@@ -489,12 +502,10 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         config = store.config
         if not isinstance(config, gf.ConfigTypeA):
             raise EnvironmentError("GF store is not of type ConfigTypeA.")
-
         if 1.0 / config.deltat < self.frequency_range.max:
             raise ValueError(
                 f"Pyrocko GF store frequency {1.0 / config.deltat} too low."
             )
-
         return store
 
     def is_suited(self, selector: PeakAmplitudesBase) -> bool:
@@ -513,13 +524,17 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
             and self.gf_interpolation == selector.gf_interpolation
             and self.quantity == selector.quantity
             and self.reference_magnitude == selector.reference_magnitude
-            and self.rupture_velocities.min <= selector.rupture_velocities.min
-            and self.rupture_velocities.max >= selector.rupture_velocities.max
-            and self.stress_drop.min <= selector.stress_drop.min
-            and self.stress_drop.max >= selector.stress_drop.max
+            and self.rupture_velocities.min == selector.rupture_velocities.min
+            and self.rupture_velocities.max == selector.rupture_velocities.max
+            and self.stress_drop.min == selector.stress_drop.min
+            and self.stress_drop.max == selector.stress_drop.max
         )
         if selector.frequency_range:
-            result = result and self.frequency_range.max <= selector.frequency_range.max
+            result = (
+                result
+                and self.frequency_range.min == selector.frequency_range.min
+                and self.frequency_range.max == selector.frequency_range.max
+            )
         return result
 
     def _get_random_source(self, depth: float) -> gf.MTSource:
@@ -822,6 +837,12 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         file.write_text(self.model_dump_json())
 
 
+class CacheStats(NamedTuple):
+    path: Path
+    n_stores: int
+    bytes: int
+
+
 class PeakAmplitudeStoreCache:
     cache_dir: Path
     engine: gf.LocalEngine
@@ -829,6 +850,8 @@ class PeakAmplitudeStoreCache:
     def __init__(self, cache_dir: Path, engine: gf.LocalEngine | None = None) -> None:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("cache stats: %s", self.cache_stats())
+        self.clean_cache()
 
         self.engine = engine or gf.LocalEngine(store_superdirs=["."])
         PeakAmplitudesStore.set_engine(engine)
@@ -836,10 +859,41 @@ class PeakAmplitudeStoreCache:
     def clear_cache(self):
         """
         Clear the cache directory.
+
+        This method deletes all files in the cache directory.
         """
-        cache_dir = self.cache_dir / "site_amplitudes"
-        for file in cache_dir.glob("*"):
+        logger.info("clearing cache directory %s", self.cache_dir)
+        for file in self.cache_dir.glob("*"):
             file.unlink()
+
+    def clean_cache(self, keep_files: int = 100) -> None:
+        """
+        Clean the cache directory.
+
+        Args:
+            keep_files (int, optional): The number of most recent files to keep in the
+                cache directory. Defaults to 100.
+        """
+        files = sorted(self.cache_dir.glob("*"), key=lambda f: f.stat().st_mtime)
+        if len(files) <= keep_files:
+            return
+        logger.info("cleaning cache directory %s", self.cache_dir)
+        for file in files[keep_files:]:
+            file.unlink()
+
+    def cache_stats(self) -> CacheStats:
+        """
+        Get the cache statistics.
+
+        Returns:
+            CacheStats: The cache statistics.
+        """
+        n_stores = 0
+        nbytes = 0
+        for file in self.cache_dir.glob("*.json"):
+            n_stores += 1
+            nbytes += file.stat().st_size
+        return CacheStats(path=self.cache_dir, n_stores=n_stores, bytes=nbytes)
 
     def get_cached_stores(
         self, store_id: str, quantity: MeasurementUnit

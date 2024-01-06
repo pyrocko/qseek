@@ -384,6 +384,8 @@ class Search(BaseModel):
             phases=self.image_functions.get_phases(),
             rundir=self._rundir,
         )
+        for magnitude in self.magnitudes:
+            await magnitude.prepare(self.octree, self.stations)
         self.init_boundaries()
 
     async def start(self, force_rundir: bool = False) -> None:

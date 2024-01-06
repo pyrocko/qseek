@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from qseek.models.detection import EventDetection, Receiver
+    from qseek.models.station import Stations
+    from qseek.octree import Octree
 
 
 logger = logging.getLogger(__name__)
@@ -158,7 +160,7 @@ class MomentMagnitude(EventMagnitude):
 
             try:
                 modelled_amplitude = await store.get_amplitude(
-                    source_depth=event.depth,
+                    source_depth=event.effective_depth,
                     distance=station_amplitudes.distance_epi,
                     n_amplitudes=25,
                     peak_amplitude=peak_amplitude,
@@ -211,7 +213,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
 
     seconds_before: PositiveFloat = 10.0
     seconds_after: PositiveFloat = 10.0
-    padding_seconds: PositiveFloat = 10.0
+    padding_seconds: PositiveFloat = 5.0
 
     gf_store_dirs: list[DirectoryPath] = [Path(".")]
 
@@ -231,6 +233,17 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
         logger.info("Loading peak amplitude stores...")
         self._stores = [cache.get_store(definition) for definition in self.models]
 
+    async def prepare(self, octree: Octree, stations: Stations) -> None:
+        logger.info("Preparing peak amplitude stores...")
+        root_nodes = octree.get_root_nodes(octree.size_initial)
+        depths = np.array([node.as_location().effective_depth for node in root_nodes])
+
+        for store in self._stores:
+            for depth in depths:
+                if store.has_depth(depth):
+                    continue
+                await store.fill_source_depth(depth)
+
     async def add_magnitude(
         self,
         squirrel: Squirrel,
@@ -241,27 +254,36 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
         receivers = list(event.receivers)
         for store, definition in zip(self._stores, self.models, strict=True):
             store_receivers = definition.filter_receivers(receivers)
-            if not store_receivers:
-                continue
             for rcv in store_receivers:
                 receivers.remove(rcv)
 
+            if not store_receivers:
+                continue
+
+            if definition.max_distance is not None:
+                store_receivers = [
+                    rcv
+                    for rcv in store_receivers
+                    if rcv.surface_distance_to(event) <= definition.max_distance
+                ]
+
             traces = await event.receivers.get_waveforms_restituted(
                 squirrel,
+                receivers=store_receivers,
                 quantity=store.quantity,
                 seconds_before=self.seconds_before,
                 seconds_after=self.seconds_after,
                 demean=True,
-                cut_off_fade=True,
                 seconds_fade=self.padding_seconds,
+                cut_off_fade=True,
             )
             if not traces:
-                logger.warning("No restituted traces found for event %s", event.time)
                 return
 
             for tr in traces:
-                tr.highpass(4, store.frequency_range.min)
-                tr.lowpass(4, store.frequency_range.max)
+                if store.frequency_range.min:
+                    tr.highpass(4, store.frequency_range.min, demean=True)
+                tr.lowpass(4, store.frequency_range.max, demean=True)
 
             grouped_traces = []
             receivers = []
@@ -270,13 +292,14 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
             ):
                 grouped_traces.append(list(grp_traces))
                 receivers.append(event.receivers.get_receiver(nsl))
-                await moment_magnitude.add_traces(
-                    store=store,
-                    event=event,
-                    receivers=receivers,
-                    traces=grouped_traces,
-                    peak_amplitude=definition.peak_amplitude,
-                )
+
+            await moment_magnitude.add_traces(
+                store=store,
+                event=event,
+                receivers=receivers,
+                traces=grouped_traces,
+                peak_amplitude=definition.peak_amplitude,
+            )
 
         if not moment_magnitude.average:
             logger.warning("No moment magnitude found for event %s", event.time)
