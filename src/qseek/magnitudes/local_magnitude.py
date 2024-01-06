@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from matplotlib.ticker import FuncFormatter
 from pydantic import Field, PositiveFloat, PrivateAttr, model_validator
+from scipy.stats import median_abs_deviation
 from typing_extensions import Self
 
 from qseek.magnitudes.base import (
@@ -44,19 +45,12 @@ class LocalMagnitude(EventMagnitude):
     station_magnitudes: list[StationLocalMagnitude] = []
     average: float = Field(
         default=0.0,
-        description="Average local magnitude.",
-    )
-    average_weighted: float = Field(
-        default=0.0,
-        description="Weighted average local magnitude.",
-    )
-    median: float = Field(
-        default=0.0,
-        description="Median local magnitude.",
+        description="The network's local magnitude, as median of"
+        " all station magnitudes.",
     )
     error: float = Field(
         default=0.0,
-        description="Average error of local magnitude.",
+        description="Average error of local magnitude, as median absolute deviation.",
     )
 
     @classmethod
@@ -80,15 +74,9 @@ class LocalMagnitude(EventMagnitude):
             self.station_magnitudes.append(station_magnitude)
 
         magnitudes = self.magnitudes
-        magnitude_errors = np.array(
-            [sta.magnitude_error for sta in self.station_magnitudes]
-        )
-        weights = 1.0 / magnitude_errors
 
-        self.average = float(np.average(magnitudes))
-        self.average_weighted = float(np.average(self.magnitudes, weights=weights))
-        self.median = float(np.median(magnitudes))
-        self.error = float(np.average(magnitudes + magnitude_errors)) - self.average
+        self.average = float(np.median(magnitudes))
+        self.error = float(median_abs_deviation(magnitudes))
 
         return self
 
@@ -128,25 +116,11 @@ class LocalMagnitude(EventMagnitude):
             ls="none",
         )
         ax.axhline(
-            self.median,
-            color="k",
-            linestyle="--",
-            alpha=0.5,
-            label=f"Median $M_L$ {self.median:.2f}",
-        )
-        ax.axhline(
             self.average,
             color="k",
             linestyle="dotted",
             alpha=0.5,
-            label=rf"Average $M_L$ {self.average:.2f} $\pm${self.error:.2f}",
-        )
-        ax.axhline(
-            self.average_weighted,
-            color="k",
-            linestyle="-",
-            alpha=0.5,
-            label=f"Weighted Average $M_L$ {self.average_weighted:.2f}",
+            label=rf"Median $M_L$ {self.average:.2f} $\pm${self.error:.2f}",
         )
         ax.set_xlabel("Distance to Hypocenter [km]")
         ax.set_ylabel("$M_L$")

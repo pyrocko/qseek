@@ -7,13 +7,12 @@ from pydantic import BaseModel, Field
 from pyrocko.trace import Trace
 from typing_extensions import Self
 
-from qseek.models.detection import Receiver
 from qseek.utils import NSL
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
 
-    from qseek.models.detection import EventDetection
+    from qseek.models.detection import EventDetection, Receiver
     from qseek.models.station import Stations
     from qseek.octree import Octree
 

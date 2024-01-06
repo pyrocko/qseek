@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Iterable, Literal, NamedTuple
 
 import numpy as np
 from pydantic import DirectoryPath, Field, PositiveFloat, PrivateAttr
@@ -20,7 +20,7 @@ from qseek.magnitudes.moment_magnitude_store import (
     PeakAmplitudesStore,
     PeakAmplitudeStoreCache,
 )
-from qseek.utils import CACHE_DIR, NSL, ChannelSelector, ChannelSelectors
+from qseek.utils import CACHE_DIR, NSL, ChannelSelector, ChannelSelectors, Range
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -56,7 +56,7 @@ def norm_traces(traces: list[Trace]) -> np.ndarray:
 
 
 class PeakAmplitudeDefinition(PeakAmplitudesBase):
-    nsl_id: str | None = Field(
+    nsl_id: list[str] | None = Field(
         default=None,
         pattern=r"^[A-Z0-9]{2}\.[A-Z0-9]{0,5}?\.[A-Z0-9]{0,2}?$",
         description="Network, station, location id.",
@@ -65,8 +65,12 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
         default="absolute",
         description="The peak amplitude to use.",
     )
+    station_epicentral_range: Range = Field(
+        default=Range(min=1 * KM, max=100 * KM),
+        description="The epicentral distance range of the stations.",
+    )
 
-    def filter_receivers(self, receivers: list[Receiver]) -> list[Receiver]:
+    def filter_receiver_by_nsl(self, receivers: Iterable[Receiver]) -> set[Receiver]:
         """
         Filters the list of receivers based on the NSL ID.
 
@@ -77,9 +81,36 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
             list[Receiver]: The filtered list of receivers.
         """
         if self.nsl_id is None:
-            return receivers
-        nsl = NSL.parse(self.nsl_id)
-        return [rcv for rcv in receivers if rcv.nsl.match(nsl)]
+            return set(receivers)
+
+        matched_receivers = []
+        for nsl in self.nsl_id:
+            nsl = NSL.parse(nsl)
+            matched_receivers.append([rcv for rcv in receivers if rcv.nsl.match(nsl)])
+
+        return set(itertools.chain.from_iterable(matched_receivers))
+
+    def filter_receiver_by_range(
+        self,
+        receivers: Iterable[Receiver],
+        event: EventDetection,
+    ) -> set[Receiver]:
+        """
+        Filters the list of receivers based on the distance range.
+
+        Args:
+            receivers (Iterable[Receiver]): The list of receivers to filter.
+            event (EventDetection): The event detection object.
+
+        Returns:
+            set[Receiver]: The filtered set of receivers.
+        """
+        receivers = [
+            rcv
+            for rcv in receivers
+            if self.station_epicentral_range.inside(rcv.surface_distance_to(event))
+        ]
+        return set(receivers)
 
 
 class StationMomentMagnitude(NamedTuple):
@@ -235,14 +266,14 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
 
     async def prepare(self, octree: Octree, stations: Stations) -> None:
         logger.info("Preparing peak amplitude stores...")
-        root_nodes = octree.get_root_nodes(octree.size_initial)
-        depths = np.array([node.as_location().effective_depth for node in root_nodes])
+        octree_depth = octree.location.effective_depth
 
         for store in self._stores:
-            for depth in depths:
-                if store.has_depth(depth):
-                    continue
-                await store.fill_source_depth(depth)
+            await store.fill_source_depth_range(
+                depth_min=octree.depth_bounds.min + octree_depth,
+                depth_max=octree.depth_bounds.max + octree_depth,
+                depth_delta=octree.size_initial,
+            )
 
     async def add_magnitude(
         self,
@@ -253,19 +284,20 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
 
         receivers = list(event.receivers)
         for store, definition in zip(self._stores, self.models, strict=True):
-            store_receivers = definition.filter_receivers(receivers)
-            for rcv in store_receivers:
-                receivers.remove(rcv)
-
+            store_receivers = definition.filter_receiver_by_nsl(receivers)
             if not store_receivers:
                 continue
-
-            if definition.max_distance is not None:
-                store_receivers = [
-                    rcv
-                    for rcv in store_receivers
-                    if rcv.surface_distance_to(event) <= definition.max_distance
-                ]
+            for rcv in store_receivers:
+                receivers.remove(rcv)
+            store_receivers = definition.filter_receiver_by_range(
+                store_receivers, event
+            )
+            if not store_receivers:
+                logger.debug("No receivers in range for peak amplitude %s", store.id)
+                continue
+            if not store.source_depth_range.inside(event.effective_depth):
+                logger.info("Event depth outside of store depth range.")
+                continue
 
             traces = await event.receivers.get_waveforms_restituted(
                 squirrel,

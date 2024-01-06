@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 from pyrocko import gf
 from qseek.magnitudes.moment_magnitude_store import (
+    ModelledAmplitude,
     PeakAmplitude,
     PeakAmplitudesBase,
     PeakAmplitudesStore,
@@ -60,7 +62,7 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
         gf_store_id="crust2_de",
         quantity="displacement",
     )
-    plot_amplitude: PeakAmplitude = "horizontal"
+    plot_amplitude: PeakAmplitude = "absolute"
 
     PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
@@ -72,7 +74,6 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
         gf_store_id="crust2_de",
         quantity="velocity",
     )
-    PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
 
     collection = await store.fill_source_depth(source_depth=2 * KM)
@@ -82,8 +83,72 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
         gf_store_id="crust2_de",
         quantity="acceleration",
     )
-    PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
 
     collection = await store.fill_source_depth(source_depth=2 * KM)
     collection.plot(peak_amplitude=plot_amplitude)
+
+
+@pytest.mark.plot
+@pytest.mark.asyncio
+async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LightSource
+    from matplotlib.ticker import FuncFormatter
+
+    peak_amplitudes = PeakAmplitudesBase(
+        gf_store_id="crust2_de",
+        quantity="velocity",
+    )
+    plot_amplitude: PeakAmplitude = "absolute"
+    PeakAmplitudesStore.set_engine(engine)
+    store = PeakAmplitudesStore.from_selector(peak_amplitudes)
+    await store.fill_source_depth_range(depth_max=20 * KM)
+
+    distances = np.linspace(0, store.max_distance, 256)
+    depths = np.linspace(*store.source_depth_range, 256)
+
+    depth_amplitudes = []
+    for depth in depths:
+        amplitudes: list[ModelledAmplitude] = []
+        for dist in distances:
+            amplitudes.append(
+                await store.get_amplitude(
+                    source_depth=depth,
+                    distance=dist,
+                    n_amplitudes=25,
+                    peak_amplitude=plot_amplitude,
+                    auto_fill=False,
+                )
+            )
+        depth_amplitudes.append(amplitudes)
+
+    data = [[a.amplitude_median for a in amplitudes] for amplitudes in depth_amplitudes]
+    data = np.array(data) / NM
+
+    data = np.log10(data)
+
+    fig, ax = plt.subplots()
+    ls = LightSource(azdeg=315, altdeg=45)
+
+    rgb = ls.shade(data, cmap=plt.cm.get_cmap("viridis"), blend_mode="overlay")
+
+    ax.imshow(
+        rgb,
+        extent=[
+            0,
+            store.max_distance,
+            store.source_depth_range.max,
+            store.source_depth_range.min,
+        ],
+        aspect="auto",
+    )
+    # cbar = fig.colorbar(cm)
+    # cbar.set_label("Absolute Displacement [nm]")
+
+    ax.set_xlabel("Epicentral Distance [km]")
+    ax.set_ylabel("Source Depth [km]")
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: x / KM))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: x / KM))
+    plt.show()
+    plt.close()

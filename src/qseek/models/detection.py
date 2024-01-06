@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Iterator
 from uuid import UUID, uuid4
 
 import aiofiles
@@ -221,7 +221,7 @@ class EventReceivers(BaseModel):
         seconds_before: float = 3.0,
         seconds_after: float = 5.0,
         phase: PhaseDescription | None = None,
-        receivers: list[Receiver] | None = None,
+        receivers: Iterable[Receiver] | None = None,
     ) -> list[Trace]:
         """
         Retrieves and restitutes waveforms for a given squirrel.
@@ -280,7 +280,7 @@ class EventReceivers(BaseModel):
         demean: bool = True,
         remove_clipped: bool = False,
         freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 25.0, 35.0),
-        receivers: list[Receiver] | None = None,
+        receivers: Iterable[Receiver] | None = None,
     ) -> list[Trace]:
         """
         Retrieves and restitutes waveforms for a given squirrel.

@@ -122,7 +122,7 @@ class PeakAmplitudesBase(BaseModel):
         description="Stress drop range in MPa.",
     )
     gf_interpolation: Interpolation = Field(
-        default="nearest_neighbor",
+        default="multilinear",
         description="Interpolation method for the Pyrocko GF Store",
     )
 
@@ -228,6 +228,12 @@ class SiteAmplitudesCollection(BaseModel):
     _absolute = cached_property[np.ndarray](_get_numpy_attribute("peak_absolute"))
     _horizontal = cached_property[np.ndarray](_get_numpy_attribute("peak_horizontal"))
 
+    def _clear_cache(self) -> None:
+        self.__dict__.pop("_distances", None)
+        self.__dict__.pop("_horizontal", None)
+        self.__dict__.pop("_vertical", None)
+        self.__dict__.pop("_absolute", None)
+
     def get_amplitude(
         self,
         distance: float,
@@ -259,7 +265,9 @@ class SiteAmplitudesCollection(BaseModel):
         idx = distance_idx[:n_amplitudes]
         distances = site_distances[idx]
         if max_distance and distances.max() > max_distance:
-            raise ValueError(f"Not enough amplitudes in range {max_distance}.")
+            raise ValueError(
+                f"Not enough amplitudes in range {max_distance} at distance {distance}."
+            )
 
         match peak_amplitude:
             case "horizontal":
@@ -363,20 +371,20 @@ class SiteAmplitudesCollection(BaseModel):
             color="forestgreen",
         )
 
-        ax.set_xlabel("Distance [km]")
+        ax.set_xlabel("Epicentral Distance [km]")
         ax.set_ylabel(labels[self.quantity])
         ax.set_yscale("log")
         ax.text(
             0.025,
             0.025,
-            rf"n={self.n_amplitudes}\n"
-            rf"$M_w^r$={self.reference_magnitude}\n"
-            rf"$z$={self.source_depth / KM} km\n"
-            rf"$v_r$=[{self.rupture_velocities.min}, {self.rupture_velocities.max}]"
-            r" $\cdot v_s$\n"
+            f"n={self.n_amplitudes}\n"
+            f"$M_w^r$={self.reference_magnitude}\n"
+            f"$z$={self.source_depth / KM} km\n"
+            f"$v_r$=[{self.rupture_velocities.min}, {self.rupture_velocities.max}]"
+            " $\\cdot v_s$\n"
             rf"$\Delta\sigma$=[{self.stress_drop.min / 1e6},"
-            rf" {self.stress_drop.max / 1e6}] MPa\n"
-            rf"$f$=[{self.frequency_range.min}, {self.frequency_range.max}] Hz",
+            f" {self.stress_drop.max / 1e6}] MPa\n"
+            f"$f$=[{self.frequency_range.min}, {self.frequency_range.max}] Hz",
             alpha=0.5,
             transform=ax.transAxes,
             va="bottom",
@@ -396,12 +404,6 @@ class SiteAmplitudesCollection(BaseModel):
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: x / KM))
         if axes is None:
             plt.show()
-
-    def _clear_cache(self) -> None:
-        self.__dict__.pop("_distances", None)
-        self.__dict__.pop("_horizontal", None)
-        self.__dict__.pop("_vertical", None)
-        self.__dict__.pop("_absolute", None)
 
 
 class PeakAmplitudesStore(PeakAmplitudesBase):
@@ -453,8 +455,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         config = cls._engine.get_store(selector.gf_store_id).config
         if not isinstance(config, gf.ConfigTypeA):
             raise EnvironmentError("GF store is not of type ConfigTypeA.")
-        store_frequency_range = Range(0.0, 1.0 / config.deltat)
 
+        store_frequency_range = Range(0.0, 1.0 / config.deltat)
         if (
             selector.frequency_range
             and selector.frequency_range.max > store_frequency_range.max
@@ -472,18 +474,16 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
     def source_depth_range(self) -> Range:
         return Range.from_list([sa.source_depth for sa in self.site_amplitudes])
 
-    def has_depth(self, depth: float) -> bool:
+    @property
+    def gf_store_depth_range(self) -> Range:
         """
-        Check if the moment magnitude store has a given depth.
-
-        Args:
-            depth (float): The depth to check.
+        Get the depth range of the GF store.
 
         Returns:
-            bool: True if the store has the given depth, False otherwise.
+            Range: The depth range.
         """
-        depths = [sa.source_depth for sa in self.site_amplitudes]
-        return depth in depths
+        store = self.get_store()
+        return Range(store.config.source_depth_min, store.config.source_depth_max)
 
     def get_store(self) -> gf.Store:
         """
@@ -622,6 +622,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         """
         if self._engine is None:
             raise EnvironmentError("No GF engine available.")
+        if not self.gf_store_depth_range.inside(source_depth):
+            raise ValueError(f"Source depth {source_depth} outside GF store range.")
 
         store = self.get_store()
 
@@ -651,7 +653,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         for _ in track(
             range(n_sources),
             total=n_sources,
-            description="Calculating amplitudes",
+            description=f"calculating amplitudes for depth {source_depth}",
         ):
             response, targets = await get_modelled_waveforms()
 
@@ -672,6 +674,55 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         collection.fill(receivers, receiver_traces)
         self.save()
         return collection
+
+    async def fill_source_depth_range(
+        self,
+        depth_min: float | None = None,
+        depth_max: float | None = None,
+        depth_delta: float | None = None,
+        n_targets: int = 20,
+        n_sources: int = 100,
+    ) -> None:
+        """
+        Fills the source depth range with seismic data.
+
+        Args:
+            depth_min (float): The minimum depth of the source in meters.
+                If None, it uses the extent from the GF store.
+                Defaults to None.
+            depth_max (float): The maximum depth of the source in meters.
+                If None, it uses the extent from the GF store.
+                Defaults to None.
+            depth_delta (float | None, optional): The depth increment in meters.
+                If None, it uses the default value from the GF store configuration.
+                Defaults to None.
+            n_targets (int, optional): The number of targets per source depth.
+                Defaults to 20.
+            n_sources (int, optional): The number of random sources per source depth.
+                Defaults to 100.
+        """
+        existing_store_depths = [sa.source_depth for sa in self.site_amplitudes]
+        store = self.get_store()
+        gf_depth_delta = store.config.source_depth_delta
+        gf_depth_min = store.config.source_depth_min
+        gf_depth_max = store.config.source_depth_max
+
+        depth_min = depth_min or gf_depth_min
+        depth_max = depth_max or gf_depth_max
+        depth_delta = depth_delta or gf_depth_delta
+
+        depths = np.arange(gf_depth_min, gf_depth_max + depth_delta, depth_delta)
+        calculate_depths = depths[(depths >= depth_min) & (depths <= depth_max)]
+
+        logger.debug("filling source depths %s", calculate_depths)
+        for depth in calculate_depths:
+            if depth in existing_store_depths:
+                continue
+            await self.fill_source_depth(
+                source_depth=depth,
+                n_targets=n_targets,
+                n_sources=n_sources,
+            )
 
     def get_collection(self, source_depth: float) -> SiteAmplitudesCollection:
         """
@@ -705,7 +756,12 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
             self.site_amplitudes.remove(collection)
         except KeyError:
             pass
-        collection = SiteAmplitudesCollection(source_depth=depth, **self.model_dump())
+        collection = SiteAmplitudesCollection(
+            source_depth=depth,
+            **self.model_dump(
+                exclude={"site_amplitudes"},
+            ),
+        )
         self.site_amplitudes.append(collection)
         return collection
 
@@ -714,7 +770,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         source_depth: float,
         distance: float,
         n_amplitudes: int = 25,
-        max_distance: float = 1.0 * KM,
+        max_distance: float = 0.0,
         peak_amplitude: PeakAmplitude = "absolute",
         auto_fill: bool = True,
         interpolation: Literal["nearest", "linear"] = "linear",
