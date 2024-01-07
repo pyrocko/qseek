@@ -58,8 +58,9 @@ async def test_peak_amplitudes(engine: gf.LocalEngine) -> None:
 @pytest.mark.plot
 @pytest.mark.asyncio
 async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
+    store_id = "reykjanes_qseis"
     peak_amplitudes = PeakAmplitudesBase(
-        gf_store_id="crust2_de",
+        gf_store_id=store_id,
         quantity="displacement",
     )
     plot_amplitude: PeakAmplitude = "absolute"
@@ -71,7 +72,7 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
     collection.plot(peak_amplitude=plot_amplitude)
 
     peak_amplitudes = PeakAmplitudesBase(
-        gf_store_id="crust2_de",
+        gf_store_id=store_id,
         quantity="velocity",
     )
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
@@ -80,7 +81,7 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
     collection.plot(peak_amplitude=plot_amplitude)
 
     peak_amplitudes = PeakAmplitudesBase(
-        gf_store_id="crust2_de",
+        gf_store_id=store_id,
         quantity="acceleration",
     )
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)

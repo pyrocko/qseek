@@ -218,20 +218,28 @@ def main() -> None:
             search.data_provider.prepare(search.stations)
 
             async def extract() -> None:
+                for magnitude in search.magnitudes:
+                    await magnitude.prepare(search.octree, search.stations)
+
                 iterator = asyncio.as_completed(
                     tuple(
                         search.add_magnitude_and_features(detection)
                         for detection in search._detections
                     )
                 )
+
                 for result in track(
                     iterator,
                     description="Extracting features",
                     total=search._detections.n_detections,
                 ):
-                    detection = await result
-                    await detection.save(update=True)
+                    event = await result
+                    if event.magnitudes:
+                        for mag in event.magnitudes:
+                            print(f"{mag.magnitude} {mag.average:.2f}±{mag.error:.2f}")
+                        print("--")
 
+                await search._detections.save()
                 await search._detections.export_detections(
                     jitter_location=search.octree.smallest_node_size()
                 )

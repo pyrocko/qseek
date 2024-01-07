@@ -271,7 +271,7 @@ class Search(BaseModel):
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
-    _feature_semaphore: asyncio.Semaphore = PrivateAttr(asyncio.Semaphore(8))
+    _feature_semaphore: asyncio.Semaphore = PrivateAttr(asyncio.Semaphore(16))
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())

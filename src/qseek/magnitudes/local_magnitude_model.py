@@ -188,7 +188,7 @@ class LocalMagnitudeModel:
         return StationLocalMagnitude(
             station_nsl=sta.station_nsl,
             magnitude=magnitude,
-            magnitude_error=(magnitude_error_upper - magnitude_error_lower) / 2,
+            magnitude_error=(magnitude_error_upper + abs(magnitude_error_lower)) / 2,
             peak_amp=sta.peak,
             distance_epi=sta.distance_epi,
             distance_hypo=sta.distance_hypo,

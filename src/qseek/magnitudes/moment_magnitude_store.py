@@ -7,13 +7,22 @@ import logging
 import struct
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, ClassVar, Literal, NamedTuple, get_args
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    ClassVar,
+    Literal,
+    NamedTuple,
+    Type,
+    get_args,
+)
 from uuid import UUID, uuid4
 
 import numpy as np
 import pyrocko.moment_tensor as pmt
 from pydantic import (
     BaseModel,
+    ByteSize,
     ConfigDict,
     Field,
     PositiveFloat,
@@ -21,6 +30,8 @@ from pydantic import (
     ValidationError,
 )
 from pyrocko import gf
+from pyrocko.guts import Float
+from pyrocko.trace import FrequencyResponse
 from rich.progress import track
 from typing_extensions import Self
 
@@ -29,6 +40,7 @@ from qseek.utils import (
     ChannelSelectors,
     MeasurementUnit,
     Range,
+    human_readable_bytes,
 )
 
 if TYPE_CHECKING:
@@ -42,25 +54,40 @@ NM = 1e-9
 logger = logging.getLogger(__name__)
 
 PeakAmplitude = Literal["horizontal", "vertical", "absolute"]
-Interpolation = Literal["nearest_neighbor", "multilinear"]
+GFInterpolation = Literal["nearest_neighbor", "multilinear"]
 
 Components = Literal["Z", "R", "T"]
 _DIPS: dict[Components, float] = {"Z": -90.0, "R": 0.0, "T": 0.0}
-_AZIMUTHS: dict[Components, float] = {"Z": 0.0, "R": 0.0, "T": 0.0}
+_AZIMUTHS: dict[Components, float] = {"Z": 0.0, "R": 0.0, "T": 90.0}
 
 
-def _get_dip(component: Components) -> float:
-    return _DIPS[component]
+class BruneResponse(FrequencyResponse):
+    duration = Float.T()
+
+    def evaluate(self, freqs):
+        return 1.0 / (1.0 + (freqs * self.duration) ** 2)
 
 
-def _get_azimuth(component: Components) -> float:
-    azi = _AZIMUTHS[component]
-    if component == "T":
-        azi += 90.0
-    return azi
+class MTSourceCircularCrack(gf.MTSource):
+    duration = Float.T()
+    stress_drop = Float.T()
+    radius = Float.T()
 
 
 def _get_target(targets: list[gf.Target], nsl: tuple[str, str, str]) -> gf.Target:
+    """
+    Get the target from the list of targets based on the given NSL codes.
+
+    Args:
+        targets (list[gf.Target]): List of targets to search from.
+        nsl (tuple[str, str, str]): Network, station, and location codes.
+
+    Returns:
+        gf.Target: The target matching the given NSL codes.
+
+    Raises:
+        KeyError: If no target is found for the given NSL codes.
+    """
     for target in targets:
         if nsl == target.codes[:3]:
             return target
@@ -84,9 +111,8 @@ def trace_amplitude(traces: list[Trace], channel_selector: ChannelSelector) -> f
     trace_selection = channel_selector(traces)
     if not trace_selection:
         raise KeyError("No traces to normalize.")
-
     data = np.array([tr.ydata for tr in trace_selection])
-    data = np.linalg.norm(data, axis=0)
+    data = np.linalg.norm(np.atleast_2d(data), axis=0)
     return float(data.max())
 
 
@@ -107,6 +133,10 @@ class PeakAmplitudesBase(BaseModel):
         default=100.0 * KM,
         description="Maximum surface distances to the source for the receivers.",
     )
+    source_depth_delta: PositiveFloat = Field(
+        default=1.0 * KM,
+        description="Source depth increment for the peak amplitude models.",
+    )
     reference_magnitude: float = Field(
         default=1.0,
         ge=-1.0,
@@ -114,55 +144,48 @@ class PeakAmplitudesBase(BaseModel):
         description="Reference magnitude in Mw.",
     )
     rupture_velocities: Range = Field(
-        default=(0.9, 1.0),
+        default=Range(0.8, 0.9),
         description="Rupture velocity range as fraction of the shear wave velocity.",
     )
     stress_drop: Range = Field(
-        default=(1.0e6, 10.0e6),
-        description="Stress drop range in MPa.",
+        default=Range(1.0e6, 10.0e6),
+        description="Stress drop range in Pa.",
     )
-    gf_interpolation: Interpolation = Field(
+    gf_interpolation: GFInterpolation = Field(
         default="multilinear",
-        description="Interpolation method for the Pyrocko GF Store",
+        description="Interpolation method for the Pyrocko GF Store.",
     )
 
 
 class SiteAmplitude(NamedTuple):
-    distance: float
+    distance_epi: float
     peak_horizontal: float
     peak_vertical: float
     peak_absolute: float
 
     @classmethod
     def from_traces(cls, receiver: gf.Receiver, traces: list[Trace]) -> Self:
-        surface_distance = np.sqrt(receiver.north_shift**2 + receiver.east_shift**2)
         return cls(
-            distance=surface_distance,
-            peak_horizontal=trace_amplitude(
-                traces,
-                ChannelSelectors.Horizontal,
-            ),
-            peak_vertical=trace_amplitude(
-                traces,
-                ChannelSelectors.Vertical,
-            ),
-            peak_absolute=trace_amplitude(
-                traces,
-                ChannelSelectors.All,
-            ),
+            distance_epi=np.sqrt(receiver.north_shift**2 + receiver.east_shift**2),
+            peak_horizontal=trace_amplitude(traces, ChannelSelectors.Horizontal),
+            peak_vertical=trace_amplitude(traces, ChannelSelectors.Vertical),
+            peak_absolute=trace_amplitude(traces, ChannelSelectors.All),
         )
 
 
 class ModelledAmplitude(NamedTuple):
-    distance: float
+    reference_magnitude: float
+    quantity: MeasurementUnit
     peak_amplitude: PeakAmplitude
-    amplitude_avg: float
-    amplitude_median: float
+    distance_epi: float
+    average: float
+    median: float
     std: float
+    mad: float
 
     def combine(
         self,
-        amplitude: ModelledAmplitude,
+        other: ModelledAmplitude,
         weight: float = 1.0,
     ) -> ModelledAmplitude:
         """
@@ -182,27 +205,38 @@ class ModelledAmplitude(NamedTuple):
             ValueError: If the peak amplitudes of the amplitudes are different.
         """
         if not 0.0 <= weight <= 1.0:
-            raise ValueError(f"Invalid weight {weight}.")
-        if self.distance != amplitude.distance:
-            raise ValueError(
-                f"Cannot add amplitudes with different distances "
-                f"{self.distance} and {amplitude.distance}."
-            )
-        if self.peak_amplitude != amplitude.peak_amplitude:
-            raise ValueError(
-                f"Cannot add amplitudes with different peak amplitudes "
-                f"{self.peak_amplitude} and {amplitude.peak_amplitude}."
-            )
-        inv_weight = 1.0 - weight
+            raise ValueError(f"Invalid weight {weight}. Must be between 0.0 and 1.0.")
+        if self.distance_epi != other.distance_epi:
+            raise ValueError("Cannot add amplitudes with different distances")
+        if self.quantity != other.quantity:
+            raise ValueError("Cannot add amplitudes with different quantities ")
+        if self.reference_magnitude != other.reference_magnitude:
+            raise ValueError("Cannot add amplitudes with different reference magnitude")
+        if self.peak_amplitude != other.peak_amplitude:
+            raise ValueError("Cannot add amplitudes with different peak amplitudes ")
+        rcp_weight = 1.0 - weight
         return ModelledAmplitude(
-            distance=self.distance,
+            reference_magnitude=self.reference_magnitude,
             peak_amplitude=self.peak_amplitude,
-            amplitude_avg=self.amplitude_avg * inv_weight
-            + amplitude.amplitude_avg * weight,
-            amplitude_median=self.amplitude_median * inv_weight
-            + amplitude.amplitude_median * weight,
-            std=self.std * inv_weight + amplitude.std * weight,
+            quantity=self.quantity,
+            distance_epi=self.distance_epi,
+            average=self.average * rcp_weight + other.average * weight,
+            median=self.median * rcp_weight + other.median * weight,
+            std=self.std * rcp_weight + other.std * weight,
+            mad=self.mad * rcp_weight + other.mad * weight,
         )
+
+    def get_magnitude(self, observed_amplitude: float) -> float:
+        """
+        Get the moment magnitude for the given observed amplitude.
+
+        Args:
+            observed_amplitude (float): The observed amplitude.
+
+        Returns:
+            float: The moment magnitude.
+        """
+        return self.reference_magnitude + np.log10(observed_amplitude / self.median)
 
 
 class SiteAmplitudesCollection(BaseModel):
@@ -217,16 +251,16 @@ class SiteAmplitudesCollection(BaseModel):
     site_amplitudes: list[SiteAmplitude] = Field(default_factory=list)
 
     @staticmethod
-    def _get_numpy_attribute(attribute: str) -> Callable:
+    def _get_numpy_array(attribute: str) -> Callable:
         def wrapped(self) -> np.ndarray:
             return np.array([getattr(sa, attribute) for sa in self.site_amplitudes])
 
         return wrapped
 
-    _distances = cached_property[np.ndarray](_get_numpy_attribute("distance"))
-    _vertical = cached_property[np.ndarray](_get_numpy_attribute("peak_vertical"))
-    _absolute = cached_property[np.ndarray](_get_numpy_attribute("peak_absolute"))
-    _horizontal = cached_property[np.ndarray](_get_numpy_attribute("peak_horizontal"))
+    _distances = cached_property[np.ndarray](_get_numpy_array("distance_epi"))
+    _vertical = cached_property[np.ndarray](_get_numpy_array("peak_vertical"))
+    _absolute = cached_property[np.ndarray](_get_numpy_array("peak_absolute"))
+    _horizontal = cached_property[np.ndarray](_get_numpy_array("peak_horizontal"))
 
     def _clear_cache(self) -> None:
         self.__dict__.pop("_distances", None)
@@ -245,7 +279,7 @@ class SiteAmplitudesCollection(BaseModel):
         Get the amplitudes for a given distance.
 
         Args:
-            distance (float): The distance at which to retrieve the amplitudes.
+            distance (float): The epicentral distance to retrieve the amplitudes for.
             n_amplitudes (int): The number of amplitudes to retrieve.
             max_distance (float): The maximum distance allowed for
                 the retrieved amplitudes. If 0.0, no maximum distance is applied and the
@@ -266,7 +300,7 @@ class SiteAmplitudesCollection(BaseModel):
         distances = site_distances[idx]
         if max_distance and distances.max() > max_distance:
             raise ValueError(
-                f"Not enough amplitudes in range {max_distance} at distance {distance}."
+                f"Not enough amplitudes at distance {distance} and range {max_distance}"
             )
 
         match peak_amplitude:
@@ -279,12 +313,16 @@ class SiteAmplitudesCollection(BaseModel):
             case _:
                 raise ValueError(f"Unknown peak amplitude type {peak_amplitude}.")
 
+        median = float(np.median(amplitudes))
         return ModelledAmplitude(
-            distance=distance,
+            reference_magnitude=self.reference_magnitude,
             peak_amplitude=peak_amplitude,
-            amplitude_avg=amplitudes.mean(),
-            amplitude_median=amplitudes.mean(),
+            quantity=self.quantity,
+            distance_epi=distance,
+            average=amplitudes.mean(),
             std=amplitudes.std(),
+            median=median,
+            mad=float(np.median(np.abs(amplitudes - median))),
         )
 
     def fill(self, receivers: list[gf.Receiver], traces: list[list[Trace]]) -> None:
@@ -331,18 +369,19 @@ class SiteAmplitudesCollection(BaseModel):
             "acceleration": "a [nm/s²]",
         }
         interp_amplitudes: list[ModelledAmplitude] = []
-        for distance in np.arange(*self.distance_range(), 1 * KM):
+        for distance in np.arange(*self.distance_range(), 250.0):
             interp_amplitudes.append(
                 self.get_amplitude(
                     distance=distance,
-                    n_amplitudes=25,
+                    n_amplitudes=50,
                     peak_amplitude=peak_amplitude,
                 )
             )
 
-        interp_dists = np.array([amp.distance for amp in interp_amplitudes])
-        interp_amps = np.array([amp.amplitude_median for amp in interp_amplitudes])
-        interp_std = np.array([amp.std for amp in interp_amplitudes])
+        interp_dists = np.array([amp.distance_epi for amp in interp_amplitudes])
+        interp_amps = np.array([amp.median for amp in interp_amplitudes])
+        # interp_std = np.array([amp.std for amp in interp_amplitudes])
+        interp_mad = np.array([amp.mad for amp in interp_amplitudes])
 
         site_amplitudes = getattr(self, f"_{peak_amplitude.replace('peak_', '')}")
         dynamic = Range.from_list(site_amplitudes)
@@ -365,8 +404,8 @@ class SiteAmplitudesCollection(BaseModel):
         )
         ax.fill_between(
             interp_dists,
-            (interp_amps - interp_std) / NM,
-            (interp_amps + interp_std) / NM,
+            (interp_amps - interp_mad) / NM,
+            (interp_amps + interp_mad) / NM,
             alpha=0.1,
             color="forestgreen",
         )
@@ -377,14 +416,12 @@ class SiteAmplitudesCollection(BaseModel):
         ax.text(
             0.025,
             0.025,
-            f"n={self.n_amplitudes}\n"
-            f"$M_w^r$={self.reference_magnitude}\n"
-            f"$z$={self.source_depth / KM} km\n"
-            f"$v_r$=[{self.rupture_velocities.min}, {self.rupture_velocities.max}]"
-            " $\\cdot v_s$\n"
-            rf"$\Delta\sigma$=[{self.stress_drop.min / 1e6},"
-            f" {self.stress_drop.max / 1e6}] MPa\n"
-            f"$f$=[{self.frequency_range.min}, {self.frequency_range.max}] Hz",
+            f"""n={self.n_amplitudes}
+$M_w^r$={self.reference_magnitude}
+$z$={self.source_depth / KM} km
+$v_r$=[{self.rupture_velocities.min}, {self.rupture_velocities.max}]$\\cdot v_s$
+$\\Delta\\sigma$=[{self.stress_drop.min / 1e6}, {self.stress_drop.max / 1e6}] MPa
+$f$=[{self.frequency_range.min}, {self.frequency_range.max}] Hz""",
             alpha=0.5,
             transform=ax.transAxes,
             va="bottom",
@@ -419,6 +456,10 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         ...,
         description="Frequency range for the peak amplitude.",
     )
+    gf_store_hash: str = Field(
+        default="",
+        description="Hash of the GF store configuration.",
+    )
 
     _rng: np.random.Generator = PrivateAttr(default_factory=np.random.default_rng)
     _engine: ClassVar[gf.LocalEngine | None] = None
@@ -437,6 +478,16 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         cls._engine = engine
 
     @classmethod
+    def set_cache_dir(cls, cache_dir: Path) -> None:
+        """
+        Set the cache directory for the store.
+
+        Args:
+            cache_dir (Path): The cache directory to use.
+        """
+        cls._cache_dir = cache_dir
+
+    @classmethod
     def from_selector(cls, selector: PeakAmplitudesBase) -> Self:
         """
         Create a new PeakAmplitudesStore from the given selector.
@@ -452,7 +503,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
             raise EnvironmentError(
                 "No GF engine available to determine frequency range."
             )
-        config = cls._engine.get_store(selector.gf_store_id).config
+        store: gf.Store = cls._engine.get_store(selector.gf_store_id)
+        config = store.config
         if not isinstance(config, gf.ConfigTypeA):
             raise EnvironmentError("GF store is not of type ConfigTypeA.")
 
@@ -468,6 +520,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
 
         kwargs = selector.model_dump()
         kwargs["frequency_range"] = selector.frequency_range or store_frequency_range
+        kwargs["gf_store_hash"] = store.create_store_hash()
         return cls(**kwargs)
 
     @property
@@ -484,6 +537,25 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         """
         store = self.get_store()
         return Range(store.config.source_depth_min, store.config.source_depth_max)
+
+    @property
+    def gf_store_distance_range(self) -> Range:
+        """
+        Returns the distance range for the ground motion store.
+
+        The distance range is determined by the minimum and maximum distances
+        specified in the store's configuration. If the maximum distance exceeds
+        the maximum distance allowed by the current object, it is truncated to
+        match the maximum distance.
+
+        Returns:
+            Range: The distance range for the ground motion store.
+        """
+        store = self.get_store()
+        return Range(
+            min=store.config.distance_min,
+            max=min(store.config.distance_max, self.max_distance),
+        )
 
     def get_store(self) -> gf.Store:
         """
@@ -508,36 +580,9 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
             )
         return store
 
-    def is_suited(self, selector: PeakAmplitudesBase) -> bool:
-        """
-        Check if the given selector is suited for this store.
-
-        Args:
-            selector (PeakAmpliutdesSelector): The selector to check.
-
-        Returns:
-            bool: True if the selector is suited for this store.
-        """
-        result = (
-            self.gf_store_id == selector.gf_store_id
-            and self.max_distance >= selector.max_distance
-            and self.gf_interpolation == selector.gf_interpolation
-            and self.quantity == selector.quantity
-            and self.reference_magnitude == selector.reference_magnitude
-            and self.rupture_velocities.min == selector.rupture_velocities.min
-            and self.rupture_velocities.max == selector.rupture_velocities.max
-            and self.stress_drop.min == selector.stress_drop.min
-            and self.stress_drop.max == selector.stress_drop.max
-        )
-        if selector.frequency_range:
-            result = (
-                result
-                and self.frequency_range.min == selector.frequency_range.min
-                and self.frequency_range.max == selector.frequency_range.max
-            )
-        return result
-
-    def _get_random_source(self, depth: float) -> gf.MTSource:
+    def _get_random_source(
+        self, depth: float, stf: Type[gf.STF] | None = None
+    ) -> MTSourceCircularCrack:
         """
         Generates a random seismic source with the given depth.
 
@@ -556,14 +601,17 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         rupture_velocity = rng.uniform(*self.rupture_velocities) * vs
 
         radius = (
-            pmt.magnitude_to_moment(self.reference_magnitude) * 7.0 / 16.0 / stress_drop
-        ) ** (1.0 / 3.0)
+            pmt.magnitude_to_moment(self.reference_magnitude) * (7 / 16) / stress_drop
+        ) ** (1 / 3)
         duration = 1.5 * radius / rupture_velocity
         moment_tensor = pmt.MomentTensor.random_dc(magnitude=self.reference_magnitude)
-        return gf.MTSource(
+        return MTSourceCircularCrack(
             m6=moment_tensor.m6(),
             depth=depth,
-            stf=gf.HalfSinusoidSTF(effective_duration=duration),
+            duration=duration,
+            stress_drop=stress_drop,
+            radius=radius,
+            stf=stf(duration=duration) if stf else None,
         )
 
     def _get_random_targets(
@@ -594,8 +642,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
                     store_id=self.gf_store_id,
                     interpolation=self.gf_interpolation,
                     depth=0.0,
-                    dip=_get_dip(component),
-                    azimuth=_get_azimuth(component),
+                    dip=_DIPS[component],
+                    azimuth=angle + _AZIMUTHS[component],
                     north_shift=distance * np.cos(np.radians(angle)),
                     east_shift=distance * np.sin(np.radians(angle)),
                     codes=("PA", f"{i_receiver:05d}", "", component),
@@ -606,8 +654,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
     async def fill_source_depth(
         self,
         source_depth: float,
-        n_targets: int = 20,
-        n_sources: int = 100,
+        n_sources: int = 200,
+        n_targets_per_source: int = 20,
     ) -> SiteAmplitudesCollection:
         """
         Fills the moment magnitude store with amplitudes calculated
@@ -625,40 +673,29 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         if not self.gf_store_depth_range.inside(source_depth):
             raise ValueError(f"Source depth {source_depth} outside GF store range.")
 
-        store = self.get_store()
-
         engine = self._engine
-        target_distances = Range(
-            min=store.config.distance_min,
-            max=min(store.config.distance_max, self.max_distance),
-        )
 
-        async def get_modelled_waveforms() -> tuple[gf.Response, list[gf.Target]]:
-            targets = self._get_random_targets(target_distances, n_targets)
-            source = self._get_random_source(source_depth)
-            return await asyncio.to_thread(engine.process, source, targets), targets
+        target_distances = self.gf_store_distance_range
+        logger.info(
+            "calculating %d amplitudes for depth %f",
+            n_sources * n_targets_per_source,
+            source_depth,
+        )
 
         receivers = []
         receiver_traces = []
-        logger.info(
-            "calculating %d amplitudes for depth %f",
-            n_sources * n_targets,
-            source_depth,
-        )
-        try:
-            collection = self.get_collection(source_depth)
-        except KeyError:
-            collection = self.new_collection(source_depth)
-
         for _ in track(
             range(n_sources),
             total=n_sources,
             description=f"calculating amplitudes for depth {source_depth}",
         ):
-            response, targets = await get_modelled_waveforms()
+            targets = self._get_random_targets(target_distances, n_targets_per_source)
+            source = self._get_random_source(source_depth)
+            response = await asyncio.to_thread(engine.process, source, targets)
 
             traces: list[Trace] = response.pyrocko_traces()
             for tr in traces:
+                tr.transfer(transfer_function=BruneResponse(duration=source.duration))
                 if self.frequency_range:
                     if self.frequency_range.min > 0.0:
                         tr.highpass(4, self.frequency_range.min, demean=False)
@@ -671,6 +708,10 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
                 receivers.append(_get_target(targets, nsl))
                 receiver_traces.append(list(grp_traces))
 
+        try:
+            collection = self.get_collection(source_depth)
+        except KeyError:
+            collection = self.new_collection(source_depth)
         collection.fill(receivers, receiver_traces)
         self.save()
         return collection
@@ -680,8 +721,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         depth_min: float | None = None,
         depth_max: float | None = None,
         depth_delta: float | None = None,
-        n_targets: int = 20,
-        n_sources: int = 100,
+        n_sources: int = 400,
+        n_targets_per_source: int = 20,
     ) -> None:
         """
         Fills the source depth range with seismic data.
@@ -696,13 +737,14 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
             depth_delta (float | None, optional): The depth increment in meters.
                 If None, it uses the default value from the GF store configuration.
                 Defaults to None.
-            n_targets (int, optional): The number of targets per source depth.
+            n_sources (int, optional): The number of random source realisation
+                per source depth. Defaults to 400.
+            n_targets_per_source (int, optional): The number of targets per
+                source depth. Targets are randomized in distance and azimuth.
                 Defaults to 20.
-            n_sources (int, optional): The number of random sources per source depth.
-                Defaults to 100.
         """
-        existing_store_depths = [sa.source_depth for sa in self.site_amplitudes]
         store = self.get_store()
+
         gf_depth_delta = store.config.source_depth_delta
         gf_depth_min = store.config.source_depth_min
         gf_depth_max = store.config.source_depth_max
@@ -711,17 +753,21 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         depth_max = depth_max or gf_depth_max
         depth_delta = depth_delta or gf_depth_delta
 
-        depths = np.arange(gf_depth_min, gf_depth_max + depth_delta, depth_delta)
+        depths = np.arange(gf_depth_min, gf_depth_max, depth_delta)
         calculate_depths = depths[(depths >= depth_min) & (depths <= depth_max)]
 
+        stored_depths = [sa.source_depth for sa in self.site_amplitudes]
         logger.debug("filling source depths %s", calculate_depths)
         for depth in calculate_depths:
-            if depth in existing_store_depths:
-                continue
+            if depth in stored_depths:
+                if store.create_store_hash() != self.gf_store_hash:
+                    self.remove_collection(depth)
+                else:
+                    continue
             await self.fill_source_depth(
                 source_depth=depth,
-                n_targets=n_targets,
                 n_sources=n_sources,
+                n_targets_per_source=n_targets_per_source,
             )
 
     def get_collection(self, source_depth: float) -> SiteAmplitudesCollection:
@@ -751,19 +797,29 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         Returns:
             SiteAmplitudesCollection: The newly created SiteAmplitudesCollection object.
         """
+        logger.debug("creating new site amplitudes for depth %f", depth)
+        self.remove_collection(depth)
+        collection = SiteAmplitudesCollection(
+            source_depth=depth,
+            **self.model_dump(exclude={"site_amplitudes"}),
+        )
+        self.site_amplitudes.append(collection)
+        return collection
+
+    def remove_collection(self, depth: float) -> None:
+        """
+        Removes the site amplitudes collection for the given depth.
+
+        Args:
+            depth (float): The depth for which the site amplitudes collection is
+                removed.
+        """
+        logger.debug("removing site amplitudes for depth %f", depth)
         try:
             collection = self.get_collection(depth)
             self.site_amplitudes.remove(collection)
         except KeyError:
             pass
-        collection = SiteAmplitudesCollection(
-            source_depth=depth,
-            **self.model_dump(
-                exclude={"site_amplitudes"},
-            ),
-        )
-        self.site_amplitudes.append(collection)
-        return collection
 
     async def get_amplitude(
         self,
@@ -780,7 +836,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
 
         Args:
             depth (float): The depth of the event.
-            distance (float): The surface distance from the event.
+            distance (float): The epicentral distance from the event.
             n_amplitudes (int, optional): The number of amplitudes to retrieve.
                 Defaults to 10.
             max_distance (float, optional): The maximum distance to consider in [m].
@@ -835,20 +891,24 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         if not amplitudes:
             raise ValueError(f"No site amplitudes for depth {source_depth}.")
 
-        if interpolation == "nearest":
-            return amplitudes[0]
+        match interpolation:
+            case "nearest":
+                amplitude = amplitudes[0]
 
-        if interpolation == "linear":
-            if len(amplitudes) != 2:
-                raise ValueError(
-                    f"Cannot interpolate amplitudes with {len(amplitudes)} "
-                    f"source depths."
-                )
-            depths = source_depths[idx]
-            weight = abs((source_depth - depths[0]) / abs(depths[1] - depths[0]))
-            return amplitudes[0].combine(amplitudes[1], weight=weight)
-
-        raise ValueError(f"Unknown interpolation method {interpolation}.")
+            case "linear":
+                if len(amplitudes) != 2:
+                    raise ValueError(
+                        f"Cannot interpolate amplitudes with {len(amplitudes)} "
+                        f"source depths."
+                    )
+                depths = source_depths[idx]
+                weight = abs((source_depth - depths[0]) / abs(depths[1] - depths[0]))
+                amplitude = amplitudes[0].combine(amplitudes[1], weight=weight)
+            case _:
+                raise ValueError(f"Unknown interpolation method {interpolation}.")
+        if amplitude.median == 0.0:
+            raise ValueError(f"Median amplitude is zero for depth {source_depth}.")
+        return amplitude
 
     def hash(self) -> str:
         """
@@ -858,19 +918,40 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
             str: The hash of the store.
         """
         data = struct.pack(
-            "ddddddddss",
-            self.frequency_range.min,
-            self.frequency_range.max,
+            "ddddddddsss",
             self.reference_magnitude,
             self.max_distance,
-            self.rupture_velocities.min,
-            self.rupture_velocities.max,
-            self.stress_drop.min,
-            self.stress_drop.max,
-            self.gf_store_id,
-            self.gf_interpolation,
+            *self.frequency_range,
+            *self.rupture_velocities,
+            *self.stress_drop,
+            self.gf_store_id.encode(),
+            self.gf_interpolation.encode(),
+            self.gf_store_hash.encode(),
         )
         return hashlib.sha1(data).hexdigest()
+
+    def is_suited(self, selector: PeakAmplitudesBase) -> bool:
+        """
+        Check if the given selector is suited for this store.
+
+        Args:
+            selector (PeakAmpliutdesSelector): The selector to check.
+
+        Returns:
+            bool: True if the selector is suited for this store.
+        """
+        result = (
+            self.gf_store_id == selector.gf_store_id
+            and self.gf_interpolation == selector.gf_interpolation
+            and self.quantity == selector.quantity
+            and self.reference_magnitude == selector.reference_magnitude
+            and self.rupture_velocities == selector.rupture_velocities
+            and self.stress_drop == selector.stress_drop
+            and self.max_distance >= selector.max_distance
+        )
+        if selector.frequency_range:
+            result = result and self.frequency_range == selector.frequency_range
+        return result
 
     def __hash__(self) -> int:
         return hash(self.hash())
@@ -896,7 +977,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
 class CacheStats(NamedTuple):
     path: Path
     n_stores: int
-    bytes: int
+    bytes: ByteSize
 
 
 class PeakAmplitudeStoreCache:
@@ -906,11 +987,12 @@ class PeakAmplitudeStoreCache:
     def __init__(self, cache_dir: Path, engine: gf.LocalEngine | None = None) -> None:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("cache stats: %s", self.cache_stats())
+        logger.info("cache size: %s", human_readable_bytes(self.cache_stats().bytes))
         self.clean_cache()
 
         self.engine = engine or gf.LocalEngine(store_superdirs=["."])
         PeakAmplitudesStore.set_engine(engine)
+        PeakAmplitudesStore.set_cache_dir(cache_dir)
 
     def clear_cache(self):
         """
@@ -964,10 +1046,8 @@ class PeakAmplitudeStoreCache:
         Returns:
             list[PeakAmplitudesStore]: A list of peak amplitude stores.
         """
-        cache_dir = self.cache_dir / "site_amplitudes"
-        cache_dir.mkdir(parents=True, exist_ok=True)
         stores = []
-        for file in cache_dir.glob("*.json"):
+        for file in self.cache_dir.glob("*.json"):
             try:
                 store_id, quantity, _ = file.stem.split("-")  # type: ignore
             except ValueError:

@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from qseek.models.station import Stations
     from qseek.octree import Octree
 
+KM = 1e3
+
 
 class EventMagnitude(BaseModel):
     magnitude: Literal["EventMagnitude"] = "EventMagnitude"
@@ -47,6 +49,49 @@ class EventMagnitude(BaseModel):
             "magnitude": self.average,
             "error": self.error,
         }
+
+    def plot(self) -> None:
+        import matplotlib.pyplot as plt
+        from matplotlib.ticker import FuncFormatter
+
+        station_distances_hypo = np.array(
+            [sta.distance_hypo for sta in self.station_magnitudes]
+        )
+
+        fig = plt.figure()
+        ax = fig.gca()
+        ax.errorbar(
+            station_distances_hypo,
+            self.magnitudes,
+            yerr=[sta.magnitude_error for sta in self.station_magnitudes],
+            marker="o",
+            mec="k",
+            mfc="k",
+            ms=2,
+            ecolor=(0.0, 0.0, 0.0, 0.1),
+            capsize=1,
+            ls="none",
+        )
+        ax.axhline(
+            self.average,
+            color="k",
+            linestyle="dotted",
+            alpha=0.5,
+            label=rf"Median $M_L$ {self.average:.2f} $\pm${self.error:.2f}",
+        )
+        ax.set_xlabel("Distance to Hypocenter [km]")
+        ax.set_ylabel("$M_L$")
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: x / KM))
+        ax.grid(alpha=0.3)
+        ax.legend(title=f"Estimator: {self.model}", loc="lower right")
+        ax.text(
+            0.05,
+            0.05,
+            f"{self.n_observations} Stations",
+            transform=ax.transAxes,
+            alpha=0.5,
+        )
+        plt.show()
 
 
 class EventMagnitudeCalculator(BaseModel):
@@ -93,7 +138,7 @@ class EventMagnitudeCalculator(BaseModel):
         Raises:
             NotImplementedError: This method must be implemented by subclasses.
         """
-        raise NotImplementedError
+        ...
 
 
 class StationAmplitudes(NamedTuple):

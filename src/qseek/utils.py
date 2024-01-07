@@ -395,7 +395,7 @@ class ChannelSelector:
     number_channels: int
     normalize: bool = False
 
-    def get_traces(self, traces: list[Trace]) -> list[Trace]:
+    def get_traces(self, traces_flt: list[Trace]) -> list[Trace]:
         """
         Filter and normalize a list of traces based on the specified channels.
 
@@ -409,20 +409,29 @@ class ChannelSelector:
             KeyError: If the number of channels in the filtered list does not match
                 the expected number of channels.
         """
-        traces = [tr for tr in traces if tr.channel[-1] in self.channels]
-        if len(traces) != self.number_channels:
+        nsls = {tr.nslc_id[:3] for tr in traces_flt}
+        if len(nsls) != 1:
+            raise KeyError(
+                f"cannot get traces for selector {self.channels}"
+                f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces_flt)}"
+            )
+
+        traces_flt = [tr for tr in traces_flt if tr.channel[-1] in self.channels]
+
+        if len(traces_flt) != self.number_channels:
             raise KeyError(
                 f"cannot get {self.number_channels} channels"
                 f" for selector {self.channels}"
-                f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces)}"
+                f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces_flt)}"
             )
         if self.normalize:
-            traces_norm = traces[0].copy()
+            traces_norm = traces_flt[0].copy()
             traces_norm.ydata = np.linalg.norm(
-                np.array([tr.ydata for tr in traces]), axis=0
+                np.atleast_2d(np.array([tr.ydata for tr in traces_flt])),
+                axis=0,
             )
             return [traces_norm]
-        return traces
+        return traces_flt
 
     __call__ = get_traces
 

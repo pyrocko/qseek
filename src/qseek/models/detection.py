@@ -258,7 +258,7 @@ class EventReceivers(BaseModel):
             accessor_id=accessor_id,
             want_incomplete=False,
         )
-        squirrel.clear_accessor(accessor_id, cache_id="waveform")
+        squirrel.advance_accessor(accessor_id, cache_id="waveform")
 
         for tr in traces:
             # Crop to receiver's phase arrival window
@@ -822,9 +822,19 @@ class EventDetections(BaseModel):
     async def save(self) -> None:
         """Save detections to current rundir."""
         logger.debug("saving %d detections", self.n_detections)
-        async with aiofiles.open(self.rundir / FILENAME_DETECTIONS, "w") as f:
-            for detection in self:
-                await f.write(f"{detection.model_dump_json(exclude={'receivers'})}\n")
+
+        lines_events = []
+        lines_recv = []
+        # Has to be the unsorted
+        for detection in self.detections:
+            lines_events.append(f"{detection.model_dump_json(exclude={'receivers'})}\n")
+            lines_recv.append(f"{detection.receivers.model_dump_json()}\n")
+
+        async with UPDATE_LOCK:
+            async with aiofiles.open(self.rundir / FILENAME_DETECTIONS, "w") as f:
+                await f.writelines(lines_events)
+            async with aiofiles.open(self.rundir / FILENAME_RECEIVERS, "w") as f:
+                await f.writelines(lines_recv)
 
     async def export_detections(self, jitter_location: float = 0.0) -> None:
         """

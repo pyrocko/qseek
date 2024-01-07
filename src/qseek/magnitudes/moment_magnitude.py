@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Literal, NamedTuple
+from typing import TYPE_CHECKING, Iterable, Literal, NamedTuple
 
 import numpy as np
-from pydantic import DirectoryPath, Field, PositiveFloat, PrivateAttr
-from pyrocko import gf
+from pydantic import DirectoryPath, Field, NewPath, PositiveFloat, PrivateAttr
+from pyrocko import gf, io
 
 from qseek.magnitudes.base import (
     EventMagnitude,
@@ -52,7 +53,8 @@ def norm_traces(traces: list[Trace]) -> np.ndarray:
     Returns:
         np.ndarray: The normalized traces.
     """
-    return np.linalg.norm(np.array([tr.ydata for tr in traces]), axis=0)
+    data = np.array([tr.ydata for tr in traces])
+    return np.linalg.norm(np.atleast_2d(data), axis=0)
 
 
 class PeakAmplitudeDefinition(PeakAmplitudesBase):
@@ -69,8 +71,12 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
         default=Range(min=1 * KM, max=100 * KM),
         description="The epicentral distance range of the stations.",
     )
+    frequency_range: Range = Field(
+        default=Range(min=2.0, max=6.0),
+        description="The frequency range in Hz to filter the traces.",
+    )
 
-    def filter_receiver_by_nsl(self, receivers: Iterable[Receiver]) -> set[Receiver]:
+    def filter_receivers_by_nsl(self, receivers: Iterable[Receiver]) -> set[Receiver]:
         """
         Filters the list of receivers based on the NSL ID.
 
@@ -90,7 +96,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
         return set(itertools.chain.from_iterable(matched_receivers))
 
-    def filter_receiver_by_range(
+    def filter_receivers_by_range(
         self,
         receivers: Iterable[Receiver],
         event: EventDetection,
@@ -143,6 +149,10 @@ class MomentMagnitude(EventMagnitude):
     )
 
     @property
+    def m0(self) -> float:
+        return 10.0 ** (1.5 * (self.average + 10.7)) * 1.0e-7
+
+    @property
     def n_stations(self) -> int:
         """
         Number of stations used for calculating the moment magnitude.
@@ -158,15 +168,6 @@ class MomentMagnitude(EventMagnitude):
         traces: list[list[Trace]],
         noise_padding: float = 3.0,
     ) -> None:
-        def get_magnitude(
-            measured_amplitude: float,
-            modelled_amplitude: float,
-        ) -> float:
-            return (
-                np.log10(measured_amplitude / modelled_amplitude)
-                + store.reference_magnitude
-            )
-
         for receiver, rcv_traces in zip(receivers, traces, strict=False):
             try:
                 rcv_traces = _TRACE_SELECTORS[peak_amplitude](rcv_traces)
@@ -176,23 +177,23 @@ class MomentMagnitude(EventMagnitude):
                 logger.warning("No traces for peak amplitude %s", receiver.nsl.pretty)
                 continue
 
-            station_amplitudes = StationAmplitudes.create(
+            station = StationAmplitudes.create(
                 receiver=receiver,
                 traces=rcv_traces,
                 noise_padding=noise_padding,
                 event=event,
             )
 
-            if station_amplitudes.anr < 1.0:
+            if station.anr < 1.0:
                 logger.warning("Station %s has bad ANR", receiver.nsl.pretty)
                 continue
-            if store.max_distance < station_amplitudes.distance_epi:
+            if station.distance_epi > store.max_distance:
                 continue
 
             try:
-                modelled_amplitude = await store.get_amplitude(
+                model = await store.get_amplitude(
                     source_depth=event.effective_depth,
-                    distance=station_amplitudes.distance_epi,
+                    distance=station.distance_epi,
                     n_amplitudes=25,
                     peak_amplitude=peak_amplitude,
                     interpolation="linear",
@@ -201,30 +202,17 @@ class MomentMagnitude(EventMagnitude):
                 logger.warning("No modelled amplitude for receiver %s", receiver.nsl)
                 continue
 
-            magnitude = get_magnitude(
-                station_amplitudes.peak,
-                modelled_amplitude.amplitude_median,
-            )
-            error_upper = (
-                get_magnitude(
-                    station_amplitudes.peak + station_amplitudes.noise,
-                    modelled_amplitude.amplitude_median,
-                )
-                - magnitude
-            )
-            error_lower = (
-                get_magnitude(
-                    station_amplitudes.peak - station_amplitudes.noise,
-                    modelled_amplitude.amplitude_median,
-                )
-                - magnitude
-            )
+            magnitude = model.get_magnitude(station.peak)
+            error_upper = model.get_magnitude(station.peak + station.noise) - magnitude
+            error_lower = model.get_magnitude(station.peak - station.noise) - magnitude
+            if not np.isfinite(error_lower):
+                error_lower = error_upper
 
             station_magnitude = StationMomentMagnitude(
-                distance_epi=station_amplitudes.distance_epi,
+                distance_epi=station.distance_epi,
                 magnitude=magnitude,
-                error=(error_upper + error_lower) / 2,
-                peak=station_amplitudes.peak,
+                error=(error_upper + abs(error_lower)) / 2,
+                peak=station.peak,
             )
             self.stations_magnitudes.append(station_magnitude)
 
@@ -232,47 +220,59 @@ class MomentMagnitude(EventMagnitude):
             return
 
         magnitudes = np.array([sta.magnitude for sta in self.stations_magnitudes])
-        errors = np.array([sta.error for sta in self.stations_magnitudes])
+        median = np.median(magnitudes)
 
-        self.average = float(np.average(magnitudes))
-        self.error = float(np.average(errors))
-        self.std = float(np.std(magnitudes))
+        self.average = float(median)
+        self.error = float(np.median(np.abs(magnitudes - median)))  # MAD
 
 
 class MomentMagnitudeExtractor(EventMagnitudeCalculator):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
-    seconds_before: PositiveFloat = 10.0
-    seconds_after: PositiveFloat = 10.0
-    padding_seconds: PositiveFloat = 5.0
+    seconds_before: PositiveFloat = Field(
+        default=10.0,
+        description="Seconds before first phase arrival to extract.",
+    )
+    seconds_after: PositiveFloat = Field(
+        default=10.0,
+        description="Seconds after last phase arrival to extract.",
+    )
+    padding_seconds: PositiveFloat = Field(
+        default=10.0,
+        description="Seconds padding before and after the extraction window.",
+    )
 
-    gf_store_dirs: list[DirectoryPath] = [Path(".")]
+    gf_store_dirs: list[DirectoryPath] = Field(
+        default=[Path(".")],
+        description="The directories of the Pyrocko GF stores.",
+    )
+    processed_mseed_export: NewPath | None = Field(
+        default=None,
+        description="Path to export the processed mseed traces to.",
+    )
 
     models: list[PeakAmplitudeDefinition] = Field(
-        default_factory=list,
+        default=[PeakAmplitudeDefinition()],
         description="The peak amplitude models to use.",
+        min_length=1,
     )
 
     _stores: list[PeakAmplitudesStore] = PrivateAttr()
 
-    def model_post_init(self, __context: Any) -> None:
-        if not self.models:
-            raise ValueError("No peak amplitude models specified.")
+    async def prepare(self, octree: Octree, stations: Stations) -> None:
+        logger.info("Preparing peak amplitude stores...")
 
         engine = gf.LocalEngine(store_superdirs=self.gf_store_dirs)
         cache = PeakAmplitudeStoreCache(CACHE_DIR / "peak_amplitudes", engine)
         logger.info("Loading peak amplitude stores...")
         self._stores = [cache.get_store(definition) for definition in self.models]
 
-    async def prepare(self, octree: Octree, stations: Stations) -> None:
-        logger.info("Preparing peak amplitude stores...")
         octree_depth = octree.location.effective_depth
-
-        for store in self._stores:
+        for store, definition in zip(self._stores, self.models, strict=True):
             await store.fill_source_depth_range(
                 depth_min=octree.depth_bounds.min + octree_depth,
                 depth_max=octree.depth_bounds.max + octree_depth,
-                depth_delta=octree.size_initial,
+                depth_delta=definition.source_depth_delta,
             )
 
     async def add_magnitude(
@@ -284,16 +284,16 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
 
         receivers = list(event.receivers)
         for store, definition in zip(self._stores, self.models, strict=True):
-            store_receivers = definition.filter_receiver_by_nsl(receivers)
+            store_receivers = definition.filter_receivers_by_nsl(receivers)
             if not store_receivers:
                 continue
             for rcv in store_receivers:
                 receivers.remove(rcv)
-            store_receivers = definition.filter_receiver_by_range(
+            store_receivers = definition.filter_receivers_by_range(
                 store_receivers, event
             )
             if not store_receivers:
-                logger.debug("No receivers in range for peak amplitude %s", store.id)
+                logger.info("No receivers in range for peak amplitude")
                 continue
             if not store.source_depth_range.inside(event.effective_depth):
                 logger.info("Event depth outside of store depth range.")
@@ -307,15 +307,23 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 seconds_after=self.seconds_after,
                 demean=True,
                 seconds_fade=self.padding_seconds,
-                cut_off_fade=True,
+                cut_off_fade=False,
             )
             if not traces:
                 return
 
             for tr in traces:
-                if store.frequency_range.min:
-                    tr.highpass(4, store.frequency_range.min, demean=True)
-                tr.lowpass(4, store.frequency_range.max, demean=True)
+                if store.frequency_range.min != 0.0:
+                    await asyncio.to_thread(
+                        tr.highpass, 4, store.frequency_range.min, demean=True
+                    )
+                await asyncio.to_thread(
+                    tr.lowpass, 4, store.frequency_range.max, demean=True
+                )
+                tr.chop(tr.tmin + self.padding_seconds, tr.tmax - self.padding_seconds)
+
+            if self.processed_mseed_export is not None:
+                io.save(traces, str(self.processed_mseed_export), append=True)
 
             grouped_traces = []
             receivers = []

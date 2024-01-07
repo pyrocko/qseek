@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from matplotlib.ticker import FuncFormatter
 from pydantic import Field, PositiveFloat, PrivateAttr, model_validator
-from scipy.stats import median_abs_deviation
 from typing_extensions import Self
 
 from qseek.magnitudes.base import (
@@ -73,10 +72,9 @@ class LocalMagnitude(EventMagnitude):
                 continue
             self.station_magnitudes.append(station_magnitude)
 
-        magnitudes = self.magnitudes
-
-        self.average = float(np.median(magnitudes))
-        self.error = float(median_abs_deviation(magnitudes))
+        median = np.median(self.magnitudes)
+        self.average = float(median)
+        self.error = float(np.median(np.abs(self.magnitudes - median)))  # MAD
 
         return self
 
@@ -85,7 +83,7 @@ class LocalMagnitude(EventMagnitude):
         return np.array([sta.magnitude for sta in self.station_magnitudes])
 
     @property
-    def n_observations(self) -> int:
+    def n_stations(self) -> int:
         return len(self.station_magnitudes)
 
     def csv_row(self) -> dict[str, float]:
@@ -130,7 +128,7 @@ class LocalMagnitude(EventMagnitude):
         ax.text(
             0.05,
             0.05,
-            f"{self.n_observations} Stations",
+            f"{self.n_stations} Stations",
             transform=ax.transAxes,
             alpha=0.5,
         )
@@ -140,9 +138,18 @@ class LocalMagnitude(EventMagnitude):
 class LocalMagnitudeExtractor(EventMagnitudeCalculator):
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
-    seconds_before: PositiveFloat = 10.0
-    seconds_after: PositiveFloat = 10.0
-    padding_seconds: PositiveFloat = 10.0
+    seconds_before: PositiveFloat = Field(
+        default=10.0,
+        description="Seconds before first phase arrival to extract.",
+    )
+    seconds_after: PositiveFloat = Field(
+        default=10.0,
+        description="Seconds after last phase arrival to extract.",
+    )
+    padding_seconds: PositiveFloat = Field(
+        default=10.0,
+        description="Seconds padding before and after the extraction window.",
+    )
     model: ModelName = Field(
         default="iaspei-southern-california",
         description="The estimator to use for calculating the local magnitude.",
