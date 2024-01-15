@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import numpy as np
 from pydantic import BaseModel, Field
 
-from qseek.models.phase_arrival import PhaseArrival
 from qseek.models.station import Stations
 from qseek.utils import PhaseDescription, downsample
 
@@ -16,8 +15,10 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
 
-class PickedArrival(PhaseArrival):
-    provider: Literal["PickedArrival"] = "PickedArrival"
+class ObservedArrival(NamedTuple):
+    phase: str
+    time: datetime
+    detection_value: float
 
 
 class ImageFunction(BaseModel):
@@ -120,7 +121,7 @@ class WaveformImage:
         modelled_arrival: datetime,
         search_length_seconds: float = 5,
         threshold: float = 0.1,
-    ) -> PickedArrival | None:
+    ) -> ObservedArrival | None:
         """Search for a peak in all station's image functions.
 
         Args:
@@ -140,7 +141,7 @@ class WaveformImage:
         modelled_arrivals: list[datetime | None],
         search_length_seconds: float = 5,
         threshold: float = 0.1,
-    ) -> list[PickedArrival | None]:
+    ) -> list[ObservedArrival | None]:
         """Search for a peak in all station's image functions.
 
         Args:

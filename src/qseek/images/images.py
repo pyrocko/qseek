@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple
 
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
-from qseek.images.base import ImageFunction, PickedArrival
-from qseek.images.phase_net import PhaseNet, PhaseNetPick
+from qseek.images.base import ImageFunction
+from qseek.images.phase_net import PhaseNet
 from qseek.stats import Stats
 from qseek.utils import PhaseDescription, datetime_now, human_readable_bytes
 
@@ -29,12 +29,6 @@ logger = logging.getLogger(__name__)
 ImageFunctionType = Annotated[
     Union[PhaseNet, ImageFunction],
     Field(..., discriminator="image"),
-]
-
-# Make this a Union when more picks are implemented
-ImageFunctionPick = Annotated[
-    Union[PhaseNetPick, PickedArrival],
-    Field(..., discriminator="provider"),
 ]
 
 

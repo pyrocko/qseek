@@ -10,7 +10,7 @@ from qseek.tracers import (
     cake,  # noqa: F401
     constant_velocity,  # noqa: F401
 )
-from qseek.tracers.base import ModelledArrival, RayTracer
+from qseek.tracers.base import RayTracer
 
 if TYPE_CHECKING:
     from qseek.models.station import Stations
@@ -21,11 +21,6 @@ logger = logging.getLogger(__name__)
 
 RayTracerType = Annotated[
     Union[(RayTracer, *RayTracer.get_subclasses())],
-    Field(..., discriminator="tracer"),
-]
-
-RayTracerArrival = Annotated[
-    Union[(ModelledArrival, *ModelledArrival.get_subclasses())],
     Field(..., discriminator="tracer"),
 ]
 

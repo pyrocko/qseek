@@ -27,13 +27,13 @@ from typing_extensions import Self
 
 from qseek.console import console
 from qseek.features import EventFeaturesType
-from qseek.images.images import ImageFunctionPick
+from qseek.images.base import ObservedArrival
 from qseek.magnitudes import EventMagnitudeType
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.stats import Stats
-from qseek.tracers.tracers import RayTracerArrival
+from qseek.tracers.base import ModelledArrival
 from qseek.utils import (
     NSL,
     MeasurementUnit,
@@ -84,8 +84,8 @@ class ReceiverCache:
 
 class PhaseDetection(BaseModel):
     phase: PhaseDescription
-    model: RayTracerArrival
-    observed: ImageFunctionPick | None = None
+    model: ModelledArrival
+    observed: ObservedArrival | None = None
 
     @property
     def traveltime_delay(self) -> timedelta | None:

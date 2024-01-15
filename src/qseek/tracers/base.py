@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Sequence, TypeVar
+from typing import TYPE_CHECKING, Literal, NamedTuple, Sequence, TypeVar
 
 import numpy as np
 from pydantic import BaseModel
 
 from qseek.models.location import Location
-from qseek.models.phase_arrival import PhaseArrival
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -18,12 +17,9 @@ if TYPE_CHECKING:
 _LocationType = TypeVar("_LocationType", bound=Location)
 
 
-class ModelledArrival(PhaseArrival):
-    tracer: Literal["ModelledArrival"] = "ModelledArrival"
-
-    @classmethod
-    def get_subclasses(cls) -> tuple[type[ModelledArrival], ...]:
-        return tuple(cls.__subclasses__())
+class ModelledArrival(NamedTuple):
+    phase: str
+    time: datetime
 
 
 class RayTracer(BaseModel):

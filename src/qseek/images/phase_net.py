@@ -10,7 +10,7 @@ from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import obspy_compat
 from seisbench import logger as seisbench_logger
 
-from qseek.images.base import ImageFunction, PickedArrival, WaveformImage
+from qseek.images.base import ImageFunction, ObservedArrival, WaveformImage
 from qseek.utils import alog_call, to_datetime
 
 obspy_compat.plant()
@@ -40,12 +40,6 @@ PhaseName = Literal["P", "S"]
 StackMethod = Literal["avg", "max"]
 
 
-class PhaseNetPick(PickedArrival):
-    provider: Literal["PhaseNetPick"] = "PhaseNetPick"
-    phase: str
-    detection_value: float
-
-
 class PhaseNetImage(WaveformImage):
     def search_phase_arrival(
         self,
@@ -53,7 +47,7 @@ class PhaseNetImage(WaveformImage):
         modelled_arrival: datetime,
         search_length_seconds: float = 5.0,
         threshold: float = 0.1,
-    ) -> PhaseNetPick | None:
+    ) -> ObservedArrival | None:
         """Search for a peak in all station's image functions.
 
         Args:
@@ -76,7 +70,7 @@ class PhaseNetImage(WaveformImage):
         time_seconds, value = search_trace.max()
         if value < threshold:
             return None
-        return PhaseNetPick(
+        return ObservedArrival(
             time=to_datetime(time_seconds),
             detection_value=float(value),
             phase=self.phase,

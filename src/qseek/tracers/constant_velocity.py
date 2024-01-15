@@ -16,11 +16,6 @@ if TYPE_CHECKING:
     from qseek.octree import Octree
 
 
-class ConstantVelocityArrival(ModelledArrival):
-    tracer: Literal["ConstantVelocityArrival"] = "ConstantVelocityArrival"
-    phase: str
-
-
 class ConstantVelocityTracer(RayTracer):
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
     phase: PhaseDescription = Field(
@@ -66,7 +61,7 @@ class ConstantVelocityTracer(RayTracer):
         event_time: datetime,
         source: Location,
         receivers: Sequence[Location],
-    ) -> list[ConstantVelocityArrival]:
+    ) -> list[ModelledArrival]:
         self._check_phase(phase)
 
         traveltimes = self.get_travel_times_locations(
@@ -77,6 +72,9 @@ class ConstantVelocityTracer(RayTracer):
         arrivals = []
         for traveltime in traveltimes:
             arrivaltime = event_time + timedelta(seconds=traveltime)
-            arrival = ConstantVelocityArrival(time=arrivaltime, phase=phase)
+            arrival = ModelledArrival(
+                phase=phase,
+                time=arrivaltime,
+            )
             arrivals.append(arrival)
         return arrivals

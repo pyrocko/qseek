@@ -86,11 +86,6 @@ if not DEFAULT_VELOCITY_MODEL_FILE.exists():
     DEFAULT_VELOCITY_MODEL_FILE.write_text(DEFAULT_VELOCITY_MODEL)
 
 
-class CakeArrival(ModelledArrival):
-    tracer: Literal["CakeArrival"] = "CakeArrival"
-    phase: str
-
-
 class EarthModel(BaseModel):
     filename: FilePath | None = Field(
         default=DEFAULT_VELOCITY_MODEL_FILE,
@@ -644,7 +639,7 @@ class CakeTracer(RayTracer):
         event_time: datetime,
         source: Location,
         receivers: Sequence[Location],
-    ) -> list[CakeArrival | None]:
+    ) -> list[ModelledArrival | None]:
         traveltimes = self.get_travel_times_locations(
             phase,
             source=source,
@@ -657,6 +652,9 @@ class CakeTracer(RayTracer):
                 continue
 
             arrivaltime = event_time + timedelta(seconds=traveltime)
-            arrival = CakeArrival(time=arrivaltime, phase=phase)
+            arrival = ModelledArrival(
+                time=arrivaltime,
+                phase=phase,
+            )
             arrivals.append(arrival)
         return arrivals
