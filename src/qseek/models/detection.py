@@ -22,7 +22,6 @@ from pydantic import (
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
-from pyrocko.squirrel.error import NotAvailable
 from rich.table import Table
 from typing_extensions import Self
 
@@ -320,15 +319,27 @@ class EventReceivers(BaseModel):
         )
         traces = filter_clipped_traces(traces) if remove_clipped else traces
 
+        tmin = min(tr.tmin for tr in traces)
+        tmax = max(tr.tmax for tr in traces)
+        responses = await asyncio.to_thread(
+            squirrel.get_responses,
+            tmin=tmin,
+            tmax=tmax,
+            codes=[tr.nslc_id for tr in traces],
+        )
+
+        def get_response(tr: Trace) -> Any:
+            for response in responses:
+                if response.codes[:4] == tr.nslc_id:
+                    return response
+            raise ValueError(f"cannot find response for {tr.nslc_id}")
+
         restituted_traces = []
         for tr in traces:
             try:
-                response = squirrel.get_response(
-                    tmin=tr.tmin,
-                    tmax=tr.tmax,
-                    codes=[tr.nslc_id],
-                )
-            except NotAvailable:
+                response = get_response(tr)
+            except ValueError:
+                logger.debug("cannot find response for %s", ".".join(tr.nslc_id))
                 continue
 
             restituted_traces.append(

@@ -21,7 +21,14 @@ from qseek.magnitudes.moment_magnitude_store import (
     PeakAmplitudesStore,
     PeakAmplitudeStoreCache,
 )
-from qseek.utils import CACHE_DIR, NSL, ChannelSelector, ChannelSelectors, Range
+from qseek.utils import (
+    CACHE_DIR,
+    NSL,
+    ChannelSelector,
+    ChannelSelectors,
+    MeasurementUnit,
+    Range,
+)
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -120,6 +127,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
 
 class StationMomentMagnitude(NamedTuple):
+    quantity: MeasurementUnit
     distance_epi: float
     magnitude: float
     error: float
@@ -130,22 +138,13 @@ class StationMomentMagnitude(NamedTuple):
 class MomentMagnitude(EventMagnitude):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
-    average: float = Field(
-        default=0.0,
-        description="Average moment magnitude.",
-    )
-    error: float = Field(
-        default=0.0,
-        description="Average error of moment magnitude.",
-    )
-    std: float = Field(
-        default=0.0,
-        description="Standard deviation of moment magnitude.",
-    )
-
     stations_magnitudes: list[StationMomentMagnitude] = Field(
         default_factory=list,
         description="The station moment magnitudes.",
+    )
+    quantity: MeasurementUnit = Field(
+        default="displacement",
+        description="The quantity of the traces.",
     )
 
     @property
@@ -209,6 +208,7 @@ class MomentMagnitude(EventMagnitude):
                 error_lower = error_upper
 
             station_magnitude = StationMomentMagnitude(
+                quantity=store.quantity,
                 distance_epi=station.distance_epi,
                 magnitude=magnitude,
                 error=(error_upper + abs(error_lower)) / 2,
@@ -222,7 +222,8 @@ class MomentMagnitude(EventMagnitude):
         magnitudes = np.array([sta.magnitude for sta in self.stations_magnitudes])
         median = np.median(magnitudes)
 
-        self.average = float(median)
+        self.median = float(median)
+        self.average = float(np.mean(magnitudes))
         self.error = float(np.median(np.abs(magnitudes - median)))  # MAD
 
 
@@ -281,7 +282,6 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
         event: EventDetection,
     ) -> None:
         moment_magnitude = MomentMagnitude()
-
         receivers = list(event.receivers)
         for store, definition in zip(self._stores, self.models, strict=True):
             store_receivers = definition.filter_receivers_by_nsl(receivers)
@@ -308,9 +308,10 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 demean=True,
                 seconds_fade=self.padding_seconds,
                 cut_off_fade=False,
+                remove_clipped=True,
             )
             if not traces:
-                return
+                continue
 
             for tr in traces:
                 if store.frequency_range.min != 0.0:

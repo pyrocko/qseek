@@ -66,9 +66,11 @@ class Node:
     north: float
     depth: float
     size: float
+    level: int
     semblance: float = 0.0
 
     tree: Octree | None = None
+    parent: Node | None = None
     children: tuple[Node, ...] = ()
 
     _hash: bytes | None = None
@@ -93,6 +95,8 @@ class Node:
                     depth=self.depth + depth * half_size / 2,
                     size=half_size,
                     tree=self.tree,
+                    parent=self,
+                    level=self.level + 1,
                 )
                 for east in (-1, 1)
                 for north in (-1, 1)
@@ -311,7 +315,7 @@ class Octree(BaseModel):
         depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds.min
 
         return [
-            Node(east=east, north=north, depth=depth, size=ln, tree=self)
+            Node(east=east, north=north, depth=depth, size=ln, tree=self, level=0)
             for east in east_nodes
             for north in north_nodes
             for depth in depth_nodes

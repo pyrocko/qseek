@@ -26,6 +26,10 @@ class EventMagnitude(BaseModel):
         default=0.0,
         description="Average local magnitude.",
     )
+    median: float = Field(
+        default=0.0,
+        description="Average local magnitude.",
+    )
     error: float = Field(
         default=0.0,
         description="Average error of local magnitude.",
