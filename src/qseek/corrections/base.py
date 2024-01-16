@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import numpy as np
     from rich.console import Console
 
-    from qseek.models.station import Station
+    from qseek.models.station import Stations
     from qseek.octree import Octree
     from qseek.utils import NSL, PhaseDescription
 
@@ -64,7 +64,7 @@ class StationCorrections(BaseModel):
 
     async def prepare(
         self,
-        station: Station,
+        stations: Stations,
         octree: Octree,
         phases: Iterable[PhaseDescription],
     ) -> None:

@@ -387,6 +387,10 @@ class Search(BaseModel):
         )
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
+        if self.station_corrections:
+            await self.station_corrections.prepare(
+                self.stations, self.octree, self.image_functions.get_phases()
+            )
         self.init_boundaries()
 
     async def start(self, force_rundir: bool = False) -> None:

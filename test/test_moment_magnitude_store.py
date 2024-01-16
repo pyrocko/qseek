@@ -94,6 +94,7 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
 @pytest.mark.asyncio
 async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
     import matplotlib.pyplot as plt
+    from matplotlib.cm import ScalarMappable
     from matplotlib.colors import LightSource
     from matplotlib.ticker import FuncFormatter
 
@@ -104,7 +105,7 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
     plot_amplitude: PeakAmplitude = "absolute"
     PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
-    await store.fill_source_depth_range(depth_max=20 * KM)
+    await store.fill_source_depth_range(depth_max=15 * KM)
 
     distances = np.linspace(0, store.max_distance, 256)
     depths = np.linspace(*store.source_depth_range, 256)
@@ -124,15 +125,14 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
             )
         depth_amplitudes.append(amplitudes)
 
-    data = [[a.amplitude_median for a in amplitudes] for amplitudes in depth_amplitudes]
+    data = [[a.median for a in amplitudes] for amplitudes in depth_amplitudes]
     data = np.array(data) / NM
-
-    data = np.log10(data)
 
     fig, ax = plt.subplots()
     ls = LightSource(azdeg=315, altdeg=45)
 
-    rgb = ls.shade(data, cmap=plt.cm.get_cmap("viridis"), blend_mode="overlay")
+    cmap = "viridis"
+    rgb = ls.shade(np.log10(data), cmap=plt.cm.get_cmap(cmap), blend_mode="overlay")
 
     ax.imshow(
         rgb,
@@ -144,8 +144,10 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
         ],
         aspect="auto",
     )
-    # cbar = fig.colorbar(cm)
-    # cbar.set_label("Absolute Displacement [nm]")
+    cm = ScalarMappable(norm=None, cmap=cmap)
+    cm.set_array(data)
+    cbar = fig.colorbar(cm, ax=ax)
+    cbar.set_label("Absolute Displacement [nm]")
 
     ax.set_xlabel("Epicentral Distance [km]")
     ax.set_ylabel("Source Depth [km]")
