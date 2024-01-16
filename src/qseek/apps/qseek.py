@@ -266,7 +266,7 @@ def main() -> None:
                 console=console,
             )
             corrections_class = corrections_modules[int(module_choice)]
-            corrections = asyncio.run(corrections_class.prepare(rundir, console))
+            corrections = asyncio.run(corrections_class.setup(rundir, console))
 
             search = json.loads((rundir / "search.json").read_text())
             search["station_corrections"] = corrections.model_dump(mode="json")
@@ -336,7 +336,7 @@ def main() -> None:
         case "dump-schemas":
             import json
 
-            from qseek.models.detection import EventDetections
+            from qseek.models.catalog import EventCatalog
 
             if not args.folder.exists():
                 raise EnvironmentError(f"folder {args.folder} does not exist")
@@ -346,7 +346,7 @@ def main() -> None:
             file.write_text(json.dumps(Search.model_json_schema(), indent=2))
 
             file = args.folder / "detections.schema.json"
-            file.write_text(json.dumps(EventDetections.model_json_schema(), indent=2))
+            file.write_text(json.dumps(EventCatalog.model_json_schema(), indent=2))
         case _:
             parser.error(f"unknown command: {args.command}")
 

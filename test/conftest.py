@@ -8,7 +8,8 @@ from typing import Generator
 import aiohttp
 import numpy as np
 import pytest
-from qseek.models.detection import EventDetection, EventDetections
+from qseek.models.catalog import EventCatalog
+from qseek.models.detection import EventDetection
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.octree import Octree
@@ -144,7 +145,7 @@ def fixed_stations() -> Stations:
 
 
 @pytest.fixture(scope="session")
-def detections() -> Generator[EventDetections, None, None]:
+def detections() -> Generator[EventCatalog, None, None]:
     n_detections = 2000
     detections: list[EventDetection] = []
     for _ in range(n_detections):
@@ -160,4 +161,4 @@ def detections() -> Generator[EventDetections, None, None]:
         )
         detections.append(detection)
     with TemporaryDirectory() as tmpdir:
-        yield EventDetections(rundir=Path(tmpdir), detections=detections)
+        yield EventCatalog(rundir=Path(tmpdir), detections=detections)

@@ -23,7 +23,8 @@ from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.magnitudes import EventMagnitudeCalculatorType
 from qseek.models import Stations
-from qseek.models.detection import EventDetection, EventDetections, PhaseDetection
+from qseek.models.catalog import EventCatalog
+from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.semblance import Semblance
 from qseek.octree import NodeSplitError, Octree
@@ -267,7 +268,7 @@ class Search(BaseModel):
         PhaseDescription, tuple[timedelta, timedelta]
     ] = PrivateAttr({})
 
-    _detections: EventDetections = PrivateAttr()
+    _detections: EventCatalog = PrivateAttr()
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
@@ -302,7 +303,7 @@ class Search(BaseModel):
         self._init_logging()
 
         logger.info("created new rundir %s", rundir)
-        self._detections = EventDetections(rundir=rundir)
+        self._detections = EventCatalog(rundir=rundir)
 
     def _init_logging(self) -> None:
         file_logger = logging.FileHandler(self._rundir / "qseek.log")
@@ -493,7 +494,7 @@ class Search(BaseModel):
         search_file = rundir / "search.json"
         search = cls.model_validate_json(search_file.read_bytes())
         search._rundir = rundir
-        search._detections = EventDetections.load_rundir(rundir)
+        search._detections = EventCatalog.load_rundir(rundir)
 
         progress_file = rundir / "progress.json"
         if progress_file.exists():

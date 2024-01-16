@@ -127,7 +127,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
 
 class StationMomentMagnitude(NamedTuple):
-    quantity: MeasurementUnit
+    # quantity: MeasurementUnit
     distance_epi: float
     magnitude: float
     error: float
@@ -208,7 +208,7 @@ class MomentMagnitude(EventMagnitude):
                 error_lower = error_upper
 
             station_magnitude = StationMomentMagnitude(
-                quantity=store.quantity,
+                # quantity=store.quantity,
                 distance_epi=station.distance_epi,
                 magnitude=magnitude,
                 error=(error_upper + abs(error_lower)) / 2,

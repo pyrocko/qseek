@@ -16,6 +16,7 @@ from typing import (
     Callable,
     ClassVar,
     Coroutine,
+    Iterable,
     Literal,
     NamedTuple,
     ParamSpec,
@@ -190,6 +191,59 @@ def time_to_path(datetime: datetime) -> str:
         str: The string representation of the file path.
     """
     return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
+
+
+def as_array(iterable: Iterable[float], dtype: np.dtype = float) -> np.ndarray:
+    """
+    Convert an iterable of floats into a NumPy array.
+
+    Parameters:
+        iterable (Iterable[float]): An iterable containing float values.
+
+    Returns:
+        np.ndarray: A NumPy array containing the float values from the iterable.
+    """
+    return np.fromiter(iterable, dtype=dtype)
+
+
+def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> float:
+    """
+    Calculate the weighted median of an array/list using numpy.
+
+    Parameters:
+        data (np.ndarray): The input array/list.
+        weights (np.ndarray | None): The weights corresponding to each
+            element in the data array/list.
+            If None, the function calculates the regular median.
+
+    Returns:
+        float: The weighted median.
+
+    Raises:
+        TypeError: If the data and weights arrays/lists cannot be sorted together.
+    """
+    if weights is None:
+        return float(np.median(data))
+
+    data = np.atleast_1d(np.array(data).squeeze())
+    weights = np.atleast_1d(np.array(weights).squeeze())
+    try:
+        s_data, s_weights = map(
+            np.array, zip(*sorted(zip(data, weights, strict=True)), strict=True)
+        )
+    except TypeError as exc:
+        raise exc
+    midpoint = 0.5 * sum(s_weights)
+    if any(weights > midpoint):
+        w_median = (data[weights == np.max(weights)])[0]
+    else:
+        cs_weights = np.cumsum(s_weights)
+        idx = np.where(cs_weights <= midpoint)[0][-1]
+        if cs_weights[idx] == midpoint:
+            w_median = np.mean(s_data[idx : idx + 2])
+        else:
+            w_median = s_data[idx + 1]
+    return float(w_median)
 
 
 def to_datetime(time: float) -> datetime:

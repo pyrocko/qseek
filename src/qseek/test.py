@@ -1,7 +1,7 @@
 from qseek import plot
-from qseek.models.detection import EventDetections
+from qseek.models.catalog import EventCatalog
 
-detections = EventDetections(rundir="test-qseek/")
+detections = EventCatalog(rundir="test-qseek/")
 detection = detections.detections[0]
 
 plot.plot_detection(detection)

@@ -364,7 +364,6 @@ class IcelandReykjanes(WoodAnderson, LocalMagnitudeModel):
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
-        # TODO: check second term
         return 0.6902 * np.log10(dist_hypo_km / 17) + 0.0318 * (dist_hypo_km - 17) + 2
 
 

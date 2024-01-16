@@ -5,15 +5,15 @@ from typing import TYPE_CHECKING, Iterable, Literal
 from pydantic import BaseModel
 from typing_extensions import Self
 
-from qseek.utils import PhaseDescription
-
 if TYPE_CHECKING:
     from pathlib import Path
 
     import numpy as np
     from rich.console import Console
 
-NSL = tuple[str, str, str]
+    from qseek.models.station import Station
+    from qseek.octree import Octree
+    from qseek.utils import NSL, PhaseDescription
 
 
 class StationCorrections(BaseModel):
@@ -62,8 +62,23 @@ class StationCorrections(BaseModel):
         """
         ...
 
+    async def prepare(
+        self,
+        station: Station,
+        octree: Octree,
+        phases: Iterable[PhaseDescription],
+    ) -> None:
+        """Prepare the station for the corrections.
+
+        Args:
+            station: The station to prepare.
+            octree: The octree to use for the preparation.
+            phases: The phases to prepare the station for.
+        """
+        ...
+
     @classmethod
-    async def prepare(cls, rundir: Path, console: Console | None = None) -> Self:
+    async def setup(cls, rundir: Path, console: Console | None = None) -> Self:
         """Prepare the station corrections for the console."""
         if console:
             console.print("This module does not require any preparation.")

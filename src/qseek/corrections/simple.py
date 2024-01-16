@@ -2,8 +2,8 @@ from typing import Iterable, Literal
 
 import numpy as np
 
-from qseek.corrections.base import NSL, StationCorrections
-from qseek.utils import PhaseDescription
+from qseek.corrections.base import StationCorrections
+from qseek.utils import NSL, PhaseDescription
 
 
 class SimpleCorrections(StationCorrections):
