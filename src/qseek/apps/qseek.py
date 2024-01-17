@@ -249,11 +249,11 @@ def main() -> None:
         case "corrections":
             import json
 
-            from qseek.corrections.base import StationCorrections
+            from qseek.corrections.base import TravelTimeCorrections
 
             rundir = Path(args.rundir)
 
-            corrections_modules = StationCorrections.get_subclasses()
+            corrections_modules = TravelTimeCorrections.get_subclasses()
 
             console.print("[bold]Available travel time corrections modules")
             for imodule, module in enumerate(corrections_modules):
@@ -265,8 +265,8 @@ def main() -> None:
                 default="0",
                 console=console,
             )
-            corrections_class = corrections_modules[int(module_choice)]
-            corrections = asyncio.run(corrections_class.setup(rundir, console))
+            travel_time_corrections = corrections_modules[int(module_choice)]
+            corrections = asyncio.run(travel_time_corrections.setup(rundir, console))
 
             search = json.loads((rundir / "search.json").read_text())
             search["station_corrections"] = corrections.model_dump(mode="json")
@@ -291,7 +291,7 @@ def main() -> None:
             shutil.rmtree(CACHE_DIR)
 
         case "modules":
-            from qseek.corrections.base import StationCorrections
+            from qseek.corrections.base import TravelTimeCorrections
             from qseek.features.base import FeatureExtractor
             from qseek.magnitudes.base import EventMagnitudeCalculator
             from qseek.tracers.base import RayTracer
@@ -307,7 +307,7 @@ def main() -> None:
                 FeatureExtractor,
                 EventMagnitudeCalculator,
                 WaveformProvider,
-                StationCorrections,
+                TravelTimeCorrections,
             )
 
             if args.json:

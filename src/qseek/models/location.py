@@ -184,6 +184,16 @@ class Location(BaseModel):
         shifted.elevation += elevation
         return shifted
 
+    def origin(self) -> Location:
+        """
+        Returns the origin location based on the latitude, longitude,
+        and effective elevation.
+
+        Returns:
+            Location: The origin location.
+        """
+        return Location(lat=self.lat, lon=self.lon, elevation=self.effective_elevation)
+
     def __hash__(self) -> int:
         return hash(self.location_hash())
 

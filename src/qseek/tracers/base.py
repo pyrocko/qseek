@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, NamedTuple, Sequence, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, Sequence, TypeVar
 
 import numpy as np
 from pydantic import BaseModel
@@ -17,9 +18,11 @@ if TYPE_CHECKING:
 _LocationType = TypeVar("_LocationType", bound=Location)
 
 
-class ModelledArrival(NamedTuple):
+@dataclass
+class ModelledArrival:
     phase: str
     time: datetime
+    tracer: str = ""
 
 
 class RayTracer(BaseModel):

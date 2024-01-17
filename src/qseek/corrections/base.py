@@ -12,15 +12,15 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from qseek.models.station import Stations
-    from qseek.octree import Octree
+    from qseek.octree import Node, Octree
     from qseek.utils import NSL, PhaseDescription
 
 
-class StationCorrections(BaseModel):
-    corrections: Literal["StationCorrectionsBase"] = "StationCorrectionsBase"
+class TravelTimeCorrections(BaseModel):
+    corrections: Literal["TravelTimeCorrections"] = "TravelTimeCorrections"
 
     @classmethod
-    def get_subclasses(cls) -> tuple[type[StationCorrections], ...]:
+    def get_subclasses(cls) -> tuple[type[TravelTimeCorrections], ...]:
         """Get the subclasses of this class.
 
         Returns:
@@ -32,7 +32,12 @@ class StationCorrections(BaseModel):
     def n_stations(self) -> int:
         ...
 
-    def get_delay(self, station_nsl: NSL, phase: PhaseDescription) -> float:
+    def get_delay(
+        self,
+        station_nsl: NSL,
+        phase: PhaseDescription,
+        node: Node | None = None,
+    ) -> float:
         """Get the traveltime delay for a station and phase.
 
         The delay is the difference between the observed and predicted traveltime.
@@ -40,22 +45,26 @@ class StationCorrections(BaseModel):
         Args:
             station_nsl: The station NSL.
             phase: The phase description.
+            node: The node to get the delay for. If None, the delay for the station
+                is returned. Defaults to None.
 
         Returns:
             float: The traveltime delay in seconds.
         """
         ...
 
-    def get_delays(
+    async def get_delays(
         self,
         station_nsls: Iterable[NSL],
         phase: PhaseDescription,
+        octree: Octree,
     ) -> np.ndarray:
         """Get the traveltime delays for a set of stations and a phase.
 
         Args:
             station_nsls: The stations to get the delays for.
             phase: The phase to get the delays for.
+            octree: The octree to use for the delays.
 
         Returns:
             np.ndarray: The traveltime delays for the given stations and phase.

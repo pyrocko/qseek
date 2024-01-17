@@ -152,7 +152,7 @@ class Stations(BaseModel):
         """Number of stations in the stations object."""
         return sum(1 for _ in self)
 
-    def get_all_nsl(self) -> list[tuple[str, str, str]]:
+    def get_all_nsl(self) -> list[NSL]:
         """Get all NSL codes from all stations."""
         return [sta.nsl for sta in self]
 

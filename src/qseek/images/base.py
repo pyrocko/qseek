@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -15,10 +15,12 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
 
-class ObservedArrival(NamedTuple):
+@dataclass
+class ObservedArrival:
     phase: str
     time: datetime
     detection_value: float
+    provider: str = ""
 
 
 class ImageFunction(BaseModel):

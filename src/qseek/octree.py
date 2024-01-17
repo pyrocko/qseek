@@ -155,7 +155,7 @@ class Node:
         self.children = ()
         self.semblance = 0.0
 
-    def set_parent(self, tree: Octree) -> None:
+    def set_tree(self, tree: Octree) -> None:
         """Set the parent tree of the node.
 
         Args:
@@ -163,10 +163,10 @@ class Node:
         """
         self.tree = tree
         for child in self.children:
-            child.set_parent(tree)
+            child.set_tree(tree)
 
     def distance_to_location(self, location: Location) -> float:
-        """Distance to a location.
+        """Three dimensional distance to a location.
 
         Args:
             location (Location): Location to calculate distance to.
@@ -316,9 +316,9 @@ class Octree(BaseModel):
 
         return [
             Node(east=east, north=north, depth=depth, size=ln, tree=self, level=0)
-            for east in east_nodes
-            for north in north_nodes
             for depth in depth_nodes
+            for north in north_nodes
+            for east in east_nodes
         ]
 
     @cached_property
@@ -352,6 +352,22 @@ class Octree(BaseModel):
         self._clear_cache()
         self._root_nodes = self.get_root_nodes(self.size_initial)
         return self
+
+    def set_level(self, level: int):
+        """Set the octree to a specific level.
+
+        Args:
+            level (int): Level to set the octree to.
+        """
+        if not 0 <= level <= self.n_levels():
+            raise ValueError(
+                f"invalid level {level}, expected level <= {self.n_levels()}"
+            )
+        logger.debug("setting tree to level %d", level)
+        self.reset()
+        for _ in range(level):
+            for node in self:
+                node.split()
 
     def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
         """Reduce the octree's nodes to the surface
@@ -454,6 +470,14 @@ class Octree(BaseModel):
         """
         return node.distance_border > self.absorbing_boundary
 
+    def n_levels(self) -> int:
+        """Returns the number of the deepest level in the octree.
+
+        Returns:
+            int: Index of deepest octree level.
+        """
+        return int(np.floor(np.log2(self.size_initial / self.size_limit)))
+
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.
 
@@ -461,14 +485,6 @@ class Octree(BaseModel):
             float: Smallest possible node size.
         """
         return self.size_initial / (2 ** self.n_levels())
-
-    def n_levels(self) -> int:
-        """Returns the number of levels in the octree.
-
-        Returns:
-            int: Number of levels.
-        """
-        return int(np.floor(np.log2(self.size_initial / self.size_limit)))
 
     def total_number_nodes(self) -> int:
         """Returns the total number of nodes of all levels.
@@ -500,7 +516,7 @@ class Octree(BaseModel):
         tree = super().model_copy(deep=deep)
         tree._clear_cache()
         for node in tree._root_nodes:
-            node.set_parent(tree)
+            node.set_tree(tree)
         return tree
 
     def __hash__(self) -> int:

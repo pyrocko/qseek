@@ -377,6 +377,21 @@ class Search(BaseModel):
         )
 
     async def prepare(self) -> None:
+        """
+        Prepares the search by initializing necessary components and data.
+
+        This method prepares the search by performing the following steps:
+        1. Prepares the data provider with the given stations.
+        2. Prepares the ray tracers with the octree, stations, phases, and rundir.
+        3. Prepares each magnitude with the octree and stations.
+        4. Prepares the station corrections with the stations, octree, and phases.
+        5. Initializes the boundaries.
+
+        Note: This method is asynchronous.
+
+        Returns:
+            None
+        """
         logger.info("preparing search...")
         self.data_provider.prepare(self.stations)
         await self.ray_tracers.prepare(
@@ -389,7 +404,9 @@ class Search(BaseModel):
             await magnitude.prepare(self.octree, self.stations)
         if self.station_corrections:
             await self.station_corrections.prepare(
-                self.stations, self.octree, self.image_functions.get_phases()
+                self.stations,
+                self.octree,
+                self.image_functions.get_phases(),
             )
         self.init_boundaries()
 
@@ -580,10 +597,12 @@ class SearchTraces:
         traveltimes = ray_tracer.get_travel_times(image.phase, octree, image.stations)
 
         if parent.station_corrections:
-            station_delays = parent.station_corrections.get_delays(
-                image.stations.get_all_nsl(), image.phase
+            station_delays = await parent.station_corrections.get_delays(
+                image.stations.get_all_nsl(),
+                image.phase,
+                octree,
             )
-            traveltimes += station_delays[np.newaxis, :]
+            traveltimes += station_delays
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
