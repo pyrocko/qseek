@@ -267,6 +267,7 @@ class Search(BaseModel):
     _travel_time_ranges: dict[
         PhaseDescription, tuple[timedelta, timedelta]
     ] = PrivateAttr({})
+    _last_detection_export: int = 0
 
     _detections: EventCatalog = PrivateAttr()
     _config_stem: str = PrivateAttr("")
@@ -394,6 +395,13 @@ class Search(BaseModel):
         """
         logger.info("preparing search...")
         self.data_provider.prepare(self.stations)
+        if self.station_corrections:
+            await self.station_corrections.prepare(
+                self.stations,
+                self.octree,
+                self.image_functions.get_phases(),
+                self._rundir,
+            )
         await self.ray_tracers.prepare(
             self.octree,
             self.stations,
@@ -402,12 +410,6 @@ class Search(BaseModel):
         )
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
-        if self.station_corrections:
-            await self.station_corrections.prepare(
-                self.stations,
-                self.octree,
-                self.image_functions.get_phases(),
-            )
         self.init_boundaries()
 
     async def start(self, force_rundir: bool = False) -> None:
@@ -480,10 +482,14 @@ class Search(BaseModel):
             await self._detections.add(detection)
             await self._new_detection.emit(detection)
 
-        if self._detections.n_detections and self._detections.n_detections % 100 == 0:
+        if (
+            self._detections.n_detections
+            and self._detections.n_detections - self._last_detection_export > 100
+        ):
             await self._detections.export_detections(
                 jitter_location=self.octree.smallest_node_size()
             )
+            self._last_detection_export = self._detections.n_detections
 
     async def add_magnitude_and_features(self, event: EventDetection) -> EventDetection:
         """
@@ -610,11 +616,11 @@ class SearchTraces:
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
         weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
+        weights[traveltimes_bad] = 0.0
 
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
-        weights[traveltimes_bad] = 0.0
 
         if semblance_cache:
             cache_mask = semblance.get_cache_mask(semblance_cache)
@@ -691,8 +697,9 @@ class SearchTraces:
                 semblance_cache=semblance_cache,
             )
 
-        semblance.apply_exponent(1.0 / parent.image_mean_p)
+        # Applying the generalized mean to the semblance
         semblance.normalize(images.cumulative_weight())
+        semblance.apply_exponent(1.0 / parent.image_mean_p)
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 

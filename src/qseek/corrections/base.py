@@ -76,6 +76,7 @@ class TravelTimeCorrections(BaseModel):
         stations: Stations,
         octree: Octree,
         phases: Iterable[PhaseDescription],
+        rundir: Path | None = None,
     ) -> None:
         """Prepare the station for the corrections.
 
@@ -83,6 +84,7 @@ class TravelTimeCorrections(BaseModel):
             station: The station to prepare.
             octree: The octree to use for the preparation.
             phases: The phases to prepare the station for.
+            rundir: The rundir to use for the delay. Defaults to None.
         """
         ...
 

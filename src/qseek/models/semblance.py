@@ -340,5 +340,7 @@ class Semblance:
         Args:
             factor (int | float): Normalization factor.
         """
+        if factor == 1.0:
+            return
         self.semblance_unpadded /= factor
         self._clear_cache()

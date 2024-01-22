@@ -114,6 +114,8 @@ class WaveformImage:
         Args:
             exponent (float): Exponent to apply.
         """
+        if exponent == 1.0:
+            return
         for tr in self.traces:
             tr.ydata **= exponent
 
