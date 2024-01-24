@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal, Sequence
 from pydantic import Field, PositiveFloat
 
 from qseek.tracers.base import ModelledArrival, RayTracer
-from qseek.utils import PhaseDescription, log_call
+from qseek.utils import PhaseDescription
 
 if TYPE_CHECKING:
     import numpy as np
@@ -43,8 +43,7 @@ class ConstantVelocityTracer(RayTracer):
         self._check_phase(phase)
         return source.distance_to(receiver) / self.velocity
 
-    @log_call
-    def get_travel_times(
+    async def get_travel_times(
         self,
         phase: str,
         octree: Octree,

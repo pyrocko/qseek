@@ -93,10 +93,12 @@ class Semblance:
         start_time: datetime,
         sampling_rate: float,
         padding_samples: int = 0,
+        exponent: float = 1.0,
     ) -> None:
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
+        self.exponent = exponent
 
         self._start_time = start_time
         self._node_hashes = [node.hash() for node in nodes]
@@ -149,6 +151,8 @@ class Semblance:
         """
         if self._max_semblance is None:
             self._max_semblance = self.semblance.max(axis=0)
+            if self.exponent != 1.0:
+                self._max_semblance **= self.exponent
         return self._max_semblance
 
     @property
@@ -164,10 +168,46 @@ class Semblance:
             for i, node_hash in enumerate(self._node_hashes)
         }
 
+    def get_semblance(self, time_idx: int) -> np.ndarray:
+        """
+        Get the semblance values at a specific time index.
+
+        Parameters:
+            time_idx (int): The index of the desired time.
+
+        Returns:
+            np.ndarray: The semblance values at the specified time index.
+        """
+        semblance = self.semblance[:, time_idx]
+        if self.exponent != 1.0:
+            semblance **= self.exponent
+        return semblance
+
     def get_cache_mask(self, cache: dict[bytes, np.ndarray]) -> np.ndarray:
+        """
+        Returns a boolean mask indicating whether each node hash
+            in self._node_hashes is present in the cache.
+
+        Args:
+            cache (dict[bytes, np.ndarray]): The cache dictionary containing node
+                hashes as keys.
+
+        Returns:
+            np.ndarray: A boolean mask indicating whether each node hash is
+                present in the cache.
+        """
         return np.array([hash in cache for hash in self._node_hashes])
 
-    def apply_cache(self, cache: dict[bytes, np.ndarray]):
+    def apply_cache(self, cache: dict[bytes, np.ndarray]) -> None:
+        """
+        Applies the cached data to the `semblance_unpadded` array.
+
+        Args:
+            cache (dict[bytes, np.ndarray]): The cache containing the cached data.
+
+        Returns:
+            None
+        """
         if not cache:
             return
         mask = self.get_cache_mask(cache)
@@ -176,7 +216,10 @@ class Semblance:
         self.semblance_unpadded[mask, :] = np.stack(data)
 
     def maximum_node_semblance(self) -> np.ndarray:
-        return self.semblance.max(axis=1)
+        semblance = self.semblance.max(axis=1)
+        if self.exponent != 1.0:
+            semblance **= self.exponent
+        return semblance
 
     async def maxima_node_idx(self, nparallel: int = 6) -> np.ndarray:
         """Indices of maximum semblance at any time step.
@@ -219,7 +262,7 @@ class Semblance:
         """
         if exponent == 1.0:
             return
-        self.semblance_unpadded **= exponent
+        np.power(self.semblance_unpadded, exponent, out=self.semblance_unpadded)
         self._clear_cache()
 
     def median_mask(self, level: float = 3.0) -> np.ndarray:
@@ -256,9 +299,16 @@ class Semblance:
         Returns:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
         """
+        max_semblance_unpadded = await asyncio.to_thread(
+            self.semblance_unpadded.max,
+            axis=0,
+        )
+        if self.exponent != 1.0:
+            max_semblance_unpadded **= self.exponent
+
         detection_idx, _ = await asyncio.to_thread(
             signal.find_peaks,
-            self.semblance_unpadded.max(axis=0),
+            max_semblance_unpadded,
             height=height,
             prominence=prominence,
             distance=distance,
@@ -269,7 +319,10 @@ class Semblance:
             detection_idx = detection_idx[detection_idx < self.maximum_semblance.size]
             semblance = self.maximum_semblance[detection_idx]
         else:
-            maximum_semblance = self.semblance_unpadded.max(axis=0)
+            maximum_semblance = await asyncio.to_thread(
+                self.semblance_unpadded.max,
+                axis=0,
+            )
             semblance = maximum_semblance[detection_idx]
 
         return detection_idx, semblance

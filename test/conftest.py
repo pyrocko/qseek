@@ -161,4 +161,4 @@ def detections() -> Generator[EventCatalog, None, None]:
         )
         detections.append(detection)
     with TemporaryDirectory() as tmpdir:
-        yield EventCatalog(rundir=Path(tmpdir), detections=detections)
+        yield EventCatalog(rundir=Path(tmpdir), events=detections)

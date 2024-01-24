@@ -224,14 +224,14 @@ def main() -> None:
                 iterator = asyncio.as_completed(
                     tuple(
                         search.add_magnitude_and_features(detection)
-                        for detection in search._detections
+                        for detection in search._catalog
                     )
                 )
 
                 for result in track(
                     iterator,
                     description="Extracting features",
-                    total=search._detections.n_detections,
+                    total=search._catalog.n_events,
                 ):
                     event = await result
                     if event.magnitudes:
@@ -239,8 +239,8 @@ def main() -> None:
                             print(f"{mag.magnitude} {mag.average:.2f}±{mag.error:.2f}")
                         print("--")
 
-                await search._detections.save()
-                await search._detections.export_detections(
+                await search._catalog.save()
+                await search._catalog.export_detections(
                     jitter_location=search.octree.smallest_node_size()
                 )
 

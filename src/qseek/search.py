@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import cProfile
 import logging
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100]
+p = cProfile.Profile()
 
 
 class SearchStats(Stats):
@@ -269,7 +271,7 @@ class Search(BaseModel):
     ] = PrivateAttr({})
     _last_detection_export: int = 0
 
-    _detections: EventCatalog = PrivateAttr()
+    _catalog: EventCatalog = PrivateAttr()
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
@@ -304,7 +306,11 @@ class Search(BaseModel):
         self._init_logging()
 
         logger.info("created new rundir %s", rundir)
-        self._detections = EventCatalog(rundir=rundir)
+        self._catalog = EventCatalog(rundir=rundir)
+
+    @property
+    def catalog(self) -> EventCatalog:
+        return self._catalog
 
     def _init_logging(self) -> None:
         file_logger = logging.FileHandler(self._rundir / "qseek.log")
@@ -329,7 +335,7 @@ class Search(BaseModel):
         progress_file = self._rundir / "progress.json"
         progress_file.write_text(self._progress.model_dump_json())
 
-    def init_boundaries(self) -> None:
+    async def init_boundaries(self) -> None:
         """Initialise search."""
         # Grid/receiver distances
         distances = self.octree.distances_stations(self.stations)
@@ -339,7 +345,11 @@ class Search(BaseModel):
         for phase, tracer in self.ray_tracers.iter_phase_tracer(
             phases=self.image_functions.get_phases()
         ):
-            traveltimes = tracer.get_travel_times(phase, self.octree, self.stations)
+            traveltimes = await tracer.get_travel_times(
+                phase,
+                self.octree,
+                self.stations,
+            )
             self._travel_time_ranges[phase] = (
                 timedelta(seconds=np.nanmin(traveltimes)),
                 timedelta(seconds=np.nanmax(traveltimes)),
@@ -410,7 +420,7 @@ class Search(BaseModel):
         )
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
-        self.init_boundaries()
+        await self.init_boundaries()
 
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():
@@ -435,6 +445,7 @@ class Search(BaseModel):
         )
 
         console = asyncio.create_task(RuntimeStats.live_view())
+        p.enable()
 
         async for images, batch in self.image_functions.iter_images(waveform_iterator):
             batch_processing_start = datetime_now()
@@ -449,7 +460,7 @@ class Search(BaseModel):
 
             detections, semblance_trace = await search_block.search()
 
-            self._detections.save_semblance_trace(semblance_trace)
+            self._catalog.save_semblance_trace(semblance_trace)
             if detections:
                 BackgroundTasks.create_task(self.new_detections(detections))
 
@@ -460,12 +471,14 @@ class Search(BaseModel):
             )
 
             self.set_progress(batch.end_time)
+            p.dump_stats("qseek.prof")
+        p.disable()
 
-        await BackgroundTasks.wait_all()
+        # await BackgroundTasks.wait_all()
         console.cancel()
-        await self._detections.export_detections(jitter_location=self.octree.size_limit)
+        await self._catalog.export_detections(jitter_location=self.octree.size_limit)
         logger.info("finished search in %s", datetime_now() - processing_start)
-        logger.info("found %d detections", self._detections.n_detections)
+        logger.info("found %d detections", self._catalog.n_events)
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
         """
@@ -479,17 +492,17 @@ class Search(BaseModel):
         )
 
         for detection in detections:
-            await self._detections.add(detection)
+            await self._catalog.add(detection)
             await self._new_detection.emit(detection)
 
         if (
-            self._detections.n_detections
-            and self._detections.n_detections - self._last_detection_export > 100
+            self._catalog.n_events
+            and self._catalog.n_events - self._last_detection_export > 100
         ):
-            await self._detections.export_detections(
+            await self._catalog.export_detections(
                 jitter_location=self.octree.smallest_node_size()
             )
-            self._last_detection_export = self._detections.n_detections
+            self._last_detection_export = self._catalog.n_events
 
     async def add_magnitude_and_features(self, event: EventDetection) -> EventDetection:
         """
@@ -521,7 +534,7 @@ class Search(BaseModel):
         search_file = rundir / "search.json"
         search = cls.model_validate_json(search_file.read_bytes())
         search._rundir = rundir
-        search._detections = EventCatalog.load_rundir(rundir)
+        search._catalog = EventCatalog.load_rundir(rundir)
 
         progress_file = rundir / "progress.json"
         if progress_file.exists():
@@ -600,7 +613,11 @@ class SearchTraces:
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
-        traveltimes = ray_tracer.get_travel_times(image.phase, octree, image.stations)
+        traveltimes = await ray_tracer.get_travel_times(
+            image.phase,
+            octree,
+            image.stations,
+        )
 
         if parent.station_corrections:
             station_delays = await parent.station_corrections.get_delays(
@@ -686,6 +703,7 @@ class SearchTraces:
             start_time=self.start_time,
             sampling_rate=sampling_rate,
             padding_samples=padding_samples,
+            exponent=1.0 / parent.image_mean_p,
         )
 
         for image in images:
@@ -699,13 +717,12 @@ class SearchTraces:
 
         # Applying the generalized mean to the semblance
         semblance.normalize(images.cumulative_weight())
-        semblance.apply_exponent(1.0 / parent.image_mean_p)
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 
         detection_idx, detection_semblance = await semblance.find_peaks(
-            height=parent.detection_threshold**parent.image_mean_p,
-            prominence=parent.detection_threshold**parent.image_mean_p,
+            height=parent.detection_threshold,
+            prominence=parent.detection_threshold,
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
         )
 
@@ -719,7 +736,7 @@ class SearchTraces:
         for time_idx, semblance_detection in zip(
             detection_idx, detection_semblance, strict=True
         ):
-            octree.map_semblance(semblance.semblance[:, time_idx])
+            octree.map_semblance(semblance.get_semblance(time_idx))
             node_idx = maxima_node_idx[time_idx]
             source_node = octree[node_idx]
 

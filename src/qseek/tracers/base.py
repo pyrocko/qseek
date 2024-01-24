@@ -61,7 +61,7 @@ class RayTracer(BaseModel):
             [self.get_travel_time_location(phase, source, recv) for recv in receivers]
         )
 
-    def get_travel_times(
+    async def get_travel_times(
         self,
         phase: str,
         octree: Octree,

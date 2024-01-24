@@ -43,7 +43,21 @@ class Station(Location):
         )
 
     def as_pyrocko_station(self) -> PyrockoStation:
-        return PyrockoStation(**self.model_dump(exclude={"effective_lat_lon"}))
+        return PyrockoStation(
+            **self.model_dump(
+                include={
+                    "network",
+                    "station",
+                    "location",
+                    "lat",
+                    "lon",
+                    "north_shift",
+                    "east_shift",
+                    "depth",
+                    "elevation",
+                }
+            )
+        )
 
     @property
     def nsl(self) -> NSL:

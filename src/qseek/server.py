@@ -120,14 +120,14 @@ class WebServer:
 
     async def get_detections(self, request: web.Request) -> web.Response:
         return pydantic_response(
-            self.search._detections,
+            self.search._catalog,
             exclude={"detections": {"__all__": {"octree", "stations"}}},
         )
 
     async def get_detection(self, request: web.Request) -> web.Response:
         req = await parse_pydantic_request(request, model=DetectionRequest)
         try:
-            detection = self.search._detections.get(req.uid)
+            detection = self.search._catalog.get(req.uid)
         except KeyError:
             return web.HTTPNotFound()
         return pydantic_response(detection)

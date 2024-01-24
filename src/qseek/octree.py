@@ -363,8 +363,8 @@ class Octree(BaseModel):
             raise ValueError(
                 f"invalid level {level}, expected level <= {self.n_levels()}"
             )
-        logger.debug("setting tree to level %d", level)
         self.reset()
+        logger.debug("setting tree to level %d", level)
         for _ in range(level):
             for node in self:
                 node.split()

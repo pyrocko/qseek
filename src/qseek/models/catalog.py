@@ -40,16 +40,16 @@ class EventCatalogStats(Stats):
 
 class EventCatalog(BaseModel):
     rundir: Path
-    detections: list[EventDetection] = []
+    events: list[EventDetection] = []
     _stats: EventCatalogStats = PrivateAttr(default_factory=EventCatalogStats)
 
     def model_post_init(self, __context: Any) -> None:
         EventDetection.set_rundir(self.rundir)
 
     @property
-    def n_detections(self) -> int:
+    def n_events(self) -> int:
         """Number of detections"""
-        return len(self.detections)
+        return len(self.events)
 
     @property
     def markers_dir(self) -> Path:
@@ -64,18 +64,18 @@ class EventCatalog(BaseModel):
         return dir
 
     async def add(self, detection: EventDetection) -> None:
-        detection.set_index(self.n_detections)
+        detection.set_index(self.n_events)
 
         markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
         self.markers_dir.mkdir(exist_ok=True)
         detection.export_pyrocko_markers(markers_file)
 
-        self.detections.append(detection)
+        self.events.append(detection)
         logger.info(
             "%s event detection %d %s: %.5f°, %.5f°, depth %.1f m, "
             "border distance %.1f m, semblance %.3f, magnitude %.2f",
             Symbols.Target,
-            self.n_detections,
+            self.n_events,
             detection.time,
             *detection.effective_lat_lon,
             detection.depth,
@@ -116,24 +116,24 @@ class EventCatalog(BaseModel):
             for idx, line in enumerate(f):
                 detection = EventDetection.model_validate_json(line)
                 detection.set_index(idx)
-                catalog.detections.append(detection)
+                catalog.events.append(detection)
 
-        logger.info("loaded %d detections", catalog.n_detections)
+        logger.info("loaded %d detections", catalog.n_events)
 
         stats = catalog._stats
-        stats.n_detections = catalog.n_detections
+        stats.n_detections = catalog.n_events
         if catalog:
             stats.max_semblance = max(detection.semblance for detection in catalog)
         return catalog
 
     async def save(self) -> None:
         """Save catalog to current rundir."""
-        logger.debug("saving %d detections", self.n_detections)
+        logger.debug("saving %d detections", self.n_events)
 
         lines_events = []
         lines_recv = []
         # Has to be the unsorted
-        for detection in self.detections:
+        for detection in self.events:
             lines_events.append(f"{detection.model_dump_json(exclude={'receivers'})}\n")
             lines_recv.append(f"{detection.receivers.model_dump_json()}\n")
 
@@ -179,7 +179,7 @@ class EventCatalog(BaseModel):
         if jitter_location:
             detections = [det.jitter_location(jitter_location) for det in self]
         else:
-            detections = self.detections
+            detections = self.events
 
         csv_dicts: list[dict] = []
         for detection in detections:
@@ -207,7 +207,7 @@ class EventCatalog(BaseModel):
             filename (Path): output filename
         """
         logger.info("saving Pyrocko events to %s", filename)
-        detections = self.detections
+        detections = self.events
         if jitter_location:
             detections = [det.jitter_location(jitter_location) for det in detections]
         dump_events(
@@ -229,4 +229,4 @@ class EventCatalog(BaseModel):
         marker.save_markers(pyrocko_markers, str(filename))
 
     def __iter__(self) -> Iterator[EventDetection]:
-        return iter(sorted(self.detections, key=lambda d: d.time))
+        return iter(sorted(self.events, key=lambda d: d.time))
