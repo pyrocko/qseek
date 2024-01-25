@@ -720,9 +720,10 @@ class SearchTraces:
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 
+        threshold = parent.detection_threshold ** (1.0 / parent.image_mean_p)
         detection_idx, detection_semblance = await semblance.find_peaks(
-            height=parent.detection_threshold,
-            prominence=parent.detection_threshold,
+            height=threshold,
+            prominence=threshold,
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
         )
 
