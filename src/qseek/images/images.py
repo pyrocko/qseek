@@ -127,6 +127,7 @@ class ImageFunctions(RootModel):
                 break
             yield ret
 
+        logger.debug("waiting for image function to finish")
         await task
 
     def get_phases(self) -> tuple[PhaseDescription, ...]:

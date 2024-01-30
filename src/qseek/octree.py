@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
 import numpy as np
@@ -518,6 +519,18 @@ class Octree(BaseModel):
         for node in tree._root_nodes:
             node.set_tree(tree)
         return tree
+
+    def save_pickle(self, filename: Path) -> None:
+        """Save the octree to a pickle file.
+
+        Args:
+            filename (Path): Filename to save to.
+        """
+        import pickle
+
+        logger.info("saving octree pickle to %s", filename)
+        with filename.open("wb") as f:
+            pickle.dump(self, f)
 
     def __hash__(self) -> int:
         return hash(

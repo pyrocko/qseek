@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import cProfile
 import logging
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -54,7 +53,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100]
-p = cProfile.Profile()
 
 
 class SearchStats(Stats):
@@ -445,7 +443,6 @@ class Search(BaseModel):
         )
 
         console = asyncio.create_task(RuntimeStats.live_view())
-        p.enable()
 
         async for images, batch in self.image_functions.iter_images(waveform_iterator):
             batch_processing_start = datetime_now()
@@ -471,12 +468,11 @@ class Search(BaseModel):
             )
 
             self.set_progress(batch.end_time)
-            p.dump_stats("qseek.prof")
-        p.disable()
 
-        # await BackgroundTasks.wait_all()
-        console.cancel()
+        await BackgroundTasks.wait_all()
+        await self._catalog.save()
         await self._catalog.export_detections(jitter_location=self.octree.size_limit)
+        console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("found %d detections", self._catalog.n_events)
 

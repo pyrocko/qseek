@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import struct
@@ -476,6 +477,7 @@ class TravelTimeTree(BaseModel):
         for coords in coordinates:
             travel_times.append(self._interpolate_traveltimes_sptree(coords))
             PROGRESS.update(status, advance=1)
+            await asyncio.sleep(0.0)
 
         PROGRESS.remove_task(status)
 

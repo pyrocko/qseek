@@ -104,6 +104,7 @@ class SquirrelPrefetcher:
                 start = datetime_now()
                 batch = await asyncio.to_thread(next, self.iterator, None)
                 if batch is None:
+                    await self._load_queue.put(None)
                     return
                 logger.debug("read waveform batch in %s", datetime_now() - start)
                 self._fetched_batches += 1
@@ -123,6 +124,7 @@ class SquirrelPrefetcher:
 
         await load_task
         await post_process_task
+        logger.debug("waiting for waveform batches to finish")
 
         await self.queue.put(None)
 

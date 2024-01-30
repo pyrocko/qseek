@@ -83,6 +83,9 @@ class BackgroundTasks:
 
     @classmethod
     async def wait_all(cls) -> None:
+        if not cls.tasks:
+            return
+        logger.debug("waiting for %d tasks to finish", len(cls.tasks))
         await asyncio.gather(*cls.tasks)
 
 
@@ -472,8 +475,8 @@ def load_insights() -> None:
         import qseek.insights  # noqa: F401
 
         logger.info("loaded qseek.insights package")
-    except ImportError as exc:
-        logger.warning("package qseek.insights not installed", exc_info=exc)
+    except ImportError:
+        logger.debug("package qseek.insights not installed")
 
 
 MeasurementUnit = Literal[
@@ -512,6 +515,14 @@ class ChannelSelector:
 
         traces_flt = [tr for tr in traces_flt if tr.channel[-1] in self.channels]
 
+        tmins = {tr.tmin for tr in traces_flt}
+        tmaxs = {tr.tmax for tr in traces_flt}
+        if len(tmins) != 1 or len(tmaxs) != 1:
+            raise KeyError(
+                f"unhealthy timing on channels {self.channels}",
+                f" for: {', '.join('.'.join(tr.nslc_id) for tr in traces_flt)}",
+            )
+
         if len(traces_flt) != self.number_channels:
             raise KeyError(
                 f"cannot get {self.number_channels} channels"
@@ -520,10 +531,9 @@ class ChannelSelector:
             )
         if self.normalize:
             traces_norm = traces_flt[0].copy()
-            traces_norm.ydata = np.linalg.norm(
-                np.atleast_2d(np.array([tr.ydata for tr in traces_flt])),
-                axis=0,
-            )
+            data = np.atleast_2d(np.array([tr.ydata for tr in traces_flt]))
+
+            traces_norm.ydata = np.linalg.norm(data, axis=0)
             return [traces_norm]
         return traces_flt
 

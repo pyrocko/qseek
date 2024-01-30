@@ -66,7 +66,10 @@ class RuntimeStats(BaseModel):
         ) as live:
             while True:
                 live.update(generate_grid())
-                await asyncio.sleep(0.4)
+                try:
+                    await asyncio.sleep(0.2)
+                except asyncio.CancelledError:
+                    break
 
 
 class Stats(BaseModel):

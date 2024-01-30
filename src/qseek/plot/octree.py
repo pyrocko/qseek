@@ -51,15 +51,17 @@ def octree_to_rectangles(
             height=size,
         )
         rectangles.append(rect)
+
     if normalize:
         semblances /= semblances.max()
     colors = cmap(semblances)
+    edge_colors = cm.get_cmap("binary")(semblances**2, alpha=0.8)
 
     return PatchCollection(
         patches=rectangles,
         facecolors=colors,
-        edgecolors=(0, 0, 0, 0.3),
-        linewidths=0.5,
+        edgecolors=edge_colors,
+        linewidths=0.1,
     )
 
 

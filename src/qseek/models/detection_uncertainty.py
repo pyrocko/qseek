@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 # Equivalent to one standard deviation
-THRESHOLD = 1.0 / np.sqrt(np.e)
+PERCENTILE = 0.02
 
 
 class DetectionUncertainty(BaseModel):
@@ -30,7 +30,7 @@ class DetectionUncertainty(BaseModel):
 
     @classmethod
     def from_event(
-        cls, source_node: Node, octree: Octree, width: float = THRESHOLD
+        cls, source_node: Node, octree: Octree, percentile: float = PERCENTILE
     ) -> Self:
         """
         Calculate the uncertainty of an event detection.
@@ -38,6 +38,8 @@ class DetectionUncertainty(BaseModel):
         Args:
             event: The event detection to calculate the uncertainty for.
             octree: The octree to use for the calculation.
+            percentile: The percentile to use for the calculation.
+                Defaults to 0.02 (2%).
 
         Returns:
             The calculated uncertainty.
@@ -45,7 +47,9 @@ class DetectionUncertainty(BaseModel):
         if not source_node.semblance:
             raise ValueError("Source node must have semblance value.")
 
-        nodes = octree.get_nodes(semblance_threshold=source_node.semblance * width)
+        nodes = octree.get_nodes(
+            semblance_threshold=source_node.semblance * (1.0 - percentile)
+        )
         vicinity_coords = np.array(
             [(node.east, node.north, node.depth) for node in nodes]
         )
