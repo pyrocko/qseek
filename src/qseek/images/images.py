@@ -36,9 +36,14 @@ class ImageFunctionsStats(Stats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
 
-    _queue: asyncio.Queue[WaveformImages | None] | None = PrivateAttr(None)
+    _queue: asyncio.Queue[
+        Tuple[WaveformImages | WaveformBatch] | None
+    ] | None = PrivateAttr(None)
 
-    def set_queue(self, queue: asyncio.Queue[WaveformImages | None]) -> None:
+    def set_queue(
+        self,
+        queue: asyncio.Queue[Tuple[WaveformImages | WaveformBatch] | None],
+    ) -> None:
         self._queue = queue
 
     @computed_field
@@ -69,7 +74,7 @@ class ImageFunctions(RootModel):
 
     _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr()
     _processed_images: int = PrivateAttr(0)
-    _stats = PrivateAttr(default_factory=ImageFunctionsStats)
+    _stats: ImageFunctionsStats = PrivateAttr(default_factory=ImageFunctionsStats)
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice

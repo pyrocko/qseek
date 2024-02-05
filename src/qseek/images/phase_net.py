@@ -94,9 +94,10 @@ class PhaseNet(ImageFunction):
         le=3000,
         description="Window overlap in samples.",
     )
-    torch_use_cuda: bool = Field(
+    torch_use_cuda: bool | int = Field(
         default=False,
-        description="Use CUDA for inference.",
+        description="Use CUDA for inference. If `True` use default device, if `int` use"
+        " the specified device.",
     )
     torch_cpu_threads: PositiveInt = Field(
         default=4,
@@ -147,17 +148,20 @@ class PhaseNet(ImageFunction):
 
         torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
+        if self.torch_use_cuda:
+            if isinstance(self.torch_use_cuda, bool):
+                self._phase_net.cuda()
+            else:
+                self._phase_net.cuda(self.torch_use_cuda)
+        self._phase_net.eval()
         try:
             logger.info("compiling PhaseNet model...")
-            self._phase_net = torch.compile(self._phase_net, mode="reduce-overhead")
+            self._phase_net = torch.compile(self._phase_net, mode="max-autotune")
         except RuntimeError as exc:
             logger.warning(
                 "failed to compile PhaseNet model, using uncompiled model.",
                 exc_info=exc,
             )
-        if self.torch_use_cuda:
-            self._phase_net.cuda()
-        self._phase_net.eval()
 
     @property
     def blinding(self) -> timedelta:

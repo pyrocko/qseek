@@ -10,15 +10,13 @@ from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
-from qseek.utils import NSL
+from qseek.utils import NSL, NSL_RE
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
 from qseek.models.location import CoordSystem, Location
-
-NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"
 
 logger = logging.getLogger(__name__)
 

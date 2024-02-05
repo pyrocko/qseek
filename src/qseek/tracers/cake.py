@@ -497,6 +497,8 @@ class TravelTimeTree(BaseModel):
 
 
 class CakeTracer(RayTracer):
+    """Travel time ray tracer for 1D layered earth models."""
+
     tracer: Literal["CakeTracer"] = "CakeTracer"
     phases: dict[PhaseDescription, Timing] = Field(
         default={

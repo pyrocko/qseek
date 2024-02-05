@@ -294,6 +294,7 @@ def main() -> None:
             from qseek.corrections.base import TravelTimeCorrections
             from qseek.features.base import FeatureExtractor
             from qseek.magnitudes.base import EventMagnitudeCalculator
+            from qseek.pre_processing.base import BatchPreProcessing
             from qseek.tracers.base import RayTracer
             from qseek.waveforms.base import WaveformProvider
 
@@ -303,10 +304,11 @@ def main() -> None:
             table.add_column("Description")
 
             module_classes = (
+                WaveformProvider,
+                BatchPreProcessing,
                 RayTracer,
                 FeatureExtractor,
                 EventMagnitudeCalculator,
-                WaveformProvider,
                 TravelTimeCorrections,
             )
 
@@ -332,6 +334,10 @@ def main() -> None:
                 table.add_section()
 
             console.print(table)
+            console.print("🔑 indicates an insight module\n")
+            console.print(
+                "Use `qseek modules --json <module_name>` to print the JSON schema"
+            )
 
         case "dump-schemas":
             import json

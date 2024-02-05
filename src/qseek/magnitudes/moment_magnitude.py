@@ -228,6 +228,8 @@ class MomentMagnitude(EventMagnitude):
 
 
 class MomentMagnitudeExtractor(EventMagnitudeCalculator):
+    """Moment magnitude calculator from peak amplitudes."""
+
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
     seconds_before: PositiveFloat = Field(

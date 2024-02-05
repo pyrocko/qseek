@@ -11,7 +11,6 @@ from pydantic import (
     AwareDatetime,
     DirectoryPath,
     Field,
-    PositiveFloat,
     PositiveInt,
     PrivateAttr,
     computed_field,
@@ -35,9 +34,6 @@ logger = logging.getLogger(__name__)
 
 class SquirrelPrefetcher:
     queue: asyncio.Queue[Batch | None]
-    highpass: float | None
-    lowpass: float | None
-    downsample_to: float | None
     load_time: timedelta = timedelta(seconds=0.0)
 
     _load_queue: asyncio.Queue[Batch | None]
@@ -48,17 +44,10 @@ class SquirrelPrefetcher:
         self,
         iterator: Iterator[Batch],
         queue_size: int = 8,
-        downsample_to: float | None = None,
-        highpass: float | None = None,
-        lowpass: float | None = None,
     ) -> None:
         self.iterator = iterator
         self.queue = asyncio.Queue(maxsize=queue_size)
         self._load_queue = asyncio.Queue(maxsize=queue_size)
-
-        self.downsample_to = downsample_to
-        self.highpass = highpass
-        self.lowpass = lowpass
         self._fetched_batches = 0
 
         self._task = asyncio.create_task(self.prefetch_worker())
@@ -69,64 +58,20 @@ class SquirrelPrefetcher:
             self.queue.maxsize,
         )
 
-        def post_processing(batch: Batch) -> Batch:
-            # Filter traces in-place
-            start = None
-
-            # SeisBench would call obspy's downsampling.
-            # Downsampling is much faster in Pyrocko, so we do it here.
-            if self.downsample_to:
-                try:
-                    start = datetime_now()
-                    desired_deltat = 1.0 / self.downsample_to
-                    for tr in batch.traces:
-                        if tr.deltat < desired_deltat:
-                            tr.downsample_to(desired_deltat, allow_upsample_max=3)
-                except Exception as exc:
-                    logger.exception(exc)
-
-            if self.highpass:
-                start = start or datetime_now()
-                for tr in batch.traces:
-                    tr.highpass(4, corner=self.highpass)
-
-            if self.lowpass:
-                start = start or datetime_now()
-                for tr in batch.traces:
-                    tr.lowpass(4, corner=self.lowpass)
-
-            if start:
-                logger.debug("filtered waveform batch in %s", datetime_now() - start)
-            return batch
-
         async def load_data() -> None | Batch:
             while True:
                 start = datetime_now()
                 batch = await asyncio.to_thread(next, self.iterator, None)
                 if batch is None:
-                    await self._load_queue.put(None)
+                    await self.queue.put(None)
                     return
                 logger.debug("read waveform batch in %s", datetime_now() - start)
                 self._fetched_batches += 1
                 self.load_time = datetime_now() - start
-                await self._load_queue.put(batch)
-
-        async def post_process() -> None:
-            while True:
-                batch = await self._load_queue.get()
-                if batch is None:
-                    return
-                await asyncio.to_thread(post_processing, batch)
                 await self.queue.put(batch)
 
-        post_process_task = asyncio.create_task(post_process())
-        load_task = asyncio.create_task(load_data())
-
-        await load_task
-        await post_process_task
-        logger.debug("waiting for waveform batches to finish")
-
-        await self.queue.put(None)
+        await asyncio.create_task(load_data())
+        logger.debug("loading waveform batches to finish")
 
 
 class SquirrelStats(Stats):
@@ -187,19 +132,6 @@ class PyrockoSquirrel(WaveformProvider):
         "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
     )
 
-    highpass: PositiveFloat | None = Field(
-        default=None,
-        description="Highpass filter, corner frequency in Hz.",
-    )
-    lowpass: PositiveFloat | None = Field(
-        default=None,
-        description="Lowpass filter, corner frequency in Hz.",
-    )
-    downsample_to: PositiveFloat | None = Field(
-        default=100.0,
-        description="Downsample the data to a desired frequency",
-    )
-
     channel_selector: str = Field(
         default="*",
         max_length=3,
@@ -219,8 +151,6 @@ class PyrockoSquirrel(WaveformProvider):
     def _validate_model(self) -> Self:
         if self.start_time and self.end_time and self.start_time > self.end_time:
             raise ValueError("start_time must be before end_time")
-        if self.highpass and self.lowpass and self.highpass > self.lowpass:
-            raise ValueError("freq_min must be less than freq_max")
         return self
 
     @field_validator("waveform_dirs")
@@ -290,11 +220,7 @@ class PyrockoSquirrel(WaveformProvider):
             ],
         )
         prefetcher = SquirrelPrefetcher(
-            iterator,
-            queue_size=self.async_prefetch_batches,
-            downsample_to=self.downsample_to,
-            highpass=self.highpass,
-            lowpass=self.lowpass,
+            iterator, queue_size=self.async_prefetch_batches
         )
         stats.set_queue(prefetcher.queue)
 

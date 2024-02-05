@@ -136,6 +136,8 @@ class LocalMagnitude(EventMagnitude):
 
 
 class LocalMagnitudeExtractor(EventMagnitudeCalculator):
+    """Local magnitude calculator for different regional models."""
+
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
     seconds_before: PositiveFloat = Field(

@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 
 class ConstantVelocityTracer(RayTracer):
+    """Travel time tracer with a constant velocity."""
+
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
     phase: PhaseDescription = Field(
         default="constant:P",

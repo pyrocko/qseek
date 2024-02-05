@@ -130,17 +130,15 @@ class NSL(NamedTuple):
         """
         if not nsl:
             raise ValueError("invalid empty NSL")
-        try:
-            net, sta, loc, *_ = nsl.split(".")
-        except ValueError:
-            try:
-                net, sta = nsl.split(".")
-                loc = ""
-            except ValueError:
-                net = nsl
-                sta = ""
-                loc = ""
-        return cls(network=net, station=sta, location=loc)
+        parts = nsl.split(".")
+        n_parts = len(parts)
+        if n_parts == 3:
+            return cls(*parts)
+        if n_parts == 2:
+            return cls(parts[0], parts[1], "")
+        if n_parts == 1:
+            return cls(parts[0], "", "")
+        raise ValueError(f"invalid NSL {nsl}")
 
 
 class _Range(NamedTuple):
@@ -546,3 +544,6 @@ class ChannelSelectors:
     Horizontal = ChannelSelector("EN123RT", 2)
     Vertical = ChannelSelector("Z0", 1)
     NorthEast = ChannelSelector("NE", 2)
+
+
+NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"

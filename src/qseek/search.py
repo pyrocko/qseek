@@ -28,6 +28,7 @@ from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.semblance import Semblance
 from qseek.octree import NodeSplitError, Octree
+from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
@@ -188,6 +189,10 @@ class Search(BaseModel):
         default=PyrockoSquirrel(),
         description="Data provider for waveform data.",
     )
+    pre_processing: PreProcessing = Field(
+        default=PreProcessing(root=[Downsample(sampling_frequency=100.0)]),
+        description="Pre-processing steps for waveform data.",
+    )
 
     octree: Octree = Field(
         default=Octree(),
@@ -252,8 +257,8 @@ class Search(BaseModel):
         "`0` uses all available cores.",
     )
     n_threads_argmax: PositiveInt = Field(
-        default=4,
-        description="Number of threads for argmax. Default is `4`.",
+        default=16,
+        description="Number of threads for argmax. Default is `16`.",
     )
 
     plot_octree_surface: bool = False
@@ -292,7 +297,7 @@ class Search(BaseModel):
         if rundir.exists() and force:
             create_time = time_to_path(
                 datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
-            )
+            ).split(".")[0]
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
             logger.info("created backup of existing rundir to %s", rundir_backup)
@@ -403,6 +408,8 @@ class Search(BaseModel):
         """
         logger.info("preparing search...")
         self.data_provider.prepare(self.stations)
+        await self.pre_processing.prepare()
+
         if self.station_corrections:
             await self.station_corrections.prepare(
                 self.stations,
@@ -435,16 +442,17 @@ class Search(BaseModel):
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
 
-        waveform_iterator = self.data_provider.iter_batches(
+        batches = self.data_provider.iter_batches(
             window_increment=self.window_length,
             window_padding=self._window_padding,
             start_time=self._progress.time_progress,
             min_length=2 * self._window_padding,
         )
+        processed_batches = self.pre_processing.iter_batches(batches)
 
         console = asyncio.create_task(RuntimeStats.live_view())
 
-        async for images, batch in self.image_functions.iter_images(waveform_iterator):
+        async for images, batch in self.image_functions.iter_images(processed_batches):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)
             images.apply_exponent(self.image_mean_p)
@@ -629,11 +637,10 @@ class SearchTraces:
 
         shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
         weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
-        weights[traveltimes_bad] = 0.0
-
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
+        weights[traveltimes_bad] = 0.0
 
         if semblance_cache:
             cache_mask = semblance.get_cache_mask(semblance_cache)
