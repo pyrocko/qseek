@@ -148,7 +148,7 @@ class Node:
         """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        return self.size > self.tree.smallest_node_size()
+        return (self.level + 1) < self.tree.n_levels
 
     def reset(self) -> None:
         """Reset the node to its initial state."""
@@ -230,13 +230,15 @@ class Octree(BaseModel):
         default=Location(lat=0.0, lon=0.0),
         description="The reference location of the octree.",
     )
-    size_initial: PositiveFloat = Field(
+    root_node_size: PositiveFloat = Field(
         default=2 * KM,
-        description="Initial size of a cubic octree node in meters.",
+        description="Initial size of the root octree node at level 0 in [m].",
     )
-    size_limit: PositiveFloat = Field(
-        default=500.0,
-        description="Smallest possible size of an octree node in meters.",
+    n_levels: int = Field(
+        default=5,
+        ge=1,
+        description="Number of levels in the octree, this defines the final "
+        "resolution of the detection. Default is 1.",
     )
     east_bounds: Range = Field(
         default=Range(-10 * KM, 10 * KM),
@@ -270,24 +272,19 @@ class Octree(BaseModel):
     @model_validator(mode="after")
     def check_limits(self) -> Octree:
         """Check that the size limits are valid."""
-        if self.size_limit > self.size_initial:
-            raise ValueError(
-                f"invalid octree size limits ({self.size_initial}, {self.size_limit}):"
-                " Expected size_limit <= size_initial"
-            )
         for dimension, ext in zip(
             ("east", "north", "depth"), self.extent(), strict=True
         ):
-            if ext % self.size_initial:
+            if ext % self.root_node_size:
                 raise ValueError(
-                    f"invalid octree initial_size {self.size_initial}:"
-                    f" Not a multiple in {dimension} with size {ext}"
+                    f"invalid octree root node size {self.root_node_size}:"
+                    f" Not a multiple of the volume in {dimension} with size {ext}"
                 )
         return self
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
-        self._root_nodes = self.get_root_nodes(self.size_initial)
+        self._root_nodes = self.get_root_nodes(self.root_node_size)
         logger.info(
             "initializing octree volume with %d nodes and %.1f km³,"
             " smallest node size: %.1f m",
@@ -351,7 +348,7 @@ class Octree(BaseModel):
         """Reset the octree to its initial state"""
         logger.debug("resetting tree")
         self._clear_cache()
-        self._root_nodes = self.get_root_nodes(self.size_initial)
+        self._root_nodes = self.get_root_nodes(self.root_node_size)
         return self
 
     def set_level(self, level: int):
@@ -360,9 +357,9 @@ class Octree(BaseModel):
         Args:
             level (int): Level to set the octree to.
         """
-        if not 0 <= level <= self.n_levels():
+        if not 0 <= level <= self.n_levels:
             raise ValueError(
-                f"invalid level {level}, expected level <= {self.n_levels()}"
+                f"invalid level {level}, expected level <= {self.n_levels}"
             )
         self.reset()
         logger.debug("setting tree to level %d", level)
@@ -471,21 +468,13 @@ class Octree(BaseModel):
         """
         return node.distance_border > self.absorbing_boundary
 
-    def n_levels(self) -> int:
-        """Returns the number of the deepest level in the octree.
-
-        Returns:
-            int: Index of deepest octree level.
-        """
-        return int(np.floor(np.log2(self.size_initial / self.size_limit)))
-
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.
 
         Returns:
             float: Smallest possible node size.
         """
-        return self.size_initial / (2 ** self.n_levels())
+        return self.root_node_size / (2 ** (self.n_levels - 1))
 
     def total_number_nodes(self) -> int:
         """Returns the total number of nodes of all levels.
@@ -493,7 +482,7 @@ class Octree(BaseModel):
         Returns:
             int: Total number of nodes.
         """
-        return len(self._root_nodes) * (8 ** self.n_levels())
+        return len(self._root_nodes) * (8 ** (self.n_levels - 1))
 
     def cached_bottom(self) -> Self:
         """Returns a copy of the octree refined to the cached bottom nodes.
@@ -535,8 +524,8 @@ class Octree(BaseModel):
     def __hash__(self) -> int:
         return hash(
             (
-                self.size_initial,
-                self.size_limit,
+                self.root_node_size,
+                self.n_levels,
                 self.east_bounds,
                 self.north_bounds,
                 self.depth_bounds,

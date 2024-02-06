@@ -6,12 +6,12 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 import pytest
-
-from lassie.models.location import Location
-from lassie.models.station import Station, Stations
-from lassie.octree import Octree
-from lassie.tracers.cake import CakeTracer, EarthModel, Timing, TravelTimeTree
-from lassie.tracers.constant_velocity import ConstantVelocityTracer
+from qseek.models.location import Location
+from qseek.models.station import Station, Stations
+from qseek.octree import Octree
+from qseek.tracers.cake import CakeTracer, EarthModel, Timing, TravelTimeTree
+from qseek.tracers.constant_velocity import ConstantVelocityTracer
+from qseek.utils import Range
 
 KM = 1e3
 CONSTANT_VELOCITY = 5 * KM
@@ -25,11 +25,11 @@ def small_octree() -> Octree:
             lon=10.0,
             elevation=0.2 * KM,
         ),
-        size_initial=0.5 * KM,
-        size_limit=50,
-        east_bounds=(-2 * KM, 2 * KM),
-        north_bounds=(-2 * KM, 2 * KM),
-        depth_bounds=(0 * KM, 2 * KM),
+        root_node_size=0.5 * KM,
+        n_levels=3,
+        east_bounds=Range(-2 * KM, 2 * KM),
+        north_bounds=Range(-2 * KM, 2 * KM),
+        depth_bounds=Range(0 * KM, 2 * KM),
         absorbing_boundary=1 * KM,
     )
 
@@ -82,13 +82,14 @@ def test_sptree_model(travel_time_tree: TravelTimeTree):
     model.get_travel_time(source, receiver)
 
 
-def test_lut(
+@pytest.mark.asyncio
+async def test_lut(
     travel_time_tree: TravelTimeTree,
     octree: Octree,
     stations: Stations,
 ) -> None:
     model = travel_time_tree
-    model.init_lut(octree, stations)
+    await model.init_lut(octree, stations)
 
     traveltimes_tree = model.interpolate_travel_times(octree, stations)
     traveltimes_lut = model.get_travel_times(octree, stations)
@@ -115,7 +116,7 @@ async def test_travel_times_constant_velocity(
 ):
     octree = small_octree
     stations = small_stations
-    octree.size_limit = 200
+    octree.n_levels = 3
     cake_tracer = CakeTracer(
         phases={"cake:P": Timing(definition="P,p")},
         earthmodel=EarthModel(
@@ -133,7 +134,9 @@ async def test_travel_times_constant_velocity(
     await cake_tracer.prepare(octree, stations)
 
     cake_travel_times = cake_tracer.get_travel_times("cake:P", octree, stations)
-    constant_traveltimes = constant.get_travel_times("constant:P", octree, stations)
+    constant_traveltimes = await constant.get_travel_times(
+        "constant:P", octree, stations
+    )
 
     nan_mask = np.isnan(cake_travel_times)
     logging.warning("percent nan: %.1f", (nan_mask.sum() / nan_mask.size) * 100)

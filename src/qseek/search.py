@@ -479,7 +479,9 @@ class Search(BaseModel):
 
         await BackgroundTasks.wait_all()
         await self._catalog.save()
-        await self._catalog.export_detections(jitter_location=self.octree.size_limit)
+        await self._catalog.export_detections(
+            jitter_location=self.octree.smallest_node_size()
+        )
         console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("found %d detections", self._catalog.n_events)
@@ -574,7 +576,7 @@ class Search(BaseModel):
     # with contextlib.suppress(Exception):
     #     asyncio.run(
     #         self._detections.export_detections(
-    #             jitter_location=self.octree.size_limit
+    #             jitter_location=self.octree.smallest_node_size()
     #         )
     #     )
 

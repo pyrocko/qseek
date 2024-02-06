@@ -14,7 +14,7 @@ from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.octree import Octree
 from qseek.tracers.cake import EarthModel, Timing, TravelTimeTree
-from qseek.utils import datetime_now
+from qseek.utils import Range, datetime_now
 from rich.progress import Progress
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -97,11 +97,11 @@ def octree() -> Octree:
             lon=10.0,
             elevation=1.0 * KM,
         ),
-        size_initial=2 * KM,
-        size_limit=500,
-        east_bounds=(-10 * KM, 10 * KM),
-        north_bounds=(-10 * KM, 10 * KM),
-        depth_bounds=(0 * KM, 10 * KM),
+        root_node_size=2 * KM,
+        n_levels=3,
+        east_bounds=Range(-10 * KM, 10 * KM),
+        north_bounds=Range(-10 * KM, 10 * KM),
+        depth_bounds=Range(0 * KM, 10 * KM),
         absorbing_boundary=1 * KM,
     )
 

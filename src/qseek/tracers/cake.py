@@ -583,7 +583,7 @@ class CakeTracer(RayTracer):
             "distance_bounds": distance_bounds,
             "source_depth_bounds": source_depth_bounds,
             "receiver_depth_bounds": receiver_depths_bounds,
-            "spatial_tolerance": octree.size_limit / 2,
+            "spatial_tolerance": octree.smallest_node_size() / 2,
             "time_tolerance": time_tolerance,
         }
 

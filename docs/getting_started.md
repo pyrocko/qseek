@@ -49,8 +49,8 @@ Check out the `search.json` config file and add your waveform data and velocity 
           "elevation": 0.0,
           "depth": 0.0
         },
-        "size_initial": 2000.0,
-        "size_limit": 500.0,
+        "root_node_size": 2000.0,
+        "n_levels": 3,
         "east_bounds": [
           -10000.0,
           10000.0

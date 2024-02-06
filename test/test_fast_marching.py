@@ -7,27 +7,26 @@ from typing import Literal, TypedDict
 import numpy as np
 import pytest
 import pytest_asyncio
-
-from lassie.models.location import Location
-from lassie.models.station import Station, Stations
-from lassie.octree import Octree
-from lassie.tracers.cake import (
+from qseek.models.location import Location
+from qseek.models.station import Station, Stations
+from qseek.octree import Octree
+from qseek.tracers.cake import (
     DEFAULT_VELOCITY_MODEL_FILE,
     CakeTracer,
     EarthModel,
     Timing,
 )
-from lassie.tracers.fast_marching.fast_marching import (
+from qseek.tracers.fast_marching.fast_marching import (
     FastMarchingTracer,
     StationTravelTimeVolume,
 )
-from lassie.tracers.fast_marching.velocity_models import (
+from qseek.tracers.fast_marching.velocity_models import (
     Constant3DVelocityModel,
     NonLinLocVelocityModel,
     VelocityModel3D,
     VelocityModelLayered,
 )
-from lassie.utils import datetime_now
+from qseek.utils import datetime_now
 
 CONSTANT_VELOCITY = 5000
 KM = 1e3
@@ -86,8 +85,8 @@ def octree_cover(model: VelocityModel3D) -> Octree:
     depth_excess = KM - model.depth_size % (1 * KM)
     return Octree(
         location=model.center,
-        size_initial=1 * KM,
-        size_limit=500,
+        roo_node_size=1 * KM,
+        n_levels=2,
         east_bounds=(model.east_bounds[0], model.east_bounds[1] + east_excess),
         north_bounds=(model.north_bounds[0], model.north_bounds[1] + north_excess),
         depth_bounds=(model.depth_bounds[0], model.depth_bounds[1] + depth_excess),
