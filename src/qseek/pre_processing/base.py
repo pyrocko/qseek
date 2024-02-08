@@ -49,11 +49,12 @@ class BatchPreProcessing(BaseModel):
         """
         if not self.stations:
             return batch.traces
-        return [
-            trace
-            for trace in batch.traces
-            if NSL.parse(trace.nslc_id).station in self.stations
-        ]
+        traces: list[Trace] = []
+        for trace in batch.traces:
+            for station in self.stations:
+                if station.match(NSL.parse(trace.nslc_id)):
+                    traces.append(trace)
+        return traces
 
     async def prepare(self) -> None:
         """

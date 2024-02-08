@@ -643,7 +643,7 @@ class EventDetection(Location):
             "time": self.time,
             "lat": round(self.effective_lat, 6),
             "lon": round(self.effective_lon, 6),
-            "depth": round(self.effective_depth, 2),
+            "depth_ellipsoid": round(self.effective_depth, 2),
             "east_shift": round(self.east_shift, 2),
             "north_shift": round(self.north_shift, 2),
             "distance_border": round(self.distance_border, 2),

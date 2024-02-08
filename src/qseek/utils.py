@@ -132,8 +132,8 @@ class NSL(NamedTuple):
             raise ValueError("invalid empty NSL")
         parts = nsl.split(".")
         n_parts = len(parts)
-        if n_parts == 3:
-            return cls(*parts)
+        if n_parts >= 3:
+            return cls(*parts[:3])
         if n_parts == 2:
             return cls(parts[0], parts[1], "")
         if n_parts == 1:

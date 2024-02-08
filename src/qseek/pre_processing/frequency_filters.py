@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import Field, PositiveFloat, field_validator
 
 from qseek.pre_processing.base import BatchPreProcessing
+from qseek.utils import Range
 
 if TYPE_CHECKING:
     from qseek.waveforms.base import WaveformBatch
@@ -17,22 +18,22 @@ class Bandpass(BatchPreProcessing):
     process: Literal["bandpass"] = "bandpass"
 
     corners: int = Field(
-        4,
+        default=4,
         ge=2,
         description="Number of corners for the filter.",
     )
-    bandpass: tuple[PositiveFloat, PositiveFloat] = Field(
-        0.1,
+    bandpass: Range = Field(
+        default=Range(0.1, 40.0),
         description="The highpass frequency.",
     )
     demean: bool = Field(
-        True,
+        default=True,
         description="If True, demean the trace before filtering.",
     )
 
     @field_validator("bandpass")
     @classmethod
-    def _check_bandpass(cls, value) -> tuple[PositiveFloat, PositiveFloat]:
+    def _check_bandpass(cls, value) -> Range:
         if value[0] >= value[1]:
             raise ValueError(
                 "The lowpass frequency must be smaller than the highpass frequency."
@@ -58,16 +59,16 @@ class Highpass(BatchPreProcessing):
 
     process: Literal["highpass"] = "highpass"
     corners: int = Field(
-        4,
+        default=4,
         ge=2,
         description="Number of corners for the filter.",
     )
     frequency: PositiveFloat = Field(
-        0.1,
+        default=0.1,
         description="The highpass frequency.",
     )
     demean: bool = Field(
-        True,
+        default=True,
         description="If True, demean the trace before filtering.",
     )
 
@@ -89,16 +90,16 @@ class Lowpass(BatchPreProcessing):
 
     process: Literal["lowpass"] = "lowpass"
     corners: int = Field(
-        4,
+        default=4,
         ge=2,
         description="Number of corners for the filter.",
     )
     frequency: PositiveFloat = Field(
-        0.1,
+        default=0.1,
         description="The highpass frequency.",
     )
     demean: bool = Field(
-        True,
+        default=True,
         description="If True, demean the trace before filtering.",
     )
 
