@@ -178,10 +178,7 @@ class Semblance:
         Returns:
             np.ndarray: The semblance values at the specified time index.
         """
-        semblance = self.semblance[:, time_idx]
-        if self.exponent != 1.0:
-            semblance **= self.exponent
-        return semblance
+        return self.semblance[:, time_idx]
 
     def get_cache_mask(self, cache: dict[bytes, np.ndarray]) -> np.ndarray:
         """
