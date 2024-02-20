@@ -113,8 +113,7 @@ class Node:
     def coordinates(self) -> tuple[float, float, float]:
         return self.east, self.north, self.depth
 
-    @property
-    def distance_border(self) -> float:
+    def get_distance_border(self, include_top: bool = False) -> float:
         """Distance to the closest EW, NS or bottom border of the tree.
 
         !!! note
@@ -129,13 +128,26 @@ class Node:
         if not self.tree:
             raise AttributeError("parent tree not set")
         tree = self.tree
-        return min(
+        trough_distance = min(
             self.north - tree.north_bounds[0],
             tree.north_bounds[1] - self.north,
             self.east - tree.east_bounds[0],
             tree.east_bounds[1] - self.east,
             tree.depth_bounds[1] - self.depth,
         )
+        if not include_top:
+            return trough_distance
+        return min(trough_distance, self.depth - tree.depth_bounds[0])
+
+    def is_inside_border(self, ignore_top: bool = False) -> bool:
+        """Check if the node is within the root node border.
+
+        Returns:
+            bool: True if the node is inside the root tree's border.
+        """
+        if self.tree is None:
+            raise AttributeError("parent tree not set")
+        return self.get_distance_border(ignore_top) <= self.tree.root_node_size
 
     def can_split(self) -> bool:
         """Check if the node can be split.
@@ -251,11 +263,6 @@ class Octree(BaseModel):
     depth_bounds: Range = Field(
         default=Range(0 * KM, 20 * KM),
         description="Depth bounds of the octree in meters.",
-    )
-    absorbing_boundary: float = Field(
-        default=1 * KM,
-        ge=0.0,
-        description="Absorbing boundary in meters. Detections inside the boundary will be tagged.",
     )
 
     _root_nodes: list[Node] = PrivateAttr([])
@@ -456,17 +463,6 @@ class Octree(BaseModel):
         if not semblance_threshold:
             return list(self)
         return [node for node in self if node.semblance >= semblance_threshold]
-
-    def is_node_in_bounds(self, node: Node) -> bool:
-        """Check if node is inside the absorbing boundary.
-
-        Args:
-            node (Node): Node to check.
-
-        Returns:
-            bool: Check if node is absorbed.
-        """
-        return node.distance_border > self.absorbing_boundary
 
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.

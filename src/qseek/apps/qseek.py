@@ -178,7 +178,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    setup_rich_logging(level=logging.INFO - args.verbose * 10)
+    log_level = logging.INFO - args.verbose * 10
+    loop_debug = log_level < logging.INFO
+    setup_rich_logging(level=log_level)
 
     match args.command:
         case "config":
@@ -195,7 +197,7 @@ def main() -> None:
                 await search.start(force_rundir=args.force)
                 await http
 
-            asyncio.run(run())
+            asyncio.run(run(), debug=loop_debug)
 
         case "continue":
             search = Search.load_rundir(args.rundir)
@@ -211,7 +213,7 @@ def main() -> None:
                 await search.start()
                 await http
 
-            asyncio.run(run())
+            asyncio.run(run(), debug=loop_debug)
 
         case "feature-extraction":
             search = Search.load_rundir(args.rundir)
@@ -244,7 +246,7 @@ def main() -> None:
                     jitter_location=search.octree.smallest_node_size()
                 )
 
-            asyncio.run(extract())
+            asyncio.run(extract(), debug=loop_debug)
 
         case "corrections":
             import json
@@ -266,7 +268,9 @@ def main() -> None:
                 console=console,
             )
             travel_time_corrections = corrections_modules[int(module_choice)]
-            corrections = asyncio.run(travel_time_corrections.setup(rundir, console))
+            corrections = asyncio.run(
+                travel_time_corrections.setup(rundir, console), debug=loop_debug
+            )
 
             search = json.loads((rundir / "search.json").read_text())
             search["station_corrections"] = corrections.model_dump(mode="json")

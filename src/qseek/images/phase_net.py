@@ -180,6 +180,7 @@ class PhaseNet(ImageFunction):
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,
+            copy=False,
         )
 
         if self.upscale_input > 1:

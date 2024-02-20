@@ -300,8 +300,6 @@ class Semblance:
             self.semblance_unpadded.max,
             axis=0,
         )
-        if self.exponent != 1.0:
-            max_semblance_unpadded **= self.exponent
 
         detection_idx, _ = await asyncio.to_thread(
             signal.find_peaks,

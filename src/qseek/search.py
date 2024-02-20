@@ -235,19 +235,39 @@ class Search(BaseModel):
         gt=0.0,
         lt=1.0,
         description="Threshold for splitting octree nodes,"
-        " relative to the maximum detected semblance.",
+        " relative to the maximum detected semblance. Lower values are more"
+        " explorative, higher values are more conservative.",
+    )
+    ignore_boundary_nodes: Literal[False, "trough", "volume"] = Field(
+        default=False,
+        description="Ignore events that are inside the first root node layer of"
+        " the octree. If 'trough', only ignore events that are inside the"
+        " trough of the octree volume, keep events in the ceiling of the volume."
+        "If 'volume', ignore events that are inside the"
+        " whole volume of the octree.",
     )
 
     detection_blinding: timedelta = Field(
         default=timedelta(seconds=2.0),
-        description="Blinding in seconds before and after the detection peak.",
+        description="Blinding time in seconds before and after the detection peak. "
+        "This is used to avoid detecting the same event multiple times. "
+        "Default is 2 seconds.",
     )
 
-    image_mean_p: float = Field(default=1.0, ge=1.0, le=2.0)
+    power_mean: float = Field(
+        default=1.0,
+        ge=1.0,
+        le=2.0,
+        description="Power mean exponent for stacking and combining the image"
+        " functions for stacking. A value of 1.0 is the arithmetic mean, 2.0 is the"
+        " quadratic mean. A higher value will result in sharper detections"
+        " and low values smooth the stacking function.",
+    )
 
     window_length: timedelta = Field(
         default=timedelta(minutes=5),
-        description="Window length for processing. Default is 5 minutes.",
+        description="Window length for processing. Smaller window size will be less RAM"
+        " consuming. Default is 5 minutes.",
     )
 
     n_threads_parstack: int = Field(
@@ -258,7 +278,8 @@ class Search(BaseModel):
     )
     n_threads_argmax: PositiveInt = Field(
         default=16,
-        description="Number of threads for argmax. Default is `16`.",
+        description="Number of threads for argmax. Don't use all core for this"
+        " operation. Default is `16`.",
     )
 
     plot_octree_surface: bool = False
@@ -455,7 +476,7 @@ class Search(BaseModel):
         async for images, batch in self.image_functions.iter_images(processed_batches):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)
-            images.apply_exponent(self.image_mean_p)
+            images.apply_exponent(self.power_mean)
             search_block = SearchTraces(
                 parent=self,
                 images=images,
@@ -708,7 +729,7 @@ class SearchTraces:
             start_time=self.start_time,
             sampling_rate=sampling_rate,
             padding_samples=padding_samples,
-            exponent=1.0 / parent.image_mean_p,
+            exponent=1.0 / parent.power_mean,
         )
 
         for image in images:
@@ -725,7 +746,7 @@ class SearchTraces:
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 
-        threshold = parent.detection_threshold ** (1.0 / parent.image_mean_p)
+        threshold = parent.detection_threshold ** (1.0 / parent.power_mean)
         detection_idx, detection_semblance = await semblance.find_peaks(
             height=threshold,
             prominence=threshold,
@@ -745,6 +766,10 @@ class SearchTraces:
             octree.map_semblance(semblance.get_semblance(time_idx))
             node_idx = maxima_node_idx[time_idx]
             source_node = octree[node_idx]
+            if parent.ignore_boundary_nodes and source_node.is_inside_border(
+                ignore_top=parent.ignore_boundary_nodes == "trough"
+            ):
+                continue
 
             if not source_node.can_split():
                 continue
@@ -756,12 +781,18 @@ class SearchTraces:
 
         # refine_nodes is empty when all sources fall into smallest octree nodes
         if refine_nodes:
-            logger.info("energy detected, refining %d nodes", len(refine_nodes))
+            new_level = 0
             for node in refine_nodes:
                 try:
                     node.split()
+                    new_level = max(new_level, node.level + 1)
                 except NodeSplitError:
                     continue
+            logger.info(
+                "energy detected, refined %d nodes, level %d",
+                len(refine_nodes),
+                new_level,
+            )
             cache = semblance.get_cache()
             del semblance
             return await self.search(octree, semblance_cache=cache)
@@ -775,13 +806,17 @@ class SearchTraces:
 
             node_idx = (await semblance.maxima_node_idx())[time_idx]
             source_node = octree[node_idx]
+            if parent.ignore_boundary_nodes and source_node.is_inside_border(
+                ignore_top=parent.ignore_boundary_nodes == "trough"
+            ):
+                continue
+
             source_location = source_node.as_location()
 
             detection = EventDetection(
                 time=time,
                 semblance=float(semblance_detection),
-                distance_border=source_node.distance_border,
-                in_bounds=octree.is_node_in_bounds(source_node),
+                distance_border=source_node.get_distance_border(),  # rename trough_distance
                 n_stations=images.n_stations,
                 **source_location.model_dump(),
             )
