@@ -221,9 +221,9 @@ class Search(BaseModel):
         description="Event features to extract.",
     )
 
-    sampling_rate: SamplingRate = Field(
+    semblance_sampling_rate: SamplingRate = Field(
         default=100,
-        description="Sampling rate for the image function. "
+        description="Sampling rate for the semblance image function. "
         "Choose from 10, 20, 25, 50, 100 Hz.",
     )
     detection_threshold: PositiveFloat = Field(
@@ -626,7 +626,7 @@ class SearchTraces:
         time_span = (self.end_time + window_padding) - (
             self.start_time - window_padding
         )
-        return int(round(time_span.total_seconds() * parent.sampling_rate))
+        return int(round(time_span.total_seconds() * parent.semblance_sampling_rate))
 
     @alog_call
     async def calculate_semblance(
@@ -715,7 +715,7 @@ class SearchTraces:
                 semblance traces used for the search.
         """
         parent = self.parent
-        sampling_rate = parent.sampling_rate
+        sampling_rate = parent.semblance_sampling_rate
 
         octree = octree or parent.octree.reset()
         images = await self.get_images(sampling_rate=float(sampling_rate))
