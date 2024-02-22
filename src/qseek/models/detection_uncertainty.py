@@ -47,7 +47,7 @@ class DetectionUncertainty(BaseModel):
         if not source_node.semblance:
             raise ValueError("Source node must have semblance value.")
 
-        nodes = octree.get_nodes(
+        nodes = octree.get_nodes_by_threshold(
             semblance_threshold=source_node.semblance * (1.0 - percentile)
         )
         vicinity_coords = np.array(

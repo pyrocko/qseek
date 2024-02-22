@@ -12,7 +12,7 @@ from typing_extensions import Self
 if TYPE_CHECKING:
     from pathlib import Path
 
-CoordSystem = Literal["cartesian", "geographic"]
+CoordSystem = Literal["cartesian", "geographic", "raw"]
 
 
 class Location(BaseModel):

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Deque, Literal
 import numpy as np
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     PositiveFloat,
     PositiveInt,
@@ -230,13 +231,14 @@ class Search(BaseModel):
         default=0.05,
         description="Detection threshold for semblance.",
     )
-    node_split_threshold: float = Field(
-        default=0.9,
+    node_split_percentile: float = Field(
+        default=5.0,
         gt=0.0,
-        lt=1.0,
-        description="Threshold for splitting octree nodes,"
-        " relative to the maximum detected semblance. Lower values are more"
-        " explorative, higher values are more conservative.",
+        lt=100.0,
+        description="Percentiles of octree nodes to split,"
+        " relative to the maximum detected semblance."
+        " Higher percentiles are more explorative, lower values are more conservative."
+        " A more explorative seach will refine more nodes and consume more RAM.",
     )
     ignore_boundary_nodes: Literal[False, "trough", "volume"] = Field(
         default=False,
@@ -246,7 +248,11 @@ class Search(BaseModel):
         "If 'volume', ignore events that are inside the"
         " whole volume of the octree.",
     )
-
+    node_peak_interpolation: bool = Field(
+        default=True,
+        description="Interpolate intranode locations for detected events using radial"
+        " basis function. If False, the node center location is used.",
+    )
     detection_blinding: timedelta = Field(
         default=timedelta(seconds=2.0),
         description="Blinding time in seconds before and after the detection peak. "
@@ -305,6 +311,8 @@ class Search(BaseModel):
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     _stats: SearchStats = PrivateAttr(default_factory=SearchStats)
+
+    model_config = ConfigDict(extra="forbid")
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (
@@ -774,8 +782,8 @@ class SearchTraces:
             if not source_node.can_split():
                 continue
 
-            split_nodes = octree.get_nodes(
-                semblance_detection * parent.node_split_threshold
+            split_nodes = octree.get_nodes_by_threshold(
+                semblance_detection * (1.0 - parent.node_split_percentile / 100.0)
             )
             refine_nodes.update(split_nodes)
 
@@ -802,16 +810,20 @@ class SearchTraces:
             detection_idx, detection_semblance, strict=True
         ):
             time = self.start_time + timedelta(seconds=time_idx / sampling_rate)
-            octree.map_semblance(semblance.semblance[:, time_idx])
-
+            semblance_event = semblance.get_semblance(time_idx)
             node_idx = (await semblance.maxima_node_idx())[time_idx]
+
+            octree.map_semblance(semblance_event)
             source_node = octree[node_idx]
             if parent.ignore_boundary_nodes and source_node.is_inside_border(
                 ignore_top=parent.ignore_boundary_nodes == "trough"
             ):
                 continue
 
-            source_location = source_node.as_location()
+            if parent.node_peak_interpolation:
+                source_location = await octree.interpolate_max_location(source_node)
+            else:
+                source_location = source_node.as_location()
 
             detection = EventDetection(
                 time=time,

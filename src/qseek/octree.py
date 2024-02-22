@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import struct
@@ -9,9 +10,11 @@ from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Sequence
 
 import numpy as np
+import scipy.interpolate
+import scipy.optimize
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -39,8 +42,8 @@ def get_node_coordinates(
     nodes: Sequence[Node],
     system: CoordSystem = "geographic",
 ) -> np.ndarray:
-    node_locations = (node.as_location() for node in nodes)
     if system == "geographic":
+        node_locations = (node.as_location() for node in nodes)
         return np.array(
             [
                 (*node.effective_lat_lon, node.effective_elevation)
@@ -48,12 +51,15 @@ def get_node_coordinates(
             ]
         )
     if system == "cartesian":
+        node_locations = (node.as_location() for node in nodes)
         return np.array(
             [
                 (node.east_shift, node.north_shift, node.effective_elevation)
                 for node in node_locations
             ]
         )
+    if system == "raw":
+        return np.array([(node.east, node.north, node.depth) for node in nodes])
     raise ValueError(f"Unknown coordinate system: {system}")
 
 
@@ -266,6 +272,7 @@ class Octree(BaseModel):
     )
 
     _root_nodes: list[Node] = PrivateAttr([])
+    _semblance: np.ndarray | None = PrivateAttr(None)
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
 
     model_config = ConfigDict(ignored_types=(cached_property,))
@@ -348,6 +355,7 @@ class Octree(BaseModel):
 
     def _clear_cache(self) -> None:
         self._cached_coordinates.clear()
+        self._semblance = None
         with contextlib.suppress(AttributeError):
             del self.n_nodes
 
@@ -403,6 +411,7 @@ class Octree(BaseModel):
         Args:
             semblance (np.ndarray): Of shape (n-nodes,).
         """
+        self._semblance = semblance
         for node, node_semblance in zip(self, semblance, strict=True):
             node.semblance = float(node_semblance)
 
@@ -451,7 +460,24 @@ class Octree(BaseModel):
             node_coords[:, 0], node_coords[:, 1], sta_coords[:, 0], sta_coords[:, 1]
         ).reshape(-1, stations.n_stations)
 
-    def get_nodes(self, semblance_threshold: float = 0.0) -> list[Node]:
+    def get_nodes(self, indices: Iterable[int]) -> list[Node]:
+        """
+        Retrieves a list of nodes from the octree based on the given indices.
+
+        Args:
+            indices (Iterable[int]): The indices of the nodes to retrieve.
+
+        Returns:
+            list[Node]: A list of nodes corresponding to the given indices.
+        """
+        indices_list = list(indices)
+        node_list = [None] * len(indices_list)
+        for i_node, node in enumerate(self):
+            if i_node in indices_list:
+                node_list[indices_list.index(i_node)] = node
+        return node_list
+
+    def get_nodes_by_threshold(self, semblance_threshold: float = 0.0) -> list[Node]:
         """Get all nodes with a semblance above a threshold.
 
         Args:
@@ -479,6 +505,77 @@ class Octree(BaseModel):
             int: Total number of nodes.
         """
         return len(self._root_nodes) * (8 ** (self.n_levels - 1))
+
+    async def interpolate_max_location(
+        self,
+        peak_node: Node,
+        n_neighbors: int = 5,
+    ) -> Location:
+        """Interpolate the location of the maximum semblance value.
+
+        This method calculates the location of the maximum semblance value by performing
+        interpolation using surrounding nodes. It uses the scipy Rbf (Radial basis function)
+        interpolation method to fit a smooth function to the given data points. The function
+        is then minimized to find the location of the maximum value.
+
+        Returns:
+            Location: Location of the maximum semblance value.
+
+        Raises:
+            AttributeError: If no semblance values are set.
+        """
+        if self._semblance is None:
+            raise AttributeError("no semblance values set")
+
+        node_coords = self.get_coordinates(system="raw")
+        node_distances = await asyncio.to_thread(
+            np.linalg.norm,
+            node_coords - peak_node.coordinates,
+            axis=1,
+        )
+        sorted_idx = await asyncio.to_thread(np.argsort, node_distances)
+        neighbor_nodes = self.get_nodes(sorted_idx[: (n_neighbors**3)])
+
+        neighbor_coords = np.array(
+            [(n.east, n.north, n.depth, n.semblance) for n in neighbor_nodes]
+        )
+
+        # np.save("/tmp/neighbor_coords.npy", neighbor_coords)
+
+        neighbor_semblance = neighbor_coords[:, 3]
+        rbf = scipy.interpolate.RBFInterpolator(
+            neighbor_coords[:, :3],
+            neighbor_semblance,
+            kernel="thin_plate_spline",
+            degree=1,
+        )
+        bound = peak_node.size / 1.5
+        res = await asyncio.to_thread(
+            scipy.optimize.minimize,
+            lambda x: -rbf(np.atleast_2d(x)),
+            method="Nelder-Mead",
+            bounds=(
+                (peak_node.east - bound, peak_node.east + bound),
+                (peak_node.north - bound, peak_node.north + bound),
+                (peak_node.depth - bound, peak_node.depth + bound),
+            ),
+            x0=(peak_node.east, peak_node.north, peak_node.depth),
+        )
+
+        reference = self.location
+        result = Location(
+            lat=reference.lat,
+            lon=reference.lon,
+            elevation=reference.elevation,
+            east_shift=reference.east_shift + res.x[0],
+            north_shift=reference.north_shift + res.x[1],
+            depth=reference.depth + res.x[2],
+        )
+        logger.info(
+            "interpolated source offset (e-n-d): %.1f, %.1f, %.1f",
+            *peak_node.as_location().offset_from(result),
+        )
+        return result
 
     def cached_bottom(self) -> Self:
         """Returns a copy of the octree refined to the cached bottom nodes.
