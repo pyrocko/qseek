@@ -80,6 +80,7 @@ class PhaseDetection(BaseModel):
     phase: PhaseDescription
     model: ModelledArrival
     observed: ObservedArrival | None = None
+    station_delay: timedelta | None = None
 
     @property
     def traveltime_delay(self) -> timedelta | None:

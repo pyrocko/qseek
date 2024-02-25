@@ -81,7 +81,7 @@ class PreProcessing(RootModel):
         return iter(self.root)
 
     async def prepare(self) -> None:
-        logger.info("prepare pre-processing modules")
+        logger.info("preparing pre-processing modules")
         for process in self.root:
             await process.prepare()
 

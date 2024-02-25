@@ -54,10 +54,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SamplingRate = Literal[10, 20, 25, 50, 100]
+SamplingRate = Literal[10, 20, 25, 50, 100, 200]
 
 
 class SearchStats(Stats):
+    project_name: str = "qseek"
     batch_time: datetime = datetime.min
     batch_count: int = 0
     batch_count_total: int = 0
@@ -159,6 +160,10 @@ class SearchStats(Stats):
             return str(duration).split(".")[0]
 
         table.add_row(
+            "Project",
+            f"[bold]{self.project_name}[/bold]",
+        )
+        table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
             f" ([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'},"
@@ -251,7 +256,8 @@ class Search(BaseModel):
     node_peak_interpolation: bool = Field(
         default=True,
         description="Interpolate intranode locations for detected events using radial"
-        " basis function. If False, the node center location is used.",
+        " basis functions. If `False`, the node center location is used for "
+        "the event hypocentre.",
     )
     detection_blinding: timedelta = Field(
         default=timedelta(seconds=2.0),
@@ -383,7 +389,7 @@ class Search(BaseModel):
                 self.stations,
             )
             self._travel_time_ranges[phase] = (
-                timedelta(seconds=np.nanmin(traveltimes)),
+                timedelta(seconds=max(0, np.nanmin(traveltimes))),
                 timedelta(seconds=np.nanmax(traveltimes)),
             )
             logger.info(
@@ -455,6 +461,7 @@ class Search(BaseModel):
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
+        self._stats.project_name = self._rundir.name
 
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():
@@ -774,12 +781,12 @@ class SearchTraces:
             octree.map_semblance(semblance.get_semblance(time_idx))
             node_idx = maxima_node_idx[time_idx]
             source_node = octree[node_idx]
+            if not source_node.can_split():
+                continue
+
             if parent.ignore_boundary_nodes and source_node.is_inside_border(
                 ignore_top=parent.ignore_boundary_nodes == "trough"
             ):
-                continue
-
-            if not source_node.can_split():
                 continue
 
             split_nodes = octree.get_nodes_by_threshold(
@@ -842,17 +849,45 @@ class SearchTraces:
                     source=source_location,
                     receivers=image.stations,
                 )
+
+                arrival_times = [arr.time if arr else None for arr in arrivals_model]
+                station_delays = []
+
+                if parent.station_corrections:
+                    for nsl in image.stations.get_all_nsl():
+                        delay = parent.station_corrections.get_delay(
+                            nsl,
+                            image.phase,
+                            node=source_node,
+                        )
+                        station_delays.append(timedelta(seconds=delay))
+
                 arrivals_observed = image.search_phase_arrivals(
                     modelled_arrivals=[
-                        arr.time if arr else None for arr in arrivals_model
-                    ]
+                        arr + delay if arr else None
+                        for arr, delay in zip(
+                            arrival_times,
+                            station_delays,
+                            strict=True,
+                        )
+                    ],
                 )
 
                 phase_detections = [
-                    PhaseDetection(phase=image.phase, model=mod, observed=obs)
-                    if mod
+                    PhaseDetection(
+                        phase=image.phase,
+                        model=modeled_time,
+                        observed=obs,
+                        station_delay=delay or None,
+                    )
+                    if modeled_time
                     else None
-                    for mod, obs in zip(arrivals_model, arrivals_observed, strict=True)
+                    for modeled_time, obs, delay in zip(
+                        arrivals_model,
+                        arrivals_observed,
+                        station_delays,
+                        strict=True,
+                    )
                 ]
                 detection.receivers.add(
                     stations=image.stations,

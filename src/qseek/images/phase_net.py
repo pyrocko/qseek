@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Literal
 from obspy import Stream
 from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import obspy_compat
+from pyrocko.trace import NoData
+from scipy import signal
 from seisbench import logger as seisbench_logger
 
 from qseek.images.base import ImageFunction, ObservedArrival, WaveformImage
@@ -45,10 +47,11 @@ class PhaseNetImage(WaveformImage):
         self,
         trace_idx: int,
         modelled_arrival: datetime,
-        search_length_seconds: float = 5.0,
+        search_window_seconds: float = 5.0,
         threshold: float = 0.1,
+        detection_blinding_seconds: float = 1.0,
     ) -> ObservedArrival | None:
-        """Search for a peak in all station's image functions.
+        """Search for the closest peak (pick) in the station's image functions.
 
         Args:
             trace_idx (int): Index of the trace.
@@ -56,23 +59,43 @@ class PhaseNetImage(WaveformImage):
             search_length_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
             threshold (float, optional): Threshold for detection. Defaults to 0.1.
+            detection_blinding_seconds (float, optional): Blinding time in seconds for
+                the peak detection. Defaults to 1 second.
 
         Returns:
             datetime | None: Time of arrival, None is none found.
         """
         trace = self.traces[trace_idx]
-        window_length = timedelta(seconds=search_length_seconds)
-        search_trace = trace.chop(
-            tmin=(modelled_arrival - window_length / 2).timestamp(),
-            tmax=(modelled_arrival + window_length / 2).timestamp(),
-            inplace=False,
+        window_length = timedelta(seconds=search_window_seconds)
+        try:
+            search_trace = trace.chop(
+                tmin=(modelled_arrival - window_length / 2).timestamp(),
+                tmax=(modelled_arrival + window_length / 2).timestamp(),
+                inplace=False,
+            )
+        except NoData:
+            return None
+
+        peak_idx, _ = signal.find_peaks(
+            search_trace.ydata,
+            height=threshold,
+            prominence=detection_blinding_seconds,
+            distance=detection_blinding_seconds,
         )
         time_seconds, value = search_trace.max()
-        if value < threshold:
+        if not peak_idx.size:
             return None
+
+        times = search_trace.get_xdata()
+        peak_times = [times[idx] for idx in peak_idx]
+        peak_dists = [abs(p - modelled_arrival.timestamp()) for p in peak_times]
+        peak_values = search_trace.get_ydata()[peak_idx]
+
+        closest_peak_idx = peak_dists.index(min(peak_dists))
+
         return ObservedArrival(
-            time=to_datetime(time_seconds),
-            detection_value=float(value),
+            time=to_datetime(peak_times[closest_peak_idx]),
+            detection_value=peak_values[closest_peak_idx],
             phase=self.phase,
         )
 

@@ -226,6 +226,9 @@ def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> floa
     if weights is None:
         return float(np.median(data))
 
+    if weights.sum() == 0.0:
+        raise ValueError("weights sum to zero, can't normalize")
+
     data = np.atleast_1d(data.squeeze())
     weights = np.atleast_1d(weights.squeeze())
 
@@ -266,6 +269,9 @@ async def async_weighted_median(
     """
     if weights is None:
         return float(await asyncio.to_thread(np.median, data))
+
+    if weights.sum() == 0.0:
+        raise ValueError("weights sum to zero, can't normalize")
 
     data = np.atleast_1d(data.squeeze())
     weights = np.atleast_1d(weights.squeeze())
