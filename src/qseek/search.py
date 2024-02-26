@@ -871,14 +871,12 @@ class SearchTraces:
                         phase=image.phase,
                         model=modeled_time,
                         observed=obs,
-                        station_delay=delay or None,
                     )
                     if modeled_time
                     else None
-                    for modeled_time, obs, delay in zip(
+                    for modeled_time, obs in zip(
                         arrivals_model,
                         arrivals_observed,
-                        station_delays,
                         strict=True,
                     )
                 ]
