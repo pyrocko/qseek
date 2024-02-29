@@ -10,7 +10,7 @@ from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, Sequence
 
 import numpy as np
 import scipy.interpolate
@@ -382,7 +382,12 @@ class Octree(BaseModel):
             for node in self:
                 node.split()
 
-    def reduce_surface(self, accumulator: Callable = np.max) -> np.ndarray:
+    def reduce_axis(
+        self,
+        surface: Literal["NE", "ED", "ND"] = "NE",
+        level: int = -1,
+        accumulator: Callable = np.max,
+    ) -> np.ndarray:
         """Reduce the octree's nodes to the surface
 
         Args:
@@ -392,12 +397,21 @@ class Octree(BaseModel):
             np.ndarray: Of shape (n-nodes, 4) with columns (east, north, depth, value).
         """
         groups = defaultdict(list)
-        for node in self:
-            groups[(node.east, node.north, node.size)].append(node.semblance)
 
-        values = (accumulator(values) for values in groups.values())
+        component_map = {
+            "NE": lambda n: (n.east, n.north, n.size),
+            "ED": lambda n: (n.east, n.depth, n.size),
+            "ND": lambda n: (n.north, n.depth, n.size),
+        }
+
+        for node in self:
+            if level >= 0 and node.level > level:
+                continue
+            groups[component_map[surface](node)].append(node.semblance)
+
+        semblances = (accumulator(values) for values in groups.values())
         return np.array(
-            [(*node, val) for node, val in zip(groups.keys(), values, strict=True)]
+            [(*node, val) for node, val in zip(groups.keys(), semblances, strict=True)]
         )
 
     @property
@@ -489,6 +503,36 @@ class Octree(BaseModel):
         if not semblance_threshold:
             return list(self)
         return [node for node in self if node.semblance >= semblance_threshold]
+
+    def get_nodes_level(self, level: int = 0):
+        """Get all nodes at a specific level.
+
+        Args:
+            level (int): Level to get nodes from.
+
+        Returns:
+            list[Node]: List of nodes.
+        """
+        return [node for node in self if node.level <= level]
+
+    def is_node_in_bounds(self, node: Node) -> bool:
+        """Check if node is inside the absorbing boundary.
+
+        Args:
+            node (Node): Node to check.
+
+        Returns:
+            bool: Check if node is absorbed.
+        """
+        return node.distance_border > self.absorbing_boundary
+
+    def n_levels(self) -> int:
+        """Returns the number of the deepest level in the octree.
+
+        Returns:
+            int: Index of deepest octree level.
+        """
+        return int(np.floor(np.log2(self.size_initial / self.size_limit)))
 
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.
