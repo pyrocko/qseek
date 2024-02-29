@@ -385,7 +385,7 @@ class Octree(BaseModel):
     def reduce_axis(
         self,
         surface: Literal["NE", "ED", "ND"] = "NE",
-        level: int = -1,
+        max_level: int = -1,
         accumulator: Callable = np.max,
     ) -> np.ndarray:
         """Reduce the octree's nodes to the surface
@@ -404,8 +404,13 @@ class Octree(BaseModel):
             "ND": lambda n: (n.north, n.depth, n.size),
         }
 
+        if surface not in component_map:
+            raise ValueError(
+                f"Unknown surface component: {surface}, expected NE, ED or ND."
+            )
+
         for node in self:
-            if level >= 0 and node.level > level:
+            if max_level >= 0 and node.level > max_level:
                 continue
             groups[component_map[surface](node)].append(node.semblance)
 
