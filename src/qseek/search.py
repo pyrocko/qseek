@@ -669,6 +669,7 @@ class SearchTraces:
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= station_contribution[:, np.newaxis]
+        weights /= self.images.cumulative_weight()
         weights[traveltimes_bad] = 0.0
 
         if semblance_cache:
@@ -749,7 +750,8 @@ class SearchTraces:
             )
 
         # Applying the generalized mean to the semblance
-        semblance.normalize(images.cumulative_weight(), semblance_cache=semblance_cache)
+        # semblance.normalize(
+        # images.cumulative_weight(), semblance_cache=semblance_cache)
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 

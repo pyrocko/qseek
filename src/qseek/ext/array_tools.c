@@ -24,7 +24,6 @@ static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
 
 static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
   PyObject *array, *cache, *mask;
-  int nthreads = 4;
   npy_intp *array_shape;
   npy_intp n_nodes, n_samples;
 
@@ -33,10 +32,10 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
   npy_bool *mask_data;
   PyArrayObject *cached_array;
 
-  static char *kwlist[] = {"array", "cache", "mask", "nthreads", NULL};
+  static char *kwlist[] = {"array", "cache", "mask", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|i", kwlist, &array, &cache,
-                                   &mask, &nthreads))
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO", kwlist, &array, &cache,
+                                   &mask))
     return NULL;
 
   if (!PyArray_Check(array)) {
