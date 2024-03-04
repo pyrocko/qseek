@@ -236,15 +236,6 @@ class Search(BaseModel):
         default=0.05,
         description="Detection threshold for semblance.",
     )
-    node_split_percentile: float = Field(
-        default=5.0,
-        gt=0.0,
-        lt=100.0,
-        description="Percentiles of octree nodes to split,"
-        " relative to the maximum detected semblance."
-        " Higher percentiles are more explorative, lower values are more conservative."
-        " A more explorative seach will refine more nodes and consume more RAM.",
-    )
     ignore_boundary_nodes: Literal[False, "trough", "volume"] = Field(
         default=False,
         description="Ignore events that are inside the first root node layer of"
@@ -773,26 +764,25 @@ class SearchTraces:
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
-        maxima_node_idx = await semblance.maxima_node_idx()
+        maxima_node_indices = await semblance.maxima_node_idx()
         refine_nodes: set[Node] = set()
-        for time_idx, semblance_detection in zip(
-            detection_idx, detection_semblance, strict=True
-        ):
+        for time_idx in detection_idx:
             octree.map_semblance(semblance.get_semblance(time_idx))
-            node_idx = maxima_node_idx[time_idx]
+            node_idx = maxima_node_indices[time_idx]
             source_node = octree[node_idx]
-            if not source_node.can_split():
-                continue
 
             if parent.ignore_boundary_nodes and source_node.is_inside_border(
-                ignore_top=parent.ignore_boundary_nodes == "trough"
+                trough=parent.ignore_boundary_nodes == "trough"
             ):
                 continue
+            refine_nodes.update(source_node)
+            refine_nodes.update(source_node.get_neighbours())
 
-            split_nodes = octree.get_nodes_by_threshold(
-                semblance_detection * (1.0 - parent.node_split_percentile / 100.0)
-            )
-            refine_nodes.update(split_nodes)
+            densest_node = max(octree, key=lambda node: node.semblance_density())
+            refine_nodes.add(densest_node)
+            refine_nodes.update(densest_node.get_neighbours())
+
+        refine_nodes = {node for node in refine_nodes if node.can_split()}
 
         # refine_nodes is empty when all sources fall into smallest octree nodes
         if refine_nodes:
@@ -823,7 +813,7 @@ class SearchTraces:
             octree.map_semblance(semblance_event)
             source_node = octree[node_idx]
             if parent.ignore_boundary_nodes and source_node.is_inside_border(
-                ignore_top=parent.ignore_boundary_nodes == "trough"
+                trough=parent.ignore_boundary_nodes == "trough"
             ):
                 continue
 
@@ -863,7 +853,8 @@ class SearchTraces:
                         station_delays.append(timedelta(seconds=delay))
 
                 arrivals_observed = image.search_phase_arrivals(
-                    modelled_arrivals=[arr if arr else None for arr in arrival_times]
+                    modelled_arrivals=[arr if arr else None for arr in arrival_times],
+                    threshold=parent.detection_threshold,
                 )
 
                 phase_detections = [

@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 from obspy import Stream
 from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko import obspy_compat
@@ -74,15 +75,37 @@ class PhaseNetImage(WaveformImage):
                 inplace=False,
             )
         except NoData:
+            logger.warning("No data to pick phase arrival.")
             return None
 
         peak_idx, _ = signal.find_peaks(
             search_trace.ydata,
             height=threshold,
-            prominence=detection_blinding_seconds,
-            distance=detection_blinding_seconds,
+            prominence=threshold,
+            distance=int(detection_blinding_seconds * 1 / search_trace.deltat),
         )
-        time_seconds, value = search_trace.max()
+        if False:
+            import matplotlib.pyplot as plt
+
+            fig, ax = plt.subplots()
+            time = search_trace.get_xdata()
+            std = np.std(search_trace.get_ydata())
+
+            ax.plot(time, search_trace.get_ydata())
+            ax.grid(alpha=0.3)
+            ax.axhline(threshold, color="r", linestyle="--", label="threshold")
+            ax.axhline(std, color="g", linestyle="--", label="std")
+            ax.axhline(3 * std, color="b", linestyle="dotted", label="3*std")
+            ax.axvline(
+                modelled_arrival.timestamp(),
+                color="k",
+                alpha=0.3,
+                label="modelled arrival",
+            )
+            if peak_idx.size:
+                ax.axvline(time[peak_idx], color="m", linestyle="--", label="peaks")
+            plt.show()
+
         if not peak_idx.size:
             return None
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import TYPE_CHECKING, Literal, Sequence
 
+import matplotlib.pyplot as plt
 import numpy as np
 from lru import LRU
 from pydantic import (
@@ -30,6 +31,7 @@ from pyrocko import orthodrome as od
 from pyrocko import spit
 from pyrocko.cake import LayeredModel, PhaseDef, load_model, m2d
 from pyrocko.gf import meta
+from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
 
 from qseek.octree import get_node_coordinates
 from qseek.stats import PROGRESS
@@ -148,6 +150,22 @@ class EarthModel(BaseModel):
 
     def get_profile_vs(self) -> np.ndarray:
         return self.layered_model.profile("vs")
+
+    def save_plot(self, filename: Path) -> None:
+        """
+        Plot the layered model and save the figure to a file.
+
+        Args:
+            filename (Path): The path to save the figure.
+        """
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        earthmodel_plot(self.layered_model, axes=ax)
+        fig.savefig(filename, dpi=300)
+        if self.filename:
+            ax.set_title(f"File: {self.filename}")
+
+        logger.info("saved earth model plot to %s", filename)
 
     @cached_property
     def hash(self) -> str:
@@ -599,6 +617,14 @@ class CakeTracer(RayTracer):
 
             await tree.init_lut(octree, stations)
             self._travel_time_trees[phase_descr] = tree
+
+        if rundir:
+            cake_plots = rundir / "cake"
+            cake_plots.mkdir(exist_ok=True)
+            for phase, tree in self._travel_time_trees.items():
+                tree.earthmodel.save_plot(
+                    cake_plots / f"earthmodel_{phase.replace(':', '_')}.png",
+                )
 
     def _get_sptree_model(self, phase: str) -> TravelTimeTree:
         return self._travel_time_trees[phase]

@@ -93,14 +93,14 @@ class Node:
             raise NodeSplitError("Cannot split node below limit.")
 
         if not self._children_cached:
-            half_size = self.size / 2
+            child_size = self.size / 2
 
             self._children_cached = tuple(
                 Node(
-                    east=self.east + east * half_size / 2,
-                    north=self.north + north * half_size / 2,
-                    depth=self.depth + depth * half_size / 2,
-                    size=half_size,
+                    east=self.east + east * child_size / 2,
+                    north=self.north + north * child_size / 2,
+                    depth=self.depth + depth * child_size / 2,
+                    size=child_size,
                     tree=self.tree,
                     parent=self,
                     level=self.level + 1,
@@ -119,11 +119,12 @@ class Node:
     def coordinates(self) -> tuple[float, float, float]:
         return self.east, self.north, self.depth
 
-    def get_distance_border(self, include_top: bool = False) -> float:
+    def get_distance_border(self, trough: bool = False) -> float:
         """Distance to the closest EW, NS or bottom border of the tree.
 
-        !!! note
-            Surface distance is excluded.
+        Args:
+            trough (bool, optional): If True, the distance to the closest border
+                within the trough (open top) is returned. Defaults to False.
 
         Raises:
             AttributeError: If the parent tree is not set.
@@ -141,19 +142,23 @@ class Node:
             tree.east_bounds[1] - self.east,
             tree.depth_bounds[1] - self.depth,
         )
-        if not include_top:
+        if trough:
             return trough_distance
         return min(trough_distance, self.depth - tree.depth_bounds[0])
 
-    def is_inside_border(self, ignore_top: bool = False) -> bool:
+    def is_inside_border(self, trough: bool = False) -> bool:
         """Check if the node is within the root node border.
+
+        Args:
+            trough (bool, optional): If True, the node is considered inside the
+                trough (open top). Defaults to False.
 
         Returns:
             bool: True if the node is inside the root tree's border.
         """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        return self.get_distance_border(ignore_top) <= self.tree.root_node_size
+        return self.get_distance_border(trough) <= self.tree.root_node_size
 
     def can_split(self) -> bool:
         """Check if the node can be split.
@@ -195,6 +200,15 @@ class Node:
         """
         return location.distance_to(self.as_location())
 
+    def semblance_density(self) -> float:
+        """
+        Calculate the semblance density of the octree.
+
+        Returns:
+            The semblance density of the octree.
+        """
+        return self.semblance / self.size**3
+
     def as_location(self) -> Location:
         """Returns the location of the node.
 
@@ -214,6 +228,51 @@ class Node:
                 depth=reference.depth + float(self.depth),
             )
         return self._location
+
+    def collides(self, other: Node) -> bool:
+        """Check if two nodes collide.
+
+        Args:
+            other (Node): Other node to check for collision.
+
+        Returns:
+            bool: True if the nodes collide.
+        """
+        return (
+            abs(self.east - other.east) <= (self.size + other.size) / 2
+            and abs(self.north - other.north) <= (self.size + other.size) / 2
+            and abs(self.depth - other.depth) <= (self.size + other.size) / 2
+        )
+
+    def get_neighbours(self) -> list[Node]:
+        """Get the direct neighbours of the node from the parent tree.
+
+        Returns:
+            list[Node]: List of direct neighbours.
+        """
+        if not self.tree:
+            raise AttributeError("parent tree not set")
+
+        return [
+            node
+            for node in self.tree.iter_nodes()
+            if self.collides(node) and node is not self
+        ]
+
+    def distance_to(self, other: Node) -> float:
+        """Distance to another node.
+
+        Args:
+            other (Node): Other node to calculate distance to.
+
+        Returns:
+            float: Distance to other node.
+        """
+        return np.sqrt(
+            (self.east - other.east) ** 2
+            + (self.north - other.north) ** 2
+            + (self.depth - other.depth) ** 2
+        )
 
     def __iter__(self) -> Iterator[Node]:
         if self.children:
@@ -299,6 +358,7 @@ class Octree(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model"""
         self._root_nodes = self.get_root_nodes(self.root_node_size)
+
         logger.info(
             "initializing octree volume with %d nodes and %.1f km³,"
             " smallest node size: %.1f m",
@@ -342,6 +402,20 @@ class Octree(BaseModel):
     def volume(self) -> float:
         """Volume of the octree in cubic meters"""
         return reduce(mul, self.extent())
+
+    def iter_nodes(self, level: int | None = None) -> Iterator[Node]:
+        """Iterate over nodes.
+
+        Args:
+            level (int, optional): Level to iterate over. Defaults to None.
+                If None, all node levels are iterated.
+
+        Yields:
+            Iterator[Node]: Node iterator.
+        """
+        for node in self:
+            if level is None or node.level == level:
+                yield node
 
     def __iter__(self) -> Iterator[Node]:
         for node in self._root_nodes:
@@ -520,25 +594,6 @@ class Octree(BaseModel):
         """
         return [node for node in self if node.level <= level]
 
-    def is_node_in_bounds(self, node: Node) -> bool:
-        """Check if node is inside the absorbing boundary.
-
-        Args:
-            node (Node): Node to check.
-
-        Returns:
-            bool: Check if node is absorbed.
-        """
-        return node.distance_border > self.absorbing_boundary
-
-    def n_levels(self) -> int:
-        """Returns the number of the deepest level in the octree.
-
-        Returns:
-            int: Index of deepest octree level.
-        """
-        return int(np.floor(np.log2(self.size_initial / self.size_limit)))
-
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.
 
@@ -558,7 +613,6 @@ class Octree(BaseModel):
     async def interpolate_max_location(
         self,
         peak_node: Node,
-        n_neighbors: int = 5,
     ) -> Location:
         """Interpolate the location of the maximum semblance value.
 
@@ -576,20 +630,13 @@ class Octree(BaseModel):
         if self._semblance is None:
             raise AttributeError("no semblance values set")
 
-        node_coords = self.get_coordinates(system="raw")
-        node_distances = await asyncio.to_thread(
-            np.linalg.norm,
-            node_coords - peak_node.coordinates,
-            axis=1,
-        )
-        sorted_idx = await asyncio.to_thread(np.argsort, node_distances)
-        neighbor_nodes = self.get_nodes(sorted_idx[: (n_neighbors**3)])
-
+        neighbor_nodes = peak_node.get_neighbours()
         neighbor_coords = np.array(
-            [(n.east, n.north, n.depth, n.semblance) for n in neighbor_nodes]
+            [
+                (n.east, n.north, n.depth, n.semblance)
+                for n in [peak_node, *neighbor_nodes]
+            ]
         )
-
-        # np.save("/tmp/neighbor_coords.npy", neighbor_coords)
 
         neighbor_semblance = neighbor_coords[:, 3]
         rbf = scipy.interpolate.RBFInterpolator(
