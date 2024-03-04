@@ -210,7 +210,12 @@ class Semblance:
         mask = self.get_cache_mask(cache)
         logger.debug("applying cache for %d nodes", mask.sum())
         data = [cache[hash] for hash in self._node_hashes if hash in cache]
-        self.semblance_unpadded[mask, :] = np.stack(data)
+
+        # This is a faster then
+        # self.semblance_unpadded[mask, :] = data
+        for idx, copy in enumerate(mask):
+            if copy:
+                memoryview(self.semblance_unpadded[idx])[:] = memoryview(data.pop(0))
 
     def maximum_node_semblance(self) -> np.ndarray:
         semblance = self.semblance.max(axis=1)
@@ -228,11 +233,14 @@ class Semblance:
             np.ndarray: Node indices.
         """
         if self._node_idx_max is None:
-            self._node_idx_max = await asyncio.to_thread(
-                parstack.argmax,
-                np.ascontiguousarray(self.semblance),
+            # self._node_idx_max = await asyncio.to_thread(
+            self._node_idx_max = parstack.argmax(
+                self.semblance_unpadded,
                 nparallel=nparallel,
             )
+            self._node_idx_max = self._node_idx_max[
+                self.padding_samples : -self.padding_samples
+            ]
         return self._node_idx_max
 
     def mean(self) -> float:
@@ -361,8 +369,8 @@ class Semblance:
         threads = threads or max(1, get_cpu_count() - 6)
 
         start_time = datetime_now()
-        _, offset_samples = await asyncio.to_thread(
-            parstack.parstack,
+        # _, offset_samples = await asyncio.to_thread(
+        _, offset_samples = parstack.parstack(
             arrays=trace_data,
             offsets=offsets,
             shifts=shifts,
@@ -382,7 +390,11 @@ class Semblance:
             )
         self._offset_samples = offset_samples
 
-    def normalize(self, factor: int | float) -> None:
+    def normalize(
+        self,
+        factor: int | float,
+        semblance_cache: dict[bytes, np.ndarray] | None = None,
+    ) -> None:
         """Normalize semblance by a factor.
 
         Args:
@@ -390,5 +402,9 @@ class Semblance:
         """
         if factor == 1.0:
             return
-        self.semblance_unpadded /= factor
+        if semblance_cache:
+            cache_mask = self.get_cache_mask(semblance_cache)
+            self.semblance_unpadded[~cache_mask] /= factor
+        else:
+            self.semblance_unpadded /= factor
         self._clear_cache()

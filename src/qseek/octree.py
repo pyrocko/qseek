@@ -119,12 +119,12 @@ class Node:
     def coordinates(self) -> tuple[float, float, float]:
         return self.east, self.north, self.depth
 
-    def get_distance_border(self, trough: bool = False) -> float:
+    def get_distance_border(self, with_surface: bool = False) -> float:
         """Distance to the closest EW, NS or bottom border of the tree.
 
         Args:
-            trough (bool, optional): If True, the distance to the closest border
-                within the trough (open top) is returned. Defaults to False.
+            with_surface (bool, optional): If True, the distance to the closest border
+                within the surface (open top) is returned. Defaults to False.
 
         Raises:
             AttributeError: If the parent tree is not set.
@@ -135,18 +135,18 @@ class Node:
         if not self.tree:
             raise AttributeError("parent tree not set")
         tree = self.tree
-        trough_distance = min(
+        border_distance = min(
             self.north - tree.north_bounds[0],
             tree.north_bounds[1] - self.north,
             self.east - tree.east_bounds[0],
             tree.east_bounds[1] - self.east,
             tree.depth_bounds[1] - self.depth,
         )
-        if trough:
-            return trough_distance
-        return min(trough_distance, self.depth - tree.depth_bounds[0])
+        if with_surface:
+            return min(border_distance, self.depth - tree.depth_bounds[0])
+        return border_distance
 
-    def is_inside_border(self, trough: bool = False) -> bool:
+    def is_inside_border(self, with_surface: bool = False) -> bool:
         """Check if the node is within the root node border.
 
         Args:
@@ -158,7 +158,7 @@ class Node:
         """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        return self.get_distance_border(trough) <= self.tree.root_node_size
+        return self.get_distance_border(with_surface) <= self.tree.root_node_size
 
     def can_split(self) -> bool:
         """Check if the node can be split.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
+from cProfile import Profile
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100, 200]
+p = Profile()
 
 
 class SearchStats(Stats):
@@ -236,13 +238,11 @@ class Search(BaseModel):
         default=0.05,
         description="Detection threshold for semblance.",
     )
-    ignore_boundary_nodes: Literal[False, "trough", "volume"] = Field(
+    absorbing_boundary: Literal[False, "with_surface", "without_surface"] = Field(
         default=False,
         description="Ignore events that are inside the first root node layer of"
-        " the octree. If 'trough', only ignore events that are inside the"
-        " trough of the octree volume, keep events in the ceiling of the volume."
-        "If 'volume', ignore events that are inside the"
-        " whole volume of the octree.",
+        " the octree. If `with_surface`, all events inside the boundaries of the volume"
+        " are absorbed. If `without_surface`, events at the surface are not absorbed.",
     )
     node_peak_interpolation: bool = Field(
         default=True,
@@ -720,6 +720,7 @@ class SearchTraces:
             tuple[list[EventDetection], Trace]: The event detections and the
                 semblance traces used for the search.
         """
+        p.enable()
         parent = self.parent
         sampling_rate = parent.semblance_sampling_rate
 
@@ -748,7 +749,7 @@ class SearchTraces:
             )
 
         # Applying the generalized mean to the semblance
-        semblance.normalize(images.cumulative_weight())
+        semblance.normalize(images.cumulative_weight(), semblance_cache=semblance_cache)
 
         semblance.apply_cache(semblance_cache or {})  # Apply after normalization
 
@@ -771,8 +772,8 @@ class SearchTraces:
             node_idx = maxima_node_indices[time_idx]
             source_node = octree[node_idx]
 
-            if parent.ignore_boundary_nodes and source_node.is_inside_border(
-                trough=parent.ignore_boundary_nodes == "trough"
+            if parent.absorbing_boundary and source_node.is_inside_border(
+                with_surface=parent.absorbing_boundary == "with_surface"
             ):
                 continue
             refine_nodes.update(source_node)
@@ -812,8 +813,8 @@ class SearchTraces:
 
             octree.map_semblance(semblance_event)
             source_node = octree[node_idx]
-            if parent.ignore_boundary_nodes and source_node.is_inside_border(
-                trough=parent.ignore_boundary_nodes == "trough"
+            if parent.absorbing_boundary and source_node.is_inside_border(
+                with_surface=parent.absorbing_boundary == "with_surface"
             ):
                 continue
 
@@ -884,4 +885,6 @@ class SearchTraces:
 
             detections.append(detection)
 
+        p.disable()
+        p.dump_stats("search.prof")
         return detections, semblance.get_trace()
