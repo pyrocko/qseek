@@ -196,7 +196,7 @@ class Semblance:
         """
         return np.array([hash in cache for hash in self._node_hashes])
 
-    def apply_cache(self, cache: dict[bytes, np.ndarray]) -> None:
+    async def apply_cache(self, cache: dict[bytes, np.ndarray]) -> None:
         """
         Applies the cached data to the `semblance_unpadded` array.
 
@@ -217,7 +217,7 @@ class Semblance:
         # for idx, copy in enumerate(mask):
         #     if copy:
         #         memoryview(self.semblance_unpadded[idx])[:] = memoryview(data.pop(0))
-        apply_cache(self.semblance_unpadded, data, mask)
+        await asyncio.to_thread(apply_cache, self.semblance_unpadded, data, mask)
 
     def maximum_node_semblance(self) -> np.ndarray:
         semblance = self.semblance.max(axis=1)
@@ -235,8 +235,8 @@ class Semblance:
             np.ndarray: Node indices.
         """
         if self._node_idx_max is None:
-            # self._node_idx_max = await asyncio.to_thread(
-            self._node_idx_max = parstack.argmax(
+            self._node_idx_max = await asyncio.to_thread(
+                parstack.argmax,
                 self.semblance_unpadded,
                 nparallel=nparallel,
             )
@@ -371,8 +371,8 @@ class Semblance:
         threads = threads or max(1, get_cpu_count() - 6)
 
         start_time = datetime_now()
-        # _, offset_samples = await asyncio.to_thread(
-        _, offset_samples = parstack.parstack(
+        _, offset_samples = await asyncio.to_thread(
+            parstack.parstack,
             arrays=trace_data,
             offsets=offsets,
             shifts=shifts,
