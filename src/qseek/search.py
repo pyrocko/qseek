@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-
-# from cProfile import Profile
+from cProfile import Profile
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
@@ -57,7 +56,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100, 200]
-# p = Profile()
+p = Profile()
 
 
 class SearchStats(Stats):
@@ -721,7 +720,7 @@ class SearchTraces:
             tuple[list[EventDetection], Trace]: The event detections and the
                 semblance traces used for the search.
         """
-        # p.enable()
+        p.enable()
         parent = self.parent
         sampling_rate = parent.semblance_sampling_rate
 
@@ -886,6 +885,6 @@ class SearchTraces:
 
             detections.append(detection)
 
-        # p.disable()
-        # p.dump_stats("search.prof")
+        p.disable()
+        p.dump_stats("search.prof")
         return detections, semblance.get_trace()

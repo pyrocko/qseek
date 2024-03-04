@@ -12,6 +12,7 @@ from pyrocko.trace import Trace
 from rich.table import Table
 from scipy import signal, stats
 
+from qseek.ext.array_tools import apply_cache, fill_zero_bytes
 from qseek.stats import Stats
 from qseek.utils import datetime_now, get_cpu_count, human_readable_bytes
 
@@ -109,7 +110,7 @@ class Semblance:
             n_samples,
         ):
             logger.debug("recycling semblance memory")
-            self._cached_semblance.fill(0.0)
+            fill_zero_bytes(self._cached_semblance)
             self.semblance_unpadded = self._cached_semblance
         else:
             logger.debug("re-allocating semblance memory")
@@ -213,9 +214,10 @@ class Semblance:
 
         # This is a faster then
         # self.semblance_unpadded[mask, :] = data
-        for idx, copy in enumerate(mask):
-            if copy:
-                memoryview(self.semblance_unpadded[idx])[:] = memoryview(data.pop(0))
+        # for idx, copy in enumerate(mask):
+        #     if copy:
+        #         memoryview(self.semblance_unpadded[idx])[:] = memoryview(data.pop(0))
+        apply_cache(self.semblance_unpadded, data, mask)
 
     def maximum_node_semblance(self) -> np.ndarray:
         semblance = self.semblance.max(axis=1)

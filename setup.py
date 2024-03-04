@@ -1,4 +1,13 @@
 #!/usr/bin/env python
-from setuptools import setup
+import numpy
+from setuptools import Extension, setup
 
-setup()
+setup(
+    ext_modules=[
+        Extension(
+            "qseek.ext.array_tools",
+            sources=["src/qseek/ext/array_tools.c"],
+            include_dirs=[numpy.get_include()],
+        )
+    ]
+)
