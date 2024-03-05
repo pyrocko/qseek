@@ -10,7 +10,7 @@ from pydantic import computed_field
 from pyrocko import parstack
 from pyrocko.trace import Trace
 from rich.table import Table
-from scipy import signal, stats
+from scipy import signal
 
 from qseek.ext.array_tools import apply_cache, fill_zero_bytes
 from qseek.stats import Stats
@@ -144,19 +144,6 @@ class Semblance:
         return self.semblance_unpadded
 
     @property
-    def maximum_semblance(self) -> np.ndarray:
-        """Maximum semblance at any timestep in the volume.
-
-        Returns:
-            np.ndarray: Maximum semblance.
-        """
-        if self._max_semblance is None:
-            self._max_semblance = self.semblance.max(axis=0)
-            if self.exponent != 1.0:
-                self._max_semblance **= self.exponent
-        return self._max_semblance
-
-    @property
     def start_time(self) -> datetime:
         """Start time of the volume."""
         return self._start_time + timedelta(
@@ -225,7 +212,34 @@ class Semblance:
             semblance **= self.exponent
         return semblance
 
-    async def maxima_node_idx(self, nparallel: int = 6) -> np.ndarray:
+    async def maxima_semblance(
+        self,
+        padded: bool = True,
+        nparallel: int = 12,
+    ) -> np.ndarray:
+        """Maximum semblance over time, aggregated over all nodes.
+
+        Args:
+            nparallel (int, optional): Number of threads for calculation. Defaults to 6.
+
+        Returns:
+            np.ndarray: Maximum semblance.
+        """
+        if self._max_semblance is None:
+            node_idx = await self.maxima_node_idx(padded=False, nparallel=nparallel)
+            self._max_semblance = self.semblance_unpadded[
+                node_idx, np.arange(self.n_samples_unpadded)
+            ]
+
+        if padded:
+            return self._max_semblance[self.padding_samples : -self.padding_samples]
+        return self._max_semblance
+
+    async def maxima_node_idx(
+        self,
+        padded: bool = False,
+        nparallel: int = 12,
+    ) -> np.ndarray:
         """Indices of maximum semblance at any time step.
 
         Args:
@@ -240,26 +254,9 @@ class Semblance:
                 self.semblance_unpadded,
                 nparallel=nparallel,
             )
-            self._node_idx_max = self._node_idx_max[
-                self.padding_samples : -self.padding_samples
-            ]
+        if padded:
+            return self._node_idx_max[self.padding_samples : -self.padding_samples]
         return self._node_idx_max
-
-    def mean(self) -> float:
-        """Mean of the maximum semblance."""
-        return float(self.maximum_semblance.mean())
-
-    def std(self) -> float:
-        """Standard deviation of the maximum semblance."""
-        return float(self.maximum_semblance.std())
-
-    def median(self) -> float:
-        """Median of the maximum semblance."""
-        return float(np.median(self.maximum_semblance))
-
-    def median_abs_deviation(self) -> float:
-        """Median absolute deviation of the maximum semblance."""
-        return float(stats.median_abs_deviation(self.maximum_semblance))
 
     def apply_exponent(self, exponent: float) -> None:
         """Apply exponent to the maximum semblance.
@@ -271,19 +268,6 @@ class Semblance:
             return
         np.power(self.semblance_unpadded, exponent, out=self.semblance_unpadded)
         self._clear_cache()
-
-    def median_mask(self, level: float = 3.0) -> np.ndarray:
-        """Median mask above a level from the maximum semblance.
-
-        This mask can be used for blinding peak amplitudes above a given level.
-
-        Args:
-            level (float, optional): Threshold level. Defaults to 3.0.
-
-        Returns:
-            np.ndarray: Boolean mask with peaks set to False.
-        """
-        return self.maximum_semblance < (self.median() * level)
 
     async def find_peaks(
         self,
@@ -306,10 +290,7 @@ class Semblance:
         Returns:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
         """
-        max_semblance_unpadded = await asyncio.to_thread(
-            self.semblance_unpadded.max,
-            axis=0,
-        )
+        max_semblance_unpadded = await self.maxima_semblance(padded=False)
 
         detection_idx, _ = await asyncio.to_thread(
             signal.find_peaks,
@@ -319,30 +300,28 @@ class Semblance:
             distance=distance,
         )
         if trim_padding:
+            max_semblance_padded = await self.maxima_semblance(padded=True)
+
             detection_idx -= self.padding_samples
             detection_idx = detection_idx[detection_idx >= 0]
-            detection_idx = detection_idx[detection_idx < self.maximum_semblance.size]
-            semblance = self.maximum_semblance[detection_idx]
+            detection_idx = detection_idx[detection_idx < max_semblance_padded.size]
+            semblance = max_semblance_padded[detection_idx]
         else:
-            maximum_semblance = await asyncio.to_thread(
-                self.semblance_unpadded.max,
-                axis=0,
-            )
-            semblance = maximum_semblance[detection_idx]
+            semblance = max_semblance_unpadded[detection_idx]
 
         return detection_idx, semblance
 
-    def get_trace(self, padded: bool = True) -> Trace:
+    async def get_trace(self, padded: bool = True) -> Trace:
         """Get aggregated maximum semblance as a Pyrocko trace.
 
         Returns:
             Trace: Holding the semblance
         """
         if padded:
-            data = self.maximum_semblance
+            data = await self.maxima_semblance(padded=True)
             start_time = self.start_time
         else:
-            data = self.semblance_unpadded.max(axis=0)
+            data = await self.maxima_semblance(padded=False)
             start_time = self.start_time - timedelta(
                 seconds=int(round(self.padding_samples * self.sampling_rate))
             )

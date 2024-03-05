@@ -760,7 +760,7 @@ class SearchTraces:
         )
 
         if detection_idx.size == 0:
-            return [], semblance.get_trace()
+            return [], await semblance.get_trace()
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
@@ -884,4 +884,4 @@ class SearchTraces:
 
             detections.append(detection)
 
-        return detections, semblance.get_trace()
+        return detections, await semblance.get_trace()
