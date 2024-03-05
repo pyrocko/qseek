@@ -80,7 +80,7 @@ class SemblanceStats(Stats):
 
 class Semblance:
     _max_semblance: np.ndarray | None = None
-    _node_idx_max: np.ndarray | None = None
+    _node_max_idx: np.ndarray | None = None
     _node_hashes: list[bytes]
     _offset_samples: int = 0
 
@@ -199,7 +199,7 @@ class Semblance:
         logger.debug("applying cache for %d nodes", mask.sum())
         data = [cache[hash] for hash in self._node_hashes if hash in cache]
 
-        # This is a faster then
+        # memoryview is faster then
         # self.semblance_unpadded[mask, :] = data
         # for idx, copy in enumerate(mask):
         #     if copy:
@@ -214,31 +214,33 @@ class Semblance:
 
     async def maxima_semblance(
         self,
-        padded: bool = True,
-        nparallel: int = 12,
+        trim_padding: bool = True,
+        nthreads: int = 12,
     ) -> np.ndarray:
         """Maximum semblance over time, aggregated over all nodes.
 
         Args:
+            trim_padding (bool, optional): Trim padded data in post-processing.
             nparallel (int, optional): Number of threads for calculation. Defaults to 6.
 
         Returns:
             np.ndarray: Maximum semblance.
         """
         if self._max_semblance is None:
-            node_idx = await self.maxima_node_idx(padded=False, nparallel=nparallel)
+            node_idx = await self.maxima_node_idx(trim_padding=False, nthreads=nthreads)
             self._max_semblance = self.semblance_unpadded[
                 node_idx, np.arange(self.n_samples_unpadded)
             ]
+            self._max_semblance.setflags(write=False)
 
-        if padded:
+        if trim_padding:
             return self._max_semblance[self.padding_samples : -self.padding_samples]
         return self._max_semblance
 
     async def maxima_node_idx(
         self,
-        padded: bool = False,
-        nparallel: int = 12,
+        trim_padding: bool = True,
+        nthreads: int = 12,
     ) -> np.ndarray:
         """Indices of maximum semblance at any time step.
 
@@ -248,15 +250,16 @@ class Semblance:
         Returns:
             np.ndarray: Node indices.
         """
-        if self._node_idx_max is None:
-            self._node_idx_max = await asyncio.to_thread(
+        if self._node_max_idx is None:
+            self._node_max_idx = await asyncio.to_thread(
                 parstack.argmax,
                 self.semblance_unpadded,
-                nparallel=nparallel,
+                nparallel=nthreads,
             )
-        if padded:
-            return self._node_idx_max[self.padding_samples : -self.padding_samples]
-        return self._node_idx_max
+            self._node_max_idx.setflags(write=False)
+        if trim_padding:
+            return self._node_max_idx[self.padding_samples : -self.padding_samples]
+        return self._node_max_idx
 
     def apply_exponent(self, exponent: float) -> None:
         """Apply exponent to the maximum semblance.
@@ -275,6 +278,7 @@ class Semblance:
         prominence: float,
         distance: float,
         trim_padding: bool = True,
+        nthreads: int = 12,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Find peaks in maximum semblance.
 
@@ -290,7 +294,9 @@ class Semblance:
         Returns:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
         """
-        max_semblance_unpadded = await self.maxima_semblance(padded=False)
+        max_semblance_unpadded = await self.maxima_semblance(
+            trim_padding=False, nthreads=nthreads
+        )
 
         detection_idx, _ = await asyncio.to_thread(
             signal.find_peaks,
@@ -300,12 +306,12 @@ class Semblance:
             distance=distance,
         )
         if trim_padding:
-            max_semblance_padded = await self.maxima_semblance(padded=True)
+            max_semblance_trimmed = await self.maxima_semblance()
 
             detection_idx -= self.padding_samples
             detection_idx = detection_idx[detection_idx >= 0]
-            detection_idx = detection_idx[detection_idx < max_semblance_padded.size]
-            semblance = max_semblance_padded[detection_idx]
+            detection_idx = detection_idx[detection_idx < max_semblance_trimmed.size]
+            semblance = max_semblance_trimmed[detection_idx]
         else:
             semblance = max_semblance_unpadded[detection_idx]
 
@@ -318,10 +324,10 @@ class Semblance:
             Trace: Holding the semblance
         """
         if padded:
-            data = await self.maxima_semblance(padded=True)
+            data = await self.maxima_semblance(trim_padding=True)
             start_time = self.start_time
         else:
-            data = await self.maxima_semblance(padded=False)
+            data = await self.maxima_semblance(trim_padding=False)
             start_time = self.start_time - timedelta(
                 seconds=int(round(self.padding_samples * self.sampling_rate))
             )
@@ -335,7 +341,7 @@ class Semblance:
         )
 
     def _clear_cache(self) -> None:
-        self._node_idx_max = None
+        self._node_max_idx = None
         self._max_semblance = None
 
     async def calculate_semblance(
@@ -370,6 +376,7 @@ class Semblance:
                 offset_samples,
             )
         self._offset_samples = offset_samples
+        self._clear_cache()
 
     def normalize(
         self,

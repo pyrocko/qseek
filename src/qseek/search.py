@@ -759,6 +759,7 @@ class SearchTraces:
             height=threshold,
             prominence=threshold,
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
+            nthreads=parent.n_threads_argmax,
         )
 
         if detection_idx.size == 0:
