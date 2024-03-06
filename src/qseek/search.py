@@ -27,7 +27,7 @@ from qseek.models import Stations
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
-from qseek.models.semblance import Semblance
+from qseek.models.semblance import Semblance, SemblanceCache
 from qseek.octree import NodeSplitError, Octree
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
@@ -639,7 +639,7 @@ class SearchTraces:
         image: WaveformImage,
         ray_tracer: RayTracer,
         semblance: Semblance,
-        semblance_cache: dict[bytes, np.ndarray] | None = None,
+        semblance_cache: SemblanceCache | None = None,
     ) -> None:
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
@@ -671,7 +671,7 @@ class SearchTraces:
         weights[traveltimes_bad] = 0.0
 
         if semblance_cache:
-            cache_mask = semblance.get_cache_mask(semblance_cache)
+            cache_mask = semblance_cache.get_mask(semblance.node_hashes)
             weights[cache_mask] = 0.0
 
         await semblance.calculate_semblance(
@@ -707,7 +707,7 @@ class SearchTraces:
     async def search(
         self,
         octree: Octree | None = None,
-        semblance_cache: dict[bytes, np.ndarray] | None = None,
+        semblance_cache: SemblanceCache | None = None,
     ) -> tuple[list[EventDetection], Trace]:
         """Searches for events in the given traces.
 
@@ -735,6 +735,7 @@ class SearchTraces:
             sampling_rate=sampling_rate,
             padding_samples=padding_samples,
             exponent=1.0 / parent.power_mean,
+            cache=semblance_cache,
         )
 
         for image in images:
@@ -750,8 +751,8 @@ class SearchTraces:
         # semblance.normalize(
         # images.cumulative_weight(), semblance_cache=semblance_cache)
 
-        await semblance.apply_cache(semblance_cache or {})  # Apply after normalization
         if semblance_cache:
+            await semblance.apply_cache(semblance_cache)
             del semblance_cache
 
         threshold = parent.detection_threshold ** (1.0 / parent.power_mean)

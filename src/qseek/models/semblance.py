@@ -31,6 +31,7 @@ class SemblanceStats(Stats):
     last_nodes_stacked: int = 0
     last_stacking_time: timedelta = timedelta()
     semblance_size_bytes: int = 0
+    semblance_allocation_bytes: int = 0
 
     _position: int = 30
 
@@ -65,7 +66,7 @@ class SemblanceStats(Stats):
         table.add_row(
             "Node stacking",
             f"{self.nodes_per_second:.0f} nodes/s"
-            f" (avg {self.average_nodes_per_second:.1f} nodes/s)",
+            f" (avg. {self.average_nodes_per_second:.1f} nodes/s)",
         )
         table.add_row(
             "Trace stacking",
@@ -76,16 +77,29 @@ class SemblanceStats(Stats):
             f"{human_readable_bytes(self.semblance_size_bytes)}"
             f" ({self.last_nodes_stacked} nodes)",
         )
+        table.add_row(
+            "Memory allocated",
+            f"{human_readable_bytes(self.semblance_allocation_bytes)}",
+        )
+
+
+class SemblanceCache(dict[bytes, np.ndarray]):
+    _mask: np.ndarray | None = None
+
+    def get_mask(self, node_hashes: list[bytes]) -> np.ndarray:
+        if self._mask is None:
+            self._mask = np.array([hash in self for hash in node_hashes])
+        return self._mask
 
 
 class Semblance:
     _max_semblance: np.ndarray | None = None
     _node_max_idx: np.ndarray | None = None
-    _node_hashes: list[bytes]
+    node_hashes: list[bytes]
     _offset_samples: int = 0
 
     _stats: ClassVar[SemblanceStats] = SemblanceStats()
-    _cached_semblance: ClassVar[np.ndarray | None] = None
+    _semblance_allocation: ClassVar[np.ndarray | None] = None
 
     def __init__(
         self,
@@ -95,7 +109,7 @@ class Semblance:
         sampling_rate: float,
         padding_samples: int = 0,
         exponent: float = 1.0,
-        cache: dict[bytes, np.ndarray] | None = None,
+        cache: SemblanceCache | None = None,
     ) -> None:
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
@@ -103,23 +117,23 @@ class Semblance:
         self.exponent = exponent
 
         self._start_time = start_time
-        self._node_hashes = [node.hash() for node in nodes]
-        n_nodes = len(self._node_hashes)
+        self.node_hashes = [node.hash() for node in nodes]
+        n_nodes = len(self.node_hashes)
 
         n_values = n_nodes * n_samples
 
         if (
-            self._cached_semblance is not None
-            and self._cached_semblance.size >= n_values
+            self._semblance_allocation is not None
+            and self._semblance_allocation.size >= n_values
         ):
             logger.debug("recycling semblance memory with paged NUMA memory")
-            self.semblance_unpadded = self._cached_semblance[:n_values].reshape(
+            self.semblance_unpadded = self._semblance_allocation[:n_values].reshape(
                 (n_nodes, n_samples)
             )
             if cache:
                 # If a cache is supplied only zero the missing nodes
                 fill_zero_bytes_mask(
-                    self.semblance_unpadded, ~self.get_cache_mask(cache)
+                    self.semblance_unpadded, ~cache.get_mask(self.node_hashes)
                 )
             else:
                 fill_zero_bytes(self.semblance_unpadded)
@@ -128,7 +142,9 @@ class Semblance:
                 "re-allocating semblance memory: %d", human_readable_bytes(n_values * 4)
             )
             self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
-            Semblance._cached_semblance = self.semblance_unpadded
+
+            Semblance._semblance_allocation = self.semblance_unpadded
+            Semblance._stats.semblance_allocation_bytes = self.semblance_unpadded.nbytes
 
         self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes
 
@@ -156,16 +172,18 @@ class Semblance:
             seconds=self._offset_samples / self.sampling_rate
         )
 
-    def get_cache(self) -> dict[bytes, np.ndarray]:
+    def get_cache(self) -> SemblanceCache:
         """Return a cache dictionary containing the semblance data.
 
         We make a copy to keep the original data paged in memory.
         """
         cached_semblance = self.semblance_unpadded.copy()
-        return {
-            node_hash: cached_semblance[i, :]
-            for i, node_hash in enumerate(self._node_hashes)
-        }
+        return SemblanceCache(
+            {
+                node_hash: cached_semblance[i]
+                for i, node_hash in enumerate(self.node_hashes)
+            }
+        )
 
     def get_semblance(self, time_idx: int) -> np.ndarray:
         """
@@ -179,36 +197,21 @@ class Semblance:
         """
         return self.semblance[:, time_idx]
 
-    def get_cache_mask(self, cache: dict[bytes, np.ndarray]) -> np.ndarray:
-        """
-        Returns a boolean mask indicating whether each node hash
-            in self._node_hashes is present in the cache.
-
-        Args:
-            cache (dict[bytes, np.ndarray]): The cache dictionary containing node
-                hashes as keys.
-
-        Returns:
-            np.ndarray: A boolean mask indicating whether each node hash is
-                present in the cache.
-        """
-        return np.array([hash in cache for hash in self._node_hashes])
-
-    async def apply_cache(self, cache: dict[bytes, np.ndarray]) -> None:
+    async def apply_cache(self, cache: SemblanceCache) -> None:
         """
         Applies the cached data to the `semblance_unpadded` array.
 
         Args:
-            cache (dict[bytes, np.ndarray]): The cache containing the cached data.
+            cache (SemblanceCache): The cache containing the cached data.
 
         Returns:
             None
         """
         if not cache:
             return
-        mask = self.get_cache_mask(cache)
+        mask = cache.get_mask(self.node_hashes)
         logger.debug("applying cache for %d nodes", mask.sum())
-        data = [cache[hash] for hash in self._node_hashes if hash in cache]
+        data = [cache[hash] for hash in self.node_hashes if hash in cache]
 
         # memoryview is faster then
         # self.semblance_unpadded[mask, :] = data
@@ -220,7 +223,7 @@ class Semblance:
             self.semblance_unpadded,
             data,
             mask,
-            nthreads=4,
+            nthreads=1,
         )
 
     def maximum_node_semblance(self) -> np.ndarray:
@@ -398,7 +401,7 @@ class Semblance:
     def normalize(
         self,
         factor: int | float,
-        semblance_cache: dict[bytes, np.ndarray] | None = None,
+        semblance_cache: SemblanceCache | None = None,
     ) -> None:
         """Normalize semblance by a factor.
 
@@ -408,7 +411,7 @@ class Semblance:
         if factor == 1.0:
             return
         if semblance_cache:
-            cache_mask = self.get_cache_mask(semblance_cache)
+            cache_mask = semblance_cache.get_mask(self.node_hashes)
             self.semblance_unpadded[~cache_mask] /= factor
         else:
             self.semblance_unpadded /= factor
