@@ -204,7 +204,13 @@ class Semblance:
         # for idx, copy in enumerate(mask):
         #     if copy:
         #         memoryview(self.semblance_unpadded[idx])[:] = memoryview(data.pop(0))
-        await asyncio.to_thread(apply_cache, self.semblance_unpadded, data, mask)
+        await asyncio.to_thread(
+            apply_cache,
+            self.semblance_unpadded,
+            data,
+            mask,
+            nthreads=4,
+        )
 
     def maximum_node_semblance(self) -> np.ndarray:
         semblance = self.semblance.max(axis=1)
