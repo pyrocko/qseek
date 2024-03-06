@@ -40,3 +40,14 @@ def test_fill_zero_bytes() -> None:
 
     array_tools.fill_zero_bytes(data)
     np.testing.assert_array_equal(data, zeros)
+
+
+def test_fill_zero_bytes_mask():
+    nnodes = 1000
+    nsamples = 3000
+    data = np.ones(shape=(nnodes, nsamples), dtype=np.float32)
+    mask = np.random.choice([0, 1], size=nnodes, p=[0.5, 0.5]).astype(np.bool_)
+
+    array_tools.fill_zero_bytes_mask(data, mask)
+    for idx, m in enumerate(mask):
+        assert np.any(data[idx]) != m

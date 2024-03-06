@@ -7,6 +7,7 @@
 static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
                                  PyObject *kwds) {
   PyObject *array;
+
   static char *kwlist[] = {"array", NULL};
 
   if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &array))
@@ -23,6 +24,63 @@ static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
   Py_RETURN_NONE;
 }
 
+static PyObject *fill_zero_bytes_mask(PyObject *module, PyObject *args,
+                                      PyObject *kwds) {
+  PyObject *array, *mask;
+
+  PyArrayObject *mask_arr, *array_arr;
+  npy_bool *mask_data;
+  npy_intp *array_shape, n_nodes, n_samples;
+  size_t n_bytes;
+
+  static char *kwlist[] = {"array", "mask", NULL};
+
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &array, &mask))
+    return NULL;
+
+  if (!PyArray_Check(array)) {
+    PyErr_SetString(PyExc_ValueError, "object is not a NumPy array");
+    return NULL;
+  }
+  array_arr = (PyArrayObject *)array;
+
+  if (PyArray_NDIM(array_arr) != 2) {
+    PyErr_SetString(PyExc_ValueError, "array is not a 2D NumPy array");
+    return NULL;
+  }
+
+  array_shape = PyArray_SHAPE((PyArrayObject *)array);
+  n_nodes = array_shape[0];
+  n_samples = array_shape[1];
+
+  if (!PyArray_Check(mask)) {
+    PyErr_SetString(PyExc_ValueError, "mask is not a NumPy array");
+    return NULL;
+  }
+  mask_arr = (PyArrayObject *)mask;
+
+  if (PyArray_NDIM(mask_arr) != 1) {
+    PyErr_SetString(PyExc_ValueError, "mask is not a 1D NumPy array");
+    return NULL;
+  }
+  if (PyArray_SIZE(mask_arr) != n_nodes) {
+    PyErr_SetString(PyExc_ValueError, "mask size does not match array");
+    return NULL;
+  }
+
+  mask_data = PyArray_DATA(mask_arr);
+  n_bytes = (size_t)n_samples * PyArray_ITEMSIZE(array_arr);
+  Py_BEGIN_ALLOW_THREADS;
+  for (int i_node = 0; i_node < PyArray_SIZE(mask_arr); i_node++) {
+    if (mask_data[i_node]) {
+      memset(PyArray_GETPTR2((PyArrayObject *)array, (npy_intp)i_node, 0), 0,
+             n_bytes);
+    }
+  }
+  Py_END_ALLOW_THREADS;
+  Py_RETURN_NONE;
+}
+
 static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
   PyObject *obj, *cache, *mask;
   PyArrayObject *array, *mask_array, *cached_row;
@@ -34,6 +92,7 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
   npy_int *cumsum_mask, mask_value;
   npy_int idx_sum = 0;
   npy_bool *mask_data;
+  size_t n_bytes;
 
   static char *kwlist[] = {"array", "cache", "mask", "nthreads", NULL};
 
@@ -124,6 +183,7 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
     }
   }
 
+  n_bytes = (size_t)n_samples * sizeof(npy_float32);
   Py_BEGIN_ALLOW_THREADS;
 #pragma omp parallel for num_threads(n_threads)                                \
     schedule(dynamic) private(cached_row)
@@ -135,8 +195,7 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
         cache, (Py_ssize_t)cumsum_mask[i_node]);
     memcpy(
         PyArray_GETPTR2((PyArrayObject *)array, (npy_intp)i_node, (npy_intp)0),
-        PyArray_DATA((PyArrayObject *)cached_row),
-        (size_t)n_samples * sizeof(npy_float32));
+        PyArray_DATA((PyArrayObject *)cached_row), n_bytes);
   }
   Py_END_ALLOW_THREADS;
 
@@ -144,15 +203,14 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
 }
 
 static PyMethodDef methods[] = {
-    /* The cast of the function is necessary since PyCFunction values
-     * only take two PyObject* parameters, and fill_zero_bytes() takes
-     * three.
-     */
     {"fill_zero_bytes", (PyCFunction)(void (*)(void))fill_zero_bytes,
      METH_VARARGS | METH_KEYWORDS, "Fill a numpy array with zero bytes."},
+    {"fill_zero_bytes_mask", (PyCFunction)(void (*)(void))fill_zero_bytes_mask,
+     METH_VARARGS | METH_KEYWORDS,
+     "Fill a numpy 2D array with zero bytes on a row mask."},
     {"apply_cache", (PyCFunction)(void (*)(void))apply_cache,
      METH_VARARGS | METH_KEYWORDS,
-     "Apply a cache to a 2D numpy array of type float32."},
+     "Apply a row cache to a 2D numpy array of type float32."},
     {NULL, NULL, 0, NULL} /* sentinel */
 };
 

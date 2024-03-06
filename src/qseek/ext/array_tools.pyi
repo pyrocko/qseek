@@ -9,6 +9,14 @@ def fill_zero_bytes(array: np.ndarray) -> None:
         array: The array to fill with zero bytes.
     """
 
+def fill_zero_bytes_mask(array: np.ndarray, mask: np.ndarray) -> None:
+    """Fill the zero bytes of the array with zeros using numba.
+
+    Args:
+        array: The array to fill with zero bytes ndim=2, NxM.
+        mask: The mask array, ndim=1 with N shape of np.bool type.
+    """
+
 def apply_cache(
     data: np.ndarray,
     cache: list[np.ndarray],

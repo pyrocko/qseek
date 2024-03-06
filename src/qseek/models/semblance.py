@@ -12,7 +12,7 @@ from pyrocko.trace import Trace
 from rich.table import Table
 from scipy import signal
 
-from qseek.ext.array_tools import apply_cache, fill_zero_bytes
+from qseek.ext.array_tools import apply_cache, fill_zero_bytes, fill_zero_bytes_mask
 from qseek.stats import Stats
 from qseek.utils import datetime_now, get_cpu_count, human_readable_bytes
 
@@ -95,6 +95,7 @@ class Semblance:
         sampling_rate: float,
         padding_samples: int = 0,
         exponent: float = 1.0,
+        cache: dict[bytes, np.ndarray] | None = None,
     ) -> None:
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
@@ -105,26 +106,31 @@ class Semblance:
         self._node_hashes = [node.hash() for node in nodes]
         n_nodes = len(self._node_hashes)
 
-        if self._cached_semblance is not None and self._cached_semblance.shape == (
-            n_nodes,
-            n_samples,
+        n_values = n_nodes * n_samples
+
+        if (
+            self._cached_semblance is not None
+            and self._cached_semblance.size >= n_values
         ):
-            logger.debug("recycling semblance memory")
-            fill_zero_bytes(self._cached_semblance)
-            self.semblance_unpadded = self._cached_semblance
+            logger.debug("recycling semblance memory with paged NUMA memory")
+            self.semblance_unpadded = self._cached_semblance[:n_values].reshape(
+                (n_nodes, n_samples)
+            )
+            if cache:
+                # If a cache is supplied only zero the missing nodes
+                fill_zero_bytes_mask(
+                    self.semblance_unpadded, ~self.get_cache_mask(cache)
+                )
+            else:
+                fill_zero_bytes(self.semblance_unpadded)
         else:
-            logger.debug("re-allocating semblance memory")
+            logger.info(
+                "re-allocating semblance memory: %d", human_readable_bytes(n_values * 4)
+            )
             self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
             Semblance._cached_semblance = self.semblance_unpadded
 
         self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes
-
-        logger.debug(
-            "allocated volume for %d nodes and %d samples (%s)",
-            n_nodes,
-            n_samples,
-            human_readable_bytes(self.semblance_unpadded.nbytes),
-        )
 
     @property
     def n_nodes(self) -> int:
@@ -151,8 +157,13 @@ class Semblance:
         )
 
     def get_cache(self) -> dict[bytes, np.ndarray]:
+        """Return a cache dictionary containing the semblance data.
+
+        We make a copy to keep the original data paged in memory.
+        """
+        cached_semblance = self.semblance_unpadded.copy()
         return {
-            node_hash: self.semblance_unpadded[i, :]
+            node_hash: cached_semblance[i, :]
             for i, node_hash in enumerate(self._node_hashes)
         }
 
