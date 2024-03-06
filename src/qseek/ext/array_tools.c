@@ -13,7 +13,7 @@ static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
     return NULL;
 
   if (!PyArray_Check(array)) {
-    PyErr_SetString(PyExc_ValueError, "weights is not a NumPy array");
+    PyErr_SetString(PyExc_ValueError, "object is not a NumPy array");
     return NULL;
   }
   Py_BEGIN_ALLOW_THREADS;
