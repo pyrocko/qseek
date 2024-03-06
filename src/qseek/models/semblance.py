@@ -139,11 +139,11 @@ class Semblance:
                 fill_zero_bytes(self.semblance_unpadded)
         else:
             logger.info(
-                "re-allocating semblance memory: %d", human_readable_bytes(n_values * 4)
+                "re-allocating semblance memory: %s", human_readable_bytes(n_values * 4)
             )
             self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
 
-            Semblance._semblance_allocation = self.semblance_unpadded
+            Semblance._semblance_allocation = self.semblance_unpadded.ravel()
             Semblance._stats.semblance_allocation_bytes = self.semblance_unpadded.nbytes
 
         self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes

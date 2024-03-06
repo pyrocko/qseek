@@ -241,6 +241,8 @@ class EventReceivers(BaseModel):
             )
         )
         accessor_id = "qseek.event_detection"
+        if not times:
+            return []
 
         tmin = min(times).timestamp() - seconds_before
         tmax = max(times).timestamp() + seconds_after
