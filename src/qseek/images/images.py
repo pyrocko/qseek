@@ -36,9 +36,9 @@ class ImageFunctionsStats(Stats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
 
-    _queue: asyncio.Queue[
-        Tuple[WaveformImages | WaveformBatch] | None
-    ] | None = PrivateAttr(None)
+    _queue: asyncio.Queue[Tuple[WaveformImages | WaveformBatch] | None] | None = (
+        PrivateAttr(None)
+    )
 
     def set_queue(
         self,

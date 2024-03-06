@@ -108,9 +108,9 @@ class PhaseDetection(BaseModel):
         if self.observed:
             csv_dict[f"{prefix}.model.time"] = self.observed.time
         if self.traveltime_delay:
-            csv_dict[
-                f"{prefix}.traveltime_delay"
-            ] = self.traveltime_delay.total_seconds()
+            csv_dict[f"{prefix}.traveltime_delay"] = (
+                self.traveltime_delay.total_seconds()
+            )
         return csv_dict
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:

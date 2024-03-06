@@ -63,8 +63,7 @@ def get_node_coordinates(
     raise ValueError(f"Unknown coordinate system: {system}")
 
 
-class NodeSplitError(Exception):
-    ...
+class NodeSplitError(Exception): ...
 
 
 @dataclass(slots=True)

@@ -77,8 +77,7 @@ class WaveformProvider(BaseModel):
     def get_squirrel(self) -> Squirrel:
         raise NotImplementedError
 
-    def prepare(self, stations: Stations) -> None:
-        ...
+    def prepare(self, stations: Stations) -> None: ...
 
     async def iter_batches(
         self,

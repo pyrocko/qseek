@@ -26,8 +26,7 @@ class ObservedArrival:
 class ImageFunction(BaseModel):
     image: Literal["base"] = "base"
 
-    async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
-        ...
+    async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]: ...
 
     @property
     def name(self) -> str:
@@ -38,8 +37,7 @@ class ImageFunction(BaseModel):
         """Blinding duration for the image function. Added to padded waveforms."""
         raise NotImplementedError("must be implemented by subclass")
 
-    def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
-        ...
+    def get_provided_phases(self) -> tuple[PhaseDescription, ...]: ...
 
 
 @dataclass

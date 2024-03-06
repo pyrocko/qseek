@@ -291,9 +291,9 @@ class Search(BaseModel):
     _shift_range: timedelta = PrivateAttr(timedelta(seconds=0.0))
     _window_padding: timedelta = PrivateAttr(timedelta(seconds=0.0))
     _distance_range: tuple[float, float] = PrivateAttr((0.0, 0.0))
-    _travel_time_ranges: dict[
-        PhaseDescription, tuple[timedelta, timedelta]
-    ] = PrivateAttr({})
+    _travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = (
+        PrivateAttr({})
+    )
     _last_detection_export: int = 0
 
     _catalog: EventCatalog = PrivateAttr()

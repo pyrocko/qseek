@@ -29,8 +29,7 @@ class TravelTimeCorrections(BaseModel):
         return tuple(cls.__subclasses__())
 
     @property
-    def n_stations(self) -> int:
-        ...
+    def n_stations(self) -> int: ...
 
     def get_delay(
         self,

@@ -110,9 +110,10 @@ class EventCatalog(BaseModel):
             logger.warning("cannot find %s", detection_file)
             return catalog
 
-        with console.status(f"loading detections from {rundir}..."), open(
-            detection_file
-        ) as f:
+        with (
+            console.status(f"loading detections from {rundir}..."),
+            open(detection_file) as f,
+        ):
             for idx, line in enumerate(f):
                 detection = EventDetection.model_validate_json(line)
                 detection.set_index(idx)

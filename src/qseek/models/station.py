@@ -233,8 +233,7 @@ class Stations(BaseModel):
                     f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
                 )
 
-    def export_vtk(self, reference: Location | None = None) -> None:
-        ...
+    def export_vtk(self, reference: Location | None = None) -> None: ...
 
     def __hash__(self) -> int:
         return hash(sta for sta in self)

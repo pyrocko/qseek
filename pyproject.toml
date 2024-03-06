@@ -24,7 +24,13 @@ maintainers = [
     { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
     { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
 ]
-keywords = ["earthquake", "detection", "locatiosation", "stacking-migration"]
+keywords = [
+    "earthquake",
+    "detection",
+    "localization",
+    "stacking-migration",
+    "beamforming",
+]
 
 dependencies = [
     "numpy>=1.17.3",
@@ -64,7 +70,11 @@ dev = [
     "pytest-asyncio>=0.21",
 ]
 
-docs = ["mkdocs-material>=9.4.8", "mkdocstrings[python]>=0.23", "qseek-extra"]
+docs = [
+    "mkdocs-material>=9.4.8",
+    "mkdocstrings[python]>=0.23",
+    "qseek-insights",
+]
 completion = ["argcomplete>=3.2"]
 
 [project.scripts]

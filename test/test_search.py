@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from lassie.models.location import locations_to_csv
 from lassie.search import Search
 

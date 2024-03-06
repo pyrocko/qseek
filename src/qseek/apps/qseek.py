@@ -286,9 +286,10 @@ def main() -> None:
             search = Search.load_rundir(args.rundir)
             webserver = WebServer(search)
 
-            loop = asyncio.get_event_loop()
-            loop.create_task(webserver.start())
-            loop.run_forever()
+            async def start() -> None:
+                await webserver.start()
+
+            asyncio.run(start(), debug=loop_debug)
 
         case "clear-cache":
             logger.info("clearing cache directory %s", CACHE_DIR)

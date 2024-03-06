@@ -3,7 +3,6 @@ from __future__ import annotations
 import random
 
 import numpy as np
-
 from lassie.models import Location
 
 KM = 1e3
