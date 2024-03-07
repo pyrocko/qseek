@@ -116,4 +116,4 @@ target-version = 'py311'
 markers = ["plot: plot figures in tests"]
 
 [tool.cibuildwheel.macos]
-before-build = "brew install libomp"
+before-build = "brew install llvm && export CC=/usr/local/opt/llvm/bin/clang"
