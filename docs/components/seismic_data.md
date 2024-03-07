@@ -2,13 +2,13 @@
 
 ## Waveform Data
 
-The seismic can be delivered in MiniSeed or any other format compatible with Pyrocko. Lassie utilizes the Pyrocko Squirrel for fast and asynchronous data access.
+The seismic can be delivered in MiniSeed or any other format compatible with Pyrocko. Qseek utilizes the Pyrocko Squirrel for fast and asynchronous data access.
 
 To prepare your data for EQ detection and localisation, **organize it in a MiniSeed file or an [SDS structure](https://www.seiscomp.de/doc/base/concepts/waveformarchives.html)**.
 
 ```python exec='on'
-from lassie.utils import generate_docs
-from lassie.waveforms import PyrockoSquirrel
+from qseek.utils import generate_docs
+from qseek.waveforms.squirrel import PyrockoSquirrel
 
 print(generate_docs(PyrockoSquirrel()))
 ```
@@ -25,8 +25,8 @@ Supported data formats are:
 Metadata does not need to include response information for pure detection and localisation. If local magnitudes M~L~ are extracted, response information is required.
 
 ```python exec='on'
-from lassie.utils import generate_docs
-from lassie.models.station import Stations
+from qseek.utils import generate_docs
+from qseek.models.station import Stations
 
 print(generate_docs(Stations()))
 ```

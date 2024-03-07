@@ -1,15 +1,15 @@
-# Lassie
+# Qseek
 
 *The friendly earthquake detector*
 
-[![Build and test](https://github.com/miili/lassie-v2/actions/workflows/build.yaml/badge.svg)](https://github.com/miili/lassie-v2/actions/workflows/build.yaml)
-[![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/lassie-v2/)
+[![Build and test](https://github.com/pyrocko/qseek/actions/workflows/build.yaml/badge.svg)](https://github.com/pyrocko/qseek/actions/workflows/build.yaml)
+[![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/qseek/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%203.11-blue.svg)
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
 
-Lassie is an earthquake detection and localisation framework based on stacking and migration method. It combines neural network phase picks with an iterative octree localisation approach for accurate localisation of seismic events.
+Qseek is an earthquake detection and localisation framework based on stacking and migration, a beamforming method. It combines neural network phase picks with an iterative octree localisation approach for accurate localisation of seismic events.
 
 Key features are of the earthquake detection and localisation framework are:
 
@@ -25,24 +25,24 @@ Key features are of the earthquake detection and localisation framework are:
 * Automatic extraction of modelled and picked travel times
 * Calculation and application of station corrections / station delay times
 
-Lassie is built on top of [Pyrocko](https://pyrocko.org).
+Qseek is built on top of [Pyrocko](https://pyrocko.org).
 
-For more information check out the documentation at https://pyrocko.github.io/lassie-v2/.
+For more information check out the documentation at https://pyrocko.github.io/qseek/.
 
 ## Installation
 
 Simple installation from GitHub.
 
 ```sh
-pip install git+https://github.com/pyrocko/lassie-v2
+pip install git+https://github.com/pyrocko/qseek
 ```
 
 ## Project Initialisation
 
-Initialize a new project in a fresh directory.
+Show the default config.
 
 ```sh
-lassie init my-project/
+qseek config
 ```
 
 Edit the `my-project.json`
@@ -50,7 +50,7 @@ Edit the `my-project.json`
 Start the earthquake detection with
 
 ```sh
-lassie search search.json
+qseek search search.json
 ```
 
 ## Packaging
@@ -62,7 +62,7 @@ The simplest and recommended way of installing from source:
 Local development through pip.
 
 ```sh
-cd lassie-v2
+cd qseek
 pip3 install .[dev]
 ```
 
@@ -74,12 +74,12 @@ pre-commit install
 
 ## Citation
 
-Please cite lassie as:
+Please cite Qseek as:
 
-> TBD
+> Marius Paul Isken, Peter Niemz, Jannes Münchmeyer, Sebastian Heimann, Simone Cesca, Torsten Dahm, Qseek: A data-driven Framework for Machine-Learning Earthquake Detection, Localization and Characterization, Seismica, 2024, *submitted*
 
 ## License
 
 Contribution and merge requests by the community are welcome!
 
-Lassie-v2 was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3.
+Qseek was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3.

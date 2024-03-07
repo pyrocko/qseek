@@ -1,9 +1,9 @@
-site_name: Lassie - Earthquake Detector
+site_name: Qseek - Earthquake Detection and Localization
 site_description: The friendly earthquake detector
 site_author: Marius Paul Isken
 
-repo_url: https://github.com/pyrocko/lassie-v2
-repo_name: pyrocko/lassie-v2
+repo_url: https://github.com/pyrocko/qseek
+repo_name: pyrocko/qeek
 edit_uri: edit/main/docs/
 
 theme:
@@ -13,13 +13,13 @@ theme:
   - scheme: default
     primary: blue grey
     toggle:
-       icon: material/toggle-switch
+       icon: material/eye
        name: Switch to dark mode
     # Palette toggle for dark mode
   - scheme: slate
     primary: blue grey
     toggle:
-      icon: material/toggle-switch-off-outline
+      icon: material/eye-outline
       name: Switch to light mode
   icon:
     repo: fontawesome/brands/git-alt
@@ -60,7 +60,7 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 watch:
-  - lassie
+  - src/qseek
 
 plugins:
   - search

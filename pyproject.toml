@@ -71,9 +71,9 @@ dev = [
 ]
 
 docs = [
-    "mkdocs-material>=9.4.8",
+    "mkdocs-material>=9.5.13",
     "mkdocstrings[python]>=0.23",
-    "qseek-insights",
+    "markdown-exec>=1.8.0",
 ]
 completion = ["argcomplete>=3.2"]
 

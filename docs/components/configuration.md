@@ -1,4 +1,4 @@
-# Lassie Configuration
+# Qseek Configuration
 
 At center is a JSON configuration file which is parsed by [Pydantic](https://docs.pydantic.dev/). The following pages will detail how to setup this JSON file for the search.
 
@@ -12,17 +12,17 @@ The search configuration. **This is the entrypoint for the EQ detection and loca
 More information on the submodules (e.g. Octree, Data Provider and other) can be found on subpages in the navigation.
 
 ```python exec='on'
-from lassie.utils import generate_docs
-from lassie.search import Search
+from qseek.utils import generate_docs
+from qseek.search import Search
 
 print(generate_docs(Search()))
 ```
 
 ## Minimal Config
 
-This is a minimal config which can used to start a Lassie search.
+This is a minimal config which can used to start a Qseek search.
 
-```json title="Minimal Lassie Config"
+```json title="Minimal Qseek Config"
 {
   "project_dir": ".",
   "stations": {
@@ -94,44 +94,31 @@ This is a minimal config which can used to start a Lassie search.
 Structure of the search and optimisation of the octree, which is focusing in on seismic energy.
 
 ```mermaid
-flowchart TD
+%%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14pt'}}}%%
+flowchart LR
+    subgraph Seismic Data
+        waveforms(["fa:fa-water Seismic\nWaveforms"])
+        image{{"fa:fa-bolt Waveform Image Function\nPhaseNet / EQTransformer / ..."}}
+        waveforms --> image
+    end
+    subgraph Travel Time Model
+        travelTimes(["fa:fa-layer-group Seismic\nTravel Time Model"])
+        stationCorrections{{"fab:fa-arrows-to-dot Station Corrections\nSST / SSST"}}
+        travelTimes -->|add| stationCorrections
+    end
+    subgraph Stacking and Migration
+        octree["fa:fa-cubes\nOctree Grid"]
+        detection["fa:fa-bullseye Detection\nand Localisation"]
+    end
+    featureExtraction("fa:fa-info Extract Event Features\nMagnitudes, Ground Motion, ...")
+    correctionExtraction("fa:fa-stopwatch Extract\nStation Corrections")
 
+    image --> octree
+    stationCorrections --> octree
+    detection -.->|"fa:fa-cube\nRefine"| octree
+    octree --> detection
+    detection --> featureExtraction & correctionExtraction
 
-subgraph Data Input
-    waveforms(["Seismic Waveforms"])
-    image["
-        Phase Image Function
-        PhaseNet, EQTransformer, ...
-    "]
-end
-subgraph Migration
-    quadtree["Quadtree"]
-    travelTimes["
-        Seismic Travel Time Model
-        1D Raytracer, ...
-    "]
-end
-subgraph Detection
-    search["Stacking Image Functions"]
-    detection["EQ Event Detection & Localisation"]
-end
-featureExtraction["
-    Feature Extraction
-    Local Magnitude, Ground Motion, ...
-"]
-stationCorrections["
-    Traveltime residuals from Image
-    → Station Corrections
-"]
-
-waveforms --> image
-image --> search
-quadtree --> travelTimes
-travelTimes -->search
-detection -- Refine Quadtree --> search
-search --> detection
-detection --> featureExtraction
-detection --> stationCorrections
 ```
 
 *Building blocks of the specific stacking and migration method for earthquake detection, localisation and characterisation.*

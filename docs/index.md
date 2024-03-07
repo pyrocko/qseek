@@ -1,11 +1,12 @@
-# Welcome to Lassie 🐕‍🦺
+# Welcome to Qseek 🐕‍🦺
 
-Lassie is an earthquake detection and localisation framework. It combines modern **machine learning phase detection and robust migration and stacking techniques**.
+Qseek is an earthquake detection and localisation framework. It combines modern **machine learning phase detection and robust migration and stacking techniques**.
 
 The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https://github.com/seisbench/seisbench), it is highly-performant and can search massive data sets for seismic activity efficiently.
 
 !!! abstract "Citation"
-    TDB
+    Marius Paul Isken, Peter Niemz, Jannes Münchmeyer, Sebastian Heimann, Simone Cesca, Torsten Dahm, Qseek: A data-driven Framework for Machine-Learning Earthquake Detection, Localization and Characterization, Seismica, 2024, *submitted*
+
 
 ![Reykjanes detections](images/reykjanes-demo.webp)
 

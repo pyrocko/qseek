@@ -1,6 +1,6 @@
 # Ray Tracers
 
-The calculation of seismic travel times is a cornerstone for the migration and stacking approach. Lassie supports different ray tracers for travel time calculation, which can be adapted for different geological settings.
+The calculation of seismic travel times is a cornerstone for the migration and stacking approach. Qseek supports different ray tracers for travel time calculation, which can be adapted for different geological settings.
 
 ## Constant Velocity
 
@@ -13,8 +13,8 @@ $$
 This module is used for simple use cases and cross-referencing testing.
 
 ```python exec='on'
-from lassie.utils import generate_docs
-from lassie.tracers.constant_velocity import ConstantVelocityTracer
+from qseek.utils import generate_docs
+from qseek.tracers.constant_velocity import ConstantVelocityTracer
 
 print(generate_docs(ConstantVelocityTracer()))
 ```
@@ -27,8 +27,8 @@ Calculation of travel times in 1D layered media is based on the [Pyrocko Cake](h
 *Pyrocko Cake 1D ray tracer for travel time calculation in 1D layered media*
 
 ```python exec='on'
-from lassie.utils import generate_docs
-from lassie.tracers.cake import CakeTracer
+from qseek.utils import generate_docs
+from qseek.tracers.cake import CakeTracer
 
 print(generate_docs(CakeTracer(), exclude={'earthmodel': {'raw_file_data'}}))
 ```
@@ -45,8 +45,8 @@ We implement the fast marching method for calculating first arrivals of waves in
 *Conceptual 2D visualisation for seismic traveltimes calculation in heterogenous media using the fast-marching method for the Eikonal solution is presented. Traveltimes from the receiving station at the surface (indicated by a yellow triangle) towards the subsurface grid are calculated, resulting in station-specifig traveltimes for all potential source locations simultaneously.*
 
 ```python exec='on'
-from lassie.utils import generate_docs
-from lassie.insights.tracers.fast_marching import FastMarchingTracer
+from qseek.utils import generate_docs
+from qseek.insights.tracers.fast_marching import FastMarchingTracer
 
 print(generate_docs(FastMarchingTracer()))
 ```

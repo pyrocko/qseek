@@ -1,6 +1,6 @@
 # Visualizing Detections
 
-The event detections are exported in Lassie-native JSON, Pyrocko YAML format and as CSV files.
+The event detections are exported in Qseek-native JSON, Pyrocko YAML format and as CSV files.
 
 ## Pyrocko Sparrow
 
