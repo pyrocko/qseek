@@ -8,14 +8,14 @@ from typing import Generator
 import aiohttp
 import numpy as np
 import pytest
+from qseek.models.catalog import EventCatalog
+from qseek.models.detection import EventDetection
+from qseek.models.location import Location
+from qseek.models.station import Station, Stations
+from qseek.octree import Octree
+from qseek.tracers.cake import EarthModel, Timing, TravelTimeTree
+from qseek.utils import Range, datetime_now
 from rich.progress import Progress
-
-from lassie.models.detection import EventDetection, EventDetections
-from lassie.models.location import Location
-from lassie.models.station import Station, Stations
-from lassie.octree import Octree
-from lassie.tracers.cake import EarthModel, Timing, TravelTimeTree
-from lassie.utils import datetime_now
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -97,11 +97,11 @@ def octree() -> Octree:
             lon=10.0,
             elevation=1.0 * KM,
         ),
-        size_initial=2 * KM,
-        size_limit=500,
-        east_bounds=(-10 * KM, 10 * KM),
-        north_bounds=(-10 * KM, 10 * KM),
-        depth_bounds=(0 * KM, 10 * KM),
+        root_node_size=2 * KM,
+        n_levels=3,
+        east_bounds=Range(-10 * KM, 10 * KM),
+        north_bounds=Range(-10 * KM, 10 * KM),
+        depth_bounds=Range(0 * KM, 10 * KM),
         absorbing_boundary=1 * KM,
     )
 
@@ -145,7 +145,7 @@ def fixed_stations() -> Stations:
 
 
 @pytest.fixture(scope="session")
-def detections() -> Generator[EventDetections, None, None]:
+def detections() -> Generator[EventCatalog, None, None]:
     n_detections = 2000
     detections: list[EventDetection] = []
     for _ in range(n_detections):
@@ -161,4 +161,4 @@ def detections() -> Generator[EventDetections, None, None]:
         )
         detections.append(detection)
     with TemporaryDirectory() as tmpdir:
-        yield EventDetections(rundir=Path(tmpdir), detections=detections)
+        yield EventCatalog(rundir=Path(tmpdir), events=detections)

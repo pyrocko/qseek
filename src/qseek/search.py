@@ -1,0 +1,891 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections import deque
+from datetime import datetime, timedelta, timezone
+from itertools import chain
+from pathlib import Path
+from typing import TYPE_CHECKING, Deque, Literal
+
+import numpy as np
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    PrivateAttr,
+    computed_field,
+)
+
+from qseek.corrections.corrections import StationCorrectionType
+from qseek.features import FeatureExtractorType
+from qseek.images.images import ImageFunctions, WaveformImages
+from qseek.magnitudes import EventMagnitudeCalculatorType
+from qseek.models import Stations
+from qseek.models.catalog import EventCatalog
+from qseek.models.detection import EventDetection, PhaseDetection
+from qseek.models.detection_uncertainty import DetectionUncertainty
+from qseek.models.semblance import Semblance, SemblanceCache
+from qseek.octree import NodeSplitError, Octree
+from qseek.pre_processing.module import Downsample, PreProcessing
+from qseek.signals import Signal
+from qseek.stats import RuntimeStats, Stats
+from qseek.tracers.tracers import RayTracer, RayTracers
+from qseek.utils import (
+    BackgroundTasks,
+    PhaseDescription,
+    alog_call,
+    datetime_now,
+    human_readable_bytes,
+    time_to_path,
+)
+from qseek.waveforms.base import WaveformBatch
+from qseek.waveforms.providers import PyrockoSquirrel, WaveformProviderType
+
+if TYPE_CHECKING:
+    from pyrocko.trace import Trace
+    from rich.table import Table
+    from typing_extensions import Self
+
+    from qseek.images.base import WaveformImage
+    from qseek.octree import Node
+
+logger = logging.getLogger(__name__)
+
+SamplingRate = Literal[10, 20, 25, 50, 100, 200]
+
+
+class SearchStats(Stats):
+    project_name: str = "qseek"
+    batch_time: datetime = datetime.min
+    batch_count: int = 0
+    batch_count_total: int = 0
+    processed_duration: timedelta = timedelta(seconds=0.0)
+    processed_bytes: int = 0
+    processing_time: timedelta = timedelta(seconds=0.0)
+    latest_processing_rate: float = 0.0
+    latest_processing_speed: timedelta = timedelta(seconds=0.0)
+
+    _search_start: datetime = PrivateAttr(default_factory=datetime_now)
+    _batch_processing_times: Deque[timedelta] = PrivateAttr(
+        default_factory=lambda: deque(maxlen=25)
+    )
+    _position: int = PrivateAttr(0)
+
+    @computed_field
+    @property
+    def time_remaining(self) -> timedelta:
+        if not self.batch_count:
+            return timedelta()
+
+        remaining_batches = self.batch_count_total - self.batch_count
+        if not remaining_batches:
+            return timedelta()
+
+        duration = datetime_now() - self._search_start
+        return duration / self.batch_count * remaining_batches
+
+    @computed_field
+    @property
+    def processing_rate(self) -> float:
+        """
+        Calculate the processing rate of the search.
+
+        Returns:
+            float: The processing rate in bytes per second.
+        """
+        if not self.processing_time:
+            return 0.0
+        return self.processed_bytes / self.processing_time.total_seconds()
+
+    @computed_field
+    @property
+    def processing_speed(self) -> timedelta:
+        if not self.processing_time:
+            return timedelta(seconds=0.0)
+        return self.processed_duration / self.processing_time.total_seconds()
+
+    @computed_field
+    @property
+    def processed_percent(self) -> float:
+        """
+        Calculate the percentage of processed batches.
+
+        Returns:
+            float: The percentage of processed batches.
+        """
+        if not self.batch_count_total:
+            return 0.0
+        return self.batch_count / self.batch_count_total * 100.0
+
+    def reset_start_time(self) -> None:
+        self._search_start = datetime_now()
+
+    def add_processed_batch(
+        self,
+        batch: WaveformBatch,
+        duration: timedelta,
+        show_log: bool = False,
+    ) -> None:
+        self.batch_count = batch.i_batch
+        self.batch_count_total = batch.n_batches
+        self.batch_time = batch.end_time
+        self.processed_bytes += batch.cumulative_bytes
+        self.processed_duration += batch.duration
+        self.processing_time += duration
+        self.latest_processing_rate = batch.cumulative_bytes / duration.total_seconds()
+        self.latest_processing_speed = batch.duration / duration.total_seconds()
+        self._batch_processing_times.append(duration)
+        if show_log:
+            self.log()
+
+    def log(self) -> None:
+        log_str = (
+            f"{self.batch_count+1}/{self.batch_count_total or '?'} {self.batch_time}"
+        )
+        logger.info(
+            "%s%% processed - batch %s in %s",
+            f"{self.processed_percent:.1f}" if self.processed_percent else "??",
+            log_str,
+            self._batch_processing_times[-1],
+        )
+        logger.info(
+            "processing rate %s/s", human_readable_bytes(self.latest_processing_rate)
+        )
+
+    def _populate_table(self, table: Table) -> None:
+        def tts(duration: timedelta) -> str:
+            return str(duration).split(".")[0]
+
+        table.add_row(
+            "Project",
+            f"[bold]{self.project_name}[/bold]",
+        )
+        table.add_row(
+            "Progress ",
+            f"[bold]{self.processed_percent:.1f}%[/bold]"
+            f" ([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'},"
+            f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
+        )
+        table.add_row(
+            "Processing rate",
+            f"{human_readable_bytes(self.processing_rate)}/s"
+            f" ({tts(self.processing_speed)} tr/s)",
+        )
+        table.add_row(
+            "Remaining Time",
+            f"{tts(self.time_remaining)}, "
+            f"finish at {datetime.now() + self.time_remaining:%c}",  # noqa: DTZ005
+        )
+
+
+class SearchProgress(BaseModel):
+    time_progress: datetime | None = None
+
+
+class Search(BaseModel):
+    project_dir: Path = Path(".")
+    stations: Stations = Field(
+        default=Stations(),
+        description="Station inventory from StationXML or Pyrocko Station YAML.",
+    )
+    data_provider: WaveformProviderType = Field(
+        default=PyrockoSquirrel(),
+        description="Data provider for waveform data.",
+    )
+    pre_processing: PreProcessing = Field(
+        default=PreProcessing(root=[Downsample(sampling_frequency=100.0)]),
+        description="Pre-processing steps for waveform data.",
+    )
+
+    octree: Octree = Field(
+        default=Octree(),
+        description="Octree volume for the search.",
+    )
+
+    image_functions: ImageFunctions = Field(
+        default=ImageFunctions(),
+        description="Image functions for waveform processing and "
+        "phase on-set detection.",
+    )
+    ray_tracers: RayTracers = Field(
+        default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
+        description="List of ray tracers for travel time calculation.",
+    )
+    station_corrections: StationCorrectionType | None = Field(
+        default=None,
+        description="Apply station corrections extracted from a previous run.",
+    )
+    magnitudes: list[EventMagnitudeCalculatorType] = Field(
+        default=[],
+        description="Magnitude calculators to use.",
+    )
+    features: list[FeatureExtractorType] = Field(
+        default=[],
+        description="Event features to extract.",
+    )
+
+    semblance_sampling_rate: SamplingRate = Field(
+        default=100,
+        description="Sampling rate for the semblance image function. "
+        "Choose from 10, 20, 25, 50, 100 Hz.",
+    )
+    detection_threshold: PositiveFloat = Field(
+        default=0.05,
+        description="Detection threshold for semblance.",
+    )
+    absorbing_boundary: Literal[False, "with_surface", "without_surface"] = Field(
+        default=False,
+        description="Ignore events that are inside the first root node layer of"
+        " the octree. If `with_surface`, all events inside the boundaries of the volume"
+        " are absorbed. If `without_surface`, events at the surface are not absorbed.",
+    )
+    node_peak_interpolation: bool = Field(
+        default=True,
+        description="Interpolate intranode locations for detected events using radial"
+        " basis functions. If `False`, the node center location is used for "
+        "the event hypocentre.",
+    )
+    detection_blinding: timedelta = Field(
+        default=timedelta(seconds=2.0),
+        description="Blinding time in seconds before and after the detection peak. "
+        "This is used to avoid detecting the same event multiple times. "
+        "Default is 2 seconds.",
+    )
+
+    power_mean: float = Field(
+        default=1.0,
+        ge=1.0,
+        le=2.0,
+        description="Power mean exponent for stacking and combining the image"
+        " functions for stacking. A value of 1.0 is the arithmetic mean, 2.0 is the"
+        " quadratic mean. A higher value will result in sharper detections"
+        " and low values smooth the stacking function.",
+    )
+
+    window_length: timedelta = Field(
+        default=timedelta(minutes=5),
+        description="Window length for processing. Smaller window size will be less RAM"
+        " consuming. Default is 5 minutes.",
+    )
+
+    n_threads_parstack: int = Field(
+        default=0,
+        ge=0,
+        description="Number of threads for stacking and migration. "
+        "`0` uses all available cores.",
+    )
+    n_threads_argmax: PositiveInt = Field(
+        default=16,
+        description="Number of threads for argmax. Don't use all core for this"
+        " operation. Default is `16`.",
+    )
+
+    plot_octree_surface: bool = False
+    created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+
+    _progress: SearchProgress = PrivateAttr(SearchProgress())
+
+    _shift_range: timedelta = PrivateAttr(timedelta(seconds=0.0))
+    _window_padding: timedelta = PrivateAttr(timedelta(seconds=0.0))
+    _distance_range: tuple[float, float] = PrivateAttr((0.0, 0.0))
+    _travel_time_ranges: dict[PhaseDescription, tuple[timedelta, timedelta]] = (
+        PrivateAttr({})
+    )
+    _last_detection_export: int = 0
+
+    _catalog: EventCatalog = PrivateAttr()
+    _config_stem: str = PrivateAttr("")
+    _rundir: Path = PrivateAttr()
+
+    _feature_semaphore: asyncio.Semaphore = PrivateAttr(asyncio.Semaphore(16))
+
+    # Signals
+    _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
+
+    _stats: SearchStats = PrivateAttr(default_factory=SearchStats)
+
+    model_config = ConfigDict(extra="forbid")
+
+    def init_rundir(self, force: bool = False) -> None:
+        rundir = (
+            self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
+        )
+        self._rundir = rundir
+
+        if rundir.exists() and not force:
+            raise FileExistsError(f"Rundir {rundir} already exists")
+
+        if rundir.exists() and force:
+            create_time = time_to_path(
+                datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
+            ).split(".")[0]
+            rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
+            rundir.rename(rundir_backup)
+            logger.info("created backup of existing rundir to %s", rundir_backup)
+
+        if not rundir.exists():
+            rundir.mkdir()
+
+        self.write_config()
+        self._init_logging()
+
+        logger.info("created new rundir %s", rundir)
+        self._catalog = EventCatalog(rundir=rundir)
+
+    @property
+    def catalog(self) -> EventCatalog:
+        return self._catalog
+
+    def _init_logging(self) -> None:
+        file_logger = logging.FileHandler(self._rundir / "qseek.log")
+        logging.root.addHandler(file_logger)
+
+    def write_config(self, path: Path | None = None) -> None:
+        rundir = self._rundir
+        path = path or rundir / "search.json"
+
+        logger.debug("writing search config to %s", path)
+        path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
+
+        logger.debug("dumping stations...")
+        self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
+
+        csv_dir = rundir / "csv"
+        csv_dir.mkdir(exist_ok=True)
+        self.stations.export_csv(csv_dir / "stations.csv")
+
+    def set_progress(self, time: datetime) -> None:
+        self._progress.time_progress = time
+        progress_file = self._rundir / "progress.json"
+        progress_file.write_text(self._progress.model_dump_json())
+
+    async def init_boundaries(self) -> None:
+        """Initialise search."""
+        # Grid/receiver distances
+        distances = self.octree.distances_stations(self.stations)
+        self._distance_range = (distances.min(), distances.max())
+
+        # Timing ranges
+        for phase, tracer in self.ray_tracers.iter_phase_tracer(
+            phases=self.image_functions.get_phases()
+        ):
+            traveltimes = await tracer.get_travel_times(
+                phase,
+                self.octree,
+                self.stations,
+            )
+            self._travel_time_ranges[phase] = (
+                timedelta(seconds=max(0, np.nanmin(traveltimes))),
+                timedelta(seconds=np.nanmax(traveltimes)),
+            )
+            logger.info(
+                "time shift ranges: %s / %s - %s",
+                phase,
+                *self._travel_time_ranges[phase],
+            )
+
+        # TODO: minimum shift is calculated on the coarse octree grid, which is
+        # not necessarily the same as the fine grid used for semblance calculation
+        shift_min = min(chain.from_iterable(self._travel_time_ranges.values()))
+        shift_max = max(chain.from_iterable(self._travel_time_ranges.values()))
+        self._shift_range = shift_max - shift_min
+
+        self._window_padding = (
+            self._shift_range
+            + self.detection_blinding
+            + self.image_functions.get_blinding()
+        )
+        if self.window_length < 2 * self._window_padding + self._shift_range:
+            raise ValueError(
+                f"window length {self.window_length} is too short for the "
+                f"theoretical travel time range {self._shift_range} and "
+                f"cummulative window padding of {self._window_padding}."
+                " Increase the window_length time to at least "
+                f"{self._shift_range +2*self._window_padding }"
+            )
+
+        logger.info("using trace window padding: %s", self._window_padding)
+        logger.info("time shift range %s", self._shift_range)
+        logger.info(
+            "source-station distance range: %.1f - %.1f m",
+            *self._distance_range,
+        )
+
+    async def prepare(self) -> None:
+        """
+        Prepares the search by initializing necessary components and data.
+
+        This method prepares the search by performing the following steps:
+        1. Prepares the data provider with the given stations.
+        2. Prepares the ray tracers with the octree, stations, phases, and rundir.
+        3. Prepares each magnitude with the octree and stations.
+        4. Prepares the station corrections with the stations, octree, and phases.
+        5. Initializes the boundaries.
+
+        Note: This method is asynchronous.
+
+        Returns:
+            None
+        """
+        logger.info("preparing search...")
+        self.data_provider.prepare(self.stations)
+        await self.pre_processing.prepare()
+
+        if self.station_corrections:
+            await self.station_corrections.prepare(
+                self.stations,
+                self.octree,
+                self.image_functions.get_phases(),
+                self._rundir,
+            )
+        await self.ray_tracers.prepare(
+            self.octree,
+            self.stations,
+            phases=self.image_functions.get_phases(),
+            rundir=self._rundir,
+        )
+        for magnitude in self.magnitudes:
+            await magnitude.prepare(self.octree, self.stations)
+        await self.init_boundaries()
+        self._stats.project_name = self._rundir.name
+
+    async def start(self, force_rundir: bool = False) -> None:
+        if not self.has_rundir():
+            self.init_rundir(force=force_rundir)
+
+        await self.prepare()
+
+        logger.info("starting search...")
+        stats = self._stats
+        stats.reset_start_time()
+
+        processing_start = datetime_now()
+
+        if self._progress.time_progress:
+            logger.info("continuing search from %s", self._progress.time_progress)
+
+        batches = self.data_provider.iter_batches(
+            window_increment=self.window_length,
+            window_padding=self._window_padding,
+            start_time=self._progress.time_progress,
+            min_length=2 * self._window_padding,
+        )
+        processed_batches = self.pre_processing.iter_batches(batches)
+
+        console = asyncio.create_task(RuntimeStats.live_view())
+
+        async for images, batch in self.image_functions.iter_images(processed_batches):
+            batch_processing_start = datetime_now()
+            images.set_stations(self.stations)
+            images.apply_exponent(self.power_mean)
+            search_block = SearchTraces(
+                parent=self,
+                images=images,
+                start_time=batch.start_time,
+                end_time=batch.end_time,
+            )
+
+            detections, semblance_trace = await search_block.search()
+
+            self._catalog.save_semblance_trace(semblance_trace)
+            if detections:
+                BackgroundTasks.create_task(self.new_detections(detections))
+
+            stats.add_processed_batch(
+                batch,
+                duration=datetime_now() - batch_processing_start,
+                show_log=True,
+            )
+
+            self.set_progress(batch.end_time)
+
+        await BackgroundTasks.wait_all()
+        await self._catalog.save()
+        await self._catalog.export_detections(
+            jitter_location=self.octree.smallest_node_size()
+        )
+        console.cancel()
+        logger.info("finished search in %s", datetime_now() - processing_start)
+        logger.info("found %d detections", self._catalog.n_events)
+
+    async def new_detections(self, detections: list[EventDetection]) -> None:
+        """
+        Process new detections.
+
+        Args:
+            detections (list[EventDetection]): List of new event detections.
+        """
+        await asyncio.gather(
+            *(self.add_magnitude_and_features(det) for det in detections)
+        )
+
+        for detection in detections:
+            await self._catalog.add(detection)
+            await self._new_detection.emit(detection)
+
+        if (
+            self._catalog.n_events
+            and self._catalog.n_events - self._last_detection_export > 100
+        ):
+            await self._catalog.export_detections(
+                jitter_location=self.octree.smallest_node_size()
+            )
+            self._last_detection_export = self._catalog.n_events
+
+    async def add_magnitude_and_features(self, event: EventDetection) -> EventDetection:
+        """
+        Adds magnitude and features to the given event.
+
+        Args:
+            event (EventDetection): The event to add magnitude and features to.
+        """
+        if not event.in_bounds:
+            return event
+
+        try:
+            squirrel = self.data_provider.get_squirrel()
+        except NotImplementedError:
+            return event
+
+        async with self._feature_semaphore:
+            for mag_calculator in self.magnitudes:
+                logger.debug("adding magnitude from %s", mag_calculator.magnitude)
+                await mag_calculator.add_magnitude(squirrel, event)
+
+            for feature_calculator in self.features:
+                logger.debug("adding features from %s", feature_calculator.feature)
+                await feature_calculator.add_features(squirrel, event)
+        return event
+
+    @classmethod
+    def load_rundir(cls, rundir: Path) -> Self:
+        search_file = rundir / "search.json"
+        search = cls.model_validate_json(search_file.read_bytes())
+        search._rundir = rundir
+        search._catalog = EventCatalog.load_rundir(rundir)
+
+        progress_file = rundir / "progress.json"
+        if progress_file.exists():
+            search._progress = SearchProgress.model_validate_json(
+                progress_file.read_text()
+            )
+
+        search._init_logging()
+        return search
+
+    @classmethod
+    def from_config(
+        cls,
+        filename: Path,
+    ) -> Self:
+        model = super().model_validate_json(filename.read_text())
+        # Make relative paths absolute
+        filename = Path(filename)
+        base_dir = filename.absolute().parent
+        for name in model.model_fields_set:
+            value = getattr(model, name)
+            if isinstance(value, Path) and not value.absolute():
+                setattr(model, name, value.relative_to(base_dir))
+        model._config_stem = filename.stem
+        return model
+
+    def has_rundir(self) -> bool:
+        return hasattr(self, "_rundir") and self._rundir.exists()
+
+    # def __del__(self) -> None:
+    # FIXME: Replace with signal overserver?
+    # if hasattr(self, "_detections"):
+    # with contextlib.suppress(Exception):
+    #     asyncio.run(
+    #         self._detections.export_detections(
+    #             jitter_location=self.octree.smallest_node_size()
+    #         )
+    #     )
+
+
+class SearchTraces:
+    _images: dict[float | None, WaveformImages]
+
+    def __init__(
+        self,
+        parent: Search,
+        images: WaveformImages,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        self.parent = parent
+        self.images = images
+        self.start_time = start_time
+        self.end_time = end_time
+
+        self._images = {}
+
+    def _n_samples_semblance(self) -> int:
+        """Number of samples to use for semblance calculation, includes padding."""
+        parent = self.parent
+        window_padding = parent._window_padding
+        time_span = (self.end_time + window_padding) - (
+            self.start_time - window_padding
+        )
+        return int(round(time_span.total_seconds() * parent.semblance_sampling_rate))
+
+    @alog_call
+    async def calculate_semblance(
+        self,
+        octree: Octree,
+        image: WaveformImage,
+        ray_tracer: RayTracer,
+        semblance: Semblance,
+        semblance_cache: SemblanceCache | None = None,
+    ) -> None:
+        logger.debug("stacking image %s", image.image_function.name)
+        parent = self.parent
+
+        traveltimes = await ray_tracer.get_travel_times(
+            image.phase,
+            octree,
+            image.stations,
+        )
+
+        if parent.station_corrections:
+            station_delays = await parent.station_corrections.get_delays(
+                image.stations.get_all_nsl(),
+                image.phase,
+                octree,
+            )
+            traveltimes += station_delays
+
+        traveltimes_bad = np.isnan(traveltimes)
+        traveltimes[traveltimes_bad] = 0.0
+        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
+
+        shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
+        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
+        # Normalize by number of station contribution
+        with np.errstate(divide="ignore", invalid="ignore"):
+            weights /= station_contribution[:, np.newaxis]
+        weights /= self.images.cumulative_weight()
+        weights[traveltimes_bad] = 0.0
+
+        if semblance_cache:
+            cache_mask = semblance_cache.get_mask(semblance.node_hashes)
+            weights[cache_mask] = 0.0
+
+        await semblance.calculate_semblance(
+            trace_data=image.get_trace_data(),
+            offsets=image.get_offsets(self.start_time - parent._window_padding),
+            shifts=shifts,
+            weights=weights,
+            threads=self.parent.n_threads_parstack,
+        )
+
+    async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
+        """
+        Retrieves waveform images for the specified sampling rate.
+
+        Args:
+            sampling_rate (float | None, optional): The desired sampling rate in Hz.
+                Defaults to None.
+
+        Returns:
+            WaveformImages: The waveform images for the specified sampling rate.
+        """
+        if sampling_rate is None:
+            return self.images
+
+        if not isinstance(sampling_rate, float):
+            raise TypeError("sampling rate has to be a float or int")
+
+        logger.debug("downsampling images to %g Hz", sampling_rate)
+        self.images.downsample(sampling_rate, max_normalize=True)
+
+        return self.images
+
+    async def search(
+        self,
+        octree: Octree | None = None,
+        semblance_cache: SemblanceCache | None = None,
+    ) -> tuple[list[EventDetection], Trace]:
+        """Searches for events in the given traces.
+
+        Args:
+            octree (Octree | None, optional): The octree to use for the search.
+                Defaults to None.
+
+        Returns:
+            tuple[list[EventDetection], Trace]: The event detections and the
+                semblance traces used for the search.
+        """
+        parent = self.parent
+        sampling_rate = parent.semblance_sampling_rate
+
+        octree = octree or parent.octree.reset()
+        images = await self.get_images(sampling_rate=float(sampling_rate))
+
+        padding_samples = int(
+            round(parent._window_padding.total_seconds() * sampling_rate)
+        )
+        semblance = Semblance(
+            nodes=octree,
+            n_samples=self._n_samples_semblance(),
+            start_time=self.start_time,
+            sampling_rate=sampling_rate,
+            padding_samples=padding_samples,
+            exponent=1.0 / parent.power_mean,
+            cache=semblance_cache,
+        )
+
+        for image in images:
+            await self.calculate_semblance(
+                octree=octree,
+                image=image,
+                ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
+                semblance=semblance,
+                semblance_cache=semblance_cache,
+            )
+
+        # Applying the generalized mean to the semblance
+        # semblance.normalize(
+        # images.cumulative_weight(), semblance_cache=semblance_cache)
+
+        if semblance_cache:
+            await semblance.apply_cache(semblance_cache)
+            del semblance_cache
+
+        threshold = parent.detection_threshold ** (1.0 / parent.power_mean)
+        detection_idx, detection_semblance = await semblance.find_peaks(
+            height=threshold,
+            prominence=threshold,
+            distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
+            nthreads=parent.n_threads_argmax,
+        )
+
+        if detection_idx.size == 0:
+            return [], await semblance.get_trace()
+
+        # Split Octree nodes above a semblance threshold. Once octree for all detections
+        # in frame
+        maxima_node_indices = await semblance.maxima_node_idx()
+        refine_nodes: set[Node] = set()
+        for time_idx in detection_idx:
+            octree.map_semblance(semblance.get_semblance(time_idx))
+            node_idx = maxima_node_indices[time_idx]
+            source_node = octree[node_idx]
+
+            if parent.absorbing_boundary and source_node.is_inside_border(
+                with_surface=parent.absorbing_boundary == "with_surface"
+            ):
+                continue
+            refine_nodes.update(source_node)
+            refine_nodes.update(source_node.get_neighbours())
+
+            densest_node = max(octree, key=lambda node: node.semblance_density())
+            refine_nodes.add(densest_node)
+            refine_nodes.update(densest_node.get_neighbours())
+
+        refine_nodes = {node for node in refine_nodes if node.can_split()}
+
+        # refine_nodes is empty when all sources fall into smallest octree nodes
+        if refine_nodes:
+            new_level = 0
+            for node in refine_nodes:
+                try:
+                    node.split()
+                    new_level = max(new_level, node.level + 1)
+                except NodeSplitError:
+                    continue
+            logger.info(
+                "energy detected, refined %d nodes, level %d",
+                len(refine_nodes),
+                new_level,
+            )
+            cache = semblance.get_cache()
+            del semblance
+            return await self.search(octree, semblance_cache=cache)
+
+        detections = []
+        for time_idx, semblance_detection in zip(
+            detection_idx, detection_semblance, strict=True
+        ):
+            time = self.start_time + timedelta(seconds=time_idx / sampling_rate)
+            semblance_event = semblance.get_semblance(time_idx)
+            node_idx = (await semblance.maxima_node_idx())[time_idx]
+
+            octree.map_semblance(semblance_event)
+            source_node = octree[node_idx]
+            if parent.absorbing_boundary and source_node.is_inside_border(
+                with_surface=parent.absorbing_boundary == "with_surface"
+            ):
+                continue
+
+            if parent.node_peak_interpolation:
+                source_location = await octree.interpolate_max_location(source_node)
+            else:
+                source_location = source_node.as_location()
+
+            detection = EventDetection(
+                time=time,
+                semblance=float(semblance_detection),
+                distance_border=source_node.get_distance_border(),  # rename trough_distance
+                n_stations=images.n_stations,
+                **source_location.model_dump(),
+            )
+
+            # Attach modelled and picked arrivals to receivers
+            for image in await self.get_images(sampling_rate=None):
+                ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
+                arrivals_model = ray_tracer.get_arrivals(
+                    phase=image.phase,
+                    event_time=time,
+                    source=source_location,
+                    receivers=image.stations,
+                )
+
+                arrival_times = [arr.time if arr else None for arr in arrivals_model]
+                station_delays = []
+
+                if parent.station_corrections:
+                    for nsl in image.stations.get_all_nsl():
+                        delay = parent.station_corrections.get_delay(
+                            nsl,
+                            image.phase,
+                            node=source_node,
+                        )
+                        station_delays.append(timedelta(seconds=delay))
+
+                arrivals_observed = image.search_phase_arrivals(
+                    modelled_arrivals=[arr if arr else None for arr in arrival_times],
+                    threshold=parent.detection_threshold,
+                )
+
+                phase_detections = [
+                    PhaseDetection(
+                        phase=image.phase,
+                        model=modeled_time,
+                        observed=obs,
+                    )
+                    if modeled_time
+                    else None
+                    for modeled_time, obs in zip(
+                        arrivals_model,
+                        arrivals_observed,
+                        strict=True,
+                    )
+                ]
+                detection.receivers.add(
+                    stations=image.stations,
+                    phase_arrivals=phase_detections,
+                )
+                detection.set_uncertainty(
+                    DetectionUncertainty.from_event(
+                        source_node=source_node,
+                        octree=octree,
+                    )
+                )
+
+            detections.append(detection)
+
+        return detections, await semblance.get_trace()

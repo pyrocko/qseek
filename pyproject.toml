@@ -1,4 +1,3 @@
-
 [build-system]
 requires = [
     "wheel",
@@ -9,12 +8,12 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lassie"
+name = "qseek"
 requires-python = ">=3.10"
 license = { text = "GPLv3" }
 dynamic = ["version"]
 
-description = "Lassie - The friendly earthquake detector."
+description = "qseek - The earthquake detector."
 readme = "README.md"
 authors = [
     { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
@@ -25,21 +24,28 @@ maintainers = [
     { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
     { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
 ]
-keywords = ["earthquake", "detection", "locatiosation", "stacking-migration"]
+keywords = [
+    "earthquake",
+    "detection",
+    "localization",
+    "stacking-migration",
+    "beamforming",
+]
 
 dependencies = [
     "numpy>=1.17.3",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
     "seisbench>=0.5.0",
-    "pydantic>=2.4.2",
+    "pydantic>=2.5.0",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
-    "lru-dict>=1.2",
+    "lru-dict>=1.3",
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
+    "aiofiles>=23.0",
 ]
 
 classifiers = [
@@ -59,30 +65,33 @@ classifiers = [
 dev = [
     "pre-commit>=3.4",
     "black>=23.7",
-    "ruff>=0.1",
+    "ruff>=0.1.14",
     "pytest>=7.4",
     "pytest-asyncio>=0.21",
-    "mkdocs-material>=9.4",
-    "mkdocstrings[python]>=0.23",
 ]
 
+docs = [
+    "mkdocs-material>=9.4.8",
+    "mkdocstrings[python]>=0.23",
+    "qseek-insights",
+]
+completion = ["argcomplete>=3.2"]
+
 [project.scripts]
-lassie = "lassie.apps.lassie:main"
+qseek = "qseek.apps.qseek:main"
 
 [tool.setuptools.packages.find]
-include = ["lassie*"]
+where = ["src/"]
+include = ["qseek"]
 
 [project.urls]
 Home = "https://pyrocko.org"
-GitHub = "https://git.pyrocko.org/pyrocko/lassie"
-Issues = "https://git.pyrocko.org/pyrocko/lassie/issues"
-
-[tool.setuptools.package-data]
-"lassie.data" = ["*.wav"]
+GitHub = "https://github.com/pyrocko/qseek"
+Issues = "https://github.com/pyrocko/qseek/issues"
 
 [tool.setuptools_scm]
 
-[tool.ruff]
+[tool.ruff.lint]
 extend-select = [
     'W',
     'N',
@@ -97,8 +106,11 @@ extend-select = [
     'I',
     'RUF',
 ]
-target-version = 'py310'
+
 ignore = ["RUF012", "RUF009"]
+
+[tool.ruff]
+target-version = 'py311'
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]

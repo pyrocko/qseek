@@ -41,9 +41,12 @@ We implement the fast marching method for calculating first arrivals of waves in
 * [x] 1D layered model 🥞
 * [x] Constant velocity, mainly for testing purposes 🥼
 
+![Fast Marhing Concept](../images/fmm-concept.webp)
+*Conceptual 2D visualisation for seismic traveltimes calculation in heterogenous media using the fast-marching method for the Eikonal solution is presented. Traveltimes from the receiving station at the surface (indicated by a yellow triangle) towards the subsurface grid are calculated, resulting in station-specifig traveltimes for all potential source locations simultaneously.*
+
 ```python exec='on'
 from lassie.utils import generate_docs
-from lassie.tracers.fast_marching import FastMarchingTracer
+from lassie.insights.tracers.fast_marching import FastMarchingTracer
 
 print(generate_docs(FastMarchingTracer()))
 ```
