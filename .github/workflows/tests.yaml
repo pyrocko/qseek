@@ -1,4 +1,4 @@
-name: Formatting and tests
+name: Pre-commit and Tests
 
 on:
   pull_request:
