@@ -41,7 +41,6 @@ from qseek.utils import (
     PhaseDescription,
     datetime_now,
     human_readable_bytes,
-    log_call,
 )
 
 if TYPE_CHECKING:
@@ -413,6 +412,7 @@ class TravelTimeTree(BaseModel):
         )
 
         for node, times in zip(nodes, traveltimes, strict=True):
+            times.setflags(write=False)
             self._node_lut[node.hash()] = times.astype(np.float32)
 
     async def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
@@ -654,8 +654,7 @@ class CakeTracer(RayTracer):
         tree = self._get_sptree_model(phase)
         return tree.get_travel_time(source, receiver)
 
-    @log_call
-    def get_travel_times(
+    async def get_travel_times(
         self,
         phase: str,
         octree: Octree,
@@ -663,7 +662,7 @@ class CakeTracer(RayTracer):
     ) -> np.ndarray:
         if phase not in self.phases:
             raise ValueError(f"Phase {phase} is not defined.")
-        return self._get_sptree_model(phase).get_travel_times(octree, stations)
+        return await self._get_sptree_model(phase).get_travel_times(octree, stations)
 
     def get_arrivals(
         self,

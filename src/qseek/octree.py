@@ -510,9 +510,9 @@ class Octree(BaseModel):
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if self._cached_coordinates.get(system) is None:
             nodes = (node for node in self)
-            self._cached_coordinates[system] = get_node_coordinates(
-                nodes, system=system
-            )
+            coords = get_node_coordinates(nodes, system=system)
+            coords.setflags(write=False)
+            self._cached_coordinates[system] = coords
         return self._cached_coordinates[system]
 
     def distances_stations(self, stations: Stations) -> np.ndarray:

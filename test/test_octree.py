@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lassie.octree import NodeSplitError, Octree
+from qseek.octree import NodeSplitError, Octree
 
 km = 1e3
 
@@ -33,7 +33,7 @@ def test_octree(octree: Octree, plot: bool) -> None:
         ax.scatter(coords[0], coords[1], coords[2], c=octree.semblance)
         plt.show()
 
-    surface = octree.reduce_surface()
+    surface = octree.reduce_axis()
     if plot:
         import matplotlib.pyplot as plt
 

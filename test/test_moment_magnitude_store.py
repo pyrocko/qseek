@@ -52,6 +52,7 @@ async def test_peak_amplitudes(engine: gf.LocalEngine) -> None:
         n_amplitudes=10,
         max_distance=1 * KM,
         auto_fill=False,
+        interpolation="nearest",
     )
 
 
@@ -105,7 +106,8 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
     plot_amplitude: PeakAmplitude = "absolute"
     PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
-    await store.fill_source_depth_range(depth_max=15 * KM)
+    await store.fill_source_depth_range(depth_max=5 * KM)
+    print(store.source_depth_range)
 
     distances = np.linspace(0, store.max_distance, 256)
     depths = np.linspace(*store.source_depth_range, 256)

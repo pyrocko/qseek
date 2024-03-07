@@ -91,7 +91,7 @@ Issues = "https://github.com/pyrocko/qseek/issues"
 
 [tool.setuptools_scm]
 
-[tool.ruff]
+[tool.ruff.lint]
 extend-select = [
     'W',
     'N',
@@ -106,8 +106,11 @@ extend-select = [
     'I',
     'RUF',
 ]
-target-version = 'py311'
+
 ignore = ["RUF012", "RUF009"]
+
+[tool.ruff]
+target-version = 'py311'
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]

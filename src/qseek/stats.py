@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterator, NoReturn, Self, Type
+from typing import Any, Iterator, NoReturn, Type
 from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, PrivateAttr, create_model
@@ -12,6 +12,7 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.progress import Progress
 from rich.table import Table
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 

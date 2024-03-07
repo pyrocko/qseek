@@ -23,7 +23,7 @@ class Bandpass(BatchPreProcessing):
         description="Number of corners for the filter.",
     )
     bandpass: Range = Field(
-        default=Range(0.1, 40.0),
+        default=Range(0.5, 30.0),
         description="The highpass frequency.",
     )
     demean: bool = Field(

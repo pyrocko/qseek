@@ -899,7 +899,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
                 if len(amplitudes) != 2:
                     raise ValueError(
                         f"Cannot interpolate amplitudes with {len(amplitudes)} "
-                        f"source depths."
+                        f" source depths."
                     )
                 depths = source_depths[idx]
                 weight = abs((source_depth - depths[0]) / abs(depths[1] - depths[0]))

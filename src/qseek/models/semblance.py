@@ -84,12 +84,22 @@ class SemblanceStats(Stats):
 
 
 class SemblanceCache(dict[bytes, np.ndarray]):
-    _mask: np.ndarray | None = None
+    _mask: dict[int, np.ndarray] = {}
 
     def get_mask(self, node_hashes: list[bytes]) -> np.ndarray:
-        if self._mask is None:
-            self._mask = np.array([hash in self for hash in node_hashes])
-        return self._mask
+        """Get the mask for the node hashes.
+
+        Args:
+            node_hashes (list[bytes]): List of the node hashes in the current tree.
+
+        Returns:
+            np.ndarray: The boolean mask for the node hashes.
+        """
+        # This is a "bit" of a hack to generate a hash from the node_hashes list
+        n_hashes = len(node_hashes)
+        if n_hashes not in self._mask:
+            self._mask[n_hashes] = np.array([hash in self for hash in node_hashes])
+        return self._mask[n_hashes]
 
 
 class Semblance:
@@ -126,14 +136,15 @@ class Semblance:
             self._semblance_allocation is not None
             and self._semblance_allocation.size >= n_values
         ):
-            logger.debug("recycling semblance memory with paged NUMA memory")
+            logger.debug("recycling paged semblance memory allocation")
             self.semblance_unpadded = self._semblance_allocation[:n_values].reshape(
                 (n_nodes, n_samples)
             )
             if cache:
                 # If a cache is supplied only zero the missing nodes
                 fill_zero_bytes_mask(
-                    self.semblance_unpadded, ~cache.get_mask(self.node_hashes)
+                    self.semblance_unpadded,
+                    mask=~cache.get_mask(self.node_hashes),
                 )
             else:
                 fill_zero_bytes(self.semblance_unpadded)
