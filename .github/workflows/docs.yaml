@@ -1,9 +1,7 @@
-name: docs
+name: Deploy Docs
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "*"
 
@@ -12,7 +10,6 @@ permissions:
 jobs:
   deploy-docs:
     runs-on: ubuntu-latest
-    needs: build_docs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
