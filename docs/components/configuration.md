@@ -6,6 +6,12 @@ Also see the [getting started guide](../getting_started.md) for a brief introduc
 
 [General configuration conventions](general.md) are outlines in this guide as well.
 
+!!! tip "Create a fresh config file."
+
+    ```sh title="Using the CLI"
+    qseek config
+    ```
+
 ## The Search
 
 The search configuration. **This is the entrypoint for the EQ detection and localisation**.

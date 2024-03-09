@@ -21,6 +21,8 @@ from typing import (
     NamedTuple,
     ParamSpec,
     TypeVar,
+    get_args,
+    get_origin,
 )
 
 import numpy as np
@@ -575,10 +577,24 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
         lines += [f"{model.__class__.__doc__}\n"]
     lines += [f'=== "Config {model_name}"']
     for name, field in model.model_fields.items():
+        annotation = ""
+
+        if field.annotation in (int, float, bool, dict, str):
+            annotation = f"{field.default}"
+        elif field.annotation in (list, set):
+            annotation = f"{field.annotation}"
+        elif get_origin(field.annotation) is Literal:
+            annotation = f"{' | '.join(map(str, get_args(field.annotation)))}"
+        else:
+            ...
+
+        if annotation:
+            annotation = f": `{annotation}`"
+
         if field.description is None:
             continue
         lines += [
-            f"    **`{name}`**\n",
+            f"    **`{name}`{annotation}**\n",
             f"    :   {field.description}\n",
         ]
 
@@ -587,8 +603,8 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
         lines = dump.split("\n")
         return [f"    {line}" for line in lines]
 
-    lines += ['=== "JSON Block"']
-    lines += [f"    ```json title='JSON block for {model_name}'"]
+    lines += ['=== "JSON :material-code-braces:"']
+    lines += [f"    ```json title='JSON for {model_name}'"]
     lines.extend(dump_json())
     lines += ["    ```"]
     return "\n".join(lines)
