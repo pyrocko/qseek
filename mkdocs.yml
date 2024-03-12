@@ -50,6 +50,9 @@ markdown_extensions:
       generic: true
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - admonition
   - def_list
   - attr_list
@@ -69,7 +72,7 @@ plugins:
   - markdown-exec
 
 nav:
-  - Earthquake Detector:
+  - The Earthquake Detector:
     - Welcome: index.md
     - Getting Started 🚀: getting_started.md
     - Visualising Detections: visualizing_results.md

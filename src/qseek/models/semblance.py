@@ -84,8 +84,6 @@ class SemblanceStats(Stats):
 
 
 class SemblanceCache(dict[bytes, np.ndarray]):
-    _mask: dict[int, np.ndarray] = {}
-
     def get_mask(self, node_hashes: list[bytes]) -> np.ndarray:
         """Get the mask for the node hashes.
 
@@ -96,10 +94,7 @@ class SemblanceCache(dict[bytes, np.ndarray]):
             np.ndarray: The boolean mask for the node hashes.
         """
         # This is a "bit" of a hack to generate a hash from the node_hashes list
-        n_hashes = len(node_hashes)
-        if n_hashes not in self._mask:
-            self._mask[n_hashes] = np.array([hash in self for hash in node_hashes])
-        return self._mask[n_hashes]
+        return np.array([hash in self for hash in node_hashes])
 
 
 class Semblance:

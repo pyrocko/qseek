@@ -230,7 +230,7 @@ class Search(BaseModel):
     semblance_sampling_rate: SamplingRate = Field(
         default=100,
         description="Sampling rate for the semblance image function. "
-        "Choose from 10, 20, 25, 50, 100 Hz.",
+        "Choose from `10, 20, 25, 50, 100, 200` Hz.",
     )
     detection_threshold: PositiveFloat = Field(
         default=0.05,

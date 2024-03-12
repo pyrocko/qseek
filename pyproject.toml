@@ -114,3 +114,6 @@ target-version = 'py311'
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]
+
+[tool.cibuildwheel.macos]
+before-build = "brew install libomp"

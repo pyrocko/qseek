@@ -8,8 +8,8 @@ This enables high throughput of seismic data in different scenarios.
 
 | Number Stations | Throughput in MB | Throughput in Waveform data |
 | --------------- | ---------------- | ----------------------------|
-| 300+            | 40 MB/sec        | 12 hours/sec                |
-| 50              | 30 MB/sec        |  6 hours/sec                |
+| 300+            | 50 MB/sec        | 12 hours/sec                |
+| 50              | 200 MB/sec        |  6 hours/sec                |
 
 Scanning a 600 GB (~700 years of waveforms) data set costs **~2 days on a 64 cores machine equipped with an Nvidia A100 GPU**.
 

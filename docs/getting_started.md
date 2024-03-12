@@ -2,10 +2,16 @@
 
 ## Installation
 
-The installation is straight-forward:
+The installation is straight-forward using pip or pipx.
 
 ```sh title="From GitHub"
 pip install git+https://github.com/pyrocko/qseek
+```
+
+or
+
+```sh title="Using pipx"
+pipx install git+https://github.com/pyrocko/qseek
 ```
 
 ## Running Qseek
@@ -26,8 +32,8 @@ qseek config > my-search.json
 
 Check out the `my-search.json` config file and add your waveform data and velocity models.
 
-??? abstract "Minimal Configuration Example"
-    Here is a minimal JSON configuration for Qseek
+??? quote "Minimal Configuration Example"
+    Here is a minimal JSON configuration for Qseek.
     ```bash exec='on' result='json'
     qseek config
     ```
@@ -36,8 +42,8 @@ For more details and information about the component, head over to [details of t
 
 ## Starting the Search
 
-Once happy, start the `qseek` CLI.
+Once happy with the configuration, start the `qseek` CLI.
 
-```sh title="Start earthquake detection"
+```sh title="Start the earthquake detection and localization"
 qseek search my-search.json
 ```

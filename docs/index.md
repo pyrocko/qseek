@@ -1,4 +1,4 @@
-# Welcome to Qseek 🐕‍🦺
+# Welcome to Qseek 🔥
 
 Qseek is an earthquake detection and localisation framework. It combines modern **machine learning phase detection and robust migration and stacking techniques**.
 
@@ -6,7 +6,6 @@ The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https:
 
 !!! abstract "Citation"
     Marius Paul Isken, Peter Niemz, Jannes Münchmeyer, Sebastian Heimann, Simone Cesca, Torsten Dahm, Qseek: A data-driven Framework for Machine-Learning Earthquake Detection, Localization and Characterization, Seismica, 2024, *submitted*
-
 
 ![Reykjanes detections](images/reykjanes-demo.webp)
 
@@ -17,16 +16,15 @@ The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https:
 * [x] Earthquake phase detection using machine-learning pickers from [SeisBench](https://github.com/seisbench/seisbench)
 * [x] Octree localisation approach for efficient and accurate search
 * [x] Different velocity models:
-    * [x] Constant velocity
-    * [x] 1D Layered velocity model
-    * [x] 3D fast-marching velocity model (NonLinLoc compatible)
+  * [x] Constant velocity
+  * [x] 1D Layered velocity model
+  * [x] 3D fast-marching velocity model (NonLinLoc compatible)
 * [x] Extraction of earthquake event features:
-    * [x] Local magnitudes
-    * [x] Ground motion attributes
+  * [x] Local magnitudes
+  * [x] Ground motion attributes
 * [x] Automatic extraction of modelled and picked travel times
 * [x] Calculation and application of station corrections / station delay times
 * [ ] Real-time analytics on streaming data (e.g. SeedLink)
-
 
 [Get Started!](getting_started.md){ .md-button }
 

@@ -1,13 +1,14 @@
-name: docs
+name: Deploy Docs
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "*"
+
 permissions:
   contents: write
 jobs:
-  deploy:
+  deploy-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
