@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 import aiofiles
 from pydantic import BaseModel, PrivateAttr
 from pyrocko import io
 from pyrocko.gui import marker
-from pyrocko.model import dump_events
+from pyrocko.model import Event, dump_events
 from pyrocko.trace import Trace
 from rich.table import Table
 
@@ -21,6 +21,9 @@ from qseek.models.detection import (
 )
 from qseek.stats import Stats
 from qseek.utils import Symbols, time_to_path
+
+if TYPE_CHECKING:
+    from pyrocko.gui.marker import EventMarker, PhaseMarker
 
 
 class EventCatalogStats(Stats):
@@ -198,6 +201,26 @@ class EventCatalog(BaseModel):
 
         async with aiofiles.open(file, "w") as f:
             await f.writelines(header_line + rows)
+
+    def as_pyrocko_events(self) -> list[Event]:
+        """Convert the detections to Pyrocko Event objects.
+
+        Returns:
+            list[Event]: A list of Pyrocko Event objects.
+        """
+        return [det.as_pyrocko_event() for det in self.events]
+
+    def get_pyrocko_markers(self) -> list[EventMarker | PhaseMarker]:
+        """Get Pyrocko markers for all detections.
+
+        Returns:
+            list[EventMarker | PhaseMarker]: A list of Pyrocko markers.
+        """
+        logger.info("loading Pyrocko markers...")
+        pyrocko_markers = []
+        for detection in self:
+            pyrocko_markers.extend(detection.get_pyrocko_markers())
+        return pyrocko_markers
 
     def export_pyrocko_events(
         self, filename: Path, jitter_location: float = 0.0

@@ -316,6 +316,9 @@ class EventReceivers(BaseModel):
         )
         traces = filter_clipped_traces(traces) if remove_clipped else traces
 
+        if not traces:
+            return []
+
         tmin = min(tr.tmin for tr in traces)
         tmax = max(tr.tmax for tr in traces)
         responses = await asyncio.to_thread(

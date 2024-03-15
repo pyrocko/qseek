@@ -210,8 +210,8 @@ class PyrockoSquirrel(WaveformProvider):
         )
 
         iterator = squirrel.chopper_waveforms(
-            tmin=start_time.timestamp(),
-            tmax=end_time.timestamp(),
+            tmin=(start_time + window_padding).timestamp(),
+            tmax=(end_time - window_padding).timestamp(),
             tinc=window_increment.total_seconds(),
             tpad=window_padding.total_seconds(),
             want_incomplete=False,

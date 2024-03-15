@@ -106,15 +106,22 @@ class PhaseNetImage(WaveformImage):
                 ax.axvline(time[peak_idx], color="m", linestyle="--", label="peaks")
             plt.show()
 
+        times = search_trace.get_xdata()
+        peak_times = [times[idx] for idx in peak_idx]
+        peak_delay = np.array([p - modelled_arrival.timestamp() for p in peak_times])
+
+        # Limit to post-event peaks
+        post_event_peaks = peak_delay > 0
+        peak_times = np.array(peak_times)[post_event_peaks]
+        peak_delay = peak_delay[post_event_peaks]
+        peak_idx = peak_idx[post_event_peaks]
+
         if not peak_idx.size:
             return None
 
-        times = search_trace.get_xdata()
-        peak_times = [times[idx] for idx in peak_idx]
-        peak_dists = [abs(p - modelled_arrival.timestamp()) for p in peak_times]
         peak_values = search_trace.get_ydata()[peak_idx]
 
-        closest_peak_idx = peak_dists.index(min(peak_dists))
+        closest_peak_idx = np.argmin(peak_delay)
 
         return ObservedArrival(
             time=to_datetime(peak_times[closest_peak_idx]),
@@ -135,7 +142,7 @@ class PhaseNet(ImageFunction):
         " For more details see SeisBench documentation",
     )
     window_overlap_samples: int = Field(
-        default=2000,
+        default=1500,
         ge=1000,
         le=3000,
         description="Window overlap in samples.",
@@ -159,11 +166,11 @@ class PhaseNet(ImageFunction):
         description="Method to stack the overlaping blocks internally. "
         "Choose from `avg` and `max`.",
     )
-    upscale_input: PositiveInt = Field(
-        default=1,
+    upscale_input: PositiveFloat = Field(
+        default=1.0,
         description="Upscale input by factor. "
         "This augments the input data from e.g. 100 Hz to 50 Hz (factor: `2`). Can be"
-        " useful for high-frequency earthquake signals.",
+        " useful for high-frequency microseismic events.",
     )
     phase_map: dict[PhaseName, str] = Field(
         default={
@@ -209,10 +216,11 @@ class PhaseNet(ImageFunction):
                 exc_info=exc,
             )
 
-    @property
-    def blinding(self) -> timedelta:
-        blinding_samples = max(self.phase_net.default_args["blinding"])
-        return timedelta(seconds=blinding_samples / 100)  # Hz PhaseNet sampling rate
+    def get_blinding(self, sampling_rate: float) -> timedelta:
+        blinding_samples = (
+            max(self.phase_net.default_args["blinding"]) / self.upscale_input
+        )
+        return timedelta(seconds=blinding_samples / sampling_rate)
 
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
@@ -221,6 +229,7 @@ class PhaseNet(ImageFunction):
             scale = self.upscale_input
             for tr in stream:
                 tr.stats.sampling_rate = tr.stats.sampling_rate / scale
+
         annotations: Stream = await asyncio.to_thread(
             self.phase_net.annotate,
             stream,
@@ -233,6 +242,10 @@ class PhaseNet(ImageFunction):
             scale = self.upscale_input
             for tr in annotations:
                 tr.stats.sampling_rate = tr.stats.sampling_rate * scale
+                blinding_samples = self.phase_net.default_args["blinding"][0]
+                # 100 Hz is the native sampling rate of PhaseNet
+                blinding_seconds = (blinding_samples / 100.0) * (1.0 - 1 / scale)
+                tr.stats.starttime -= blinding_seconds
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()

@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SamplingRate = Literal[10, 20, 25, 50, 100, 200]
+SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
 
 
 class SearchStats(Stats):
@@ -230,7 +230,7 @@ class Search(BaseModel):
     semblance_sampling_rate: SamplingRate = Field(
         default=100,
         description="Sampling rate for the semblance image function. "
-        "Choose from `10, 20, 25, 50, 100, 200` Hz.",
+        "Choose from `10, 20, 25, 50, 100, 200 or 400` Hz.",
     )
     detection_threshold: PositiveFloat = Field(
         default=0.05,
@@ -396,7 +396,7 @@ class Search(BaseModel):
         self._window_padding = (
             self._shift_range
             + self.detection_blinding
-            + self.image_functions.get_blinding()
+            + self.image_functions.get_blinding(self.semblance_sampling_rate)
         )
         if self.window_length < 2 * self._window_padding + self._shift_range:
             raise ValueError(
@@ -641,6 +641,11 @@ class SearchTraces:
         semblance: Semblance,
         semblance_cache: SemblanceCache | None = None,
     ) -> None:
+        if image.sampling_rate != semblance.sampling_rate:
+            raise ValueError(
+                f"image sampling rate {image.sampling_rate} does not match "
+                f"semblance sampling rate {semblance.sampling_rate}"
+            )
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
@@ -662,7 +667,7 @@ class SearchTraces:
         traveltimes[traveltimes_bad] = 0.0
         station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
 
-        shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
+        shifts = -np.round(traveltimes / image.delta_t).astype(np.int32)
         weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         # Normalize by number of station contribution
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -700,7 +705,7 @@ class SearchTraces:
             raise TypeError("sampling rate has to be a float or int")
 
         logger.debug("downsampling images to %g Hz", sampling_rate)
-        self.images.downsample(sampling_rate, max_normalize=True)
+        self.images.resample(sampling_rate, max_normalize=True)
 
         return self.images
 
@@ -810,7 +815,7 @@ class SearchTraces:
         for time_idx, semblance_detection in zip(
             detection_idx, detection_semblance, strict=True
         ):
-            time = self.start_time + timedelta(seconds=time_idx / sampling_rate)
+            time = semblance.get_time_from_index(time_idx)
             semblance_event = semblance.get_semblance(time_idx)
             node_idx = (await semblance.maxima_node_idx())[time_idx]
 

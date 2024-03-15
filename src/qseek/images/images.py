@@ -143,8 +143,8 @@ class ImageFunctions(RootModel):
         """
         return tuple(chain.from_iterable(image.get_provided_phases() for image in self))
 
-    def get_blinding(self) -> timedelta:
-        return max(image.blinding for image in self)
+    def get_blinding(self, sampling_rate: float) -> timedelta:
+        return max(image.get_blinding(sampling_rate) for image in self)
 
     def __iter__(self) -> Iterator[ImageFunction]:
         return iter(self.root)
@@ -164,8 +164,8 @@ class WaveformImages:
         """Number of stations in the images."""
         return max(0, *(image.stations.n_stations for image in self if image.stations))
 
-    def downsample(self, sampling_rate: float, max_normalize: bool = False) -> None:
-        """Downsample traces in-place.
+    def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
+        """Resample traces in-place.
 
         Args:
             sampling_rate (float): Desired sampling rate in Hz.
@@ -173,7 +173,7 @@ class WaveformImages:
                 maximum detection. Defaults to False
         """
         for image in self:
-            image.downsample(sampling_rate, max_normalize)
+            image.resample(sampling_rate, max_normalize)
 
     def apply_exponent(self, exponent: float) -> None:
         """Apply exponent to all images.

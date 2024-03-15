@@ -7,7 +7,7 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from qseek.models.station import Stations
-from qseek.utils import PhaseDescription, downsample
+from qseek.utils import PhaseDescription, resample
 
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
@@ -32,9 +32,16 @@ class ImageFunction(BaseModel):
     def name(self) -> str:
         return self.__class__.__name__
 
-    @property
-    def blinding(self) -> timedelta:
-        """Blinding duration for the image function. Added to padded waveforms."""
+    def get_blinding(self, sampling_rate: float) -> timedelta:
+        """
+        Blinding duration for the image function. Added to padded waveforms.
+
+        Args:
+            sampling_rate (float): The sampling rate of the waveform.
+
+        Returns:
+            timedelta: The blinding duration for the image function.
+        """
         raise NotImplementedError("must be implemented by subclass")
 
     def get_provided_phases(self) -> tuple[PhaseDescription, ...]: ...
@@ -64,23 +71,22 @@ class WaveformImage:
         """Set stations from the image's available traces."""
         self.stations = stations.select_from_traces(self.traces)
 
-    def downsample(self, sampling_rate: float, max_normalize: bool = False) -> None:
-        """Downsample traces in-place.
+    def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
+        """Resample traces in-place.
         Args:
             sampling_rate (float): Desired sampling rate in Hz.
             max_normalize (bool): Normalize by maximum value to keep the scale of the
                 maximum detection. Defaults to False.
         """
-        if sampling_rate >= self.sampling_rate:
-            return
+        downsample = self.sampling_rate > sampling_rate
 
         for tr in self.traces:
             if max_normalize:
                 # We can use maximum here since the PhaseNet output is single-sided
                 _, max_value = tr.max()
-            downsample(tr, sampling_rate)
+            resample(tr, sampling_rate)
 
-            if max_normalize:
+            if max_normalize and downsample:
                 tr.ydata /= tr.ydata.max()
                 tr.ydata *= max_value
 
@@ -101,8 +107,8 @@ class WaveformImage:
         Returns:
             np.ndarray: Integer offset towards the reference for each trace.
         """
-        offsets = np.fromiter((tr.tmin for tr in self.traces), float)
-        return np.round((offsets - reference.timestamp()) / self.delta_t).astype(
+        trace_tmins = np.fromiter((tr.tmin for tr in self.traces), float)
+        return np.round((trace_tmins - reference.timestamp()) / self.delta_t).astype(
             np.int32
         )
 

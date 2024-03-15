@@ -168,7 +168,7 @@ class Semblance:
     def semblance(self) -> np.ndarray:
         padding_samples = self.padding_samples
         if padding_samples:
-            return self.semblance_unpadded[:, padding_samples:-padding_samples]
+            return self.semblance_unpadded[:, padding_samples : -(padding_samples + 1)]
         return self.semblance_unpadded
 
     @property
@@ -190,6 +190,17 @@ class Semblance:
                 for i, node_hash in enumerate(self.node_hashes)
             }
         )
+
+    def get_time_from_index(self, index: int) -> datetime:
+        """Get the time from a sample index.
+
+        Args:
+            index (int): The sample index.
+
+        Returns:
+            datetime: The time of the sample index.
+        """
+        return self.start_time + timedelta(seconds=index / self.sampling_rate)
 
     def get_semblance(self, time_idx: int) -> np.ndarray:
         """
@@ -260,7 +271,9 @@ class Semblance:
             self._max_semblance.setflags(write=False)
 
         if trim_padding:
-            return self._max_semblance[self.padding_samples : -self.padding_samples]
+            return self._max_semblance[
+                self.padding_samples : -(self.padding_samples + 1)
+            ]
         return self._max_semblance
 
     async def maxima_node_idx(
@@ -284,7 +297,9 @@ class Semblance:
             )
             self._node_max_idx.setflags(write=False)
         if trim_padding:
-            return self._node_max_idx[self.padding_samples : -self.padding_samples]
+            return self._node_max_idx[
+                self.padding_samples : -(self.padding_samples + 1)
+            ]
         return self._node_max_idx
 
     def apply_exponent(self, exponent: float) -> None:
@@ -321,7 +336,8 @@ class Semblance:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
         """
         max_semblance_unpadded = await self.maxima_semblance(
-            trim_padding=False, nthreads=nthreads
+            trim_padding=False,
+            nthreads=nthreads,
         )
 
         detection_idx, _ = await asyncio.to_thread(
@@ -332,7 +348,7 @@ class Semblance:
             distance=distance,
         )
         if trim_padding:
-            max_semblance_trimmed = await self.maxima_semblance()
+            max_semblance_trimmed = await self.maxima_semblance(trim_padding=True)
 
             detection_idx -= self.padding_samples
             detection_idx = detection_idx[detection_idx >= 0]
@@ -343,17 +359,16 @@ class Semblance:
 
         return detection_idx, semblance
 
-    async def get_trace(self, padded: bool = True) -> Trace:
+    async def get_trace(self, trim_padding: bool = True) -> Trace:
         """Get aggregated maximum semblance as a Pyrocko trace.
 
         Returns:
             Trace: Holding the semblance
         """
-        if padded:
-            data = await self.maxima_semblance(trim_padding=True)
+        data = await self.maxima_semblance(trim_padding=trim_padding)
+        if trim_padding:
             start_time = self.start_time
         else:
-            data = await self.maxima_semblance(trim_padding=False)
             start_time = self.start_time - timedelta(
                 seconds=int(round(self.padding_samples * self.sampling_rate))
             )
