@@ -126,6 +126,7 @@ class WaveformImage:
     def search_phase_arrival(
         self,
         trace_idx: int,
+        event_time: datetime,
         modelled_arrival: datetime,
         search_window_seconds: float = 5,
         threshold: float = 0.1,
@@ -134,6 +135,7 @@ class WaveformImage:
 
         Args:
             trace_idx (int): Index of the trace.
+            event_time (datetime): Time of the event.
             modelled_arrival (datetime): Time to search around.
             search_length_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
@@ -146,6 +148,7 @@ class WaveformImage:
 
     def search_phase_arrivals(
         self,
+        event_time: datetime,
         modelled_arrivals: list[datetime | None],
         search_window_seconds: float = 5.0,
         threshold: float = 0.1,
@@ -153,6 +156,7 @@ class WaveformImage:
         """Search for a peak in all station's image functions.
 
         Args:
+            event_time (datetime): Time of the event.
             modelled_arrivals (list[datetime]): Time to search around.
             search_length_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
@@ -164,6 +168,7 @@ class WaveformImage:
         return [
             self.search_phase_arrival(
                 idx,
+                event_time,
                 modelled_arrival,
                 search_window_seconds=search_window_seconds,
                 threshold=threshold,

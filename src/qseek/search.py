@@ -862,6 +862,7 @@ class SearchTraces:
                         station_delays.append(timedelta(seconds=delay))
 
                 arrivals_observed = image.search_phase_arrivals(
+                    event_time=time,
                     modelled_arrivals=[arr if arr else None for arr in arrival_times],
                     threshold=parent.detection_threshold,
                 )

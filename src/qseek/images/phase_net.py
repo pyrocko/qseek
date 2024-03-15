@@ -47,6 +47,7 @@ class PhaseNetImage(WaveformImage):
     def search_phase_arrival(
         self,
         trace_idx: int,
+        event_time: datetime,
         modelled_arrival: datetime,
         search_window_seconds: float = 5.0,
         threshold: float = 0.1,
@@ -56,6 +57,7 @@ class PhaseNetImage(WaveformImage):
 
         Args:
             trace_idx (int): Index of the trace.
+            event_time (datetime): Time of the event.
             modelled_arrival (datetime): Time to search around.
             search_length_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
@@ -107,14 +109,14 @@ class PhaseNetImage(WaveformImage):
             plt.show()
 
         times = search_trace.get_xdata()
-        peak_times = [times[idx] for idx in peak_idx]
-        peak_delay = np.array([p - modelled_arrival.timestamp() for p in peak_times])
+        peak_times = times[peak_idx]
+        peak_delay = peak_times - event_time.timestamp()
 
         # Limit to post-event peaks
-        post_event_peaks = peak_delay > 0
-        peak_times = np.array(peak_times)[post_event_peaks]
-        peak_delay = peak_delay[post_event_peaks]
+        post_event_peaks = peak_delay > 0.0
         peak_idx = peak_idx[post_event_peaks]
+        peak_times = peak_times[post_event_peaks]
+        peak_delay = peak_delay[post_event_peaks]
 
         if not peak_idx.size:
             return None

@@ -258,7 +258,8 @@ class Semblance:
 
         Args:
             trim_padding (bool, optional): Trim padded data in post-processing.
-            nparallel (int, optional): Number of threads for calculation. Defaults to 6.
+            nparallel (int, optional): Number of threads for calculation.
+                Defaults to 12.
 
         Returns:
             np.ndarray: Maximum semblance.
@@ -284,7 +285,8 @@ class Semblance:
         """Indices of maximum semblance at any time step.
 
         Args:
-            nparallel (int, optional): Number of threads for calculation. Defaults to 6.
+            nparallel (int, optional): Number of threads for calculation.
+                Defaults to 12.
 
         Returns:
             np.ndarray: Node indices.
@@ -370,7 +372,7 @@ class Semblance:
             start_time = self.start_time
         else:
             start_time = self.start_time - timedelta(
-                seconds=int(round(self.padding_samples * self.sampling_rate))
+                seconds=self.padding_samples / self.sampling_rate
             )
 
         return Trace(
