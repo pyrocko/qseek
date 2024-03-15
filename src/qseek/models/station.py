@@ -208,6 +208,15 @@ class Stations(BaseModel):
             [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
         )
 
+    def as_pyrocko_stations(self) -> list[PyrockoStation]:
+        """
+        Convert the stations to PyrockoStation objects.
+
+        Returns:
+            A list of PyrockoStation objects.
+        """
+        return [sta.as_pyrocko_station() for sta in self]
+
     def export_pyrocko_stations(self, filename: Path) -> None:
         """Dump stations to pyrocko station yaml file.
 
@@ -215,7 +224,7 @@ class Stations(BaseModel):
             filename (Path): Path to yaml file.
         """
         dump_stations_yaml(
-            [sta.as_pyrocko_station() for sta in self],
+            self.as_pyrocko_stations(),
             filename=str(filename.expanduser()),
         )
 

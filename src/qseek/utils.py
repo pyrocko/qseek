@@ -308,7 +308,7 @@ def to_datetime(time: float) -> datetime:
     return datetime.fromtimestamp(time, tz=timezone.utc)
 
 
-def downsample(trace: Trace, sampling_rate: float) -> None:
+def resample(trace: Trace, sampling_rate: float) -> None:
     """
     Downsamples the given trace to the specified sampling rate in-place.
 
@@ -317,15 +317,19 @@ def downsample(trace: Trace, sampling_rate: float) -> None:
         sampling_rate (float): The desired sampling rate.
     """
     deltat = 1.0 / sampling_rate
+    trace_sampling_rate = 1.0 / trace.deltat
 
     if trace.deltat == deltat:
         return
 
-    try:
-        trace.downsample_to(deltat, demean=False, snap=False, allow_upsample_max=4)
-    except UnavailableDecimation:
-        logger.warning("using resample instead of decimation")
+    if trace_sampling_rate < sampling_rate:
         trace.resample(deltat)
+    else:
+        try:
+            trace.downsample_to(deltat, demean=False, snap=False, allow_upsample_max=4)
+        except UnavailableDecimation:
+            logger.warning("using resample instead of decimation")
+            trace.resample(deltat)
 
 
 T = TypeVar("T")

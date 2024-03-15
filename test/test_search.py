@@ -16,5 +16,4 @@ def test_search() -> None:
     locations += [node.as_location() for node in search.octree]
     locations_to_csv(locations, Path("/tmp/test.csv"))
 
-    print(search._detections)
-    search._detections.to_csv(Path("/tmp/test-detections.csv"))
+    search.detections.to_csv(Path("/tmp/test-detections.csv"))

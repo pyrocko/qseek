@@ -26,7 +26,7 @@ class Downsample(BatchPreProcessing):
         def worker() -> None:
             for trace in self.select_traces(batch):
                 if trace.deltat < desired_deltat:
-                    trace.downsample_to(deltat=desired_deltat, allow_upsample_max=3)
+                    trace.downsample_to(deltat=desired_deltat, allow_upsample_max=5)
 
         await asyncio.to_thread(worker)
         return batch

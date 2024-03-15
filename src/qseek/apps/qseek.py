@@ -46,20 +46,20 @@ subparsers = parser.add_subparsers(
 subparsers.add_parser(
     "config",
     help="print a new config",
-    description="initialze a new default config configuration file.",
+    description="Print a new default config configuration file.",
 )
 
-run = subparsers.add_parser(
+search = subparsers.add_parser(
     "search",
     help="start a search",
     description="detect, localize and characterize earthquakes in a dataset",
 )
-config_arg = run.add_argument(
+search_config = search.add_argument(
     "config",
     type=Path,
     help="path to config file",
 )
-run.add_argument(
+search.add_argument(
     "--force",
     action="store_true",
     default=False,
@@ -68,30 +68,43 @@ run.add_argument(
 
 continue_run = subparsers.add_parser(
     "continue",
-    help="continue an aborted run",
-    description="continue a run from an existing rundir",
+    help="continue an existing search",
+    description="Continue a run from an existing rundir",
 )
-rundir_continue = continue_run.add_argument(
+continue_rundir = continue_run.add_argument(
     "rundir",
     type=Path,
     help="existing runding to continue",
 )
 
-features_extract = subparsers.add_parser(
-    "feature-extraction",
-    help="extract features from an existing run",
-    description="modify the search.json for re-evaluation of the event's features",
+snuffler = subparsers.add_parser(
+    "snuffler",
+    help="start the Pyrocko snuffler to inspect waveforms, events and picks",
+    description="Start the snuffler to inspect and validate "
+    "the detections and waveforms for an existing run",
 )
-rundir_features = features_extract.add_argument(
+snuffler_rundir = snuffler.add_argument(
     "rundir",
     type=Path,
-    help="path of existing run",
+    help="path of the existing rundir",
+)
+snuffler.add_argument(
+    "--show-picks",
+    action="store_true",
+    default=False,
+    help="load and show picks in snuffler",
+)
+snuffler.add_argument(
+    "--show-semblance",
+    action="store_true",
+    default=False,
+    help="show semblance trace in snuffler",
 )
 
 station_corrections = subparsers.add_parser(
     "corrections",
-    help="analyse station corrections from existing run",
-    description="analyze and plot station corrections from a finished run",
+    help="analyse and extract station corrections from a run",
+    description="Analyze and plot station corrections from a finished run",
 )
 station_corrections.add_argument(
     "--plot",
@@ -99,7 +112,18 @@ station_corrections.add_argument(
     default=False,
     help="plot station correction results and save to rundir",
 )
-rundir_corrections = station_corrections.add_argument(
+corrections_rundir = station_corrections.add_argument(
+    "rundir",
+    type=Path,
+    help="path of existing run",
+)
+
+features_extract = subparsers.add_parser(
+    "feature-extraction",
+    help="extract features from an existing run",
+    description="Modify the search.json for re-evaluation of the event's features",
+)
+features_rundir = features_extract.add_argument(
     "rundir",
     type=Path,
     help="path of existing run",
@@ -107,8 +131,8 @@ rundir_corrections = station_corrections.add_argument(
 
 modules = subparsers.add_parser(
     "modules",
-    help="list available modules",
-    description="list all available modules",
+    help="show available modules",
+    description="Show all available modules",
 )
 modules.add_argument(
     "--json",
@@ -121,7 +145,7 @@ modules.add_argument(
 serve = subparsers.add_parser(
     "serve",
     help="start webserver and serve results from an existing run",
-    description="start a webserver and serve detections and results from a run",
+    description="Start a webserver and serve detections and results from a run",
 )
 serve.add_argument(
     "rundir",
@@ -129,16 +153,17 @@ serve.add_argument(
     help="rundir to serve",
 )
 
+
 subparsers.add_parser(
     "clear-cache",
     help="clear the cach directory",
-    description="clear all data in the cache directory",
+    description="Clear all data in the cache directory",
 )
 
 dump_schemas = subparsers.add_parser(
     "dump-schemas",
     help="dump data models to json-schema (development)",
-    description="dump data models to json-schema, "
+    description="dDump data models to json-schema, "
     "this is for development purposes only",
 )
 dump_dir = dump_schemas.add_argument(
@@ -152,10 +177,11 @@ try:
     import argcomplete
     from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
-    config_arg.completer = FilesCompleter(["*.json"])
-    rundir_continue.completer = DirectoriesCompleter()
-    rundir_features.completer = DirectoriesCompleter()
-    rundir_corrections.completer = DirectoriesCompleter()
+    search_config.completer = FilesCompleter(["*.json"])
+    continue_rundir.completer = DirectoriesCompleter()
+    snuffler_rundir.completer = DirectoriesCompleter()
+    features_rundir.completer = DirectoriesCompleter()
+    corrections_rundir.completer = DirectoriesCompleter()
     dump_dir.completer = DirectoriesCompleter()
 
     argcomplete.autocomplete(parser)
@@ -215,6 +241,18 @@ def main() -> None:
 
             asyncio.run(run(), debug=loop_debug)
 
+        case "snuffler":
+            search = Search.load_rundir(args.rundir)
+            squirrel = search.data_provider.get_squirrel()
+            show_picks = args.show_picks
+            if args.show_semblance:
+                squirrel.add([str(search._rundir / "semblance.mseed")])
+            squirrel.snuffle(
+                events=None if show_picks else search.catalog.as_pyrocko_events(),
+                markers=search.catalog.get_pyrocko_markers() if show_picks else None,
+                stations=search.stations.as_pyrocko_stations(),
+            )
+
         case "feature-extraction":
             search = Search.load_rundir(args.rundir)
             search.data_provider.prepare(search.stations)
@@ -238,8 +276,8 @@ def main() -> None:
                     event = await result
                     if event.magnitudes:
                         for mag in event.magnitudes:
-                            print(f"{mag.magnitude} {mag.average:.2f}±{mag.error:.2f}")
-                        print("--")
+                            print(f"{mag.magnitude} {mag.average:.2f}±{mag.error:.2f}")  # noqa: T201
+                        print("--")  # noqa: T201
 
                 await search._catalog.save()
                 await search._catalog.export_detections(
@@ -353,7 +391,7 @@ def main() -> None:
                 raise EnvironmentError(f"folder {args.folder} does not exist")
 
             file = args.folder / "search.schema.json"
-            print(f"writing JSON schemas to {args.folder}")
+            print(f"writing JSON schemas to {args.folder}")  # noqa: T201
             file.write_text(json.dumps(Search.model_json_schema(), indent=2))
 
             file = args.folder / "detections.schema.json"
