@@ -74,12 +74,9 @@ class SemblanceStats(Stats):
         )
         table.add_row(
             "Semblance size",
-            f"{human_readable_bytes(self.semblance_size_bytes)}"
+            f"{human_readable_bytes(self.semblance_size_bytes)}/"
+            f"{human_readable_bytes(self.semblance_allocation_bytes)}"
             f" ({self.last_nodes_stacked} nodes)",
-        )
-        table.add_row(
-            "Memory allocated",
-            f"{human_readable_bytes(self.semblance_allocation_bytes)}",
         )
 
 
@@ -240,7 +237,7 @@ class Semblance:
             self.semblance_unpadded,
             data,
             mask,
-            nthreads=1,
+            nthreads=8,
         )
 
     def maximum_node_semblance(self) -> np.ndarray:

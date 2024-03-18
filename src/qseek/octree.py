@@ -709,6 +709,27 @@ class Octree(BaseModel):
         with filename.open("wb") as f:
             pickle.dump(self, f)
 
+    def get_corners(self) -> list[Location]:
+        """Get the corners of the octree.
+
+        Returns:
+            list[Location]: List of locations.
+        """
+        reference = self.location
+        return [
+            Location(
+                lat=reference.lat,
+                lon=reference.lon,
+                elevation=reference.elevation,
+                east_shift=reference.east_shift + east,
+                north_shift=reference.north_shift + north,
+                depth=reference.depth + depth,
+            )
+            for east in (self.east_bounds.min, self.east_bounds.max)
+            for north in (self.north_bounds.min, self.north_bounds.max)
+            for depth in (self.depth_bounds.min, self.depth_bounds.max)
+        ]
+
     def __hash__(self) -> int:
         return hash(
             (

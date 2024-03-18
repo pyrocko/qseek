@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, Field, FilePath, constr
+from pydantic import BaseModel, DirectoryPath, Field, FilePath, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -76,7 +76,7 @@ class Stations(BaseModel):
         description="List of [Pyrocko station YAML]"
         "(https://pyrocko.org/docs/current/formats/yaml.html) files.",
     )
-    station_xmls: list[FilePath] = Field(
+    station_xmls: list[FilePath | DirectoryPath] = Field(
         default=[],
         description="List of StationXML files.",
     )
@@ -93,9 +93,16 @@ class Stations(BaseModel):
         for file in self.pyrocko_station_yamls:
             loaded_stations += load_stations(filename=str(file.expanduser()))
 
-        for file in self.station_xmls:
-            station_xml = load_xml(filename=str(file.expanduser()))
-            loaded_stations += station_xml.get_pyrocko_stations()
+        for path in self.station_xmls:
+            if path.is_dir():
+                station_xmls = path.glob("*.xml")
+            elif path.is_file():
+                station_xmls = [path]
+            else:
+                continue
+            for file in station_xmls:
+                station_xml = load_xml(filename=str(file.expanduser()))
+                loaded_stations += station_xml.get_pyrocko_stations()
 
         for sta in loaded_stations:
             sta = Station.from_pyrocko_station(sta)
