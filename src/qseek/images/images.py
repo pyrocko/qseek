@@ -112,6 +112,10 @@ class ImageFunctions(RootModel):
                 "start pre-processing images, queue size %d", self._queue.maxsize
             )
             async for batch in batch_iterator:
+                if batch.is_empty():
+                    logger.debug("empty batch, skipping")
+                    continue
+
                 start_time = datetime_now()
                 images = await self.process_traces(batch.traces)
                 stats.time_per_batch = datetime_now() - start_time

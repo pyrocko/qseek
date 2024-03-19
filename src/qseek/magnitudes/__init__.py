@@ -6,6 +6,7 @@ from pydantic import Field
 from qseek.magnitudes import (
     local_magnitude,  # noqa: F401
     moment_magnitude,  # noqa: F401
+    single_station_magnitude,  # noqa: F401
 )
 from qseek.magnitudes.base import EventMagnitude, EventMagnitudeCalculator
 

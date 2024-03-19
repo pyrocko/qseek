@@ -113,16 +113,15 @@ class PhaseNetImage(WaveformImage):
         peak_delay = peak_times - event_time.timestamp()
 
         # Limit to post-event peaks
-        post_event_peaks = peak_delay > 0.0
-        peak_idx = peak_idx[post_event_peaks]
-        peak_times = peak_times[post_event_peaks]
-        peak_delay = peak_delay[post_event_peaks]
+        after_event_peaks = peak_delay > 0.0
+        peak_idx = peak_idx[after_event_peaks]
+        peak_times = peak_times[after_event_peaks]
+        peak_delay = peak_delay[after_event_peaks]
 
         if not peak_idx.size:
             return None
 
         peak_values = search_trace.get_ydata()[peak_idx]
-
         closest_peak_idx = np.argmin(peak_delay)
 
         return ObservedArrival(
