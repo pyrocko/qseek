@@ -11,6 +11,9 @@ from pathlib import Path
 import nest_asyncio
 from pkg_resources import get_distribution
 
+from qseek.models.detection import EventDetection
+from qseek.utils import get_cpu_count
+
 nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
@@ -127,6 +130,12 @@ features_rundir = features_extract.add_argument(
     "rundir",
     type=Path,
     help="path of existing run",
+)
+features_extract.add_argument(
+    "--recalculate",
+    action="store_true",
+    default=False,
+    help="recalculate all magnitudes",
 )
 
 modules = subparsers.add_parser(
@@ -256,35 +265,55 @@ def main() -> None:
         case "feature-extraction":
             search = Search.load_rundir(args.rundir)
             search.data_provider.prepare(search.stations)
+            recalculate_magnitudes = args.recalculate
 
-            async def extract() -> None:
+            tasks = []
+
+            def console_status(task: asyncio.Task[EventDetection]):
+                detection = task.result()
+                if detection.magnitudes:
+                    console.print(
+                        f"Event {str(detection.time).split('.')[0]}:",
+                        ", ".join(
+                            f"[bold]{m.magnitude}[/bold] {m.average:.2f}±{m.error:.2f}"
+                            for m in detection.magnitudes
+                        ),
+                    )
+                else:
+                    console.print(f"Event {detection.time}: No magnitudes")
+
+            async def worker() -> None:
                 for magnitude in search.magnitudes:
                     await magnitude.prepare(search.octree, search.stations)
+                await search.catalog.check(repair=True)
 
-                iterator = asyncio.as_completed(
-                    tuple(
-                        search.add_magnitude_and_features(detection)
-                        for detection in search._catalog
-                    )
-                )
-
-                for result in track(
-                    iterator,
-                    description="Extracting features",
-                    total=search._catalog.n_events,
+                sem = asyncio.Semaphore(get_cpu_count())
+                for detection in track(
+                    search.catalog,
+                    description="Calculating magnitudes",
+                    total=search.catalog.n_events,
+                    console=console,
                 ):
-                    event = await result
-                    if event.magnitudes:
-                        for mag in event.magnitudes:
-                            print(f"{mag.magnitude} {mag.average:.2f}±{mag.error:.2f}")  # noqa: T201
-                        print("--")  # noqa: T201
+                    await sem.acquire()
+                    task = asyncio.create_task(
+                        search.add_magnitude_and_features(
+                            detection,
+                            recalculate=recalculate_magnitudes,
+                        )
+                    )
+                    tasks.append(task)
+                    task.add_done_callback(lambda _: sem.release())
+                    task.add_done_callback(tasks.remove)
+                    task.add_done_callback(console_status)
+
+                await asyncio.gather(*tasks)
 
                 await search._catalog.save()
                 await search._catalog.export_detections(
                     jitter_location=search.octree.smallest_node_size()
                 )
 
-            asyncio.run(extract(), debug=loop_debug)
+            asyncio.run(worker(), debug=loop_debug)
 
         case "corrections":
             import json
@@ -391,7 +420,7 @@ def main() -> None:
                 raise EnvironmentError(f"folder {args.folder} does not exist")
 
             file = args.folder / "search.schema.json"
-            print(f"writing JSON schemas to {args.folder}")  # noqa: T201
+            console.print(f"writing JSON schemas to {args.folder}")
             file.write_text(json.dumps(Search.model_json_schema(), indent=2))
 
             file = args.folder / "detections.schema.json"

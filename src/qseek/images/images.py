@@ -99,12 +99,11 @@ class ImageFunctions(RootModel):
         """Iterate over images from batches.
 
         Args:
-            batches (AsyncIterator[Batch]): Async iterator over batches.
+            batch_iterator (AsyncIterator[Batch]): Async iterator over batches.
 
         Yields:
             AsyncIterator[WaveformImages]: Async iterator over images.
         """
-
         stats = self._stats
 
         async def worker() -> None:

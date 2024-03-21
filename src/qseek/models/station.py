@@ -179,7 +179,7 @@ class Stations(BaseModel):
         """Select stations by NSL code.
 
         Args:
-            selection (Iterable[Trace]): Iterable of Pyrocko Traces
+            traces (Iterable[Trace]): Iterable of Pyrocko Traces
 
         Returns:
             Stations: Containing only selected stations.
@@ -216,8 +216,7 @@ class Stations(BaseModel):
         )
 
     def as_pyrocko_stations(self) -> list[PyrockoStation]:
-        """
-        Convert the stations to PyrockoStation objects.
+        """Convert the stations to PyrockoStation objects.
 
         Returns:
             A list of PyrockoStation objects.

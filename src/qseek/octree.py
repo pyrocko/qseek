@@ -84,7 +84,7 @@ class Node:
     _location: Location | None = None
 
     def split(self) -> tuple[Node, ...]:
-        """Split the node into 8 children"""
+        """Split the node into 8 children."""
         if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
@@ -149,8 +149,8 @@ class Node:
         """Check if the node is within the root node border.
 
         Args:
-            trough (bool, optional): If True, the node is considered inside the
-                trough (open top). Defaults to False.
+            with_surface (bool, optional): If True, the surface is considered
+                as a border. Defaults to False.
 
         Returns:
             bool: True if the node is inside the root tree's border.
@@ -200,8 +200,7 @@ class Node:
         return location.distance_to(self.as_location())
 
     def semblance_density(self) -> float:
-        """
-        Calculate the semblance density of the octree.
+        """Calculate the semblance density of the octree.
 
         Returns:
             The semblance density of the octree.
@@ -355,7 +354,7 @@ class Octree(BaseModel):
         return self
 
     def model_post_init(self, __context: Any) -> None:
-        """Initialize octree. This method is called by the pydantic model"""
+        """Initialize octree. This method is called by the pydantic model."""
         self._root_nodes = self.get_root_nodes(self.root_node_size)
 
         logger.info(
@@ -394,12 +393,12 @@ class Octree(BaseModel):
 
     @cached_property
     def n_nodes(self) -> int:
-        """Number of nodes in the octree"""
+        """Number of nodes in the octree."""
         return sum(1 for _ in self)
 
     @property
     def volume(self) -> float:
-        """Volume of the octree in cubic meters"""
+        """Volume of the octree in cubic meters."""
         return reduce(mul, self.extent())
 
     def iter_nodes(self, level: int | None = None) -> Iterator[Node]:
@@ -433,7 +432,7 @@ class Octree(BaseModel):
             del self.n_nodes
 
     def reset(self) -> Self:
-        """Reset the octree to its initial state"""
+        """Reset the octree to its initial state."""
         logger.debug("resetting tree")
         self._clear_cache()
         self._root_nodes = self.get_root_nodes(self.root_node_size)
@@ -459,11 +458,14 @@ class Octree(BaseModel):
         self,
         surface: Literal["NE", "ED", "ND"] = "NE",
         max_level: int = -1,
-        accumulator: Callable = np.max,
+        accumulator: Callable[np.ndarray] = np.max,
     ) -> np.ndarray:
-        """Reduce the octree's nodes to the surface
+        """Reduce the octree's nodes to the surface.
 
         Args:
+            surface (Literal["NE", "ED", "ND"], optional): Surface to reduce to.
+                Defaults to "NE".
+            max_level (int, optional): Maximum level to reduce to. Defaults to -1.
             accumulator (Callable, optional): Accumulator function. Defaults to np.max.
 
         Returns:
@@ -553,8 +555,7 @@ class Octree(BaseModel):
         ).reshape(-1, stations.n_stations)
 
     def get_nodes(self, indices: Iterable[int]) -> list[Node]:
-        """
-        Retrieves a list of nodes from the octree based on the given indices.
+        """Retrieves a list of nodes from the octree based on the given indices.
 
         Args:
             indices (Iterable[int]): The indices of the nodes to retrieve.

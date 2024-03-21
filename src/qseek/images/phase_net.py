@@ -59,7 +59,7 @@ class PhaseNetImage(WaveformImage):
             trace_idx (int): Index of the trace.
             event_time (datetime): Time of the event.
             modelled_arrival (datetime): Time to search around.
-            search_length_seconds (float, optional): Total search length in seconds
+            search_window_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
             threshold (float, optional): Threshold for detection. Defaults to 0.1.
             detection_blinding_seconds (float, optional): Blinding time in seconds for

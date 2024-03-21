@@ -164,6 +164,12 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
         self._model = LocalMagnitudeModel.get_subclass_by_name(self.model)()
         return self
 
+    def has_magnitude(self, event: EventDetection) -> bool:
+        for mag in event.magnitudes:
+            if type(mag) is LocalMagnitude and mag.model == self.model:
+                return True
+        return False
+
     async def add_magnitude(self, squirrel: Squirrel, event: EventDetection) -> None:
         model = self._model
 
@@ -180,7 +186,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             cut_off_fade=cut_off_fade,
             quantity=model.restitution_quantity,
             phase=None,
-            remove_clipped=True,
+            filter_clipped=True,
         )
         if not traces:
             logger.warning("No restituted traces found for event %s", event.time)

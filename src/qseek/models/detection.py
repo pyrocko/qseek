@@ -51,6 +51,7 @@ FILENAME_DETECTIONS = "detections.json"
 FILENAME_RECEIVERS = "detections_receivers.json"
 
 UPDATE_LOCK = asyncio.Lock()
+SQUIRREL_SEM = asyncio.Semaphore(64)
 
 
 class ReceiverCache:
@@ -70,10 +71,39 @@ class ReceiverCache:
         self.lines = self.file.read_text().splitlines()
         self.mtime = self.file.stat().st_mtime
 
-    def get_row(self, row_index: int) -> str:
+    def _check_mtime(self) -> None:
         if self.mtime is None or self.mtime != self.file.stat().st_mtime:
             self.load()
+
+    def get_line(self, row_index: int) -> str:
+        """Retrieves the line at the specified row index.
+
+        Args:
+            row_index (int): The index of the row to retrieve.
+
+        Returns:
+            str: The line at the specified row index.
+        """
+        self._check_mtime()
         return self.lines[row_index]
+
+    def find_uid(self, uid: UUID) -> tuple[int, str]:
+        """Find the given UID in the lines and return its index and value.
+
+        get_line should be prefered over this method.
+
+        Args:
+            uid (UUID): The UID to search for.
+
+        Returns:
+            tuple[int, str]: A tuple containing the index and value of the found UID.
+        """
+        self._check_mtime()
+        find_uid = str(uid)
+        for iline, line in enumerate(self.lines):
+            if find_uid in line:
+                return iline, line
+        raise KeyError
 
 
 class PhaseDetection(BaseModel):
@@ -114,8 +144,7 @@ class PhaseDetection(BaseModel):
         return csv_dict
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
-        """
-        Convert the observed and modeled arrivals to a list of Pyrocko PhaseMarkers.
+        """Convert the observed and modeled arrivals to a list of Pyrocko PhaseMarkers.
 
         Returns:
             list[marker.PhaseMarker]: List of Pyrocko PhaseMarker objects representing
@@ -151,8 +180,7 @@ class Receiver(Station):
         self.phase_arrivals[arrival.phase] = arrival
 
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
-        """
-        Convert the phase arrivals to Pyrocko markers.
+        """Convert the phase arrivals to Pyrocko markers.
 
         Returns:
             A list of Pyrocko PhaseMarker objects.
@@ -168,8 +196,7 @@ class Receiver(Station):
     def get_arrivals_time_window(
         self, phase: PhaseDescription | None = None
     ) -> tuple[datetime, datetime]:
-        """
-        Get the time window for phase arrivals.
+        """Get the time window for phase arrivals.
 
         Args:
             phase (PhaseDescription | None): Optional phase description.
@@ -198,18 +225,18 @@ class EventReceivers(BaseModel):
 
     @property
     def n_receivers(self) -> int:
-        """Number of receivers in the receiver set"""
+        """Number of receivers in the receiver set."""
         return len(self.receivers)
 
     def n_observations(self, phase: PhaseDescription) -> int:
-        """Number of observations for a given phase"""
+        """Number of observations for a given phase."""
         n_observations = 0
         for receiver in self:
             if (arrival := receiver.phase_arrivals.get(phase)) and arrival.observed:
                 n_observations += 1
         return n_observations
 
-    def get_waveforms(
+    async def get_waveforms(
         self,
         squirrel: Squirrel,
         seconds_before: float = 3.0,
@@ -217,8 +244,7 @@ class EventReceivers(BaseModel):
         phase: PhaseDescription | None = None,
         receivers: Iterable[Receiver] | None = None,
     ) -> list[Trace]:
-        """
-        Retrieves and restitutes waveforms for a given squirrel.
+        """Retrieves and restitutes waveforms for a given squirrel.
 
         Args:
             squirrel (Squirrel): The squirrel waveform organizer.
@@ -247,13 +273,15 @@ class EventReceivers(BaseModel):
         tmin = min(times).timestamp() - seconds_before
         tmax = max(times).timestamp() + seconds_after
         nslc_ids = [(*receiver.nsl, "*") for receiver in receivers]
-        traces = squirrel.get_waveforms(
-            codes=nslc_ids,
-            tmin=tmin,
-            tmax=tmax,
-            accessor_id=accessor_id,
-            want_incomplete=False,
-        )
+        async with SQUIRREL_SEM:
+            traces = await asyncio.to_thread(
+                squirrel.get_waveforms,
+                codes=nslc_ids,
+                tmin=tmin,
+                tmax=tmax,
+                accessor_id=accessor_id,
+                want_incomplete=False,
+            )
         squirrel.advance_accessor(accessor_id, cache_id="waveform")
 
         for tr in traces:
@@ -274,12 +302,11 @@ class EventReceivers(BaseModel):
         phase: PhaseDescription | None = None,
         quantity: MeasurementUnit = "velocity",
         demean: bool = True,
-        remove_clipped: bool = False,
+        filter_clipped: bool = False,
         freqlimits: tuple[float, float, float, float] = (0.01, 0.1, 25.0, 35.0),
         receivers: Iterable[Receiver] | None = None,
     ) -> list[Trace]:
-        """
-        Retrieves and restitutes waveforms for a given squirrel.
+        """Retrieves and restitutes waveforms for a given squirrel.
 
         Args:
             squirrel (Squirrel): The squirrel waveform organizer.
@@ -302,20 +329,20 @@ class EventReceivers(BaseModel):
                 The frequency limits. Defaults to (0.01, 0.1, 25.0, 35.0).
             receivers (list[Receiver] | None, optional): The receivers to retrieve
                 waveforms for. If None, all receivers are retrieved. Defaults to None.
+            filter_clipped (bool, optional): Whether to filter clipped traces.
+                Defaults to False.
 
         Returns:
             list[Trace]: The restituted waveforms.
         """
-        traces = await asyncio.to_thread(
-            self.get_waveforms,
+        traces = await self.get_waveforms(
             squirrel,
             phase=phase,
             seconds_after=seconds_after + seconds_fade,
             seconds_before=seconds_before + seconds_fade,
             receivers=receivers,
         )
-        traces = filter_clipped_traces(traces) if remove_clipped else traces
-
+        traces = filter_clipped_traces(traces) if filter_clipped else traces
         if not traces:
             return []
 
@@ -356,8 +383,7 @@ class EventReceivers(BaseModel):
         return restituted_traces
 
     def get_receiver(self, nsl: NSL) -> Receiver:
-        """
-        Get the receiver object based on given NSL tuple.
+        """Get the receiver object based on given NSL tuple.
 
         Args:
             nsl (tuple[str, str, str]): The network, station, and location tuple.
@@ -378,7 +404,7 @@ class EventReceivers(BaseModel):
         stations: Stations,
         phase_arrivals: list[PhaseDetection | None],
     ) -> None:
-        """Add receivers to the receiver set
+        """Add receivers to the receiver set.
 
         Args:
             stations: List of stations
@@ -398,8 +424,7 @@ class EventReceivers(BaseModel):
             receiver.add_phase_detection(arrival)
 
     def get_by_nsl(self, nsl: NSL) -> Receiver:
-        """
-        Retrieves a receiver object by its NSL (network, station, location) tuple.
+        """Retrieves a receiver object by its NSL (network, station, location) tuple.
 
         Args:
             nsl (NSL): The NSL tuple representing
@@ -417,8 +442,7 @@ class EventReceivers(BaseModel):
         raise KeyError(f"cannot find station {nsl.pretty}")
 
     def get_pyrocko_markers(self) -> list[marker.PhaseMarker]:
-        """
-        Get a list of Pyrocko phase markers from all receivers.
+        """Get a list of Pyrocko phase markers from all receivers.
 
         Returns:
             A list of Pyrocko phase markers.
@@ -486,8 +510,7 @@ class EventDetection(Location):
 
     @classmethod
     def set_rundir(cls, rundir: Path) -> None:
-        """
-        Set the rundir for the detection model.
+        """Set the rundir for the detection model.
 
         Args:
             rundir (Path): The path to the rundir.
@@ -497,22 +520,21 @@ class EventDetection(Location):
 
     @property
     def magnitude(self) -> EventMagnitude | None:
-        """
-        Returns the magnitude of the event.
+        """Returns the magnitude of the event.
 
         If there are no magnitudes available, returns None.
         """
         return self.magnitudes[0] if self.magnitudes else None
 
     async def save(self, file: Path | None = None, update: bool = False) -> None:
-        """
-        Dump the detection data to a file.
+        """Dump the detection data to a file.
 
         After the detection is dumped, the receivers are dumped to a separate file and
         the receivers cache is cleared.
 
         Args:
-            directory (Path): The directory where the file will be saved.
+            file (Path|None): The file to dump the detection to.
+                If None, the rundir is used. Defaults to None.
             update (bool): Whether to update an existing detection or append a new one.
 
         Raises:
@@ -539,31 +561,35 @@ class EventDetection(Location):
                     await asyncio.shield(f.writelines(lines))
         else:
             logger.debug("appending detection %d", self._detection_idx)
-            async with aiofiles.open(file, "a") as f:
-                await f.write(f"{json_data}\n")
+            async with UPDATE_LOCK:
+                async with aiofiles.open(file, "a") as f:
+                    await f.write(f"{json_data}\n")
 
-            receiver_file = self._rundir / FILENAME_RECEIVERS
-            async with aiofiles.open(receiver_file, "a") as f:
-                await asyncio.shield(f.write(f"{self.receivers.model_dump_json()}\n"))
+                receiver_file = self._rundir / FILENAME_RECEIVERS
+                async with aiofiles.open(receiver_file, "a") as f:
+                    await asyncio.shield(
+                        f.write(f"{self.receivers.model_dump_json()}\n")
+                    )
 
             self._receivers = None  # Free the memory
 
-    def set_index(self, index: int) -> None:
-        """
-        Set the index of the detection.
+    def set_index(self, index: int, force: bool = False) -> None:
+        """Set the index of the detection.
 
         Args:
             index (int): The index to set.
+            force (bool, optional): Whether to force the index to be set.
+                Defaults to False.
 
         Returns:
             None
         """
-        if self._detection_idx is not None:
+        if not force and self._detection_idx is not None:
             raise ValueError("cannot set index twice")
         self._detection_idx = index
 
     def set_uncertainty(self, uncertainty: DetectionUncertainty) -> None:
-        """Set detection uncertainty
+        """Set detection uncertainty.
 
         Args:
             uncertainty (DetectionUncertainty): detection uncertainty
@@ -571,11 +597,14 @@ class EventDetection(Location):
         self.uncertainty = uncertainty
 
     def add_magnitude(self, magnitude: EventMagnitude) -> None:
-        """Add magnitude to detection
+        """Add magnitude to detection.
 
         Args:
             magnitude (EventMagnitudeType): magnitude
         """
+        for mag in self.magnitudes.copy():
+            if type(magnitude) is type(mag):
+                self.magnitudes.remove(mag)
         self.magnitudes.append(magnitude)
 
     def add_feature(self, feature: EventFeature) -> None:
@@ -589,8 +618,7 @@ class EventDetection(Location):
     @computed_field
     @property
     def receivers(self) -> EventReceivers:
-        """
-        Retrieves the event receivers associated with the detection.
+        """Retrieves the event receivers associated with the detection.
 
         Returns:
             EventReceivers: The event receivers associated with the detection.
@@ -607,20 +635,30 @@ class EventDetection(Location):
         elif self._rundir and self._detection_idx is not None:
             if self._receiver_cache is None:
                 raise ValueError("cannot fetch receivers without set rundir")
-
             logger.debug("fetching receiver information from cache")
-            row = self._receiver_cache.get_row(self._detection_idx)
-            receivers = EventReceivers.model_validate_json(row)
 
-            if receivers.event_uid != self.uid:
-                raise ValueError(f"uid mismatch: {receivers.event_uid} != {self.uid}")
+            try:
+                line = self._receiver_cache.get_line(self._detection_idx)
+                receivers = EventReceivers.model_validate_json(line)
+            except IndexError:
+                receivers = None
+
+            if not receivers or receivers.event_uid != self.uid:
+                logger.warning("event %s uid mismatch, using brute search", self.time)
+                try:
+                    idx, line = self._receiver_cache.find_uid(self.uid)
+                    receivers = EventReceivers.model_validate_json(line)
+                    self.set_index(idx, force=True)
+                except KeyError:
+                    raise ValueError(f"uid mismatch for event {self.time}") from None
+
             self._receivers = receivers
         else:
             raise ValueError("cannot fetch receivers without set rundir and index")
         return self._receivers
 
     def as_pyrocko_event(self) -> Event:
-        """Get detection as Pyrocko event
+        """Get detection as Pyrocko event.
 
         Returns:
             Event: Pyrocko event
@@ -640,7 +678,7 @@ class EventDetection(Location):
         )
 
     def get_csv_dict(self) -> dict[str, Any]:
-        """Get detection as CSV line
+        """Get detection as CSV line.
 
         Returns:
             dict[str, Any]: CSV line
@@ -653,7 +691,6 @@ class EventDetection(Location):
             "east_shift": round(self.east_shift, 2),
             "north_shift": round(self.north_shift, 2),
             "distance_border": round(self.distance_border, 2),
-            "in_bounds": self.in_bounds,
             "semblance": self.semblance,
         }
         for magnitude in self.magnitudes:
@@ -661,7 +698,7 @@ class EventDetection(Location):
         return csv_line
 
     def get_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:
-        """Get detections as Pyrocko markers
+        """Get detections as Pyrocko markers.
 
         Returns:
             list[marker.EventMarker | marker.PhaseMarker]: Pyrocko markers
@@ -677,7 +714,7 @@ class EventDetection(Location):
         return pyrocko_markers
 
     def export_pyrocko_markers(self, filename: Path) -> None:
-        """Save detection's Pyrocko markers to file
+        """Save detection's Pyrocko markers to file.
 
         Args:
             filename (Path): path to marker file
@@ -686,7 +723,7 @@ class EventDetection(Location):
         marker.save_markers(self.get_pyrocko_markers(), str(filename))
 
     def jitter_location(self, meters: float) -> Self:
-        """Randomize detection location
+        """Randomize detection location.
 
         Args:
             meters (float): maximum randomization in meters
@@ -702,8 +739,12 @@ class EventDetection(Location):
         detection._cached_lat_lon = None
         return detection
 
-    def snuffle(self, squirrel: Squirrel, restituted: bool = False) -> None:
-        """Open snuffler for detection
+    def snuffle(
+        self,
+        squirrel: Squirrel,
+        restituted: bool | MeasurementUnit = False,
+    ) -> None:
+        """Open snuffler for detection.
 
         Args:
             squirrel (Squirrel): The squirrel, holding the data
@@ -711,10 +752,13 @@ class EventDetection(Location):
         """
         from pyrocko.trace import snuffle
 
+        restitute_unit = "velocity" if restituted is True else restituted
         traces = (
             self.receivers.get_waveforms(squirrel)
-            if not restituted
-            else self.receivers.get_waveforms_restituted(squirrel)
+            if not restitute_unit
+            else self.receivers.get_waveforms_restituted(
+                squirrel, quantity=restitute_unit
+            )
         )
         snuffle(
             traces,

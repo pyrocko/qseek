@@ -151,8 +151,7 @@ class EarthModel(BaseModel):
         return self.layered_model.profile("vs")
 
     def save_plot(self, filename: Path) -> None:
-        """
-        Plot the layered model and save the figure to a file.
+        """Plot the layered model and save the figure to a file.
 
         Args:
             filename (Path): The path to save the figure.
@@ -312,7 +311,7 @@ class TravelTimeTree(BaseModel):
         """Save the model and traveltimes to an .sptree archive.
 
         Args:
-            folder (Path): Folder or file to save tree into. If path is a folder a
+            path (Path): Folder or file to save tree into. If path is a folder a
                 native name from the model's hash is used
 
         Returns:
@@ -398,7 +397,7 @@ class TravelTimeTree(BaseModel):
             self._node_lut[node.hash()] = traveltimes.astype(np.float32)
 
     def lut_fill_level(self) -> float:
-        """Return the fill level of the LUT as a float between 0.0 and 1.0"""
+        """Return the fill level of the LUT as a float between 0.0 and 1.0."""
         return len(self._node_lut) / self._node_lut.get_size()
 
     async def fill_lut(self, nodes: Sequence[Node]) -> None:

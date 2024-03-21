@@ -200,8 +200,7 @@ class Semblance:
         return self.start_time + timedelta(seconds=index / self.sampling_rate)
 
     def get_semblance(self, time_idx: int) -> np.ndarray:
-        """
-        Get the semblance values at a specific time index.
+        """Get the semblance values at a specific time index.
 
         Parameters:
             time_idx (int): The index of the desired time.
@@ -212,8 +211,7 @@ class Semblance:
         return self.semblance[:, time_idx]
 
     async def apply_cache(self, cache: SemblanceCache) -> None:
-        """
-        Applies the cached data to the `semblance_unpadded` array.
+        """Applies the cached data to the `semblance_unpadded` array.
 
         Args:
             cache (SemblanceCache): The cache containing the cached data.
@@ -255,7 +253,7 @@ class Semblance:
 
         Args:
             trim_padding (bool, optional): Trim padded data in post-processing.
-            nparallel (int, optional): Number of threads for calculation.
+            nthreads (int, optional): Number of threads for calculation.
                 Defaults to 12.
 
         Returns:
@@ -282,7 +280,9 @@ class Semblance:
         """Indices of maximum semblance at any time step.
 
         Args:
-            nparallel (int, optional): Number of threads for calculation.
+            trim_padding (bool, optional): Trim padded data in post-processing.
+                Defaults to True.
+            nthreads (int, optional): Number of threads for calculation.
                 Defaults to 12.
 
         Returns:
@@ -330,6 +330,8 @@ class Semblance:
             distance (float): Minium distance of a peak to other peaks.
             trim_padding (bool, optional): Trim padded data in post-processing.
                 Defaults to True.
+            nthreads (int, optional): Number of threads for calculation.
+                Defaults to 12.
 
         Returns:
             tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
@@ -427,6 +429,8 @@ class Semblance:
 
         Args:
             factor (int | float): Normalization factor.
+            semblance_cache (SemblanceCache | None, optional): Cache of the semblance.
+                Defaults to None.
         """
         if factor == 1.0:
             return

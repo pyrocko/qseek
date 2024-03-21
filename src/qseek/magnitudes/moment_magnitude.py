@@ -51,8 +51,7 @@ _TRACE_SELECTORS: dict[PeakAmplitude, ChannelSelector] = {
 
 
 def norm_traces(traces: list[Trace]) -> np.ndarray:
-    """
-    Normalizes the traces to their maximum absolute value.
+    """Normalizes the traces to their maximum absolute value.
 
     Args:
         traces (list[Trace]): The traces to normalize.
@@ -79,13 +78,12 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
         description="The epicentral distance range of the stations.",
     )
     frequency_range: Range = Field(
-        default=Range(min=2.0, max=6.0),
+        default=Range(min=2.0, max=20.0),
         description="The frequency range in Hz to filter the traces.",
     )
 
     def filter_receivers_by_nsl(self, receivers: Iterable[Receiver]) -> set[Receiver]:
-        """
-        Filters the list of receivers based on the NSL ID.
+        """Filters the list of receivers based on the NSL ID.
 
         Args:
             receivers (list[Receiver]): The list of receivers to filter.
@@ -108,8 +106,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
         receivers: Iterable[Receiver],
         event: EventDetection,
     ) -> set[Receiver]:
-        """
-        Filters the list of receivers based on the distance range.
+        """Filters the list of receivers based on the distance range.
 
         Args:
             receivers (Iterable[Receiver]): The list of receivers to filter.
@@ -127,11 +124,9 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
 
 class StationMomentMagnitude(NamedTuple):
-    # quantity: MeasurementUnit
     distance_epi: float
     magnitude: float
     error: float
-
     peak: float
 
 
@@ -153,10 +148,14 @@ class MomentMagnitude(EventMagnitude):
 
     @property
     def n_stations(self) -> int:
-        """
-        Number of stations used for calculating the moment magnitude.
-        """
+        """Number of stations used for calculating the moment magnitude."""
         return len(self.stations_magnitudes)
+
+    def csv_row(self) -> dict[str, float]:
+        return {
+            "Mw": self.average,
+            "Mw-error": self.error,
+        }
 
     async def add_traces(
         self,
@@ -190,7 +189,7 @@ class MomentMagnitude(EventMagnitude):
                 continue
 
             try:
-                model = await store.get_amplitude(
+                model = await store.get_amplitude_model(
                     source_depth=event.effective_depth,
                     distance=station.distance_epi,
                     n_amplitudes=25,
@@ -201,9 +200,13 @@ class MomentMagnitude(EventMagnitude):
                 logger.warning("No modelled amplitude for receiver %s", receiver.nsl)
                 continue
 
-            magnitude = model.get_magnitude(station.peak)
-            error_upper = model.get_magnitude(station.peak + station.noise) - magnitude
-            error_lower = model.get_magnitude(station.peak - station.noise) - magnitude
+            magnitude = model.estimate_magnitude(station.peak)
+            error_upper = (
+                model.estimate_magnitude(station.peak + station.noise) - magnitude
+            )
+            error_lower = (
+                model.estimate_magnitude(station.peak - station.noise) - magnitude
+            )
             if not np.isfinite(error_lower):
                 error_lower = error_upper
 
@@ -278,6 +281,11 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 depth_delta=definition.source_depth_delta,
             )
 
+    def has_magnitude(self, event: EventDetection) -> bool:
+        if not event.magnitudes:
+            return False
+        return any(type(mag) is MomentMagnitude for mag in event.magnitudes)
+
     async def add_magnitude(
         self,
         squirrel: Squirrel,
@@ -298,7 +306,11 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 logger.info("No receivers in range for peak amplitude")
                 continue
             if not store.source_depth_range.inside(event.effective_depth):
-                logger.info("Event depth outside of store depth range.")
+                logger.info(
+                    "Event depth %.1f outside of magnitude store range (%.1f - %.1f).",
+                    event.effective_depth,
+                    *store.source_depth_range,
+                )
                 continue
 
             traces = await event.receivers.get_waveforms_restituted(
@@ -310,7 +322,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 demean=True,
                 seconds_fade=self.padding_seconds,
                 cut_off_fade=False,
-                remove_clipped=True,
+                filter_clipped=True,
             )
             if not traces:
                 continue
@@ -318,14 +330,23 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
             for tr in traces:
                 if store.frequency_range.min != 0.0:
                     await asyncio.to_thread(
-                        tr.highpass, 4, store.frequency_range.min, demean=True
+                        tr.highpass,
+                        4,
+                        store.frequency_range.min,
+                        demean=False,
                     )
                 await asyncio.to_thread(
-                    tr.lowpass, 4, store.frequency_range.max, demean=True
+                    tr.lowpass,
+                    4,
+                    store.frequency_range.max,
+                    demean=False,
                 )
                 tr.chop(tr.tmin + self.padding_seconds, tr.tmax - self.padding_seconds)
 
             if self.processed_mseed_export is not None:
+                logger.debug(
+                    "saving processed mseed traces to %s", self.processed_mseed_export
+                )
                 io.save(traces, str(self.processed_mseed_export), append=True)
 
             grouped_traces = []
