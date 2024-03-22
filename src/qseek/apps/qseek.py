@@ -12,7 +12,6 @@ import nest_asyncio
 from pkg_resources import get_distribution
 
 from qseek.models.detection import EventDetection
-from qseek.utils import get_cpu_count
 
 nest_asyncio.apply()
 
@@ -137,6 +136,12 @@ features_extract.add_argument(
     default=False,
     help="recalculate all magnitudes",
 )
+features_extract.add_argument(
+    "--nparallel",
+    type=int,
+    default=32,
+    help="number of parallel tasks for feature extraction",
+)
 
 modules = subparsers.add_parser(
     "modules",
@@ -203,7 +208,7 @@ def main() -> None:
 
     load_insights()
     from rich import box
-    from rich.progress import track
+    from rich.progress import Progress
     from rich.prompt import IntPrompt
     from rich.table import Table
 
@@ -282,18 +287,20 @@ def main() -> None:
                 else:
                     console.print(f"Event {detection.time}: No magnitudes")
 
+            progress = Progress()
+            tracker = progress.add_task(
+                "Calculating magnitudes",
+                total=search.catalog.n_events,
+                console=console,
+            )
+
             async def worker() -> None:
                 for magnitude in search.magnitudes:
                     await magnitude.prepare(search.octree, search.stations)
                 await search.catalog.check(repair=True)
 
-                sem = asyncio.Semaphore(get_cpu_count())
-                for detection in track(
-                    search.catalog,
-                    description="Calculating magnitudes",
-                    total=search.catalog.n_events,
-                    console=console,
-                ):
+                sem = asyncio.Semaphore(args.nparallel)
+                for detection in search.catalog:
                     await sem.acquire()
                     task = asyncio.create_task(
                         search.add_magnitude_and_features(
@@ -305,6 +312,9 @@ def main() -> None:
                     task.add_done_callback(lambda _: sem.release())
                     task.add_done_callback(tasks.remove)
                     task.add_done_callback(console_status)
+                    task.add_done_callback(
+                        lambda _: progress.update(tracker, advance=1)
+                    )
 
                 await asyncio.gather(*tasks)
 

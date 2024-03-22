@@ -274,8 +274,7 @@ class EventReceivers(BaseModel):
         tmax = max(times).timestamp() + seconds_after
         nslc_ids = [(*receiver.nsl, "*") for receiver in receivers]
         async with SQUIRREL_SEM:
-            traces = await asyncio.to_thread(
-                squirrel.get_waveforms,
+            traces = await squirrel.get_waveforms_async(
                 codes=nslc_ids,
                 tmin=tmin,
                 tmax=tmax,
@@ -525,6 +524,13 @@ class EventDetection(Location):
         If there are no magnitudes available, returns None.
         """
         return self.magnitudes[0] if self.magnitudes else None
+
+    async def update(self) -> None:
+        """Update detection in database.
+
+        Doing this often requires a lot of I/O.
+        """
+        await self.save(update=True)
 
     async def save(self, file: Path | None = None, update: bool = False) -> None:
         """Dump the detection data to a file.
