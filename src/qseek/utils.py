@@ -26,7 +26,7 @@ from typing import (
 )
 
 import numpy as np
-from pydantic import AfterValidator, BaseModel, ByteSize, constr
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ByteSize, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
@@ -91,7 +91,7 @@ class BackgroundTasks:
         await asyncio.gather(*cls.tasks)
 
 
-class NSL(NamedTuple):
+class _NSL(NamedTuple):
     network: str
     station: str
     location: str
@@ -116,7 +116,7 @@ class NSL(NamedTuple):
         return self.network == other.network
 
     @classmethod
-    def parse(cls, nsl: str) -> NSL:
+    def parse(cls, nsl: str | NSL) -> NSL:
         """Parse the given NSL string and return an NSL object.
 
         Args:
@@ -130,6 +130,10 @@ class NSL(NamedTuple):
         """
         if not nsl:
             raise ValueError("invalid empty NSL")
+        if type(nsl) is _NSL:
+            return nsl
+        if not isinstance(nsl, str):
+            raise ValueError(f"invalid NSL {nsl}")
         parts = nsl.split(".")
         n_parts = len(parts)
         if n_parts >= 3:
@@ -139,6 +143,9 @@ class NSL(NamedTuple):
         if n_parts == 1:
             return cls(parts[0], "", "")
         raise ValueError(f"invalid NSL {nsl}")
+
+
+NSL = Annotated[_NSL, BeforeValidator(_NSL.parse)]
 
 
 class _Range(NamedTuple):
