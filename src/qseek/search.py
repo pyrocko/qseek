@@ -38,6 +38,7 @@ from qseek.utils import (
     PhaseDescription,
     alog_call,
     datetime_now,
+    get_cpu_count,
     human_readable_bytes,
     time_to_path,
 )
@@ -90,8 +91,7 @@ class SearchStats(Stats):
     @computed_field
     @property
     def processing_rate(self) -> float:
-        """
-        Calculate the processing rate of the search.
+        """Calculate the processing rate of the search.
 
         Returns:
             float: The processing rate in bytes per second.
@@ -110,8 +110,7 @@ class SearchStats(Stats):
     @computed_field
     @property
     def processed_percent(self) -> float:
-        """
-        Calculate the percentage of processed batches.
+        """Calculate the percentage of processed batches.
 
         Returns:
             float: The percentage of processed batches.
@@ -129,7 +128,7 @@ class SearchStats(Stats):
         duration: timedelta,
         show_log: bool = False,
     ) -> None:
-        self.batch_count = batch.i_batch
+        self.batch_count = batch.i_batch + 1
         self.batch_count_total = batch.n_batches
         self.batch_time = batch.end_time
         self.processed_bytes += batch.cumulative_bytes
@@ -166,7 +165,7 @@ class SearchStats(Stats):
         table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
-            f" ([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'},"
+            f" ([bold]{self.batch_count}[/bold]/{self.batch_count_total or '?'},"
             f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
         )
         table.add_row(
@@ -300,7 +299,9 @@ class Search(BaseModel):
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
-    _feature_semaphore: asyncio.Semaphore = PrivateAttr(asyncio.Semaphore(16))
+    _compute_semaphore: asyncio.Semaphore = PrivateAttr(
+        asyncio.Semaphore(max(1, get_cpu_count() - 4))
+    )
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
@@ -415,8 +416,7 @@ class Search(BaseModel):
         )
 
     async def prepare(self) -> None:
-        """
-        Prepares the search by initializing necessary components and data.
+        """Prepares the search by initializing necessary components and data.
 
         This method prepares the search by performing the following steps:
         1. Prepares the data provider with the given stations.
@@ -466,6 +466,10 @@ class Search(BaseModel):
 
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
+            await self._catalog.filter_events_by_time(
+                start_time=None,
+                end_time=self._progress.time_progress,
+            )
 
         batches = self.data_provider.iter_batches(
             window_increment=self.window_length,
@@ -509,38 +513,45 @@ class Search(BaseModel):
         )
         console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
-        logger.info("found %d detections", self._catalog.n_events)
+        logger.info("detected %d events", self._catalog.n_events)
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
-        """
-        Process new detections.
+        """Process new detections.
 
         Args:
             detections (list[EventDetection]): List of new event detections.
         """
+        catalog = self.catalog
         await asyncio.gather(
             *(self.add_magnitude_and_features(det) for det in detections)
         )
 
         for detection in detections:
-            await self._catalog.add(detection)
+            await catalog.add(detection)
             await self._new_detection.emit(detection)
 
-        if (
-            self._catalog.n_events
-            and self._catalog.n_events - self._last_detection_export > 100
-        ):
-            await self._catalog.export_detections(
+        if not catalog.n_events:
+            return
+
+        threshold = np.floor(np.log10(catalog.n_events)) - 1
+        new_threshold = max(10, 10**threshold)
+        if catalog.n_events - self._last_detection_export > new_threshold:
+            await catalog.export_detections(
                 jitter_location=self.octree.smallest_node_size()
             )
-            self._last_detection_export = self._catalog.n_events
+            self._last_detection_export = catalog.n_events
 
-    async def add_magnitude_and_features(self, event: EventDetection) -> EventDetection:
-        """
-        Adds magnitude and features to the given event.
+    async def add_magnitude_and_features(
+        self,
+        event: EventDetection,
+        recalculate: bool = True,
+    ) -> EventDetection:
+        """Adds magnitude and features to the given event.
 
         Args:
             event (EventDetection): The event to add magnitude and features to.
+            recalculate (bool, optional): Whether to overwrite existing magnitudes and
+                features. Defaults to True.
         """
         if not event.in_bounds:
             return event
@@ -550,8 +561,10 @@ class Search(BaseModel):
         except NotImplementedError:
             return event
 
-        async with self._feature_semaphore:
+        async with self._compute_semaphore:
             for mag_calculator in self.magnitudes:
+                if not recalculate and mag_calculator.has_magnitude(event):
+                    continue
                 logger.debug("adding magnitude from %s", mag_calculator.magnitude)
                 await mag_calculator.add_magnitude(squirrel, event)
 
@@ -688,8 +701,7 @@ class SearchTraces:
         )
 
     async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
-        """
-        Retrieves waveform images for the specified sampling rate.
+        """Retrieves waveform images for the specified sampling rate.
 
         Args:
             sampling_rate (float | None, optional): The desired sampling rate in Hz.
@@ -719,6 +731,8 @@ class SearchTraces:
         Args:
             octree (Octree | None, optional): The octree to use for the search.
                 Defaults to None.
+            semblance_cache (SemblanceCache | None, optional): The semblance cache to
+                use for the search. Defaults to None.
 
         Returns:
             tuple[list[EventDetection], Trace]: The event detections and the

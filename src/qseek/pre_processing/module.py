@@ -103,11 +103,12 @@ class PreProcessing(RootModel):
                 start_time = datetime_now()
                 for process in self:
                     batch = await process.process_batch(batch)
-                await self._queue.put(batch)
+                    await asyncio.sleep(0.0)
                 stats.time_per_batch = datetime_now() - start_time
                 stats.bytes_per_second = (
                     batch.cumulative_bytes / stats.time_per_batch.total_seconds()
                 )
+                await self._queue.put(batch)
 
             await self._queue.put(None)
 

@@ -31,17 +31,14 @@ class BatchPreProcessing(BaseModel):
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[BatchPreProcessing], ...]:
-        """
-        Returns a tuple of all the subclasses of BasePreProcessing.
-        """
+        """Returns a tuple of all the subclasses of BasePreProcessing."""
         return tuple(cls.__subclasses__())
 
     def select_traces(self, batch: WaveformBatch) -> list[Trace]:
-        """
-        Selects traces from the given list based on the stations specified.
+        """Selects traces from the given list based on the stations specified.
 
         Args:
-            traces (list[Trace]): The list of traces to select from.
+            batch (WaveformBatch): The batch of traces to select from.
 
         Returns:
             list[Trace]: The selected traces.
@@ -57,17 +54,14 @@ class BatchPreProcessing(BaseModel):
         return traces
 
     async def prepare(self) -> None:
-        """
-        Prepare the pre-processing module.
-        """
+        """Prepare the pre-processing module."""
         pass
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
-        """
-        Process a list of traces.
+        """Process a list of traces.
 
         Args:
-            traces (list[Trace]): The list of traces to be processed.
+            batch (WaveformBatch): The batch of traces to process.
 
         Returns:
             list[Trace]: The processed list of traces.
