@@ -45,14 +45,36 @@ async def test_peak_amplitudes(engine: gf.LocalEngine) -> None:
     )
     PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
-    await store.fill_source_depth(source_depth=2 * KM)
-    await store.get_amplitude(
+    await store.compute_site_amplitudes(source_depth=2 * KM, reference_magnitude=1.0)
+    await store.get_amplitude_model(
         source_depth=2 * KM,
         distance=10 * KM,
         n_amplitudes=10,
-        max_distance=1 * KM,
+        distance_cutoff=1 * KM,
         auto_fill=False,
         interpolation="nearest",
+    )
+
+
+@pytest.mark.skipif(
+    not has_store("reykjanes_qseis"),
+    reason="reykjanes_qseis not available",
+)
+@pytest.mark.asyncio
+async def test_peak_amplitude_estimation(engine: gf.LocalEngine) -> None:
+    store_id = "reykjanes_qseis"
+    peak_amplitudes = PeakAmplitudesBase(
+        gf_store_id=store_id,
+        quantity="displacement",
+    )
+    PeakAmplitudesStore.set_engine(engine)
+    store = PeakAmplitudesStore.from_selector(peak_amplitudes)
+    await store.compute_site_amplitudes(source_depth=2 * KM, reference_magnitude=1.0)
+
+    await store.find_moment_magnitude(
+        source_depth=2 * KM,
+        distance=10 * KM,
+        observed_amplitude=0.0001,
     )
 
 
@@ -69,8 +91,16 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
     PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
 
-    collection = await store.fill_source_depth(source_depth=2 * KM)
+    collection = await store.compute_site_amplitudes(
+        source_depth=2 * KM, reference_magnitude=1.0
+    )
     collection.plot(peak_amplitude=plot_amplitude)
+
+    await store.find_moment_magnitude(
+        source_depth=2 * KM,
+        distance=10 * KM,
+        observed_amplitude=0.01,
+    )
 
     peak_amplitudes = PeakAmplitudesBase(
         gf_store_id=store_id,
@@ -78,8 +108,10 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
     )
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
 
-    collection = await store.fill_source_depth(source_depth=2 * KM)
-    collection.plot(peak_amplitude=plot_amplitude)
+    collection = await store.compute_site_amplitudes(
+        source_depth=2 * KM, reference_magnitude=2.0
+    )
+    collection.plot(peak_amplitude=plot_amplitude, reference_magnitude=2.0)
 
     peak_amplitudes = PeakAmplitudesBase(
         gf_store_id=store_id,
@@ -87,7 +119,9 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
     )
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
 
-    collection = await store.fill_source_depth(source_depth=2 * KM)
+    collection = await store.compute_site_amplitudes(
+        source_depth=2 * KM, reference_magnitude=1.0
+    )
     collection.plot(peak_amplitude=plot_amplitude)
 
 
@@ -116,10 +150,11 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
         amplitudes: list[ModelledAmplitude] = []
         for dist in distances:
             amplitudes.append(
-                await store.get_amplitude(
+                await store.get_amplitude_model(
                     source_depth=depth,
                     distance=dist,
                     n_amplitudes=25,
+                    reference_magnitude=1.0,
                     peak_amplitude=plot_amplitude,
                     auto_fill=False,
                 )

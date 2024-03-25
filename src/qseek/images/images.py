@@ -99,12 +99,11 @@ class ImageFunctions(RootModel):
         """Iterate over images from batches.
 
         Args:
-            batches (AsyncIterator[Batch]): Async iterator over batches.
+            batch_iterator (AsyncIterator[Batch]): Async iterator over batches.
 
         Yields:
             AsyncIterator[WaveformImages]: Async iterator over images.
         """
-
         stats = self._stats
 
         async def worker() -> None:
@@ -112,6 +111,10 @@ class ImageFunctions(RootModel):
                 "start pre-processing images, queue size %d", self._queue.maxsize
             )
             async for batch in batch_iterator:
+                if batch.is_empty():
+                    logger.debug("empty batch, skipping")
+                    continue
+
                 start_time = datetime_now()
                 images = await self.process_traces(batch.traces)
                 stats.time_per_batch = datetime_now() - start_time

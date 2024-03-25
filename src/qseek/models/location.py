@@ -91,7 +91,6 @@ class Location(BaseModel):
         Returns:
             float: The surface distance in [m].
         """
-
         if self._same_origin(other):
             return math.sqrt(
                 (self.north_shift - other.north_shift) ** 2
@@ -129,7 +128,7 @@ class Location(BaseModel):
         return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
     def offset_from(self, other: Location) -> tuple[float, float, float]:
-        """Return offset vector (east, north, depth) from other location in [m]
+        """Return offset vector (east, north, depth) from other location in [m].
 
         Args:
             other (Location): The other location.
@@ -185,9 +184,7 @@ class Location(BaseModel):
         return shifted
 
     def origin(self) -> Location:
-        """
-        Returns the origin location based on the latitude, longitude,
-        and effective elevation.
+        """Get the origin location.
 
         Returns:
             Location: The origin location.

@@ -32,13 +32,12 @@ class DetectionUncertainty(BaseModel):
     def from_event(
         cls, source_node: Node, octree: Octree, percentile: float = PERCENTILE
     ) -> Self:
-        """
-        Calculate the uncertainty of an event detection.
+        """Calculate the uncertainty of an event detection.
 
         Args:
-            event: The event detection to calculate the uncertainty for.
-            octree: The octree to use for the calculation.
-            percentile: The percentile to use for the calculation.
+            source_node (Node): The source node of the event.
+            octree (Octree): The octree to use for the calculation.
+            percentile (float): The percentile to use for the calculation.
                 Defaults to 0.02 (2%).
 
         Returns:

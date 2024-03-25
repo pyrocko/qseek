@@ -33,8 +33,7 @@ class ImageFunction(BaseModel):
         return self.__class__.__name__
 
     def get_blinding(self, sampling_rate: float) -> timedelta:
-        """
-        Blinding duration for the image function. Added to padded waveforms.
+        """Blinding duration for the image function. Added to padded waveforms.
 
         Args:
             sampling_rate (float): The sampling rate of the waveform.
@@ -73,6 +72,7 @@ class WaveformImage:
 
     def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Resample traces in-place.
+
         Args:
             sampling_rate (float): Desired sampling rate in Hz.
             max_normalize (bool): Normalize by maximum value to keep the scale of the
@@ -137,7 +137,7 @@ class WaveformImage:
             trace_idx (int): Index of the trace.
             event_time (datetime): Time of the event.
             modelled_arrival (datetime): Time to search around.
-            search_length_seconds (float, optional): Total search length in seconds
+            search_window_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
             threshold (float, optional): Threshold for detection. Defaults to 0.1.
 
@@ -158,7 +158,7 @@ class WaveformImage:
         Args:
             event_time (datetime): Time of the event.
             modelled_arrivals (list[datetime]): Time to search around.
-            search_length_seconds (float, optional): Total search length in seconds
+            search_window_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
             threshold (float, optional): Threshold for detection. Defaults to 0.1.
 
