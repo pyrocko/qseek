@@ -466,6 +466,7 @@ class Search(BaseModel):
 
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
+            await self._catalog.check(repair=True)
             await self._catalog.filter_events_by_time(
                 start_time=None,
                 end_time=self._progress.time_progress,
