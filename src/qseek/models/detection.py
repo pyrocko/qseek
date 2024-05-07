@@ -276,7 +276,8 @@ class EventReceivers(BaseModel):
         tmax = max(times).timestamp() + seconds_after
         nslc_ids = [(*receiver.nsl, "*") for receiver in receivers]
         async with SQUIRREL_SEM:
-            traces = await squirrel.get_waveforms_async(
+            traces = await asyncio.to_thread(
+                squirrel.get_waveforms,
                 codes=nslc_ids,
                 tmin=tmin,
                 tmax=tmax,
