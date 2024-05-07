@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Literal
 
 import numpy as np
+import psutil
 from pydantic import (
     BaseModel,
+    ByteSize,
     ConfigDict,
     Field,
     PositiveFloat,
@@ -31,6 +33,7 @@ from qseek.models.semblance import Semblance, SemblanceCache
 from qseek.octree import NodeSplitError, Octree
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
+from qseek.station_weights import StationWeights
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
@@ -69,11 +72,16 @@ class SearchStats(Stats):
     latest_processing_rate: float = 0.0
     latest_processing_speed: timedelta = timedelta(seconds=0.0)
 
+    memory_total: ByteSize = Field(
+        default_factory=lambda: ByteSize(psutil.virtual_memory().total)
+    )
+
     _search_start: datetime = PrivateAttr(default_factory=datetime_now)
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
     _position: int = PrivateAttr(0)
+    _process: psutil.Process = PrivateAttr(default_factory=psutil.Process)
 
     @computed_field
     @property
@@ -119,6 +127,16 @@ class SearchStats(Stats):
             return 0.0
         return self.batch_count / self.batch_count_total * 100.0
 
+    @computed_field
+    @property
+    def memory_used(self) -> int:
+        return self._process.memory_info().rss
+
+    @computed_field
+    @property
+    def cpu_percent(self) -> float:
+        return self._process.cpu_percent(interval=None)
+
     def reset_start_time(self) -> None:
         self._search_start = datetime_now()
 
@@ -161,6 +179,12 @@ class SearchStats(Stats):
         table.add_row(
             "Project",
             f"[bold]{self.project_name}[/bold]",
+        )
+        table.add_row(
+            "Resources",
+            f"CPU {self.cpu_percent:.1f}%, "
+            f"RAM {human_readable_bytes(self.memory_used)}"
+            f"/{self.memory_total.human_readable()}",
         )
         table.add_row(
             "Progress ",
@@ -212,6 +236,10 @@ class Search(BaseModel):
     ray_tracers: RayTracers = Field(
         default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
         description="List of ray tracers for travel time calculation.",
+    )
+    station_weights: StationWeights | None = Field(
+        default=StationWeights(),
+        description="Station weights for spatial weighting.",
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
@@ -433,6 +461,9 @@ class Search(BaseModel):
         logger.info("preparing search...")
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
+
+        if self.station_weights:
+            self.station_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -679,15 +710,25 @@ class SearchTraces:
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
-        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
+        # station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
 
-        shifts = -np.round(traveltimes / image.delta_t).astype(np.int32)
-        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
+        shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
+        # weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         # Normalize by number of station contribution
-        with np.errstate(divide="ignore", invalid="ignore"):
-            weights /= station_contribution[:, np.newaxis]
-        weights /= self.images.cumulative_weight()
+        # with np.errstate(divide="ignore", invalid="ignore"):
+        #     weights /= station_contribution[:, np.newaxis]
+
+        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         weights[traveltimes_bad] = 0.0
+
+        if parent.station_weights:
+            weights *= await parent.station_weights.get_weights(octree, image.stations)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            weights /= weights.sum(axis=1, keepdims=True)
+
+        # applying waterlevel
+        weights[weights < 1e-3] = 0.0
 
         if semblance_cache:
             cache_mask = semblance_cache.get_mask(semblance.node_hashes)
@@ -768,8 +809,7 @@ class SearchTraces:
             )
 
         # Applying the generalized mean to the semblance
-        # semblance.normalize(
-        # images.cumulative_weight(), semblance_cache=semblance_cache)
+        # semblance.normalize(images.cumulative_weight(), semblance_cache=semblance_cache)
 
         if semblance_cache:
             await semblance.apply_cache(semblance_cache)

@@ -45,6 +45,7 @@ dependencies = [
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
+    "psutil>=5.9",
     "aiofiles>=23.0",
 ]
 
@@ -62,13 +63,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pre-commit>=3.4",
-    "black>=23.7",
-    "ruff>=0.1.14",
-    "pytest>=7.4",
-    "pytest-asyncio>=0.21",
-]
+dev = ["pre-commit>=3.4", "ruff>=0.3.0", "pytest>=7.4", "pytest-asyncio>=0.21"]
 
 docs = [
     "mkdocs-material>=9.5.13",

@@ -10,7 +10,7 @@ from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal
 
 import numpy as np
 import scipy.interpolate
@@ -39,7 +39,7 @@ KM = 1e3
 
 
 def get_node_coordinates(
-    nodes: Sequence[Node],
+    nodes: Iterable[Node],
     system: CoordSystem = "geographic",
 ) -> np.ndarray:
     if system == "geographic":

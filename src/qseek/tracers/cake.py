@@ -11,7 +11,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Iterator, Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -187,7 +187,7 @@ class Timing(BaseModel):
         return re.sub(r"[\,\s\;]", "", self.definition)
 
 
-def surface_distances(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
+def surface_distances(nodes: Iterator[Node], stations: Stations) -> np.ndarray:
     """Returns the surface distance from all nodes to all stations.
 
     Args:
@@ -224,7 +224,7 @@ class TravelTimeTree(BaseModel):
     _file: Path | None = PrivateAttr(None)
 
     _cached_stations: Stations = PrivateAttr()
-    _cached_station_indeces: dict[str, int] = PrivateAttr({})
+    _cached_station_indices: dict[str, int] = PrivateAttr({})
     _node_lut: dict[bytes, np.ndarray] = PrivateAttr(
         default_factory=lambda: LRU(LRU_CACHE_SIZE)
     )
@@ -388,7 +388,7 @@ class TravelTimeTree(BaseModel):
             octree.n_nodes,
         )
         self._cached_stations = stations
-        self._cached_station_indeces = {
+        self._cached_station_indices = {
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
         station_traveltimes = await self.interpolate_travel_times(octree, stations)
@@ -417,7 +417,7 @@ class TravelTimeTree(BaseModel):
     async def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
         try:
             station_indices = np.fromiter(
-                (self._cached_station_indeces[sta.nsl.pretty] for sta in stations),
+                (self._cached_station_indices[sta.nsl.pretty] for sta in stations),
                 dtype=int,
             )
         except KeyError as exc:

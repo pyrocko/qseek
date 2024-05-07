@@ -78,7 +78,8 @@ class Stations(BaseModel):
     )
     station_xmls: list[FilePath | DirectoryPath] = Field(
         default=[],
-        description="List of StationXML files.",
+        description="List of StationXML files or "
+        "directories containing StationXML (.xml) files.",
     )
 
     blacklist: set[constr(pattern=NSL_RE)] = Field(
@@ -211,6 +212,8 @@ class Stations(BaseModel):
         )
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
+        if system != "geographic":
+            raise NotImplementedError("only geographic coordinates are implemented.")
         return np.array(
             [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
         )

@@ -167,7 +167,7 @@ class PhaseNet(ImageFunction):
         description="Method to stack the overlaping blocks internally. "
         "Choose from `avg` and `max`.",
     )
-    upscale_input: PositiveFloat = Field(
+    rescale_input: PositiveFloat = Field(
         default=1.0,
         description="Upscale input by factor. "
         "This augments the input data from e.g. 100 Hz to 50 Hz (factor: `2`). Can be"
@@ -219,15 +219,15 @@ class PhaseNet(ImageFunction):
 
     def get_blinding(self, sampling_rate: float) -> timedelta:
         blinding_samples = (
-            max(self.phase_net.default_args["blinding"]) / self.upscale_input
+            max(self.phase_net.default_args["blinding"]) / self.rescale_input
         )
         return timedelta(seconds=blinding_samples / sampling_rate)
 
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        if self.upscale_input > 1:
-            scale = self.upscale_input
+        if self.rescale_input > 1:
+            scale = self.rescale_input
             for tr in stream:
                 tr.stats.sampling_rate = tr.stats.sampling_rate / scale
 
@@ -239,8 +239,8 @@ class PhaseNet(ImageFunction):
             copy=False,
         )
 
-        if self.upscale_input > 1:
-            scale = self.upscale_input
+        if self.rescale_input > 1:
+            scale = self.rescale_input
             for tr in annotations:
                 tr.stats.sampling_rate = tr.stats.sampling_rate * scale
                 blinding_samples = self.phase_net.default_args["blinding"][0]
