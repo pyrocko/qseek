@@ -116,7 +116,7 @@ class _NSL(NamedTuple):
         return self.network == other.network
 
     @classmethod
-    def parse(cls, nsl: str | NSL) -> NSL:
+    def parse(cls, nsl: str | NSL | list[str]) -> NSL:
         """Parse the given NSL string and return an NSL object.
 
         Args:
@@ -132,6 +132,8 @@ class _NSL(NamedTuple):
             raise ValueError("invalid empty NSL")
         if type(nsl) is _NSL:
             return nsl
+        if isinstance(nsl, list):
+            return cls(*nsl)
         if not isinstance(nsl, str):
             raise ValueError(f"invalid NSL {nsl}")
         parts = nsl.split(".")

@@ -59,6 +59,10 @@ class WaveformImage:
         return 1.0 / self.delta_t
 
     @property
+    def has_traces(self) -> bool:
+        return bool(self.traces)
+
+    @property
     def delta_t(self) -> float:
         return self.traces[0].deltat
 

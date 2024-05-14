@@ -800,6 +800,8 @@ class SearchTraces:
         )
 
         for image in images:
+            if not image.has_traces:
+                continue
             await self.calculate_semblance(
                 octree=octree,
                 image=image,

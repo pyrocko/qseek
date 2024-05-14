@@ -19,7 +19,7 @@ def test_nsl():
     json = """
     {
         "nsl": "6E.TE234.",
-        "nsl_list": ["6E.TE234.", "6E.TE234.", "6E.TE234."]
+        "nsl_list": ["6E.TE234.", "6E.TE234.", "6E.TE234.", ["6E", "TY123", ""]]
     }
     """
     Model.model_validate_json(json)
