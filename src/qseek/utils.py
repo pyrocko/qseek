@@ -116,7 +116,7 @@ class _NSL(NamedTuple):
         return self.network == other.network
 
     @classmethod
-    def parse(cls, nsl: str | NSL | list[str]) -> NSL:
+    def parse(cls, nsl: str | NSL | list[str] | tuple[str, str, str]) -> NSL:
         """Parse the given NSL string and return an NSL object.
 
         Args:
@@ -132,22 +132,49 @@ class _NSL(NamedTuple):
             raise ValueError("invalid empty NSL")
         if type(nsl) is _NSL:
             return nsl
-        if isinstance(nsl, list):
+        if isinstance(nsl, (list, tuple)):
             return cls(*nsl)
         if not isinstance(nsl, str):
             raise ValueError(f"invalid NSL {nsl}")
+
         parts = nsl.split(".")
         n_parts = len(parts)
         if n_parts >= 3:
             return cls(*parts[:3])
         if n_parts == 2:
             return cls(parts[0], parts[1], "")
-        if n_parts == 1:
-            return cls(parts[0], "", "")
-        raise ValueError(f"invalid NSL {nsl}")
+        raise ValueError(
+            f"invalid NSL `{nsl}`, expecting `<net>.<sta>.<loc>`, "
+            "e.g. `6A.STA130.00`, `6A.STA130` or `.STA130`"
+        )
+
+    def _check(self) -> None:
+        """Check if the current NSL object matches another NSL object.
+
+        Args:
+            nsl (NSL): The NSL object to compare with.
+
+        Returns:
+            bool: True if the objects match, False otherwise.
+        """
+        if len(self.network) > 2:
+            raise ValueError(
+                f"invalid network {self.network} for {self.pretty},"
+                " expected 0-2 characters for network code"
+            )
+        if len(self.station) > 5 or len(self.station) < 1:
+            raise ValueError(
+                f"invalid station {self.station} for {self.pretty},"
+                " expected 1-5 characters for station code"
+            )
+        if len(self.location) > 2:
+            raise ValueError(
+                f"invalid location {self.location} for {self.pretty},"
+                " expected 0-2 characters for location code"
+            )
 
 
-NSL = Annotated[_NSL, BeforeValidator(_NSL.parse)]
+NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
 
 
 class _Range(NamedTuple):

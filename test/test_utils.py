@@ -1,3 +1,4 @@
+import pytest
 from pydantic import BaseModel
 from qseek.utils import NSL
 
@@ -23,3 +24,24 @@ def test_nsl():
     }
     """
     Model.model_validate_json(json)
+
+    json = """
+    {
+        "nsl": "6E.TE234.",
+        "nsl_list": [".TE232"]
+    }
+    """
+    Model.model_validate_json(json)
+
+    json_tpl = """
+    {{
+        "nsl": "{code}",
+        "nsl_list": []
+    }}
+    """
+
+    invalid_codes = ["6E", "6E5.", "6E.", "6E.TE123112"]
+
+    for code in invalid_codes:
+        with pytest.raises(ValueError):
+            Model.model_validate_json(json_tpl.format(code=code))
