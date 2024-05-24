@@ -14,7 +14,6 @@ from pydantic import (
     PositiveInt,
     PrivateAttr,
     computed_field,
-    field_validator,
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
@@ -113,9 +112,13 @@ class PyrockoSquirrel(WaveformProvider):
 
     provider: Literal["PyrockoSquirrel"] = "PyrockoSquirrel"
 
-    environment: DirectoryPath = Field(
-        default=Path("."),
+    environment: DirectoryPath | None = Field(
+        default=None,
         description="Path to a Squirrel environment.",
+    )
+    persistent: str | None = Field(
+        default=None,
+        description="Name of the persistent collection for faster loading.",
     )
     waveform_dirs: list[Path] = Field(
         default=[],
@@ -151,18 +154,20 @@ class PyrockoSquirrel(WaveformProvider):
     def _validate_model(self) -> Self:
         if self.start_time and self.end_time and self.start_time > self.end_time:
             raise ValueError("start_time must be before end_time")
+        if not self.waveform_dirs and not self.persistent:
+            raise ValueError("no waveform directories or persistent selection provided")
         return self
-
-    @field_validator("waveform_dirs")
-    def check_dirs(cls, dirs: list[Path]) -> list[Path]:  # noqa: N805
-        if not dirs:
-            raise ValueError("no waveform directories provided!")
-        return dirs
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
-            logger.info("initializing squirrel waveform provider")
-            squirrel = Squirrel(str(self.environment.expanduser()))
+            logger.info(
+                "initializing squirrel waveform provider in environment %s",
+                self.environment,
+            )
+            squirrel = Squirrel(
+                env=str(self.environment.expanduser()) if self.environment else None,
+                persistent=self.persistent,
+            )
             paths = []
             for path in self.waveform_dirs:
                 if "**" in str(path):
@@ -173,7 +178,7 @@ class PyrockoSquirrel(WaveformProvider):
             squirrel.add(paths, check=False)
             if self._stations:
                 for path in self._stations.station_xmls:
-                    logger.info("loading responses from %s", path)
+                    logger.info("loading StationXML responses from %s", path)
                     squirrel.add(str(path), check=False)
             self._squirrel = squirrel
         return self._squirrel

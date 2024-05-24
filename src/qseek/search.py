@@ -31,6 +31,7 @@ from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.semblance import Semblance, SemblanceCache
 from qseek.octree import NodeSplitError, Octree
+from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
 from qseek.station_weights import StationWeights
@@ -215,11 +216,11 @@ class Search(BaseModel):
         description="Station inventory from StationXML or Pyrocko Station YAML.",
     )
     data_provider: WaveformProviderType = Field(
-        default=PyrockoSquirrel(),
+        default_factory=PyrockoSquirrel.model_construct,
         description="Data provider for waveform data.",
     )
     pre_processing: PreProcessing = Field(
-        default=PreProcessing(root=[Downsample(sampling_frequency=100.0)]),
+        default=PreProcessing(root=[Downsample(), Bandpass()]),
         description="Pre-processing steps for waveform data.",
     )
 
@@ -379,7 +380,7 @@ class Search(BaseModel):
         logger.debug("writing search config to %s", path)
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
 
-        logger.debug("dumping stations...")
+        logger.debug("dumping stations")
         self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
 
         csv_dir = rundir / "csv"
@@ -458,7 +459,7 @@ class Search(BaseModel):
         Returns:
             None
         """
-        logger.info("preparing search...")
+        logger.info("preparing search components")
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
 
@@ -489,7 +490,7 @@ class Search(BaseModel):
 
         await self.prepare()
 
-        logger.info("starting search...")
+        logger.info("starting search")
         stats = self._stats
         stats.reset_start_time()
 

@@ -306,7 +306,7 @@ class Octree(BaseModel):
         description="The reference location of the octree.",
     )
     root_node_size: PositiveFloat = Field(
-        default=2 * KM,
+        default=1 * KM,
         description="Initial size of the root octree node at level 0 in meters.",
     )
     n_levels: int = Field(

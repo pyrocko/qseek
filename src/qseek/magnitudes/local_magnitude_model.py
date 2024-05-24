@@ -378,4 +378,15 @@ class Azores(WoodAnderson, LocalMagnitudeModel):
         return 0.89 * np.log10(dist_epi_km / 100) + 0.00256 * (dist_epi_km - 100) + 3
 
 
+class ArgentinaVolcanoes(WoodAnderson, LocalMagnitudeModel):
+    author = "Montenegro et al. (2021)"
+
+    epicentral_range = Range(0.0 * KM, 100.0 * KM)  # Bounds are not clear
+    component = "north-east-separate"
+
+    @staticmethod
+    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        return 2.76 * np.log10(dist_epi_km) - 2.48
+
+
 ModelName = Literal[LocalMagnitudeModel.model_names()]

@@ -16,7 +16,7 @@ class Downsample(BatchPreProcessing):
 
     process: Literal["downsample"] = "downsample"
     sampling_frequency: PositiveFloat = Field(
-        100.0,
+        default=100.0,
         description="The new sampling frequency in Hz.",
     )
 
