@@ -386,17 +386,19 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     return wrapper
 
 
-def human_readable_bytes(size: int | float) -> str:
+def human_readable_bytes(size: int | float, decimal: bool = False) -> str:
     """Convert a size in bytes to a human-readable string representation.
 
     Args:
         size (int | float): The size in bytes.
+        decimal: If True, use decimal units (e.g. 1000 bytes per KB).
+            If False, use binary units (e.g. 1024 bytes per KiB).
 
     Returns:
         str: The human-readable string representation of the size.
 
     """
-    return ByteSize(size).human_readable()
+    return ByteSize.human_readable(size, decimal=decimal)
 
 
 def datetime_now() -> datetime:

@@ -7,11 +7,13 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import nest_asyncio
 from pkg_resources import get_distribution
 
-from qseek.models.detection import EventDetection
+if TYPE_CHECKING:
+    from qseek.models.detection import EventDetection
 
 nest_asyncio.apply()
 

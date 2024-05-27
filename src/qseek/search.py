@@ -34,7 +34,7 @@ from qseek.octree import NodeSplitError, Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
-from qseek.station_weights import StationWeights
+from qseek.spatial_weights import SpatialWeights
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
@@ -184,8 +184,8 @@ class SearchStats(Stats):
         table.add_row(
             "Resources",
             f"CPU {self.cpu_percent:.1f}%, "
-            f"RAM {human_readable_bytes(self.memory_used)}"
-            f"/{self.memory_total.human_readable()}",
+            f"RAM {human_readable_bytes(self.memory_used, decimal=True)}"
+            f"/{self.memory_total.human_readable(decimal=True)}",
         )
         table.add_row(
             "Progress ",
@@ -238,9 +238,9 @@ class Search(BaseModel):
         default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
         description="List of ray tracers for travel time calculation.",
     )
-    station_weights: StationWeights | None = Field(
-        default=StationWeights(),
-        description="Station weights for spatial weighting.",
+    spatial_weights: SpatialWeights | None = Field(
+        default=SpatialWeights(),
+        description="Spatial weights for distance weighting.",
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
@@ -463,8 +463,8 @@ class Search(BaseModel):
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
 
-        if self.station_weights:
-            self.station_weights.prepare(self.stations, self.octree)
+        if self.spatial_weights:
+            self.spatial_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -722,8 +722,8 @@ class SearchTraces:
         weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         weights[traveltimes_bad] = 0.0
 
-        if parent.station_weights:
-            weights *= await parent.station_weights.get_weights(octree, image.stations)
+        if parent.spatial_weights:
+            weights *= await parent.spatial_weights.get_weights(octree, image.stations)
 
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= weights.sum(axis=1, keepdims=True)
@@ -861,7 +861,9 @@ class SearchTraces:
                 except NodeSplitError:
                     continue
             logger.info(
-                "energy detected, refined %d nodes, level %d",
+                "detected %d energy burst%s - refined %d nodes, lowest level %d",
+                detection_idx.size,
+                "s" if detection_idx.size > 1 else "",
                 len(refine_nodes),
                 new_level,
             )

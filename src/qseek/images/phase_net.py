@@ -68,6 +68,7 @@ class PhaseNetImage(WaveformImage):
         Returns:
             datetime | None: Time of arrival, None is none found.
         """
+        # TODO adapt threshold to the seisbench model
         trace = self.traces[trace_idx]
         window_length = timedelta(seconds=search_window_seconds)
         try:

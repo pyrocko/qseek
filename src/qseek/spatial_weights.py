@@ -19,21 +19,26 @@ MB = 1024**2
 logger = logging.getLogger(__name__)
 
 
-class StationWeights(BaseModel):
+class SpatialWeights(BaseModel):
     exponent: float = Field(
-        default=0.5,
-        description="Exponent of the exponential decay function. Default is 1.5.",
+        default=3.0,
+        description="Exponent of the spatial decay function. Default is 3.",
         ge=0.0,
-        le=3.0,
     )
     radius_meters: PositiveFloat = Field(
         default=8000.0,
-        description="Radius in meters for the exponential decay function. "
-        "Default is 8000.",
+        description="Cutoff distance for the spatial decay function in meters."
+        " Default is 8000.",
+    )
+    waterlevel: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Waterlevel for the exponential decay function. Default is 0.0.",
     )
     lut_cache_size: ByteSize = Field(
         default=200 * MB,
-        description="Size of the LRU cache in bytes. Default is 1e9.",
+        description="Size of the LRU cache in bytes. Default is 200 MB.",
     )
 
     _node_lut: dict[bytes, np.ndarray] = PrivateAttr()
@@ -47,14 +52,21 @@ class StationWeights(BaseModel):
             self._station_coords_ecef - node_coords[:, np.newaxis], axis=2
         )
 
-    def calc_weights(self, distances: np.ndarray) -> np.ndarray:
+    def calc_weights_exp(self, distances: np.ndarray) -> np.ndarray:
         exp = self.exponent
         # radius = distances.min(axis=1)[:, np.newaxis]
         radius = self.radius_meters
         return np.exp(-(distances**exp) / (radius**exp))
 
+    def calc_weights(self, distances: np.ndarray) -> np.ndarray:
+        exp = self.exponent
+        radius = self.radius_meters
+        return (1 - self.waterlevel) / (
+            1 + (distances / radius) ** exp
+        ) + self.waterlevel
+
     def prepare(self, stations: Stations, octree: Octree) -> None:
-        logger.info("preparing station weights")
+        logger.info("preparing spatial weights")
 
         bytes_per_node = stations.n_stations * np.float32().itemsize
         lru_cache_size = int(self.lut_cache_size / bytes_per_node)

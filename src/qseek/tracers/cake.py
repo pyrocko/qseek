@@ -648,9 +648,10 @@ class CakeTracer(RayTracer):
         source: Location,
         receiver: Location,
     ) -> float:
-        if phase not in self.phases:
-            raise ValueError(f"Phase {phase} is not defined.")
-        tree = self._get_sptree_model(phase)
+        try:
+            tree = self._get_sptree_model(phase)
+        except KeyError as exc:
+            raise ValueError(f"Phase {phase} is not defined.") from exc
         return tree.get_travel_time(source, receiver)
 
     async def get_travel_times(
@@ -659,9 +660,13 @@ class CakeTracer(RayTracer):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        if phase not in self.phases:
-            raise ValueError(f"Phase {phase} is not defined.")
-        return await self._get_sptree_model(phase).get_travel_times(octree, stations)
+        try:
+            return await self._get_sptree_model(phase).get_travel_times(
+                octree,
+                stations,
+            )
+        except KeyError as exc:
+            raise ValueError(f"Phase {phase} is not defined.") from exc
 
     def get_arrivals(
         self,
