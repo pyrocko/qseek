@@ -140,7 +140,7 @@ class PyrockoSquirrel(WaveformProvider):
         Field(
             default=None,
             description="Channel selector for waveforms, "
-            "use e.g. `EN` for selection of all accelerometer data.",
+            "use e.g. `['EN']` for selection of all accelerometer data.",
         )
     )
     async_prefetch_batches: PositiveInt = Field(
@@ -223,6 +223,7 @@ class PyrockoSquirrel(WaveformProvider):
             tpad=window_padding.total_seconds(),
             want_incomplete=False,
             codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
+            channel_priorities=self.channel_selector,
         )
         prefetcher = SquirrelPrefetcher(
             iterator,
