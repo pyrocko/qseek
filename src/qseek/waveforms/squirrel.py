@@ -143,6 +143,10 @@ class PyrockoSquirrel(WaveformProvider):
         default=8,
         description="Number of threads for loading waveforms.",
     )
+    n_threads: PositiveInt = Field(
+        default=8,
+        description="Number of threads for loading waveforms.",
+    )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr(None)
