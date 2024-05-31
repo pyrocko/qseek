@@ -36,7 +36,6 @@ from qseek.octree import Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
-from qseek.spatial_weights import SpatialWeights
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (

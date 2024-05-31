@@ -165,7 +165,6 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        # TODO: this is inefficient
         return (sta for sta in self.stations if sta.nsl.pretty not in self.blacklist)
 
     @property
