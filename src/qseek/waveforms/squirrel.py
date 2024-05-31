@@ -14,6 +14,7 @@ from pydantic import (
     PositiveInt,
     PrivateAttr,
     computed_field,
+    constr,
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
@@ -53,7 +54,7 @@ class SquirrelPrefetcher:
 
     async def prefetch_worker(self) -> None:
         logger.info(
-            "start prefetching data, queue size %d",
+            "start prefetching waveforms, queue size %d",
             self.queue.maxsize,
         )
 
@@ -70,7 +71,7 @@ class SquirrelPrefetcher:
                 await self.queue.put(batch)
 
         await asyncio.create_task(load_data())
-        logger.debug("loading waveform batches to finish")
+        logger.debug("done loading waveforms")
 
 
 class SquirrelStats(Stats):
@@ -135,11 +136,12 @@ class PyrockoSquirrel(WaveformProvider):
         "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
     )
 
-    channel_selector: str = Field(
-        default="*",
-        max_length=3,
-        description="Channel selector for waveforms, "
-        "use e.g. `EN?` for selection of all accelerometer data.",
+    channel_selector: list[constr(to_upper=True, max_length=2, min_length=2)] | None = (
+        Field(
+            default=None,
+            description="Channel selector for waveforms, "
+            "use e.g. `EN` for selection of all accelerometer data.",
+        )
     )
     async_prefetch_batches: PositiveInt = Field(
         default=10,
@@ -220,12 +222,11 @@ class PyrockoSquirrel(WaveformProvider):
             tinc=window_increment.total_seconds(),
             tpad=window_padding.total_seconds(),
             want_incomplete=False,
-            codes=[
-                (*nsl, self.channel_selector) for nsl in self._stations.get_all_nsl()
-            ],
+            codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
         )
         prefetcher = SquirrelPrefetcher(
-            iterator, queue_size=self.async_prefetch_batches
+            iterator,
+            queue_size=self.async_prefetch_batches,
         )
         stats.set_queue(prefetcher.queue)
 

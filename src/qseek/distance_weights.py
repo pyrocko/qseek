@@ -19,7 +19,7 @@ MB = 1024**2
 logger = logging.getLogger(__name__)
 
 
-class SpatialWeights(BaseModel):
+class DistanceWeights(BaseModel):
     exponent: float = Field(
         default=3.0,
         description="Exponent of the spatial decay function. Default is 3.",
@@ -113,19 +113,19 @@ class SpatialWeights(BaseModel):
             try:
                 distances[idx] = self._node_lut[node.hash()][station_indices]
             except KeyError:
-                cache_hits, cache_misses = self._node_lut.get_stats()
-                total_hits = cache_hits + cache_misses
-                cache_hit_rate = cache_hits / (total_hits or 1)
-                logger.debug(
-                    "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
-                    self.lut_fill_level() * 100,
-                    cache_hit_rate * 100,
-                )
                 fill_nodes.append(node)
                 continue
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
+            cache_hits, cache_misses = self._node_lut.get_stats()
+            total_hits = cache_hits + cache_misses
+            cache_hit_rate = cache_hits / (total_hits or 1)
+            logger.debug(
+                "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
+                self.lut_fill_level() * 100,
+                cache_hit_rate * 100,
+            )
             return await self.get_weights(octree, stations)
 
         return self.calc_weights(distances)

@@ -22,6 +22,7 @@ from pydantic import (
 )
 
 from qseek.corrections.corrections import StationCorrectionType
+from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.magnitudes import EventMagnitudeCalculatorType
@@ -34,7 +35,6 @@ from qseek.octree import NodeSplitError, Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
-from qseek.spatial_weights import SpatialWeights
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
@@ -238,8 +238,9 @@ class Search(BaseModel):
         default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
         description="List of ray tracers for travel time calculation.",
     )
-    spatial_weights: SpatialWeights | None = Field(
-        default=SpatialWeights(),
+    distance_weights: DistanceWeights | None = Field(
+        default=DistanceWeights(),
+        alias="spatial_weights",
         description="Spatial weights for distance weighting.",
     )
     station_corrections: StationCorrectionType | None = Field(
@@ -463,8 +464,8 @@ class Search(BaseModel):
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
 
-        if self.spatial_weights:
-            self.spatial_weights.prepare(self.stations, self.octree)
+        if self.distance_weights:
+            self.distance_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -722,8 +723,8 @@ class SearchTraces:
         weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         weights[traveltimes_bad] = 0.0
 
-        if parent.spatial_weights:
-            weights *= await parent.spatial_weights.get_weights(octree, image.stations)
+        if parent.distance_weights:
+            weights *= await parent.distance_weights.get_weights(octree, image.stations)
 
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= weights.sum(axis=1, keepdims=True)
