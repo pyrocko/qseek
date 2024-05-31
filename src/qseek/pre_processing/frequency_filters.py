@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, PositiveFloat, field_validator
@@ -10,6 +11,9 @@ from qseek.utils import Range
 
 if TYPE_CHECKING:
     from qseek.waveforms.base import WaveformBatch
+
+
+logger = logging.getLogger(__name__)
 
 
 class Bandpass(BatchPreProcessing):
@@ -43,12 +47,16 @@ class Bandpass(BatchPreProcessing):
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         def worker() -> None:
             for trace in self.select_traces(batch):
-                trace.bandpass(
-                    order=self.corners,
-                    corner_hp=self.bandpass[0],
-                    corner_lp=self.bandpass[1],
-                    demean=self.demean,
-                )
+                try:
+                    trace.bandpass(
+                        order=self.corners,
+                        corner_hp=self.bandpass[0],
+                        corner_lp=self.bandpass[1],
+                        demean=self.demean,
+                    )
+                except Exception as e:
+                    logger.exception("Failed to apply bandpass filter: %s", e)
+                    ...
 
         await asyncio.to_thread(worker)
         return batch
