@@ -66,7 +66,7 @@ class DistanceWeights(BaseModel):
         ) + self.waterlevel
 
     def prepare(self, stations: Stations, octree: Octree) -> None:
-        logger.info("preparing spatial weights")
+        logger.info("preparing distance weights")
 
         bytes_per_node = stations.n_stations * np.float32().itemsize
         lru_cache_size = int(self.lut_cache_size / bytes_per_node)
@@ -80,7 +80,7 @@ class DistanceWeights(BaseModel):
         self.fill_lut(nodes=list(octree))
 
     def fill_lut(self, nodes: Sequence[Node]) -> None:
-        logger.debug("filling weight lut for %d nodes", len(nodes))
+        logger.debug("filling distance weight LUT for %d nodes", len(nodes))
         distances = self.get_distances(nodes)
         for node, sta_distances in zip(nodes, distances, strict=True):
             sta_distances = sta_distances.astype(np.float32)

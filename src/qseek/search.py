@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Deque, Literal
 import numpy as np
 import psutil
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ByteSize,
     ConfigDict,
@@ -31,7 +32,7 @@ from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.semblance import Semblance, SemblanceCache
-from qseek.octree import NodeSplitError, Octree
+from qseek.octree import Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
@@ -240,7 +241,7 @@ class Search(BaseModel):
     )
     distance_weights: DistanceWeights | None = Field(
         default=DistanceWeights(),
-        alias="spatial_weights",
+        validation_alias=AliasChoices("spatial_weights", "distance_weights"),
         description="Spatial weights for distance weighting.",
     )
     station_corrections: StationCorrectionType | None = Field(
@@ -270,6 +271,11 @@ class Search(BaseModel):
         description="Ignore events that are inside the first root node layer of"
         " the octree. If `with_surface`, all events inside the boundaries of the volume"
         " are absorbed. If `without_surface`, events at the surface are not absorbed.",
+    )
+    absorbing_boundary_width: float | Literal["root_node_size"] = Field(
+        default="root_node_size",
+        description="Width of the absorbing boundary around the octree volume. "
+        "If 'octree' the width is set to the root node size of the octree.",
     )
     node_peak_interpolation: bool = Field(
         default=True,
@@ -461,6 +467,9 @@ class Search(BaseModel):
             None
         """
         logger.info("preparing search components")
+        asyncio.get_running_loop().set_exception_handler(
+            lambda loop, context: logger.error(context)
+        )
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
 
@@ -840,7 +849,8 @@ class SearchTraces:
             source_node = octree[node_idx]
 
             if parent.absorbing_boundary and source_node.is_inside_border(
-                with_surface=parent.absorbing_boundary == "with_surface"
+                with_surface=parent.absorbing_boundary == "with_surface",
+                border_width=parent.absorbing_boundary_width,
             ):
                 continue
             refine_nodes.update(source_node)
@@ -854,23 +864,25 @@ class SearchTraces:
 
         # refine_nodes is empty when all sources fall into smallest octree nodes
         if refine_nodes:
+            node_size_max = max(node.size for node in refine_nodes)
             new_level = 0
             for node in refine_nodes:
-                try:
-                    node.split()
-                    new_level = max(new_level, node.level + 1)
-                except NodeSplitError:
-                    continue
+                node.split()
+                new_level = max(new_level, node.level + 1)
             logger.info(
-                "detected %d energy burst%s - refined %d nodes, lowest level %d",
+                "detected %d energy burst%s - refined %d nodes, level %d (%.1f m)",
                 detection_idx.size,
                 "s" if detection_idx.size > 1 else "",
                 len(refine_nodes),
                 new_level,
+                node_size_max,
             )
             cache = semblance.get_cache()
             del semblance
-            return await self.search(octree, semblance_cache=cache)
+            return await self.search(
+                octree,
+                semblance_cache=cache,
+            )
 
         detections = []
         for time_idx, semblance_detection in zip(
@@ -883,7 +895,8 @@ class SearchTraces:
             octree.map_semblance(semblance_event)
             source_node = octree[node_idx]
             if parent.absorbing_boundary and source_node.is_inside_border(
-                with_surface=parent.absorbing_boundary == "with_surface"
+                with_surface=parent.absorbing_boundary == "with_surface",
+                border_width=parent.absorbing_boundary_width,
             ):
                 continue
 

@@ -81,6 +81,7 @@ class SquirrelStats(Stats):
     bytes_per_seconds: float = 0.0
 
     _queue: asyncio.Queue[Batch | None] | None = PrivateAttr(None)
+    _position: int = 3
 
     def set_queue(self, queue: asyncio.Queue[Batch | None]) -> None:
         self._queue = queue
@@ -139,13 +140,16 @@ class PyrockoSquirrel(WaveformProvider):
     channel_selector: list[constr(to_upper=True, max_length=2, min_length=2)] | None = (
         Field(
             default=None,
-            description="Channel selector for waveforms, "
-            "use e.g. `['EN']` for selection of all accelerometer data.",
+            description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
         )
     )
     async_prefetch_batches: PositiveInt = Field(
         default=10,
         description="Queue size for asynchronous pre-fetcher.",
+    )
+    n_threads: PositiveInt = Field(
+        default=8,
+        description="Number of threads for loading waveforms.",
     )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
@@ -162,13 +166,11 @@ class PyrockoSquirrel(WaveformProvider):
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
-            logger.info(
-                "initializing squirrel waveform provider in environment %s",
-                self.environment,
-            )
+            logger.info("loading squirrel environment from %s", self.environment)
             squirrel = Squirrel(
                 env=str(self.environment.expanduser()) if self.environment else None,
                 persistent=self.persistent,
+                n_threads=self.n_threads,
             )
             paths = []
             for path in self.waveform_dirs:

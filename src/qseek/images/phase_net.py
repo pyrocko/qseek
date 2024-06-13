@@ -150,7 +150,7 @@ class PhaseNet(ImageFunction):
         description="Window overlap in samples.",
     )
     torch_use_cuda: bool | int = Field(
-        default=False,
+        default=True,
         description="Use CUDA for inference. If `True` use default device, if `int` use"
         " the specified device.",
     )
@@ -159,7 +159,7 @@ class PhaseNet(ImageFunction):
         description="Number of CPU threads to use if only CPU is used.",
     )
     batch_size: int = Field(
-        default=64,
+        default=128,
         ge=64,
         description="Batch size for inference, larger values can improve performance.",
     )
@@ -204,10 +204,16 @@ class PhaseNet(ImageFunction):
         torch.set_num_threads(self.torch_cpu_threads)
         self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
         if self.torch_use_cuda:
-            if isinstance(self.torch_use_cuda, bool):
-                self._phase_net.cuda()
-            else:
-                self._phase_net.cuda(self.torch_use_cuda)
+            try:
+                if isinstance(self.torch_use_cuda, bool):
+                    self._phase_net.cuda()
+                else:
+                    self._phase_net.cuda(self.torch_use_cuda)
+            except RuntimeError as exc:
+                logger.warning(
+                    "failed to use CUDA for PhaseNet model, using CPU.",
+                    exc_info=exc,
+                )
         self._phase_net.eval()
         try:
             logger.info("compiling PhaseNet model...")
@@ -224,13 +230,18 @@ class PhaseNet(ImageFunction):
         )
         return timedelta(seconds=blinding_samples / sampling_rate)
 
+    def _detection_half_width(self) -> float:
+        """Half width of the detection window in seconds."""
+        # The 0.2 seconds is the default value from SeisBench training
+        return 0.2 / self.rescale_input
+
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        if self.rescale_input > 1:
+        if self.rescale_input != 1:
             scale = self.rescale_input
             for tr in stream:
-                tr.stats.sampling_rate = tr.stats.sampling_rate / scale
+                tr.stats.sampling_rate /= scale
 
         annotations: Stream = await asyncio.to_thread(
             self.phase_net.annotate,
@@ -243,7 +254,7 @@ class PhaseNet(ImageFunction):
         if self.rescale_input > 1:
             scale = self.rescale_input
             for tr in annotations:
-                tr.stats.sampling_rate = tr.stats.sampling_rate * scale
+                tr.stats.sampling_rate *= scale
                 blinding_samples = self.phase_net.default_args["blinding"][0]
                 # 100 Hz is the native sampling rate of PhaseNet
                 blinding_seconds = (blinding_samples / 100.0) * (1.0 - 1 / scale)
@@ -259,12 +270,14 @@ class PhaseNet(ImageFunction):
             image_function=self,
             weight=self.weights["P"],
             phase=self.phase_map["P"],
+            detection_half_width=self._detection_half_width(),
             traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
         )
         annotation_s = PhaseNetImage(
             image_function=self,
             weight=self.weights["S"],
             phase=self.phase_map["S"],
+            detection_half_width=self._detection_half_width(),
             traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],
         )
 

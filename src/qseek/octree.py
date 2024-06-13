@@ -116,7 +116,13 @@ class Node:
 
     @property
     def coordinates(self) -> tuple[float, float, float]:
+        """Returns the node coordinates (east, north, depth)."""
         return self.east, self.north, self.depth
+
+    @property
+    def radius(self) -> float:
+        """Returns the radius of the sphere that can fit the node inside."""
+        return np.sqrt(3 * (self.size / 2) ** 2)
 
     def get_distance_border(self, with_surface: bool = False) -> float:
         """Distance to the closest EW, NS or bottom border of the tree.
@@ -145,19 +151,30 @@ class Node:
             return min(border_distance, self.depth - tree.depth_bounds[0])
         return border_distance
 
-    def is_inside_border(self, with_surface: bool = False) -> bool:
+    def is_inside_border(
+        self,
+        with_surface: bool = False,
+        border_width: float | Literal["root_node_size"] = "root_node_size",
+    ) -> bool:
         """Check if the node is within the root node border.
 
         Args:
             with_surface (bool, optional): If True, the surface is considered
                 as a border. Defaults to False.
+            border_width (float, optional): Width of the border, if 0.0,
+                the octree's root node size is used. Defaults to 0.0.
 
         Returns:
             bool: True if the node is inside the root tree's border.
         """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        return self.get_distance_border(with_surface) <= self.tree.root_node_size
+        border = (
+            self.tree.root_node_size
+            if border_width == "root_node_size"
+            else border_width
+        )
+        return self.get_distance_border(with_surface) <= border
 
     def can_split(self) -> bool:
         """Check if the node can be split.
@@ -227,7 +244,7 @@ class Node:
             )
         return self._location
 
-    def collides(self, other: Node) -> bool:
+    def is_colliding(self, other: Node) -> bool:
         """Check if two nodes collide.
 
         Args:
@@ -254,7 +271,7 @@ class Node:
         return [
             node
             for node in self.tree.iter_nodes()
-            if self.collides(node) and node is not self
+            if self.is_colliding(node) and node is not self
         ]
 
     def distance_to(self, other: Node) -> float:
@@ -432,7 +449,7 @@ class Octree(BaseModel):
             del self.n_nodes
 
     def reset(self) -> Self:
-        """Reset the octree to its initial state."""
+        """Reset the octree to its initial state and return it."""
         logger.debug("resetting tree")
         self._clear_cache()
         self._root_nodes = self.get_root_nodes(self.root_node_size)

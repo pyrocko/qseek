@@ -43,7 +43,13 @@ class ImageFunction(BaseModel):
         """
         raise NotImplementedError("must be implemented by subclass")
 
-    def get_provided_phases(self) -> tuple[PhaseDescription, ...]: ...
+    def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
+        """Get the phases provided by the image function.
+
+        Returns:
+            tuple[PhaseDescription, ...]: The phases provided by the image function.
+        """
+        raise NotImplementedError("must be implemented by subclass")
 
 
 @dataclass
@@ -52,6 +58,7 @@ class WaveformImage:
     phase: PhaseDescription
     weight: float
     traces: list[Trace]
+    detection_half_width: float
     stations: Stations = Field(default_factory=lambda: Stations.model_construct())
 
     @property

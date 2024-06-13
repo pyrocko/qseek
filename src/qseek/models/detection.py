@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from random import uniform
@@ -223,7 +224,8 @@ class EventReceivers(BaseModel):
     event_uid: UUID | None = None
     receivers: list[Receiver] = []
 
-    @property
+    @computed_field
+    @cached_property
     def n_receivers(self) -> int:
         """Number of receivers in the receiver set."""
         return len(self.receivers)
@@ -470,7 +472,6 @@ class EventDetection(Location):
         default=0,
         description="Number of stations in the detection.",
     )
-
     distance_border: PositiveFloat = Field(
         ...,
         description="Distance to the nearest border in meters. "
@@ -699,6 +700,7 @@ class EventDetection(Location):
             "north_shift": round(self.north_shift, 2),
             "distance_border": round(self.distance_border, 2),
             "semblance": self.semblance,
+            "n_stations": self.n_stations,
         }
         for magnitude in self.magnitudes:
             csv_line.update(magnitude.csv_row())

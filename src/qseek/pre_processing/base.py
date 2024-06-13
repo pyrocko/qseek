@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from itertools import groupby
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 from pydantic import BaseModel, Field, field_validator
+from pyrocko.trace import Trace
 
 from qseek.utils import NSL
 
@@ -67,3 +70,11 @@ class BatchPreProcessing(BaseModel):
             list[Trace]: The processed list of traces.
         """
         raise NotImplementedError
+
+
+def group_traces(traces: list[Trace]) -> groupby[tuple[float, int], Trace]:
+    return groupby(traces, key=lambda trace: (trace.deltat, trace.ydata.size))
+
+
+def traces_data(traces: list[Trace], dtype=np.float64) -> np.ndarray:
+    return np.array([trace.ydata for trace in traces], dtype=dtype)

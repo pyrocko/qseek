@@ -102,6 +102,9 @@ class EventCatalog(BaseModel):
             start_time (datetime | None): Start time of the time range.
             end_time (datetime | None): End time of the time range.
         """
+        if not self.events:
+            return
+
         events = []
         if start_time is not None and min(det.time for det in self.events) < start_time:
             logger.info("filtering detections after start time %s", start_time)
