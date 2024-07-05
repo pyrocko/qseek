@@ -47,6 +47,7 @@ dependencies = [
     "pyevtk>=1.6",
     "psutil>=5.9",
     "aiofiles>=23.0",
+    "typer >=0.12.3",
 ]
 
 classifiers = [

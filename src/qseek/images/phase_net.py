@@ -137,7 +137,7 @@ class PhaseNet(ImageFunction):
 
     image: Literal["PhaseNet"] = "PhaseNet"
     model: ModelName = Field(
-        default="ethz",
+        default="original",
         description="SeisBench pre-trained PhaseNet model to use. "
         "Choose from `ethz`, `geofon`, `instance`, `iquique`, `lendb`, `neic`, `obs`,"
         " `original`, `scedc`, `stead`."

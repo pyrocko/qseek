@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing_extensions import Self
 
 if TYPE_CHECKING:
@@ -63,3 +63,15 @@ class DetectionUncertainty(BaseModel):
             north=(float(min_offsets[1]), float(max_offsets[1])),
             depth=(float(min_offsets[2]), float(max_offsets[2])),
         )
+
+    @computed_field
+    def total(self) -> float:
+        """Calculate the total uncertainty in [m]."""
+        return float(
+            np.sqrt(sum(self.east) ** 2 + sum(self.north) ** 2 + sum(self.depth) ** 2)
+        )
+
+    @computed_field
+    def horizontal(self) -> float:
+        """Calculate the horizontal uncertainty in [m]."""
+        return float(np.sqrt(sum(self.east) ** 2 + sum(self.north) ** 2))

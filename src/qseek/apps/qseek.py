@@ -170,6 +170,41 @@ serve.add_argument(
 )
 
 
+export = subparsers.add_parser(
+    "export",
+    help="Export detections to different output formats",
+    description="Export detections to different output formats."
+    " Get an overview with `qseek export list`",
+)
+
+export.add_argument(
+    "format",
+    type=str,
+    help="Name of export module, or `list` to list available modules",
+)
+
+export.add_argument(
+    "rundir",
+    type=Path,
+    help="path to existing qseek rundir",
+    nargs="?",
+)
+
+export.add_argument(
+    "export_dir",
+    type=Path,
+    help="path to export directory",
+    nargs="?",
+)
+
+export.add_argument(
+    "--force",
+    action="store_true",
+    default=False,
+    help="overwrite existing output directory",
+)
+
+
 subparsers.add_parser(
     "clear-cache",
     help="clear the cach directory",
@@ -373,6 +408,51 @@ def main() -> None:
         case "clear-cache":
             logger.info("clearing cache directory %s", CACHE_DIR)
             shutil.rmtree(CACHE_DIR)
+
+        case "export":
+            from qseek.exporters.base import Exporter
+
+            def show_table():
+                table = Table(box=box.SIMPLE, header_style=None)
+                table.add_column("Exporter")
+                table.add_column("Description")
+                for exporter in Exporter.get_subclasses():
+                    table.add_row(exporter.__name__.lower(), exporter.__doc__)
+                console.print(table)
+
+            if args.format == "list":
+                show_table()
+                parser.exit()
+
+            if not args.rundir:
+                parser.error("rundir is required for export")
+
+            if args.export_dir is None:
+                parser.error("export directory is required")
+
+            if args.export_dir.exists():
+                if not args.force:
+                    parser.error(f"export directory {args.export_dir} already exists")
+                shutil.rmtree(args.export_dir)
+
+            for exporter in Exporter.get_subclasses():
+                if exporter.__name__.lower() == args.format.lower():
+                    exporter_instance = exporter()
+                    asyncio.run(
+                        exporter_instance.export(
+                            rundir=args.rundir,
+                            outdir=args.export_dir,
+                        )
+                    )
+                    break
+            else:
+                available_exporters = ", ".join(
+                    exporter.__name__ for exporter in Exporter.get_subclasses()
+                )
+                parser.error(
+                    f"unknown exporter: {args.format}"
+                    f"choose fom: {available_exporters}"
+                )
 
         case "modules":
             from qseek.corrections.base import TravelTimeCorrections

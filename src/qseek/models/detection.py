@@ -695,13 +695,20 @@ class EventDetection(Location):
             "time": self.time,
             "lat": round(self.effective_lat, 6),
             "lon": round(self.effective_lon, 6),
-            "depth_ellipsoid": round(self.effective_depth, 2),
+            "depth": round(self.effective_depth, 2),
             "east_shift": round(self.east_shift, 2),
             "north_shift": round(self.north_shift, 2),
             "distance_border": round(self.distance_border, 2),
             "semblance": self.semblance,
             "n_stations": self.n_stations,
         }
+        if self.uncertainty:
+            csv_line.update(
+                {
+                    "uncertainty_horizontal": self.uncertainty.horizontal,
+                    "uncertainty_vertical": self.uncertainty.depth,
+                }
+            )
         for magnitude in self.magnitudes:
             csv_line.update(magnitude.csv_row())
         return csv_line
