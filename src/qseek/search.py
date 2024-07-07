@@ -68,7 +68,7 @@ class SearchStats(Stats):
     batch_time: datetime = datetime.min
     batch_count: int = 0
     batch_count_total: int = 0
-    processed_duration: timedelta = timedelta(seconds=0.0)
+    processed_time: timedelta = timedelta(seconds=0.0)
     processed_bytes: int = 0
     processing_time: timedelta = timedelta(seconds=0.0)
     latest_processing_rate: float = 0.0
@@ -95,8 +95,8 @@ class SearchStats(Stats):
         if not remaining_batches:
             return timedelta()
 
-        duration = datetime_now() - self._search_start
-        return duration / self.batch_count * remaining_batches
+        elapsed_time = datetime_now() - self._search_start
+        return (elapsed_time / self.batch_count) * remaining_batches
 
     @computed_field
     @property
@@ -115,7 +115,7 @@ class SearchStats(Stats):
     def processing_speed(self) -> timedelta:
         if not self.processing_time:
             return timedelta(seconds=0.0)
-        return self.processed_duration / self.processing_time.total_seconds()
+        return self.processed_time / self.processing_time.total_seconds()
 
     @computed_field
     @property
@@ -152,7 +152,7 @@ class SearchStats(Stats):
         self.batch_count_total = batch.n_batches
         self.batch_time = batch.end_time
         self.processed_bytes += batch.cumulative_bytes
-        self.processed_duration += batch.duration
+        self.processed_time += batch.duration
         self.processing_time += duration
         self.latest_processing_rate = batch.cumulative_bytes / duration.total_seconds()
         self.latest_processing_speed = batch.duration / duration.total_seconds()

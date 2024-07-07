@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from rich import progress
+from rich import progress, prompt
 
 from qseek.exporters.base import Exporter
 from qseek.search import Search
@@ -15,8 +15,24 @@ logger = logging.getLogger(__name__)
 class Simple(Exporter):
     """Export simple travel times in CSV format (E. Biondi, 2023)."""
 
-    async def export(self, rundir: Path, outdir: Path) -> Path:
+    min_confidence_value: float = 0.3
+    min_semblance_value: float = 0.5
+
+    async def export(
+        self,
+        rundir: Path,
+        outdir: Path,
+    ) -> Path:
         logger.info("Export simple travel times in CSV format.")
+
+        self.min_semblance_value = prompt.FloatPrompt.ask(
+            "Minimum event semblance value",
+            default=self.min_semblance_value,
+        )
+        self.min_confidence_value = prompt.FloatPrompt.ask(
+            "Minimum pick confidence value",
+            default=self.min_confidence_value,
+        )
 
         search = Search.load_rundir(rundir)
         catalog = search.catalog
@@ -25,9 +41,9 @@ class Simple(Exporter):
         outdir.mkdir(parents=True)
         traveltime_dir.mkdir()
 
-        event_file = outdir / "events.csv"
-        self.search.stations.export_csv(outdir / "stations.csv")
-        await catalog.export_csv(event_file)
+        search.stations.export_csv(outdir / "stations.csv")
+        await catalog.export_csv(outdir / "events.csv")
+        (outdir / "simple-export.json").write_text(self.model_dump_json(indent=2))
 
         for ev in progress.track(
             catalog,
@@ -35,6 +51,21 @@ class Simple(Exporter):
             total=catalog.n_events,
         ):
             traveltime_file = traveltime_dir / f"{time_to_path(ev.time)}.csv"
+
+            if ev.semblance < self.min_semblance_value:
+                continue
+
+            observed_arrivals = [
+                (receiver, phase, arrival)
+                for receiver in ev.receivers
+                for phase, arrival in receiver.phase_arrivals.items()
+                if arrival.observed is not None
+                and arrival.observed.detection_value > self.min_confidence_value
+            ]
+
+            if not observed_arrivals:
+                continue
+
             with traveltime_file.open("w") as file:
                 file.write(f"# event_id: {ev.uid}\n")
                 file.write(f"# event_time: {ev.time}\n")
@@ -47,13 +78,10 @@ class Simple(Exporter):
                     "lat,lon,elevation,network,station,location,phase,confidence,traveltime\n"
                 )
 
-                for receiver in ev.receivers:
-                    for phase, arrival in receiver.phase_arrivals.items():
-                        if arrival.observed is None:
-                            continue
-                        traveltime = arrival.observed.time - ev.time
-                        file.write(
-                            f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{arrival.observed.detection_value},{traveltime.total_seconds()}\n",
-                        )
+                for receiver, phase, arrival in observed_arrivals:
+                    traveltime = arrival.observed.time - ev.time
+                    file.write(
+                        f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{arrival.observed.detection_value},{traveltime.total_seconds()}\n",
+                    )
 
         return outdir
