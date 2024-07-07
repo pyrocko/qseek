@@ -89,15 +89,16 @@ class WaveformImage:
             max_normalize (bool): Normalize by maximum value to keep the scale of the
                 maximum detection. Defaults to False.
         """
+        if self.sampling_rate == sampling_rate:
+            return
+
         downsample = self.sampling_rate > sampling_rate
 
         for tr in self.traces:
-            if max_normalize:
-                # We can use maximum here since the PhaseNet output is single-sided
-                _, max_value = tr.max()
             resample(tr, sampling_rate)
 
             if max_normalize and downsample:
+                _, max_value = tr.max()
                 tr.ydata /= tr.ydata.max()
                 tr.ydata *= max_value
 

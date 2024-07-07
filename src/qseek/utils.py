@@ -41,6 +41,7 @@ FORMAT = "%(message)s"
 
 PhaseDescription = Annotated[str, constr(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
 
+QUEUE_SIZE = 16
 CACHE_DIR = Path.home() / ".cache" / "qseek"
 if not CACHE_DIR.exists():
     logger.info("creating cache dir %s", CACHE_DIR)

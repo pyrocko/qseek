@@ -165,7 +165,6 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        # TODO: this is inefficient
         return (sta for sta in self.stations if sta.nsl.pretty not in self.blacklist)
 
     @property
@@ -186,14 +185,18 @@ class Stations(BaseModel):
         Returns:
             Stations: Containing only selected stations.
         """
+        available_stations = tuple(self)
+        available_nsls = tuple(sta.nsl for sta in available_stations)
+
         selected_stations = []
-        for nsl in ((tr.network, tr.station, tr.location) for tr in traces):
-            for sta in self:
-                if sta.nsl == nsl:
-                    selected_stations.append(sta)
-                    break
-            else:
-                raise ValueError(f"could not find a station for {'.'.join(nsl)} ")
+        for nsl in {(tr.network, tr.station, tr.location) for tr in traces}:
+            try:
+                sta_idx = available_nsls.index(nsl)
+                selected_stations.append(available_stations[sta_idx])
+            except ValueError as exc:
+                raise ValueError(
+                    f"could not find a station for {'.'.join(nsl)} "
+                ) from exc
         return Stations.model_construct(stations=selected_stations)
 
     def get_centroid(self) -> Location:

@@ -62,7 +62,7 @@ class EventCatalogStats(Stats):
         self.max_semblance = max(self.max_semblance, detection.semblance)
 
     def _populate_table(self, table: Table) -> None:
-        table.add_row("No. Detections", f"[bold]{self.n_detections} :dim_button:")
+        table.add_row("No. Detections", f"[bold]{self.n_detections} :fire:")
         table.add_row("Maximum semblance", f"{self.max_semblance:.4f}")
 
 

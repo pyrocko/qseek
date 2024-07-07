@@ -500,12 +500,6 @@ class Search(BaseModel):
 
         await self.prepare()
 
-        logger.info("starting search")
-        stats = self._stats
-        stats.reset_start_time()
-
-        processing_start = datetime_now()
-
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
             await self._catalog.check(repair=True)
@@ -513,6 +507,8 @@ class Search(BaseModel):
                 start_time=None,
                 end_time=self._progress.time_progress,
             )
+        else:
+            logger.info("starting search")
 
         batches = self.data_provider.iter_batches(
             window_increment=self.window_length,
@@ -522,6 +518,10 @@ class Search(BaseModel):
         )
         processed_batches = self.pre_processing.iter_batches(batches)
 
+        stats = self._stats
+        stats.reset_start_time()
+
+        processing_start = datetime_now()
         console = asyncio.create_task(RuntimeStats.live_view())
 
         async for images, batch in self.image_functions.iter_images(processed_batches):

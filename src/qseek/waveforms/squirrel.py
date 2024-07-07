@@ -22,7 +22,7 @@ from typing_extensions import Self
 
 from qseek.models.station import Stations
 from qseek.stats import Stats
-from qseek.utils import datetime_now, human_readable_bytes, to_datetime
+from qseek.utils import QUEUE_SIZE, datetime_now, human_readable_bytes, to_datetime
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
@@ -40,14 +40,10 @@ class SquirrelPrefetcher:
     _fetched_batches: int
     _task: asyncio.Task[None]
 
-    def __init__(
-        self,
-        iterator: Iterator[Batch],
-        queue_size: int = 8,
-    ) -> None:
+    def __init__(self, iterator: Iterator[Batch]) -> None:
         self.iterator = iterator
-        self.queue = asyncio.Queue(maxsize=queue_size)
-        self._load_queue = asyncio.Queue(maxsize=queue_size)
+        self.queue = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self._load_queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._fetched_batches = 0
 
         self._task = asyncio.create_task(self.prefetch_worker())
@@ -143,10 +139,6 @@ class PyrockoSquirrel(WaveformProvider):
             description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
         )
     )
-    async_prefetch_batches: PositiveInt = Field(
-        default=10,
-        description="Queue size for asynchronous pre-fetcher.",
-    )
     n_threads: PositiveInt = Field(
         default=8,
         description="Number of threads for loading waveforms.",
@@ -227,10 +219,7 @@ class PyrockoSquirrel(WaveformProvider):
             codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
             channel_priorities=self.channel_selector,
         )
-        prefetcher = SquirrelPrefetcher(
-            iterator,
-            queue_size=self.async_prefetch_batches,
-        )
+        prefetcher = SquirrelPrefetcher(iterator)
         stats.set_queue(prefetcher.queue)
 
         while True:
