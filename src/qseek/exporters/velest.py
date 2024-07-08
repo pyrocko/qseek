@@ -45,7 +45,7 @@ class Velest(Exporter):
                 phaseP=phase
             if 'S' in phase:
                 phaseS=phase
-        if 'phaseP' not in locals() and 'phaseS' not in locals():
+        if 'phaseP' not in locals() or 'phaseS' not in locals():
             print("Flail to find both P and S phase name." )
             return outdir
                       
