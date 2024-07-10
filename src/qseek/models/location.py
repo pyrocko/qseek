@@ -191,6 +191,13 @@ class Location(BaseModel):
         """
         return Location(lat=self.lat, lon=self.lon, elevation=self.effective_elevation)
 
+    def as_wkt(self) -> str:
+        """Return the location as WKT string."""
+        return (
+            f"POINT Z({self.effective_lon} {self.effective_lat}"
+            f" {self.effective_elevation})"
+        )
+
     def __hash__(self) -> int:
         return hash(self.location_hash())
 
@@ -210,10 +217,10 @@ class Location(BaseModel):
 
 
 def locations_to_csv(locations: Iterable[Location], filename: Path) -> Path:
-    lines = ["lat, lon, elevation, type"]
+    lines = ["lat,lon,elevation,type"]
     for loc in locations:
         lines.append(
-            "%.4f, %.4f, %.4f, %s"
+            "%.4f,%.4f,%.4f,%s"
             % (*loc.effective_lat_lon, loc.effective_elevation, loc.__class__.__name__)
         )
     filename.write_text("\n".join(lines))

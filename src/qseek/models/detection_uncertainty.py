@@ -75,3 +75,8 @@ class DetectionUncertainty(BaseModel):
     def horizontal(self) -> float:
         """Calculate the horizontal uncertainty in [m]."""
         return float(np.sqrt(sum(self.east) ** 2 + sum(self.north) ** 2))
+
+    @computed_field
+    def vertical(self) -> float:
+        """Calculate the vertical uncertainty in [m]."""
+        return float(sum(self.depth))

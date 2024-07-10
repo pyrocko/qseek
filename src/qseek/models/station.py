@@ -169,8 +169,13 @@ class Stations(BaseModel):
 
     @property
     def n_stations(self) -> int:
-        """Number of stations in the stations object."""
+        """Number of stations."""
         return sum(1 for _ in self)
+
+    @property
+    def n_networks(self) -> int:
+        """Number of stations."""
+        return len({sta.network for sta in self})
 
     def get_all_nsl(self) -> list[NSL]:
         """Get all NSL codes from all stations."""
@@ -179,24 +184,23 @@ class Stations(BaseModel):
     def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
         """Select stations by NSL code.
 
+        Stations are not unique and are ordered by the input traces.
+
         Args:
             traces (Iterable[Trace]): Iterable of Pyrocko Traces
 
         Returns:
             Stations: Containing only selected stations.
         """
-        available_stations = tuple(self)
-        available_nsls = tuple(sta.nsl for sta in available_stations)
+        available_stations = {sta.nsl: sta for sta in self}
+        try:
+            selected_stations = [
+                available_stations[(tr.network, tr.station, tr.location)]
+                for tr in traces
+            ]
+        except KeyError as exc:
+            raise ValueError("could not find a station") from exc
 
-        selected_stations = []
-        for nsl in {(tr.network, tr.station, tr.location) for tr in traces}:
-            try:
-                sta_idx = available_nsls.index(nsl)
-                selected_stations.append(available_stations[sta_idx])
-            except ValueError as exc:
-                raise ValueError(
-                    f"could not find a station for {'.'.join(nsl)} "
-                ) from exc
         return Stations.model_construct(stations=selected_stations)
 
     def get_centroid(self) -> Location:
@@ -248,11 +252,14 @@ class Stations(BaseModel):
             filename (Path): Path to CSV file.
         """
         with filename.open("w") as f:
-            f.write("network,station,location,latitude,longitude,elevation,depth\n")
+            f.write(
+                "network,station,location,latitude,longitude,elevation,depth,WKT_geom\n"
+            )
             for sta in self:
                 f.write(
                     f"{sta.network},{sta.station},{sta.location},"
-                    f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
+                    f"{sta.effective_lat},{sta.effective_lon},{sta.elevation},"
+                    f"{sta.depth}{sta.as_wkt()}\n"
                 )
 
     def export_vtk(self, reference: Location | None = None) -> None: ...

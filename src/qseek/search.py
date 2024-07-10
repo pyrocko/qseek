@@ -74,6 +74,12 @@ class SearchStats(Stats):
     latest_processing_rate: float = 0.0
     latest_processing_speed: timedelta = timedelta(seconds=0.0)
 
+    current_stations: int = 0
+    total_stations: int = 0
+
+    current_networks: int = 0
+    total_networks: int = 0
+
     memory_total: ByteSize = Field(
         default_factory=lambda: ByteSize(psutil.virtual_memory().total)
     )
@@ -156,6 +162,9 @@ class SearchStats(Stats):
         self.processing_time += duration
         self.latest_processing_rate = batch.cumulative_bytes / duration.total_seconds()
         self.latest_processing_speed = batch.duration / duration.total_seconds()
+        self.current_stations = batch.n_stations
+        self.current_networks = batch.n_networks
+
         self._batch_processing_times.append(duration)
         if show_log:
             self.log()
@@ -183,21 +192,26 @@ class SearchStats(Stats):
             f"[bold]{self.project_name}[/bold]",
         )
         table.add_row(
-            "Resources",
-            f"CPU {self.cpu_percent:.1f}%, "
-            f"RAM {human_readable_bytes(self.memory_used, decimal=True)}"
-            f"/{self.memory_total.human_readable(decimal=True)}",
-        )
-        table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
             f" ([bold]{self.batch_count}[/bold]/{self.batch_count_total or '?'},"
             f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
         )
         table.add_row(
+            "Stations",
+            f"{self.current_stations}/{self.total_stations}"
+            f" ({self.current_networks}/{self.total_networks} networks)",
+        )
+        table.add_row(
             "Processing rate",
             f"{human_readable_bytes(self.processing_rate)}/s"
             f" ({tts(self.processing_speed)} tr/s)",
+        )
+        table.add_row(
+            "Resources",
+            f"CPU {self.cpu_percent:.1f}%, "
+            f"RAM {human_readable_bytes(self.memory_used, decimal=True)}"
+            f"/{self.memory_total.human_readable(decimal=True)}",
         )
         table.add_row(
             "Remaining Time",
@@ -492,7 +506,10 @@ class Search(BaseModel):
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
+
         self._stats.project_name = self._rundir.name
+        self._stats.total_stations = self.stations.n_stations
+        self._stats.total_networks = self.stations.n_networks
 
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():

@@ -417,7 +417,10 @@ def main() -> None:
                 table.add_column("Exporter")
                 table.add_column("Description")
                 for exporter in Exporter.get_subclasses():
-                    table.add_row(exporter.__name__.lower(), exporter.__doc__)
+                    table.add_row(
+                        f"[bold]{exporter.__name__.lower()}",
+                        exporter.__doc__,
+                    )
                 console.print(table)
 
             if args.format == "list":

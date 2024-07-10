@@ -45,6 +45,9 @@ class Simple(Exporter):
         await catalog.export_csv(outdir / "events.csv")
         (outdir / "simple-export.json").write_text(self.model_dump_json(indent=2))
 
+        n_observed_arrivals = 0
+        n_events = 0
+
         for ev in progress.track(
             catalog,
             description="Exporting travel times",
@@ -66,6 +69,9 @@ class Simple(Exporter):
             if not observed_arrivals:
                 continue
 
+            n_observed_arrivals += len(observed_arrivals)
+            n_events += 1
+
             with traveltime_file.open("w") as file:
                 file.write(f"# event_id: {ev.uid}\n")
                 file.write(f"# event_time: {ev.time}\n")
@@ -83,5 +89,11 @@ class Simple(Exporter):
                     file.write(
                         f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{arrival.observed.detection_value},{traveltime.total_seconds()}\n",
                     )
+
+        logger.info(
+            "Exported %d observed arrivals from %d events.",
+            n_observed_arrivals,
+            n_events,
+        )
 
         return outdir

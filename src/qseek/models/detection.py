@@ -706,9 +706,11 @@ class EventDetection(Location):
             csv_line.update(
                 {
                     "uncertainty_horizontal": self.uncertainty.horizontal,
-                    "uncertainty_vertical": self.uncertainty.depth,
+                    "uncertainty_vertical": self.uncertainty.vertical,
                 }
             )
+        csv_line["WKT_geom"] = self.as_wkt()
+
         for magnitude in self.magnitudes:
             csv_line.update(magnitude.csv_row())
         return csv_line
