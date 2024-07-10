@@ -192,12 +192,6 @@ class SearchStats(Stats):
             f"[bold]{self.project_name}[/bold]",
         )
         table.add_row(
-            "Resources",
-            f"CPU {self.cpu_percent:.1f}%, "
-            f"RAM {human_readable_bytes(self.memory_used, decimal=True)}"
-            f"/{self.memory_total.human_readable(decimal=True)}",
-        )
-        table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
             f" ([bold]{self.batch_count}[/bold]/{self.batch_count_total or '?'},"
