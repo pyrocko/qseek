@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 import rich
-from rich.prompt import FloatPrompt
+from rich.prompt import FloatPrompt, IntPrompt
 
 from qseek.exporters.base import Exporter
 from qseek.models.detection import EventDetection, PhaseDetection, Receiver
-from qseek.models.station import Station
+from qseek.models.station import Location, Station
 from qseek.search import Search
 
 logger = logging.getLogger(__name__)
@@ -45,23 +45,23 @@ class VelestControlFile(NamedTuple):
     ref_lat: float
     ref_lon: float  # should be negative for East
     n_earthquakes: int
-    isingle: bool
-    max_distance_station: float
-    min_depth: float
-    allow_low_velocity: bool
-    vp_vs_ratio: float
-    velocity_damping: float  # Damping parameter for the velocity
-    station_correction_damping: float  # Damping parameter for the station
-    use_elevation: bool
-    use_station_correction: bool
-    iteration_number: int
-    invertratio: int
-    model_file: str
-    phase_file: str
-    mainout_file: str
-    outcheck_file: str
-    finalcnv_file: str
-    stacorrection_file: str
+    isingle: bool = True
+    min_depth: float = -0.2
+    vp_vs_ratio: float = 1.65
+    iteration_number: int = 99
+    invertratio: int = 0
+    model_file: str = "model.mod"
+    phase_file: str = "phase_velest.pha"
+    mainout_file: str = "main.out"
+    outcheck_file: str = "log.out"
+    finalcnv_file: str = "final.cnv"
+    stacorrection_file: str = "stacor.dat"
+    velocity_damping: float = 1.0  # Damping parameter for the velocity
+    station_correction_damping: float = 0.1  # Damping parameter for the station
+    max_distance_station: float = 200.0
+    use_elevation: bool = False
+    use_station_correction: bool = False
+    allow_low_velocity: bool = False
 
     def write_config_file(self, file: Path):
         with file.open("w") as fp:
@@ -83,7 +83,7 @@ class Velest(Exporter):
     async def export(self, rundir: Path, outdir: Path) -> Path:
         rich.print("Exporting qseek search to VELEST project folder")
         min_pick_semblance = FloatPrompt.ask("Minimum pick confidence", default=0.2)
-        min_receivers_number = FloatPrompt.ask(
+        min_receivers_number = IntPrompt.ask(
             "Minimum number of receivers (P phase)", default=10
         )
         min_p_phase_confidence = FloatPrompt.ask(
@@ -164,23 +164,6 @@ class Velest(Exporter):
             ref_lat=search.octree.location.lat,
             ref_lon=-search.octree.location.lon,
             n_earthquakes=n_earthquakes,
-            max_distance_station=200,
-            min_depth=-0.2,
-            allow_low_velocity=False,
-            velocity_damping=1.0,
-            station_correction_damping=0.1,
-            use_elevation=False,
-            use_station_correction=False,
-            model_file="model.mod",
-            phase_file="phase_velest.pha",
-            mainout_file="main.out",
-            outcheck_file="log.out",
-            finalcnv_file="final.cnv",
-            stacorrection_file="stacor.dat",
-            isingle=False,
-            vp_vs_ratio=1.65,
-            iteration_number=99,
-            invertratio=0,
         )
         control_file_parameters.write_config_file(control_file)
         # export velocity model file
@@ -202,6 +185,17 @@ class Velest(Exporter):
         export_info.write_text(self.model_dump_json(indent=2))
         return outdir
 
+    def velest_location(self, location: Location) -> str:
+        if location.effective_lat < 0:
+            velest_lat = f"{location.effective_lat:7.4f}S"
+        else:
+            velest_lat = f"{location.effective_lat:7.4f}N"
+        if location.effective_lon < 0:
+            velest_lon = f"{location.effective_lon:8.4f}W"
+        else:
+            velest_lon = f"{location.effective_lon:8.4f}E"
+        return velest_lat, velest_lon
+
     def export_phases_slim(
         self,
         outfile: Path,
@@ -209,21 +203,11 @@ class Velest(Exporter):
         observed_arrivals: list[tuple[Receiver, PhaseDetection]],
     ):
         mag = event.magnitude.average if event.magnitude is not None else 0.0
-        lat = event.effective_lat
-        lon = event.effective_lon
-        if lat < 0:
-            vsn = "S"
-            lat = abs(lat)
-        else:
-            vsn = "N"
-        if lon < 0:
-            vew = "W"
-            lon = abs(lon)
-        else:
-            vew = "E"
+        lat, lon = self.velest_location(event)
         with outfile.open("a") as file:
             file.write(
-                f"{event.time.strftime('%y%m%d %H%M')} {event.time.second:2d}.{str(event.time.microsecond)[:2]} {lat:7.4f}{vsn:1s} {lon:8.4f}{vew:1s} {event.depth/1000:7.2f}  {mag:5.2f}\n"
+                f"{event.time:%y%m%d %H%M %S.%f}"[:-4]
+                + f" {lat} {lon} {event.depth/1000:7.2f}  {mag:5.2f}\n"
             )
             count_p = 0
             count_s = 0
@@ -256,28 +240,14 @@ class Velest(Exporter):
 
         return count_p, count_s
 
-    @staticmethod
-    def export_station(stations: list[Station], filename: Path) -> None:
+    def export_station(self, stations: list[Station], filename: Path) -> None:
         with filename.open("w") as fpout:
             fpout.write("(a6,f7.4,a1,1x,f8.4,a1,1x,i4,1x,i1,1x,i3,1x,f5.2,2x,f5.2)\n")
             station_index = 1
             for station in stations:
-                lat = station.lat
-                lon = station.lon
-                sta = station.station
-                elev = station.elevation
-                if lat < 0:
-                    vsn = "S"
-                    lat = abs(lat)
-                else:
-                    vsn = "N"
-                if lon < 0:
-                    vew = "W"
-                    lon = abs(lon)
-                else:
-                    vew = "E"
+                lat, lon = self.velest_location(station)
                 fpout.write(
-                    f"{sta:6s}{lat:7.4f}{vsn} {lon:8.4f}{vew} {int(elev):4d} 1 {station_index:3d}  0.00   0.00\n"
+                    f"{station.station:6s}{lat} {lon} {int(station.elevation):4d} 1 {station_index:3d}  0.00   0.00\n"
                 )
                 station_index += 1
             fpout.write("\n")
@@ -293,9 +263,9 @@ class Velest(Exporter):
                 f"{nlayer}      vel,depth,vdamp,phase (f5.2,5x,f7.2,2x,f7.3,3x,a1)\n"
             )
             # vp model
-            for i, v in enumerate(vp):
-                fp.write(f"{v:5.2f}     {dep[i]:7.2f}  {vdamp:7.3f}\n")
+            for vel, depth in zip(vp, dep, strict=False):
+                fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
             # vs model
             fp.write("%3d\n" % nlayer)
-            for i, v in enumerate(vs):
-                fp.write(f"{v:5.2f}     {dep[i]:7.2f}  {vdamp:7.3f}\n")
+            for vel, depth in zip(vs, dep, strict=False):
+                fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
