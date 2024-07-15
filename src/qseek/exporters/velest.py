@@ -65,26 +65,30 @@ class VelestControlFile(NamedTuple):
 
     def write_config_file(self, file: Path):
         with file.open("w") as fp:
-            fp.write(CONTROL_FILE_TPL.format(**self._asdict()))
+            fp.write_text(CONTROL_FILE_TPL.format(**self._asdict()))
 
 
 class Velest(Exporter):
     """Crate a VELEST project folder for 1D velocity model estimation."""
 
-    min_pick_semblance: float = 0.2
+    min_event_semblance: float = 0.2
     min_receivers_number: int = 10
     min_p_phase_confidence: float = 0.3
     min_s_phase_confidence: float = 0.3
     max_traveltime_delay: float = 2.5
+    distance_border: float = 500.0
     n_picks_p: int = 0
     n_picks_s: int = 0
     n_events: int = 0
 
     async def export(self, rundir: Path, outdir: Path) -> Path:
         rich.print("Exporting qseek search to VELEST project folder")
-        min_pick_semblance = FloatPrompt.ask("Minimum pick confidence", default=0.2)
+        min_event_semblance = self.min_event_semblance
         min_receivers_number = IntPrompt.ask(
             "Minimum number of receivers (P phase)", default=10
+        )
+        min_distance_to_border = FloatPrompt.ask(
+            "Minimum distance to border(m)", default=500.0
         )
         min_p_phase_confidence = FloatPrompt.ask(
             "Minimum pick probability for P phase", default=0.3
@@ -95,7 +99,6 @@ class Velest(Exporter):
         max_traveltime_delay = FloatPrompt.ask(
             "Maximum difference between theoretical and observed arrival", default=2.5
         )
-        self.min_pick_semblance = min_pick_semblance
         self.min_receivers_number = min_receivers_number
         self.min_p_phase_confidence = min_p_phase_confidence
         self.min_s_phase_confidence = min_s_phase_confidence
@@ -121,9 +124,11 @@ class Velest(Exporter):
         phase_file = outdir / "phase_velest.pha"
         n_earthquakes = 0
         for event in catalog:
-            if event.semblance < min_pick_semblance:
+            if event.semblance < min_event_semblance:
                 continue
             if event.receivers.n_observations(phase_p) < min_receivers_number:
+                continue
+            if event.distance_border < min_distance_to_border:
                 continue
 
             observed_arrivals: list[tuple[Receiver, PhaseDetection]] = []
@@ -173,28 +178,18 @@ class Velest(Exporter):
         dep_velest = []
         vp_velest = []
         vs_velest = []
-        for i, d in enumerate(dep):
-            if float(d) / 1000 not in dep_velest:
-                dep_velest.append(float(d) / 1000)
-                vp_velest.append(float(vp[i]) / 1000)
-                vs_velest.append(float(vs[i]) / 1000)
+        km = 1000.0
+        for d, vpi, vsi in zip(dep, vp, vs, strict=False):
+            if float(d) / km not in dep_velest:
+                dep_velest.append(float(d) / km)
+                vp_velest.append(float(vpi) / km)
+                vs_velest.append(float(vsi) / km)
         velmod_file = outdir / "model.mod"
-        self.make_velmod_file(velmod_file, vp_velest, vs_velest, dep_velest)
+        make_velmod_file(velmod_file, vp_velest, vs_velest, dep_velest)
 
         export_info = outdir / "export_info.json"
         export_info.write_text(self.model_dump_json(indent=2))
         return outdir
-
-    def velest_location(self, location: Location) -> str:
-        if location.effective_lat < 0:
-            velest_lat = f"{location.effective_lat:7.4f}S"
-        else:
-            velest_lat = f"{location.effective_lat:7.4f}N"
-        if location.effective_lon < 0:
-            velest_lon = f"{location.effective_lon:8.4f}W"
-        else:
-            velest_lon = f"{location.effective_lon:8.4f}E"
-        return velest_lat, velest_lon
 
     def export_phases_slim(
         self,
@@ -203,7 +198,7 @@ class Velest(Exporter):
         observed_arrivals: list[tuple[Receiver, PhaseDetection]],
     ):
         mag = event.magnitude.average if event.magnitude is not None else 0.0
-        lat, lon = self.velest_location(event)
+        lat, lon = velest_location(event)
         with outfile.open("a") as file:
             file.write(
                 f"{event.time:%y%m%d %H%M %S.%f}"[:-4]
@@ -232,7 +227,7 @@ class Velest(Exporter):
                 )
             file.write("\n")
         if count_p == 0 and count_s == 0:
-            logging.warning("Warning:No phases obesered for event{event.time}, removed")
+            logger.warning("Removing event {event.time}: No phases observed")
             with outfile.open("r") as file:
                 lines = file.readlines()
             with outfile.open("w") as file:
@@ -245,27 +240,37 @@ class Velest(Exporter):
             fpout.write("(a6,f7.4,a1,1x,f8.4,a1,1x,i4,1x,i1,1x,i3,1x,f5.2,2x,f5.2)\n")
             station_index = 1
             for station in stations:
-                lat, lon = self.velest_location(station)
+                lat, lon = velest_location(station)
                 fpout.write(
                     f"{station.station:6s}{lat} {lon} {int(station.elevation):4d} 1 {station_index:3d}  0.00   0.00\n"
                 )
                 station_index += 1
             fpout.write("\n")
 
-    @staticmethod
-    def make_velmod_file(modname: Path, vp: list, vs: list, dep: list):
-        nlayer = len(dep)
-        vdamp = 1.0
-        with modname.open("w") as fp:
-            fp.write("initial 1D-model for velest\n")
-            # the second line - indicate the number of layers for Vp
-            fp.write(
-                f"{nlayer}      vel,depth,vdamp,phase (f5.2,5x,f7.2,2x,f7.3,3x,a1)\n"
-            )
-            # vp model
-            for vel, depth in zip(vp, dep, strict=False):
-                fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
-            # vs model
-            fp.write("%3d\n" % nlayer)
-            for vel, depth in zip(vs, dep, strict=False):
-                fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
+
+def velest_location(location: Location) -> str:
+    if location.effective_lat < 0:
+        velest_lat = f"{location.effective_lat:7.4f}S"
+    else:
+        velest_lat = f"{location.effective_lat:7.4f}N"
+    if location.effective_lon < 0:
+        velest_lon = f"{location.effective_lon:8.4f}W"
+    else:
+        velest_lon = f"{location.effective_lon:8.4f}E"
+    return velest_lat, velest_lon
+
+
+def make_velmod_file(modname: Path, vp: list[float], vs: list[float], dep: list[float]):
+    nlayer = len(dep)
+    vdamp = 1.0
+    with modname.open("w") as fp:
+        fp.write("initial 1D-model for velest\n")
+        # the second line - indicate the number of layers for Vp
+        fp.write(f"{nlayer}      vel,depth,vdamp,phase (f5.2,5x,f7.2,2x,f7.3,3x,a1)\n")
+        # vp model
+        for vel, depth in zip(vp, dep, strict=False):
+            fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
+        # vs model
+        fp.write("%3d\n" % nlayer)
+        for vel, depth in zip(vs, dep, strict=False):
+            fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
