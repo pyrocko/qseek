@@ -14,6 +14,9 @@ from qseek.models.station import Location, Station
 from qseek.search import Search
 
 logger = logging.getLogger(__name__)
+KM = 1000.0
+
+CONFIDENCE_QUALITY_BINS = [1.0, 0.8, 0.6, 0.4, 0.0]
 
 CONTROL_FILE_TPL = """velest parameters are below, please modify according to their documents
 {ref_lat}   {ref_lon}      0            0.0      0     0.00      1
@@ -83,31 +86,38 @@ class Velest(Exporter):
 
     async def export(self, rundir: Path, outdir: Path) -> Path:
         rich.print("Exporting qseek search to VELEST project folder")
-        min_event_semblance = self.min_event_semblance
-        min_receivers_number = IntPrompt.ask(
-            "Minimum number of receivers (P phase)", default=10
+        self.min_event_semblance = FloatPrompt.ask(
+            "Minimum event semblance",
+            default=self.min_event_semblance,
         )
-        min_distance_to_border = FloatPrompt.ask(
-            "Minimum distance to border(m)", default=500.0
+        self.min_receivers_number = IntPrompt.ask(
+            "Minimum number of receivers (P phase)",
+            default=self.min_receivers_number,
         )
-        min_p_phase_confidence = FloatPrompt.ask(
-            "Minimum pick probability for P phase", default=0.3
+        self.min_distance_to_border = FloatPrompt.ask(
+            "Minimum distance to border(m)",
+            default=self.distance_border,
         )
-        min_s_phase_confidence = FloatPrompt.ask(
-            "Minimum pick probability for S phase", default=0.3
+        self.min_p_phase_confidence = FloatPrompt.ask(
+            "Minimum pick probability for P phase",
+            default=self.min_p_phase_confidence,
         )
-        max_traveltime_delay = self.max_traveltime_delay
-        self.min_receivers_number = min_receivers_number
-        self.min_p_phase_confidence = min_p_phase_confidence
-        self.min_s_phase_confidence = min_s_phase_confidence
+        self.min_s_phase_confidence = FloatPrompt.ask(
+            "Minimum pick probability for S phase",
+            default=self.min_s_phase_confidence,
+        )
+        self.max_traveltime_delay = FloatPrompt.ask(
+            "Maximum travel time delay",
+            default=self.max_traveltime_delay,
+        )
 
         outdir.mkdir()
         search = Search.load_rundir(rundir)
         phases = search.image_functions.get_phases()
         for phase in phases:
-            if "P" in phase:
+            if phase.endswith("P"):
                 phase_p = phase
-            if "S" in phase:
+            if phase.endswith("S"):
                 phase_s = phase
 
         catalog = search.catalog
@@ -121,11 +131,11 @@ class Velest(Exporter):
         phase_file = outdir / "phase_velest.pha"
         n_earthquakes = 0
         for event in catalog:
-            if event.semblance < min_event_semblance:
+            if event.semblance < self.min_event_semblance:
                 continue
-            if event.receivers.n_observations(phase_p) < min_receivers_number:
+            if event.receivers.n_observations(phase_p) < self.min_receivers_number:
                 continue
-            if event.distance_border < min_distance_to_border:
+            if event.distance_border < self.min_distance_to_border:
                 continue
 
             observed_arrivals: list[tuple[Receiver, PhaseDetection]] = []
@@ -137,26 +147,26 @@ class Velest(Exporter):
                     observed = detection.observed
                     if (
                         detection.phase == phase_p
-                        and observed.detection_value <= min_p_phase_confidence
+                        and observed.detection_value <= self.min_p_phase_confidence
                     ):
                         continue
                     if (
                         detection.phase == phase_s
-                        and observed.detection_value <= min_s_phase_confidence
+                        and observed.detection_value <= self.min_s_phase_confidence
                     ):
                         continue
                     if (
                         detection.traveltime_delay.total_seconds()
-                        > max_traveltime_delay
+                        > self.max_traveltime_delay
                     ):
                         continue
                     observed_arrivals.append((receiver, detection))
 
-            countp, counts = self.export_phases_slim(
+            count_p, count_s = self.export_phases_slim(
                 phase_file, event, observed_arrivals
             )
-            self.n_picks_p += countp
-            self.n_picks_s += counts
+            self.n_picks_p += count_p
+            self.n_picks_s += count_s
             n_earthquakes += 1
         self.n_events = n_earthquakes
 
@@ -175,12 +185,11 @@ class Velest(Exporter):
         dep_velest = []
         vp_velest = []
         vs_velest = []
-        km = 1000.0
-        for d, vpi, vsi in zip(dep, vp, vs, strict=False):
-            if float(d) / km not in dep_velest:
-                dep_velest.append(float(d) / km)
-                vp_velest.append(float(vpi) / km)
-                vs_velest.append(float(vsi) / km)
+        for d, vpi, vsi in zip(dep, vp, vs, strict=True):
+            if float(d) / KM not in dep_velest:
+                dep_velest.append(float(d) / KM)
+                vp_velest.append(float(vpi) / KM)
+                vs_velest.append(float(vsi) / KM)
         velmod_file = outdir / "model.mod"
         make_velmod_file(velmod_file, vp_velest, vs_velest, dep_velest)
 
@@ -205,7 +214,8 @@ class Velest(Exporter):
         for rec, dectection in observed_arrivals:
             quality_weight = (
                 np.digitize(
-                    dectection.observed.detection_value, [1.0, 0.8, 0.6, 0.4, 0.0]
+                    dectection.observed.detection_value,
+                    CONFIDENCE_QUALITY_BINS,
                 )
                 - 1
             )
@@ -218,11 +228,12 @@ class Velest(Exporter):
             traveltime = (dectection.observed.time - event.time).total_seconds()
             write_out += f"  {rec.station:6s}  {phase:1s}   {quality_weight:1d}  {traveltime:7.2f}\n"
         write_out += "\n"
-        if count_p == 0 and count_s == 0:
-            logger.warning("Removing event {event.time}: No phases observed")
+
         if count_p or count_s:
             with outfile.open("a") as file:
                 file.write(write_out)
+        else:
+            logger.warning("Event {event.time}: No phases observed")
 
         return count_p, count_s
 
@@ -251,17 +262,22 @@ def velest_location(location: Location) -> str:
     return velest_lat, velest_lon
 
 
-def make_velmod_file(modname: Path, vp: list[float], vs: list[float], dep: list[float]):
-    nlayer = len(dep)
+def make_velmod_file(
+    modname: Path,
+    velocity_p: list[float],
+    velocity_s: list[float],
+    depths: list[float],
+):
+    nlayer = len(depths)
     vdamp = 1.0
     with modname.open("w") as fp:
         fp.write("initial 1D-model for velest\n")
         # the second line - indicate the number of layers for Vp
         fp.write(f"{nlayer}      vel,depth,vdamp,phase (f5.2,5x,f7.2,2x,f7.3,3x,a1)\n")
-        # vp model
-        for vel, depth in zip(vp, dep, strict=False):
+
+        for vel, depth in zip(velocity_p, depths, strict=True):
             fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
-        # vs model
+
         fp.write("%3d\n" % nlayer)
-        for vel, depth in zip(vs, dep, strict=False):
+        for vel, depth in zip(velocity_s, depths, strict=True):
             fp.write(f"{vel:5.2f}     {depth:7.2f}  {vdamp:7.3f}\n")
