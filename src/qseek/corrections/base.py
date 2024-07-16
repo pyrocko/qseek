@@ -3,13 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterable, Literal
 
 from pydantic import BaseModel
-from typing_extensions import Self
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     import numpy as np
-    from rich.console import Console
 
     from qseek.models.station import Stations
     from qseek.octree import Node, Octree
@@ -75,7 +73,7 @@ class TravelTimeCorrections(BaseModel):
         stations: Stations,
         octree: Octree,
         phases: Iterable[PhaseDescription],
-        rundir: Path | None = None,
+        rundir: Path,
     ) -> None:
         """Prepare the station for the corrections.
 
@@ -83,14 +81,8 @@ class TravelTimeCorrections(BaseModel):
             stations (Stations): The station to prepare.
             octree (Octree): The octree to use for the preparation.
             phases (Iterable[PhaseDescription]): The phases to prepare the station for.
-            rundir (Path | None, optional): The rundir to use for the delay.
+            rundir (Path): The rundir to use for the delay.
                 Defaults to None.
+            import_rundir (Path): The import rundir to use
+                for extracting the delays.
         """
-        ...
-
-    @classmethod
-    async def setup(cls, rundir: Path, console: Console | None = None) -> Self:
-        """Prepare the station corrections for the console."""
-        if console:
-            console.print("This module does not require any preparation.")
-        return cls()

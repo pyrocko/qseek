@@ -317,7 +317,7 @@ class Node:
         return hash(self.hash())
 
 
-class Octree(BaseModel):
+class Octree(BaseModel, Iterator[Node]):
     location: Location = Field(
         default=Location(lat=0.0, lon=0.0),
         description="The reference location of the octree.",
@@ -435,6 +435,11 @@ class Octree(BaseModel):
     def __iter__(self) -> Iterator[Node]:
         for node in self._root_nodes:
             yield from node
+
+    def __next__(self) -> Node:
+        for node in self:
+            return node
+        raise StopIteration
 
     def __getitem__(self, idx: int) -> Node:
         for inode, node in enumerate(self):

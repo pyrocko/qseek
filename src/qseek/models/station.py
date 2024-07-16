@@ -259,7 +259,7 @@ class Stations(BaseModel):
                 f.write(
                     f"{sta.network},{sta.station},{sta.location},"
                     f"{sta.effective_lat},{sta.effective_lon},{sta.elevation},"
-                    f"{sta.depth}{sta.as_wkt()}\n"
+                    f"{sta.depth},{sta.as_wkt()}\n"
                 )
 
     def export_vtk(self, reference: Location | None = None) -> None: ...

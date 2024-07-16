@@ -105,22 +105,6 @@ snuffler.add_argument(
     help="show semblance trace in snuffler",
 )
 
-station_corrections = subparsers.add_parser(
-    "corrections",
-    help="analyse and extract station corrections from a run",
-    description="Analyze and plot station corrections from a finished run",
-)
-station_corrections.add_argument(
-    "--plot",
-    action="store_true",
-    default=False,
-    help="plot station correction results and save to rundir",
-)
-corrections_rundir = station_corrections.add_argument(
-    "rundir",
-    type=Path,
-    help="path of existing run",
-)
 
 features_extract = subparsers.add_parser(
     "feature-extraction",
@@ -151,11 +135,10 @@ modules = subparsers.add_parser(
     description="Show all available modules",
 )
 modules.add_argument(
-    "--json",
-    "-j",
+    "name",
+    nargs="?",
     type=str,
-    help="print module's JSON config",
-    default="",
+    help="Name of the module to print JSON config for.",
 )
 
 serve = subparsers.add_parser(
@@ -192,9 +175,9 @@ export.add_argument(
 
 export.add_argument(
     "export_dir",
+    nargs="?",
     type=Path,
     help="path to export directory",
-    nargs="?",
 )
 
 export.add_argument(
@@ -232,7 +215,6 @@ try:
     continue_rundir.completer = DirectoriesCompleter()
     snuffler_rundir.completer = DirectoriesCompleter()
     features_rundir.completer = DirectoriesCompleter()
-    corrections_rundir.completer = DirectoriesCompleter()
     dump_dir.completer = DirectoriesCompleter()
 
     argcomplete.autocomplete(parser)
@@ -246,7 +228,6 @@ def main() -> None:
     load_insights()
     from rich import box
     from rich.progress import Progress
-    from rich.prompt import IntPrompt
     from rich.table import Table
 
     from qseek.console import console
@@ -362,40 +343,6 @@ def main() -> None:
 
             asyncio.run(worker(), debug=loop_debug)
 
-        case "corrections":
-            import json
-
-            from qseek.corrections.base import TravelTimeCorrections
-
-            rundir = Path(args.rundir)
-
-            corrections_modules = TravelTimeCorrections.get_subclasses()
-
-            console.print("[bold]Available travel time corrections modules")
-            for imodule, module in enumerate(corrections_modules):
-                console.print(f"{imodule}: {module.__name__}")
-
-            module_choice = IntPrompt.ask(
-                "Choose station corrections module",
-                choices=[str(i) for i in range(len(corrections_modules))],
-                default="0",
-                console=console,
-            )
-            travel_time_corrections = corrections_modules[int(module_choice)]
-            corrections = asyncio.run(
-                travel_time_corrections.setup(rundir, console), debug=loop_debug
-            )
-
-            search = json.loads((rundir / "search.json").read_text())
-            search["station_corrections"] = corrections.model_dump(mode="json")
-
-            new_config_file = rundir.parent / f"{rundir.name}-corrections.json"
-            console.print("writing new config file")
-            console.print(
-                f"to use this config file, run [bold]qseek search {new_config_file}"
-            )
-            new_config_file.write_text(json.dumps(search, indent=2))
-
         case "serve":
             search = Search.load_rundir(args.rundir)
             webserver = WebServer(search)
@@ -479,10 +426,10 @@ def main() -> None:
                 TravelTimeCorrections,
             )
 
-            if args.json:
+            if args.name:
                 for module in module_classes:
                     for subclass in module.get_subclasses():
-                        if subclass.__name__ == args.json:
+                        if subclass.__name__ == args.name:
                             console.print_json(subclass().model_dump_json(indent=2))
                             parser.exit()
                 else:
@@ -501,9 +448,10 @@ def main() -> None:
                 table.add_section()
 
             console.print(table)
-            console.print("🔑 indicates an insight module\n")
+            console.print("Insight module are marked by 🔑\n")
             console.print(
-                "Use `qseek modules --json <module_name>` to print the JSON schema"
+                "Use [bold]qseek modules <module_name>[/bold] "
+                "to print the JSON schema"
             )
 
         case "dump-schemas":

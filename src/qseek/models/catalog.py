@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -152,6 +152,19 @@ class EventCatalog(BaseModel):
             trace,
             str(self.rundir / "semblance.mseed"),
             append=True,
+        )
+
+    @classmethod
+    def last_modification(cls, rundir: Path) -> datetime:
+        """Last modification of the event file.
+
+        Returns:
+            datetime: Last modification of the event file.
+        """
+        detection_file = rundir / FILENAME_DETECTIONS
+        return datetime.fromtimestamp(
+            detection_file.stat().st_mtime,
+            tz=timezone.utc,
         )
 
     @classmethod

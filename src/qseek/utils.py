@@ -130,7 +130,7 @@ class _NSL(NamedTuple):
             ValueError: If the NSL string is empty or invalid.
         """
         if not nsl:
-            raise ValueError("invalid empty NSL")
+            raise ValueError(f"invalid empty NSL: {nsl}")
         if type(nsl) is _NSL:
             return nsl
         if isinstance(nsl, (list, tuple)):
@@ -146,7 +146,7 @@ class _NSL(NamedTuple):
             return cls(parts[0], parts[1], "")
         raise ValueError(
             f"invalid NSL `{nsl}`, expecting `<net>.<sta>.<loc>`, "
-            "e.g. `6A.STA130.00`, `6A.STA130` or `.STA130`"
+            "e.g. `6A.STA130.00`, `6A.`, `6A.STA130` or `.STA130`"
         )
 
     def _check(self) -> None:
