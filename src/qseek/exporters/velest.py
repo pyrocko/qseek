@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import NamedTuple
 
+import numpy as np
 import rich
 from rich.prompt import FloatPrompt, IntPrompt
 
@@ -64,8 +65,7 @@ class VelestControlFile(NamedTuple):
     allow_low_velocity: bool = False
 
     def write_config_file(self, file: Path):
-        with file.open("w") as fp:
-            fp.write_text(CONTROL_FILE_TPL.format(**self._asdict()))
+        file.write_text(CONTROL_FILE_TPL.format(**self._asdict()))
 
 
 class Velest(Exporter):
@@ -96,13 +96,10 @@ class Velest(Exporter):
         min_s_phase_confidence = FloatPrompt.ask(
             "Minimum pick probability for S phase", default=0.3
         )
-        max_traveltime_delay = FloatPrompt.ask(
-            "Maximum difference between theoretical and observed arrival", default=2.5
-        )
+        max_traveltime_delay = self.max_traveltime_delay
         self.min_receivers_number = min_receivers_number
         self.min_p_phase_confidence = min_p_phase_confidence
         self.min_s_phase_confidence = min_s_phase_confidence
-        self.max_traveltime_delay = max_traveltime_delay
 
         outdir.mkdir()
         search = Search.load_rundir(rundir)
@@ -199,39 +196,33 @@ class Velest(Exporter):
     ):
         mag = event.magnitude.average if event.magnitude is not None else 0.0
         lat, lon = velest_location(event)
-        with outfile.open("a") as file:
-            file.write(
-                f"{event.time:%y%m%d %H%M %S.%f}"[:-4]
-                + f" {lat} {lon} {event.depth/1000:7.2f}  {mag:5.2f}\n"
-            )
-            count_p = 0
-            count_s = 0
-            for rec, dectection in observed_arrivals:
-                if dectection.observed.detection_value < 0.4:
-                    quality_weight = 3
-                elif dectection.observed.detection_value < 0.6:
-                    quality_weight = 2
-                elif dectection.observed.detection_value < 0.8:
-                    quality_weight = 1
-                else:
-                    quality_weight = 0
-                if dectection.phase.endswith("P"):
-                    phase = "P"
-                    count_p += 1
-                else:
-                    phase = "S"
-                    count_s += 1
-                traveltime = (dectection.observed.time - event.time).total_seconds()
-                file.write(
-                    f"  {rec.station:6s}  {phase:1s}   {quality_weight:1d}  {traveltime:7.2f}\n"
+        write_out = (
+            f"{event.time:%y%m%d %H%M %S.%f}"[:-4]
+            + f" {lat} {lon} {event.depth/1000:7.2f}  {mag:5.2f}\n"
+        )
+        count_p = 0
+        count_s = 0
+        for rec, dectection in observed_arrivals:
+            quality_weight = (
+                np.digitize(
+                    dectection.observed.detection_value, [1.0, 0.8, 0.6, 0.4, 0.0]
                 )
-            file.write("\n")
+                - 1
+            )
+            if dectection.phase.endswith("P"):
+                phase = "P"
+                count_p += 1
+            else:
+                phase = "S"
+                count_s += 1
+            traveltime = (dectection.observed.time - event.time).total_seconds()
+            write_out += f"  {rec.station:6s}  {phase:1s}   {quality_weight:1d}  {traveltime:7.2f}\n"
+        write_out += "\n"
         if count_p == 0 and count_s == 0:
             logger.warning("Removing event {event.time}: No phases observed")
-            with outfile.open("r") as file:
-                lines = file.readlines()
-            with outfile.open("w") as file:
-                file.writelines(lines[:-2])
+        if count_p or count_s:
+            with outfile.open("a") as file:
+                file.write(write_out)
 
         return count_p, count_s
 
