@@ -632,7 +632,7 @@ class Octree(BaseModel, Iterator[Node]):
         """
         return len(self._root_nodes) * (8 ** (self.n_levels - 1))
 
-    async def interpolate_max_location(
+    async def interpolate_max_semblance(
         self,
         peak_node: Node,
     ) -> Location:
@@ -664,8 +664,7 @@ class Octree(BaseModel, Iterator[Node]):
         rbf = scipy.interpolate.RBFInterpolator(
             neighbor_coords[:, :3],
             neighbor_semblance,
-            kernel="thin_plate_spline",
-            degree=1,
+            kernel="cubic",
         )
         bound = peak_node.size / 1.5
         res = await asyncio.to_thread(

@@ -918,7 +918,7 @@ class SearchTraces:
                 continue
 
             if parent.node_peak_interpolation:
-                source_location = await octree.interpolate_max_location(source_node)
+                source_location = await octree.interpolate_max_semblance(source_node)
             else:
                 source_location = source_node.as_location()
 
