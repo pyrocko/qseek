@@ -155,7 +155,7 @@ serve.add_argument(
 
 export = subparsers.add_parser(
     "export",
-    help="Export detections to different output formats",
+    help="export detections to different output formats",
     description="Export detections to different output formats."
     " Get an overview with `qseek export list`",
 )

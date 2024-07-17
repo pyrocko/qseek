@@ -77,7 +77,7 @@ nav:
     - Getting Started 🚀: getting_started.md
     - Visualising Detections: visualizing_results.md
     - Benchmark: benchmark.md
-  - Usage:
+  - Configuration:
     - The Search: components/configuration.md
     - Seismic Data: components/seismic_data.md
     - Ray Tracer: components/ray_tracer.md

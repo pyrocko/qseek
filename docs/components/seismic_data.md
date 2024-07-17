@@ -10,7 +10,7 @@ To prepare your data for EQ detection and localisation, **organize it in a MiniS
 from qseek.utils import generate_docs
 from qseek.waveforms.squirrel import PyrockoSquirrel
 
-print(generate_docs(PyrockoSquirrel()))
+print(generate_docs(PyrockoSquirrel(persistent="docs")))
 ```
 
 ## Meta Data

@@ -161,7 +161,8 @@ class SeisBench(ImageFunction):
 
     model: ModelName = Field(
         default="PhaseNet",
-        description="The model to use for the image function. Currently only `PhaseNet`",
+        description="The model to use for the image function. Currently supported "
+        "models are `PhaseNet`, `EQTransformer`, `GPD`, `OBSTransformer`, `LFEDetect`.",
     )
 
     pretrained: PreTrainedName = Field(

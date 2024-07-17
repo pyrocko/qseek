@@ -48,6 +48,7 @@ dependencies = [
     "psutil>=5.9",
     "aiofiles>=23.0",
     "typer >=0.12.3",
+    "scikit-fmm >= 2024.05",
 ]
 
 classifiers = [
