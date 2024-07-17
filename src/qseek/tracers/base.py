@@ -21,7 +21,11 @@ _LocationType = TypeVar("_LocationType", bound=Location)
 @dataclass
 class ModelledArrival:
     phase: str
+    "Name of the phase"
+
     time: datetime
+    "Time of the arrival"
+
     tracer: str = ""
 
 

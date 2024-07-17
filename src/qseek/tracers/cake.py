@@ -11,7 +11,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Iterator, Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -151,8 +151,7 @@ class EarthModel(BaseModel):
         return self.layered_model.profile("vs")
 
     def save_plot(self, filename: Path) -> None:
-        """
-        Plot the layered model and save the figure to a file.
+        """Plot the layered model and save the figure to a file.
 
         Args:
             filename (Path): The path to save the figure.
@@ -188,7 +187,7 @@ class Timing(BaseModel):
         return re.sub(r"[\,\s\;]", "", self.definition)
 
 
-def surface_distances(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
+def surface_distances(nodes: Iterator[Node], stations: Stations) -> np.ndarray:
     """Returns the surface distance from all nodes to all stations.
 
     Args:
@@ -225,7 +224,7 @@ class TravelTimeTree(BaseModel):
     _file: Path | None = PrivateAttr(None)
 
     _cached_stations: Stations = PrivateAttr()
-    _cached_station_indeces: dict[str, int] = PrivateAttr({})
+    _cached_station_indices: dict[str, int] = PrivateAttr({})
     _node_lut: dict[bytes, np.ndarray] = PrivateAttr(
         default_factory=lambda: LRU(LRU_CACHE_SIZE)
     )
@@ -312,7 +311,7 @@ class TravelTimeTree(BaseModel):
         """Save the model and traveltimes to an .sptree archive.
 
         Args:
-            folder (Path): Folder or file to save tree into. If path is a folder a
+            path (Path): Folder or file to save tree into. If path is a folder a
                 native name from the model's hash is used
 
         Returns:
@@ -389,7 +388,7 @@ class TravelTimeTree(BaseModel):
             octree.n_nodes,
         )
         self._cached_stations = stations
-        self._cached_station_indeces = {
+        self._cached_station_indices = {
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
         station_traveltimes = await self.interpolate_travel_times(octree, stations)
@@ -398,7 +397,7 @@ class TravelTimeTree(BaseModel):
             self._node_lut[node.hash()] = traveltimes.astype(np.float32)
 
     def lut_fill_level(self) -> float:
-        """Return the fill level of the LUT as a float between 0.0 and 1.0"""
+        """Return the fill level of the LUT as a float between 0.0 and 1.0."""
         return len(self._node_lut) / self._node_lut.get_size()
 
     async def fill_lut(self, nodes: Sequence[Node]) -> None:
@@ -418,7 +417,7 @@ class TravelTimeTree(BaseModel):
     async def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
         try:
             station_indices = np.fromiter(
-                (self._cached_station_indeces[sta.nsl.pretty] for sta in stations),
+                (self._cached_station_indices[sta.nsl.pretty] for sta in stations),
                 dtype=int,
             )
         except KeyError as exc:
@@ -649,9 +648,10 @@ class CakeTracer(RayTracer):
         source: Location,
         receiver: Location,
     ) -> float:
-        if phase not in self.phases:
-            raise ValueError(f"Phase {phase} is not defined.")
-        tree = self._get_sptree_model(phase)
+        try:
+            tree = self._get_sptree_model(phase)
+        except KeyError as exc:
+            raise ValueError(f"Phase {phase} is not defined.") from exc
         return tree.get_travel_time(source, receiver)
 
     async def get_travel_times(
@@ -660,9 +660,13 @@ class CakeTracer(RayTracer):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        if phase not in self.phases:
-            raise ValueError(f"Phase {phase} is not defined.")
-        return await self._get_sptree_model(phase).get_travel_times(octree, stations)
+        try:
+            return await self._get_sptree_model(phase).get_travel_times(
+                octree,
+                stations,
+            )
+        except KeyError as exc:
+            raise ValueError(f"Phase {phase} is not defined.") from exc
 
     def get_arrivals(
         self,

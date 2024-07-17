@@ -7,9 +7,13 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import nest_asyncio
 from pkg_resources import get_distribution
+
+if TYPE_CHECKING:
+    from qseek.models.detection import EventDetection
 
 nest_asyncio.apply()
 
@@ -101,22 +105,6 @@ snuffler.add_argument(
     help="show semblance trace in snuffler",
 )
 
-station_corrections = subparsers.add_parser(
-    "corrections",
-    help="analyse and extract station corrections from a run",
-    description="Analyze and plot station corrections from a finished run",
-)
-station_corrections.add_argument(
-    "--plot",
-    action="store_true",
-    default=False,
-    help="plot station correction results and save to rundir",
-)
-corrections_rundir = station_corrections.add_argument(
-    "rundir",
-    type=Path,
-    help="path of existing run",
-)
 
 features_extract = subparsers.add_parser(
     "feature-extraction",
@@ -128,6 +116,18 @@ features_rundir = features_extract.add_argument(
     type=Path,
     help="path of existing run",
 )
+features_extract.add_argument(
+    "--recalculate",
+    action="store_true",
+    default=False,
+    help="recalculate all magnitudes",
+)
+features_extract.add_argument(
+    "--nparallel",
+    type=int,
+    default=32,
+    help="number of parallel tasks for feature extraction",
+)
 
 modules = subparsers.add_parser(
     "modules",
@@ -135,11 +135,10 @@ modules = subparsers.add_parser(
     description="Show all available modules",
 )
 modules.add_argument(
-    "--json",
-    "-j",
+    "name",
+    nargs="?",
     type=str,
-    help="print module's JSON config",
-    default="",
+    help="Name of the module to print JSON config for.",
 )
 
 serve = subparsers.add_parser(
@@ -151,6 +150,41 @@ serve.add_argument(
     "rundir",
     type=Path,
     help="rundir to serve",
+)
+
+
+export = subparsers.add_parser(
+    "export",
+    help="export detections to different output formats",
+    description="Export detections to different output formats."
+    " Get an overview with `qseek export list`",
+)
+
+export.add_argument(
+    "format",
+    type=str,
+    help="Name of export module, or `list` to list available modules",
+)
+
+export.add_argument(
+    "rundir",
+    type=Path,
+    help="path to existing qseek rundir",
+    nargs="?",
+)
+
+export.add_argument(
+    "export_dir",
+    nargs="?",
+    type=Path,
+    help="path to export directory",
+)
+
+export.add_argument(
+    "--force",
+    action="store_true",
+    default=False,
+    help="overwrite existing output directory",
 )
 
 
@@ -181,7 +215,6 @@ try:
     continue_rundir.completer = DirectoriesCompleter()
     snuffler_rundir.completer = DirectoriesCompleter()
     features_rundir.completer = DirectoriesCompleter()
-    corrections_rundir.completer = DirectoriesCompleter()
     dump_dir.completer = DirectoriesCompleter()
 
     argcomplete.autocomplete(parser)
@@ -194,8 +227,7 @@ def main() -> None:
 
     load_insights()
     from rich import box
-    from rich.progress import track
-    from rich.prompt import IntPrompt
+    from rich.progress import Progress
     from rich.table import Table
 
     from qseek.console import console
@@ -256,69 +288,60 @@ def main() -> None:
         case "feature-extraction":
             search = Search.load_rundir(args.rundir)
             search.data_provider.prepare(search.stations)
+            recalculate_magnitudes = args.recalculate
 
-            async def extract() -> None:
+            tasks = []
+
+            def console_status(task: asyncio.Task[EventDetection]):
+                detection = task.result()
+                if detection.magnitudes:
+                    console.print(
+                        f"Event {str(detection.time).split('.')[0]}:",
+                        ", ".join(
+                            f"[bold]{m.magnitude}[/bold] {m.average:.2f}±{m.error:.2f}"
+                            for m in detection.magnitudes
+                        ),
+                    )
+                else:
+                    console.print(f"Event {detection.time}: No magnitudes")
+
+            progress = Progress()
+            tracker = progress.add_task(
+                "Calculating magnitudes",
+                total=search.catalog.n_events,
+                console=console,
+            )
+
+            async def worker() -> None:
                 for magnitude in search.magnitudes:
                     await magnitude.prepare(search.octree, search.stations)
+                await search.catalog.check(repair=True)
 
-                iterator = asyncio.as_completed(
-                    tuple(
-                        search.add_magnitude_and_features(detection)
-                        for detection in search._catalog
+                sem = asyncio.Semaphore(args.nparallel)
+                for detection in search.catalog:
+                    await sem.acquire()
+                    task = asyncio.create_task(
+                        search.add_magnitude_and_features(
+                            detection,
+                            recalculate=recalculate_magnitudes,
+                        )
                     )
-                )
+                    tasks.append(task)
+                    task.add_done_callback(lambda _: sem.release())
+                    task.add_done_callback(tasks.remove)
+                    task.add_done_callback(console_status)
+                    task.add_done_callback(
+                        lambda _: progress.update(tracker, advance=1)
+                    )
 
-                for result in track(
-                    iterator,
-                    description="Extracting features",
-                    total=search._catalog.n_events,
-                ):
-                    event = await result
-                    if event.magnitudes:
-                        for mag in event.magnitudes:
-                            print(f"{mag.magnitude} {mag.average:.2f}±{mag.error:.2f}")  # noqa: T201
-                        print("--")  # noqa: T201
+                await asyncio.gather(*tasks)
 
                 await search._catalog.save()
                 await search._catalog.export_detections(
                     jitter_location=search.octree.smallest_node_size()
                 )
 
-            asyncio.run(extract(), debug=loop_debug)
-
-        case "corrections":
-            import json
-
-            from qseek.corrections.base import TravelTimeCorrections
-
-            rundir = Path(args.rundir)
-
-            corrections_modules = TravelTimeCorrections.get_subclasses()
-
-            console.print("[bold]Available travel time corrections modules")
-            for imodule, module in enumerate(corrections_modules):
-                console.print(f"{imodule}: {module.__name__}")
-
-            module_choice = IntPrompt.ask(
-                "Choose station corrections module",
-                choices=[str(i) for i in range(len(corrections_modules))],
-                default="0",
-                console=console,
-            )
-            travel_time_corrections = corrections_modules[int(module_choice)]
-            corrections = asyncio.run(
-                travel_time_corrections.setup(rundir, console), debug=loop_debug
-            )
-
-            search = json.loads((rundir / "search.json").read_text())
-            search["station_corrections"] = corrections.model_dump(mode="json")
-
-            new_config_file = rundir.parent / f"{rundir.name}-corrections.json"
-            console.print("writing new config file")
-            console.print(
-                f"to use this config file, run [bold]qseek search {new_config_file}"
-            )
-            new_config_file.write_text(json.dumps(search, indent=2))
+            asyncio.run(worker(), debug=loop_debug)
 
         case "serve":
             search = Search.load_rundir(args.rundir)
@@ -332,6 +355,54 @@ def main() -> None:
         case "clear-cache":
             logger.info("clearing cache directory %s", CACHE_DIR)
             shutil.rmtree(CACHE_DIR)
+
+        case "export":
+            from qseek.exporters.base import Exporter
+
+            def show_table():
+                table = Table(box=box.SIMPLE, header_style=None)
+                table.add_column("Exporter")
+                table.add_column("Description")
+                for exporter in Exporter.get_subclasses():
+                    table.add_row(
+                        f"[bold]{exporter.__name__.lower()}",
+                        exporter.__doc__,
+                    )
+                console.print(table)
+
+            if args.format == "list":
+                show_table()
+                parser.exit()
+
+            if not args.rundir:
+                parser.error("rundir is required for export")
+
+            if args.export_dir is None:
+                parser.error("export directory is required")
+
+            if args.export_dir.exists():
+                if not args.force:
+                    parser.error(f"export directory {args.export_dir} already exists")
+                shutil.rmtree(args.export_dir)
+
+            for exporter in Exporter.get_subclasses():
+                if exporter.__name__.lower() == args.format.lower():
+                    exporter_instance = exporter()
+                    asyncio.run(
+                        exporter_instance.export(
+                            rundir=args.rundir,
+                            outdir=args.export_dir,
+                        )
+                    )
+                    break
+            else:
+                available_exporters = ", ".join(
+                    exporter.__name__ for exporter in Exporter.get_subclasses()
+                )
+                parser.error(
+                    f"unknown exporter: {args.format}"
+                    f"choose fom: {available_exporters}"
+                )
 
         case "modules":
             from qseek.corrections.base import TravelTimeCorrections
@@ -355,10 +426,10 @@ def main() -> None:
                 TravelTimeCorrections,
             )
 
-            if args.json:
+            if args.name:
                 for module in module_classes:
                     for subclass in module.get_subclasses():
-                        if subclass.__name__ == args.json:
+                        if subclass.__name__ == args.name:
                             console.print_json(subclass().model_dump_json(indent=2))
                             parser.exit()
                 else:
@@ -377,9 +448,10 @@ def main() -> None:
                 table.add_section()
 
             console.print(table)
-            console.print("🔑 indicates an insight module\n")
+            console.print("Insight module are marked by 🔑\n")
             console.print(
-                "Use `qseek modules --json <module_name>` to print the JSON schema"
+                "Use [bold]qseek modules <module_name>[/bold] "
+                "to print the JSON schema"
             )
 
         case "dump-schemas":
@@ -391,7 +463,7 @@ def main() -> None:
                 raise EnvironmentError(f"folder {args.folder} does not exist")
 
             file = args.folder / "search.schema.json"
-            print(f"writing JSON schemas to {args.folder}")  # noqa: T201
+            console.print(f"writing JSON schemas to {args.folder}")
             file.write_text(json.dumps(Search.model_json_schema(), indent=2))
 
             file = args.folder / "detections.schema.json"

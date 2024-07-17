@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Deque, Literal
 
 import numpy as np
+import psutil
 from pydantic import (
+    AliasChoices,
     BaseModel,
+    ByteSize,
     ConfigDict,
     Field,
     PositiveFloat,
@@ -20,6 +23,7 @@ from pydantic import (
 )
 
 from qseek.corrections.corrections import StationCorrectionType
+from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.magnitudes import EventMagnitudeCalculatorType
@@ -28,7 +32,8 @@ from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.semblance import Semblance, SemblanceCache
-from qseek.octree import NodeSplitError, Octree
+from qseek.octree import Octree
+from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.signals import Signal
 from qseek.stats import RuntimeStats, Stats
@@ -38,6 +43,7 @@ from qseek.utils import (
     PhaseDescription,
     alog_call,
     datetime_now,
+    get_cpu_count,
     human_readable_bytes,
     time_to_path,
 )
@@ -62,17 +68,28 @@ class SearchStats(Stats):
     batch_time: datetime = datetime.min
     batch_count: int = 0
     batch_count_total: int = 0
-    processed_duration: timedelta = timedelta(seconds=0.0)
+    processed_time: timedelta = timedelta(seconds=0.0)
     processed_bytes: int = 0
     processing_time: timedelta = timedelta(seconds=0.0)
     latest_processing_rate: float = 0.0
     latest_processing_speed: timedelta = timedelta(seconds=0.0)
+
+    current_stations: int = 0
+    total_stations: int = 0
+
+    current_networks: int = 0
+    total_networks: int = 0
+
+    memory_total: ByteSize = Field(
+        default_factory=lambda: ByteSize(psutil.virtual_memory().total)
+    )
 
     _search_start: datetime = PrivateAttr(default_factory=datetime_now)
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
         default_factory=lambda: deque(maxlen=25)
     )
     _position: int = PrivateAttr(0)
+    _process: psutil.Process = PrivateAttr(default_factory=psutil.Process)
 
     @computed_field
     @property
@@ -84,14 +101,13 @@ class SearchStats(Stats):
         if not remaining_batches:
             return timedelta()
 
-        duration = datetime_now() - self._search_start
-        return duration / self.batch_count * remaining_batches
+        elapsed_time = datetime_now() - self._search_start
+        return (elapsed_time / self.batch_count) * remaining_batches
 
     @computed_field
     @property
     def processing_rate(self) -> float:
-        """
-        Calculate the processing rate of the search.
+        """Calculate the processing rate of the search.
 
         Returns:
             float: The processing rate in bytes per second.
@@ -105,13 +121,12 @@ class SearchStats(Stats):
     def processing_speed(self) -> timedelta:
         if not self.processing_time:
             return timedelta(seconds=0.0)
-        return self.processed_duration / self.processing_time.total_seconds()
+        return self.processed_time / self.processing_time.total_seconds()
 
     @computed_field
     @property
     def processed_percent(self) -> float:
-        """
-        Calculate the percentage of processed batches.
+        """Calculate the percentage of processed batches.
 
         Returns:
             float: The percentage of processed batches.
@@ -119,6 +134,16 @@ class SearchStats(Stats):
         if not self.batch_count_total:
             return 0.0
         return self.batch_count / self.batch_count_total * 100.0
+
+    @computed_field
+    @property
+    def memory_used(self) -> int:
+        return self._process.memory_info().rss
+
+    @computed_field
+    @property
+    def cpu_percent(self) -> float:
+        return self._process.cpu_percent(interval=None)
 
     def reset_start_time(self) -> None:
         self._search_start = datetime_now()
@@ -129,14 +154,17 @@ class SearchStats(Stats):
         duration: timedelta,
         show_log: bool = False,
     ) -> None:
-        self.batch_count = batch.i_batch
+        self.batch_count = batch.i_batch + 1
         self.batch_count_total = batch.n_batches
         self.batch_time = batch.end_time
         self.processed_bytes += batch.cumulative_bytes
-        self.processed_duration += batch.duration
+        self.processed_time += batch.duration
         self.processing_time += duration
         self.latest_processing_rate = batch.cumulative_bytes / duration.total_seconds()
         self.latest_processing_speed = batch.duration / duration.total_seconds()
+        self.current_stations = batch.n_stations
+        self.current_networks = batch.n_networks
+
         self._batch_processing_times.append(duration)
         if show_log:
             self.log()
@@ -166,13 +194,24 @@ class SearchStats(Stats):
         table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
-            f" ([bold]{self.batch_count+1}[/bold]/{self.batch_count_total or '?'},"
+            f" ([bold]{self.batch_count}[/bold]/{self.batch_count_total or '?'},"
             f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
+        )
+        table.add_row(
+            "Stations",
+            f"{self.current_stations}/{self.total_stations}"
+            f" ({self.current_networks}/{self.total_networks} networks)",
         )
         table.add_row(
             "Processing rate",
             f"{human_readable_bytes(self.processing_rate)}/s"
             f" ({tts(self.processing_speed)} tr/s)",
+        )
+        table.add_row(
+            "Resources",
+            f"CPU {self.cpu_percent:.1f}%, "
+            f"RAM {human_readable_bytes(self.memory_used, decimal=True)}"
+            f"/{self.memory_total.human_readable(decimal=True)}",
         )
         table.add_row(
             "Remaining Time",
@@ -192,11 +231,11 @@ class Search(BaseModel):
         description="Station inventory from StationXML or Pyrocko Station YAML.",
     )
     data_provider: WaveformProviderType = Field(
-        default=PyrockoSquirrel(),
+        default_factory=PyrockoSquirrel.model_construct,
         description="Data provider for waveform data.",
     )
     pre_processing: PreProcessing = Field(
-        default=PreProcessing(root=[Downsample(sampling_frequency=100.0)]),
+        default=PreProcessing(root=[Downsample(), Bandpass()]),
         description="Pre-processing steps for waveform data.",
     )
 
@@ -213,6 +252,11 @@ class Search(BaseModel):
     ray_tracers: RayTracers = Field(
         default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
         description="List of ray tracers for travel time calculation.",
+    )
+    distance_weights: DistanceWeights | None = Field(
+        default=DistanceWeights(),
+        validation_alias=AliasChoices("spatial_weights", "distance_weights"),
+        description="Spatial weights for distance weighting.",
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
@@ -241,6 +285,11 @@ class Search(BaseModel):
         description="Ignore events that are inside the first root node layer of"
         " the octree. If `with_surface`, all events inside the boundaries of the volume"
         " are absorbed. If `without_surface`, events at the surface are not absorbed.",
+    )
+    absorbing_boundary_width: float | Literal["root_node_size"] = Field(
+        default="root_node_size",
+        description="Width of the absorbing boundary around the octree volume. "
+        "If 'octree' the width is set to the root node size of the octree.",
     )
     node_peak_interpolation: bool = Field(
         default=True,
@@ -300,7 +349,9 @@ class Search(BaseModel):
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
-    _feature_semaphore: asyncio.Semaphore = PrivateAttr(asyncio.Semaphore(16))
+    _compute_semaphore: asyncio.Semaphore = PrivateAttr(
+        asyncio.Semaphore(max(1, get_cpu_count() - 4))
+    )
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
@@ -350,7 +401,7 @@ class Search(BaseModel):
         logger.debug("writing search config to %s", path)
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
 
-        logger.debug("dumping stations...")
+        logger.debug("dumping stations")
         self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
 
         csv_dir = rundir / "csv"
@@ -415,8 +466,7 @@ class Search(BaseModel):
         )
 
     async def prepare(self) -> None:
-        """
-        Prepares the search by initializing necessary components and data.
+        """Prepares the search by initializing necessary components and data.
 
         This method prepares the search by performing the following steps:
         1. Prepares the data provider with the given stations.
@@ -430,9 +480,15 @@ class Search(BaseModel):
         Returns:
             None
         """
-        logger.info("preparing search...")
+        logger.info("preparing search components")
+        asyncio.get_running_loop().set_exception_handler(
+            lambda loop, context: logger.error(context)
+        )
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
+
+        if self.distance_weights:
+            self.distance_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -450,7 +506,10 @@ class Search(BaseModel):
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
+
         self._stats.project_name = self._rundir.name
+        self._stats.total_stations = self.stations.n_stations
+        self._stats.total_networks = self.stations.n_networks
 
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():
@@ -458,14 +517,15 @@ class Search(BaseModel):
 
         await self.prepare()
 
-        logger.info("starting search...")
-        stats = self._stats
-        stats.reset_start_time()
-
-        processing_start = datetime_now()
-
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
+            await self._catalog.check(repair=True)
+            await self._catalog.filter_events_by_time(
+                start_time=None,
+                end_time=self._progress.time_progress,
+            )
+        else:
+            logger.info("starting search")
 
         batches = self.data_provider.iter_batches(
             window_increment=self.window_length,
@@ -475,6 +535,10 @@ class Search(BaseModel):
         )
         processed_batches = self.pre_processing.iter_batches(batches)
 
+        stats = self._stats
+        stats.reset_start_time()
+
+        processing_start = datetime_now()
         console = asyncio.create_task(RuntimeStats.live_view())
 
         async for images, batch in self.image_functions.iter_images(processed_batches):
@@ -509,38 +573,45 @@ class Search(BaseModel):
         )
         console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
-        logger.info("found %d detections", self._catalog.n_events)
+        logger.info("detected %d events", self._catalog.n_events)
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
-        """
-        Process new detections.
+        """Process new detections.
 
         Args:
             detections (list[EventDetection]): List of new event detections.
         """
+        catalog = self.catalog
         await asyncio.gather(
             *(self.add_magnitude_and_features(det) for det in detections)
         )
 
         for detection in detections:
-            await self._catalog.add(detection)
+            await catalog.add(detection)
             await self._new_detection.emit(detection)
 
-        if (
-            self._catalog.n_events
-            and self._catalog.n_events - self._last_detection_export > 100
-        ):
-            await self._catalog.export_detections(
+        if not catalog.n_events:
+            return
+
+        threshold = np.floor(np.log10(catalog.n_events)) - 1
+        new_threshold = max(10, 10**threshold)
+        if catalog.n_events - self._last_detection_export > new_threshold:
+            await catalog.export_detections(
                 jitter_location=self.octree.smallest_node_size()
             )
-            self._last_detection_export = self._catalog.n_events
+            self._last_detection_export = catalog.n_events
 
-    async def add_magnitude_and_features(self, event: EventDetection) -> EventDetection:
-        """
-        Adds magnitude and features to the given event.
+    async def add_magnitude_and_features(
+        self,
+        event: EventDetection,
+        recalculate: bool = True,
+    ) -> EventDetection:
+        """Adds magnitude and features to the given event.
 
         Args:
             event (EventDetection): The event to add magnitude and features to.
+            recalculate (bool, optional): Whether to overwrite existing magnitudes and
+                features. Defaults to True.
         """
         if not event.in_bounds:
             return event
@@ -550,8 +621,10 @@ class Search(BaseModel):
         except NotImplementedError:
             return event
 
-        async with self._feature_semaphore:
+        async with self._compute_semaphore:
             for mag_calculator in self.magnitudes:
+                if not recalculate and mag_calculator.has_magnitude(event):
+                    continue
                 logger.debug("adding magnitude from %s", mag_calculator.magnitude)
                 await mag_calculator.add_magnitude(squirrel, event)
 
@@ -665,15 +738,25 @@ class SearchTraces:
 
         traveltimes_bad = np.isnan(traveltimes)
         traveltimes[traveltimes_bad] = 0.0
-        station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
+        # station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
 
-        shifts = -np.round(traveltimes / image.delta_t).astype(np.int32)
-        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
+        shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
+        # weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         # Normalize by number of station contribution
-        with np.errstate(divide="ignore", invalid="ignore"):
-            weights /= station_contribution[:, np.newaxis]
-        weights /= self.images.cumulative_weight()
+        # with np.errstate(divide="ignore", invalid="ignore"):
+        #     weights /= station_contribution[:, np.newaxis]
+
+        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         weights[traveltimes_bad] = 0.0
+
+        if parent.distance_weights:
+            weights *= await parent.distance_weights.get_weights(octree, image.stations)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            weights /= weights.sum(axis=1, keepdims=True)
+
+        # applying waterlevel
+        weights[weights < 1e-3] = 0.0
 
         if semblance_cache:
             cache_mask = semblance_cache.get_mask(semblance.node_hashes)
@@ -688,8 +771,7 @@ class SearchTraces:
         )
 
     async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
-        """
-        Retrieves waveform images for the specified sampling rate.
+        """Retrieves waveform images for the specified sampling rate.
 
         Args:
             sampling_rate (float | None, optional): The desired sampling rate in Hz.
@@ -719,6 +801,8 @@ class SearchTraces:
         Args:
             octree (Octree | None, optional): The octree to use for the search.
                 Defaults to None.
+            semblance_cache (SemblanceCache | None, optional): The semblance cache to
+                use for the search. Defaults to None.
 
         Returns:
             tuple[list[EventDetection], Trace]: The event detections and the
@@ -744,6 +828,8 @@ class SearchTraces:
         )
 
         for image in images:
+            if not image.has_traces:
+                continue
             await self.calculate_semblance(
                 octree=octree,
                 image=image,
@@ -753,8 +839,7 @@ class SearchTraces:
             )
 
         # Applying the generalized mean to the semblance
-        # semblance.normalize(
-        # images.cumulative_weight(), semblance_cache=semblance_cache)
+        # semblance.normalize(images.cumulative_weight(), semblance_cache=semblance_cache)
 
         if semblance_cache:
             await semblance.apply_cache(semblance_cache)
@@ -781,7 +866,8 @@ class SearchTraces:
             source_node = octree[node_idx]
 
             if parent.absorbing_boundary and source_node.is_inside_border(
-                with_surface=parent.absorbing_boundary == "with_surface"
+                with_surface=parent.absorbing_boundary == "with_surface",
+                border_width=parent.absorbing_boundary_width,
             ):
                 continue
             refine_nodes.update(source_node)
@@ -795,21 +881,25 @@ class SearchTraces:
 
         # refine_nodes is empty when all sources fall into smallest octree nodes
         if refine_nodes:
+            node_size_max = max(node.size for node in refine_nodes)
             new_level = 0
             for node in refine_nodes:
-                try:
-                    node.split()
-                    new_level = max(new_level, node.level + 1)
-                except NodeSplitError:
-                    continue
+                node.split()
+                new_level = max(new_level, node.level + 1)
             logger.info(
-                "energy detected, refined %d nodes, level %d",
+                "detected %d energy burst%s - refined %d nodes, level %d (%.1f m)",
+                detection_idx.size,
+                "s" if detection_idx.size > 1 else "",
                 len(refine_nodes),
                 new_level,
+                node_size_max,
             )
             cache = semblance.get_cache()
             del semblance
-            return await self.search(octree, semblance_cache=cache)
+            return await self.search(
+                octree,
+                semblance_cache=cache,
+            )
 
         detections = []
         for time_idx, semblance_detection in zip(
@@ -822,12 +912,13 @@ class SearchTraces:
             octree.map_semblance(semblance_event)
             source_node = octree[node_idx]
             if parent.absorbing_boundary and source_node.is_inside_border(
-                with_surface=parent.absorbing_boundary == "with_surface"
+                with_surface=parent.absorbing_boundary == "with_surface",
+                border_width=parent.absorbing_boundary_width,
             ):
                 continue
 
             if parent.node_peak_interpolation:
-                source_location = await octree.interpolate_max_location(source_node)
+                source_location = await octree.interpolate_max_semblance(source_node)
             else:
                 source_location = source_node.as_location()
 

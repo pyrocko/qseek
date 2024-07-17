@@ -33,7 +33,7 @@ keywords = [
 ]
 
 dependencies = [
-    "numpy>=1.17.3",
+    "numpy>=1.17.3, <2",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
     "seisbench>=0.5.0",
@@ -45,7 +45,10 @@ dependencies = [
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
+    "psutil>=5.9",
     "aiofiles>=23.0",
+    "typer >=0.12.3",
+    "scikit-fmm >= 2024.05",
 ]
 
 classifiers = [
@@ -62,18 +65,12 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pre-commit>=3.4",
-    "black>=23.7",
-    "ruff>=0.1.14",
-    "pytest>=7.4",
-    "pytest-asyncio>=0.21",
-]
+dev = ["pre-commit>=3.4", "ruff>=0.3.0", "pytest>=7.4", "pytest-asyncio>=0.21"]
 
 docs = [
-    "mkdocs-material>=9.5.13",
-    "mkdocstrings[python]>=0.23",
-    "markdown-exec>=1.8.0",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "markdown-exec>=1.9",
 ]
 completion = ["argcomplete>=3.2"]
 
@@ -106,12 +103,26 @@ extend-select = [
     'I',
     'RUF',
     'T20',
+    'D',
 ]
 
-ignore = ["RUF012", "RUF009"]
+ignore = [
+    "RUF012",
+    "RUF009",
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+]
 
 [tool.ruff]
 target-version = 'py311'
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]

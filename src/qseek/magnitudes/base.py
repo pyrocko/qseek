@@ -110,13 +110,23 @@ class EventMagnitudeCalculator(BaseModel):
         """
         return tuple(cls.__subclasses__())
 
+    def has_magnitude(self, event: EventDetection) -> bool:
+        """Check if the given event has a magnitude.
+
+        Args:
+            event (EventDetection): The event to check.
+
+        Returns:
+            bool: True if the event has a magnitude, False otherwise.
+        """
+        raise NotImplementedError
+
     async def add_magnitude(
         self,
         squirrel: Squirrel,
         event: EventDetection,
     ) -> None:
-        """
-        Adds a magnitude to the squirrel for the given event.
+        """Adds a magnitude to the squirrel for the given event.
 
         Args:
             squirrel (Squirrel): The squirrel object to add the magnitude to.
@@ -132,8 +142,7 @@ class EventMagnitudeCalculator(BaseModel):
         octree: Octree,
         stations: Stations,
     ) -> None:
-        """
-        Prepare the magnitudes calculation by initializing necessary data structures.
+        """Prepare the magnitudes calculation by initializing necessary data structures.
 
         Args:
             octree (Octree): The octree containing seismic event data.

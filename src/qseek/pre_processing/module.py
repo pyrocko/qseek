@@ -16,7 +16,7 @@ from qseek.pre_processing.frequency_filters import (  # noqa: F401
     Lowpass,
 )
 from qseek.stats import Stats
-from qseek.utils import datetime_now, human_readable_bytes
+from qseek.utils import QUEUE_SIZE, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
     from rich.table import Table
@@ -71,7 +71,9 @@ class PreProcessing(RootModel):
         "The first module is the first to be applied.",
     )
 
-    _queue: asyncio.Queue[WaveformBatch | None] = asyncio.Queue(maxsize=12)
+    _queue: asyncio.Queue[WaveformBatch | None] = PrivateAttr(
+        asyncio.Queue(maxsize=QUEUE_SIZE)
+    )
     _stats: PreProcessingStats = PrivateAttr(default_factory=PreProcessingStats)
 
     def model_post_init(self, __context: Any) -> None:
@@ -103,11 +105,12 @@ class PreProcessing(RootModel):
                 start_time = datetime_now()
                 for process in self:
                     batch = await process.process_batch(batch)
-                await self._queue.put(batch)
+                    await asyncio.sleep(0.0)
                 stats.time_per_batch = datetime_now() - start_time
                 stats.bytes_per_second = (
                     batch.cumulative_bytes / stats.time_per_batch.total_seconds()
                 )
+                await self._queue.put(batch)
 
             await self._queue.put(None)
 

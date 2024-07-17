@@ -10,7 +10,7 @@ from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal
 
 import numpy as np
 import scipy.interpolate
@@ -39,7 +39,7 @@ KM = 1e3
 
 
 def get_node_coordinates(
-    nodes: Sequence[Node],
+    nodes: Iterable[Node],
     system: CoordSystem = "geographic",
 ) -> np.ndarray:
     if system == "geographic":
@@ -84,7 +84,7 @@ class Node:
     _location: Location | None = None
 
     def split(self) -> tuple[Node, ...]:
-        """Split the node into 8 children"""
+        """Split the node into 8 children."""
         if not self.tree:
             raise EnvironmentError("Parent tree is not set.")
 
@@ -116,7 +116,13 @@ class Node:
 
     @property
     def coordinates(self) -> tuple[float, float, float]:
+        """Returns the node coordinates (east, north, depth)."""
         return self.east, self.north, self.depth
+
+    @property
+    def radius(self) -> float:
+        """Returns the radius of the sphere that can fit the node inside."""
+        return np.sqrt(3 * (self.size / 2) ** 2)
 
     def get_distance_border(self, with_surface: bool = False) -> float:
         """Distance to the closest EW, NS or bottom border of the tree.
@@ -145,19 +151,30 @@ class Node:
             return min(border_distance, self.depth - tree.depth_bounds[0])
         return border_distance
 
-    def is_inside_border(self, with_surface: bool = False) -> bool:
+    def is_inside_border(
+        self,
+        with_surface: bool = False,
+        border_width: float | Literal["root_node_size"] = "root_node_size",
+    ) -> bool:
         """Check if the node is within the root node border.
 
         Args:
-            trough (bool, optional): If True, the node is considered inside the
-                trough (open top). Defaults to False.
+            with_surface (bool, optional): If True, the surface is considered
+                as a border. Defaults to False.
+            border_width (float, optional): Width of the border, if 0.0,
+                the octree's root node size is used. Defaults to 0.0.
 
         Returns:
             bool: True if the node is inside the root tree's border.
         """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        return self.get_distance_border(with_surface) <= self.tree.root_node_size
+        border = (
+            self.tree.root_node_size
+            if border_width == "root_node_size"
+            else border_width
+        )
+        return self.get_distance_border(with_surface) <= border
 
     def can_split(self) -> bool:
         """Check if the node can be split.
@@ -200,8 +217,7 @@ class Node:
         return location.distance_to(self.as_location())
 
     def semblance_density(self) -> float:
-        """
-        Calculate the semblance density of the octree.
+        """Calculate the semblance density of the octree.
 
         Returns:
             The semblance density of the octree.
@@ -228,7 +244,7 @@ class Node:
             )
         return self._location
 
-    def collides(self, other: Node) -> bool:
+    def is_colliding(self, other: Node) -> bool:
         """Check if two nodes collide.
 
         Args:
@@ -255,7 +271,7 @@ class Node:
         return [
             node
             for node in self.tree.iter_nodes()
-            if self.collides(node) and node is not self
+            if self.is_colliding(node) and node is not self
         ]
 
     def distance_to(self, other: Node) -> float:
@@ -301,13 +317,13 @@ class Node:
         return hash(self.hash())
 
 
-class Octree(BaseModel):
+class Octree(BaseModel, Iterator[Node]):
     location: Location = Field(
         default=Location(lat=0.0, lon=0.0),
         description="The reference location of the octree.",
     )
     root_node_size: PositiveFloat = Field(
-        default=2 * KM,
+        default=1 * KM,
         description="Initial size of the root octree node at level 0 in meters.",
     )
     n_levels: int = Field(
@@ -355,7 +371,7 @@ class Octree(BaseModel):
         return self
 
     def model_post_init(self, __context: Any) -> None:
-        """Initialize octree. This method is called by the pydantic model"""
+        """Initialize octree. This method is called by the pydantic model."""
         self._root_nodes = self.get_root_nodes(self.root_node_size)
 
         logger.info(
@@ -394,12 +410,12 @@ class Octree(BaseModel):
 
     @cached_property
     def n_nodes(self) -> int:
-        """Number of nodes in the octree"""
+        """Number of nodes in the octree."""
         return sum(1 for _ in self)
 
     @property
     def volume(self) -> float:
-        """Volume of the octree in cubic meters"""
+        """Volume of the octree in cubic meters."""
         return reduce(mul, self.extent())
 
     def iter_nodes(self, level: int | None = None) -> Iterator[Node]:
@@ -420,6 +436,11 @@ class Octree(BaseModel):
         for node in self._root_nodes:
             yield from node
 
+    def __next__(self) -> Node:
+        for node in self:
+            return node
+        raise StopIteration
+
     def __getitem__(self, idx: int) -> Node:
         for inode, node in enumerate(self):
             if inode == idx:
@@ -433,7 +454,7 @@ class Octree(BaseModel):
             del self.n_nodes
 
     def reset(self) -> Self:
-        """Reset the octree to its initial state"""
+        """Reset the octree to its initial state and return it."""
         logger.debug("resetting tree")
         self._clear_cache()
         self._root_nodes = self.get_root_nodes(self.root_node_size)
@@ -459,11 +480,14 @@ class Octree(BaseModel):
         self,
         surface: Literal["NE", "ED", "ND"] = "NE",
         max_level: int = -1,
-        accumulator: Callable = np.max,
+        accumulator: Callable[np.ndarray] = np.max,
     ) -> np.ndarray:
-        """Reduce the octree's nodes to the surface
+        """Reduce the octree's nodes to the surface.
 
         Args:
+            surface (Literal["NE", "ED", "ND"], optional): Surface to reduce to.
+                Defaults to "NE".
+            max_level (int, optional): Maximum level to reduce to. Defaults to -1.
             accumulator (Callable, optional): Accumulator function. Defaults to np.max.
 
         Returns:
@@ -553,8 +577,7 @@ class Octree(BaseModel):
         ).reshape(-1, stations.n_stations)
 
     def get_nodes(self, indices: Iterable[int]) -> list[Node]:
-        """
-        Retrieves a list of nodes from the octree based on the given indices.
+        """Retrieves a list of nodes from the octree based on the given indices.
 
         Args:
             indices (Iterable[int]): The indices of the nodes to retrieve.
@@ -609,7 +632,7 @@ class Octree(BaseModel):
         """
         return len(self._root_nodes) * (8 ** (self.n_levels - 1))
 
-    async def interpolate_max_location(
+    async def interpolate_max_semblance(
         self,
         peak_node: Node,
     ) -> Location:
@@ -641,8 +664,7 @@ class Octree(BaseModel):
         rbf = scipy.interpolate.RBFInterpolator(
             neighbor_coords[:, :3],
             neighbor_semblance,
-            kernel="thin_plate_spline",
-            degree=1,
+            kernel="cubic",
         )
         bound = peak_node.size / 1.5
         res = await asyncio.to_thread(
@@ -708,6 +730,27 @@ class Octree(BaseModel):
         logger.info("saving octree pickle to %s", filename)
         with filename.open("wb") as f:
             pickle.dump(self, f)
+
+    def get_corners(self) -> list[Location]:
+        """Get the corners of the octree.
+
+        Returns:
+            list[Location]: List of locations.
+        """
+        reference = self.location
+        return [
+            Location(
+                lat=reference.lat,
+                lon=reference.lon,
+                elevation=reference.elevation,
+                east_shift=reference.east_shift + east,
+                north_shift=reference.north_shift + north,
+                depth=reference.depth + depth,
+            )
+            for east in (self.east_bounds.min, self.east_bounds.max)
+            for north in (self.north_bounds.min, self.north_bounds.max)
+            for depth in (self.depth_bounds.min, self.depth_bounds.max)
+        ]
 
     def __hash__(self) -> int:
         return hash(

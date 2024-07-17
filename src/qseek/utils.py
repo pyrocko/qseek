@@ -26,7 +26,7 @@ from typing import (
 )
 
 import numpy as np
-from pydantic import AfterValidator, BaseModel, ByteSize, constr
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ByteSize, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
@@ -41,6 +41,7 @@ FORMAT = "%(message)s"
 
 PhaseDescription = Annotated[str, constr(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
 
+QUEUE_SIZE = 16
 CACHE_DIR = Path.home() / ".cache" / "qseek"
 if not CACHE_DIR.exists():
     logger.info("creating cache dir %s", CACHE_DIR)
@@ -91,7 +92,7 @@ class BackgroundTasks:
         await asyncio.gather(*cls.tasks)
 
 
-class NSL(NamedTuple):
+class _NSL(NamedTuple):
     network: str
     station: str
     location: str
@@ -101,8 +102,7 @@ class NSL(NamedTuple):
         return ".".join(self)
 
     def match(self, other: NSL) -> bool:
-        """
-        Check if the current NSL object matches another NSL object.
+        """Check if the current NSL object matches another NSL object.
 
         Args:
             other (NSL): The NSL object to compare with.
@@ -117,9 +117,8 @@ class NSL(NamedTuple):
         return self.network == other.network
 
     @classmethod
-    def parse(cls, nsl: str) -> NSL:
-        """
-        Parse the given NSL string and return an NSL object.
+    def parse(cls, nsl: str | NSL | list[str] | tuple[str, str, str]) -> NSL:
+        """Parse the given NSL string and return an NSL object.
 
         Args:
             nsl (str): The NSL string to parse.
@@ -131,16 +130,52 @@ class NSL(NamedTuple):
             ValueError: If the NSL string is empty or invalid.
         """
         if not nsl:
-            raise ValueError("invalid empty NSL")
+            raise ValueError(f"invalid empty NSL: {nsl}")
+        if type(nsl) is _NSL:
+            return nsl
+        if isinstance(nsl, (list, tuple)):
+            return cls(*nsl)
+        if not isinstance(nsl, str):
+            raise ValueError(f"invalid NSL {nsl}")
+
         parts = nsl.split(".")
         n_parts = len(parts)
         if n_parts >= 3:
             return cls(*parts[:3])
         if n_parts == 2:
             return cls(parts[0], parts[1], "")
-        if n_parts == 1:
-            return cls(parts[0], "", "")
-        raise ValueError(f"invalid NSL {nsl}")
+        raise ValueError(
+            f"invalid NSL `{nsl}`, expecting `<net>.<sta>.<loc>`, "
+            "e.g. `6A.STA130.00`, `6A.`, `6A.STA130` or `.STA130`"
+        )
+
+    def _check(self) -> None:
+        """Check if the current NSL object matches another NSL object.
+
+        Args:
+            nsl (NSL): The NSL object to compare with.
+
+        Returns:
+            bool: True if the objects match, False otherwise.
+        """
+        if len(self.network) > 2:
+            raise ValueError(
+                f"invalid network {self.network} for {self.pretty},"
+                " expected 0-2 characters for network code"
+            )
+        if len(self.station) > 5 or len(self.station) < 1:
+            raise ValueError(
+                f"invalid station {self.station} for {self.pretty},"
+                " expected 1-5 characters for station code"
+            )
+        if len(self.location) > 2:
+            raise ValueError(
+                f"invalid location {self.location} for {self.pretty},"
+                " expected 0-2 characters for location code"
+            )
+
+
+NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
 
 
 class _Range(NamedTuple):
@@ -148,8 +183,7 @@ class _Range(NamedTuple):
     max: float
 
     def inside(self, value: float) -> bool:
-        """
-        Check if a value is inside the range.
+        """Check if a value is inside the range.
 
         Args:
             value (float): The value to check.
@@ -161,8 +195,7 @@ class _Range(NamedTuple):
 
     @classmethod
     def from_list(cls, array: np.ndarray | list[float]) -> _Range:
-        """
-        Create a Range object from a numpy array.
+        """Create a Range object from a numpy array.
 
         Parameters:
         - array: numpy.ndarray
@@ -184,8 +217,7 @@ Range = Annotated[_Range, AfterValidator(_range_validator)]
 
 
 def time_to_path(datetime: datetime) -> str:
-    """
-    Converts a datetime object to a string representation of a file path.
+    """Converts a datetime object to a string representation of a file path.
 
     Args:
         datetime (datetime): The datetime object to convert.
@@ -197,8 +229,7 @@ def time_to_path(datetime: datetime) -> str:
 
 
 def as_array(iterable: Iterable[float], dtype: np.dtype = float) -> np.ndarray:
-    """
-    Convert an iterable of floats into a NumPy array.
+    """Convert an iterable of floats into a NumPy array.
 
     Parameters:
         iterable (Iterable[float]): An iterable containing float values.
@@ -210,8 +241,7 @@ def as_array(iterable: Iterable[float], dtype: np.dtype = float) -> np.ndarray:
 
 
 def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> float:
-    """
-    Calculate the weighted median of an array/list using numpy.
+    """Calculate the weighted median of an array/list using numpy.
 
     Parameters:
         data (np.ndarray): The input array/list.
@@ -254,8 +284,7 @@ def weighted_median(data: np.ndarray, weights: np.ndarray | None = None) -> floa
 async def async_weighted_median(
     data: np.ndarray, weights: np.ndarray | None = None
 ) -> float:
-    """
-    Asynchronously calculate the weighted median of an array/list using numpy.
+    """Asynchronously calculate the weighted median of an array/list using numpy.
 
     Parameters:
         data (np.ndarray): The input array/list.
@@ -296,8 +325,7 @@ async def async_weighted_median(
 
 
 def to_datetime(time: float) -> datetime:
-    """
-    Convert a UNIX timestamp to a datetime object in UTC timezone.
+    """Convert a UNIX timestamp to a datetime object in UTC timezone.
 
     Args:
         time (float): The UNIX timestamp to convert.
@@ -309,8 +337,7 @@ def to_datetime(time: float) -> datetime:
 
 
 def resample(trace: Trace, sampling_rate: float) -> None:
-    """
-    Downsamples the given trace to the specified sampling rate in-place.
+    """Downsamples the given trace to the specified sampling rate in-place.
 
     Args:
         trace (Trace): The trace to be downsampled.
@@ -360,23 +387,23 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     return wrapper
 
 
-def human_readable_bytes(size: int | float) -> str:
-    """
-    Convert a size in bytes to a human-readable string representation.
+def human_readable_bytes(size: int | float, decimal: bool = False) -> str:
+    """Convert a size in bytes to a human-readable string representation.
 
     Args:
         size (int | float): The size in bytes.
+        decimal: If True, use decimal units (e.g. 1000 bytes per KB).
+            If False, use binary units (e.g. 1024 bytes per KiB).
 
     Returns:
         str: The human-readable string representation of the size.
 
     """
-    return ByteSize(size).human_readable()
+    return ByteSize.human_readable(size, decimal=decimal)
 
 
 def datetime_now() -> datetime:
-    """
-    Get the current datetime in UTC timezone.
+    """Get the current datetime in UTC timezone.
 
     Returns:
         datetime: The current datetime in UTC timezone.
@@ -385,8 +412,7 @@ def datetime_now() -> datetime:
 
 
 def get_cpu_count() -> int:
-    """
-    Get the number of CPUs available for the current job/task.
+    """Get the number of CPUs available for the current job/task.
 
     The function first checks if the environment variable SLURM_CPUS_PER_TASK is set.
     If it is set, the value is returned as the number of CPUs.
@@ -417,8 +443,7 @@ def filter_clipped_traces(
     counts_threshold: int = 20,
     max_bits: tuple[int, ...] = (24, 32),
 ) -> list[Trace]:
-    """
-    Filters out clipped traces from the given list of traces.
+    """Filters out clipped traces from the given list of traces.
 
     Args:
         traces (list[Trace]): The list of traces to filter.
@@ -455,8 +480,7 @@ def filter_clipped_traces(
 
 
 def camel_case_to_snake_case(name: str) -> str:
-    """
-    Converts a camel case string to snake case.
+    """Converts a camel case string to snake case.
 
     Args:
         name (str): The camel case string to be converted.
@@ -472,8 +496,7 @@ def camel_case_to_snake_case(name: str) -> str:
 
 
 def load_insights() -> None:
-    """
-    Imports the qseek.insights package if available.
+    """Imports the qseek.insights package if available.
 
     This function attempts to import the qseek.insights package and logs a debug message
     indicating whether the package was successfully imported or not.
@@ -503,11 +526,10 @@ class ChannelSelector:
     normalize: bool = False
 
     def get_traces(self, traces_flt: list[Trace]) -> list[Trace]:
-        """
-        Filter and normalize a list of traces based on the specified channels.
+        """Filter and normalize a list of traces based on the specified channels.
 
         Args:
-            traces (list[Trace]): The list of traces to filter.
+            traces_flt (list[Trace]): The list of traces to filter.
 
         Returns:
             list[Trace]: The filtered and normalized list of traces.
@@ -562,7 +584,7 @@ NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"
 
 
 def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
-    """Takes model and dumps markdown for documentation"""
+    """Takes model and dumps markdown for documentation."""
 
     def generate_submodel(model: BaseModel) -> list[str]:
         lines = []

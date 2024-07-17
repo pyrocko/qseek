@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, Field, FilePath, constr
+from pydantic import BaseModel, DirectoryPath, Field, FilePath, constr
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -76,9 +76,10 @@ class Stations(BaseModel):
         description="List of [Pyrocko station YAML]"
         "(https://pyrocko.org/docs/current/formats/yaml.html) files.",
     )
-    station_xmls: list[FilePath] = Field(
+    station_xmls: list[FilePath | DirectoryPath] = Field(
         default=[],
-        description="List of StationXML files.",
+        description="List of StationXML files or "
+        "directories containing StationXML (.xml) files.",
     )
 
     blacklist: set[constr(pattern=NSL_RE)] = Field(
@@ -93,9 +94,16 @@ class Stations(BaseModel):
         for file in self.pyrocko_station_yamls:
             loaded_stations += load_stations(filename=str(file.expanduser()))
 
-        for file in self.station_xmls:
-            station_xml = load_xml(filename=str(file.expanduser()))
-            loaded_stations += station_xml.get_pyrocko_stations()
+        for path in self.station_xmls:
+            if path.is_dir():
+                station_xmls = path.glob("*.xml")
+            elif path.is_file():
+                station_xmls = [path]
+            else:
+                continue
+            for file in station_xmls:
+                station_xml = load_xml(filename=str(file.expanduser()))
+                loaded_stations += station_xml.get_pyrocko_stations()
 
         for sta in loaded_stations:
             sta = Station.from_pyrocko_station(sta)
@@ -161,8 +169,13 @@ class Stations(BaseModel):
 
     @property
     def n_stations(self) -> int:
-        """Number of stations in the stations object."""
+        """Number of stations."""
         return sum(1 for _ in self)
+
+    @property
+    def n_networks(self) -> int:
+        """Number of stations."""
+        return len({sta.network for sta in self})
 
     def get_all_nsl(self) -> list[NSL]:
         """Get all NSL codes from all stations."""
@@ -171,20 +184,23 @@ class Stations(BaseModel):
     def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
         """Select stations by NSL code.
 
+        Stations are not unique and are ordered by the input traces.
+
         Args:
-            selection (Iterable[Trace]): Iterable of Pyrocko Traces
+            traces (Iterable[Trace]): Iterable of Pyrocko Traces
 
         Returns:
             Stations: Containing only selected stations.
         """
-        selected_stations = []
-        for nsl in ((tr.network, tr.station, tr.location) for tr in traces):
-            for sta in self:
-                if sta.nsl == nsl:
-                    selected_stations.append(sta)
-                    break
-            else:
-                raise ValueError(f"could not find a station for {'.'.join(nsl)} ")
+        available_stations = {sta.nsl: sta for sta in self}
+        try:
+            selected_stations = [
+                available_stations[(tr.network, tr.station, tr.location)]
+                for tr in traces
+            ]
+        except KeyError as exc:
+            raise ValueError("could not find a station") from exc
+
         return Stations.model_construct(stations=selected_stations)
 
     def get_centroid(self) -> Location:
@@ -204,13 +220,14 @@ class Stations(BaseModel):
         )
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
+        if system != "geographic":
+            raise NotImplementedError("only geographic coordinates are implemented.")
         return np.array(
             [(*sta.effective_lat_lon, sta.effective_elevation) for sta in self]
         )
 
     def as_pyrocko_stations(self) -> list[PyrockoStation]:
-        """
-        Convert the stations to PyrockoStation objects.
+        """Convert the stations to PyrockoStation objects.
 
         Returns:
             A list of PyrockoStation objects.
@@ -235,11 +252,14 @@ class Stations(BaseModel):
             filename (Path): Path to CSV file.
         """
         with filename.open("w") as f:
-            f.write("network,station,location,latitude,longitude,elevation,depth\n")
+            f.write(
+                "network,station,location,latitude,longitude,elevation,depth,WKT_geom\n"
+            )
             for sta in self:
                 f.write(
                     f"{sta.network},{sta.station},{sta.location},"
-                    f"{sta.lat},{sta.lon},{sta.elevation},{sta.depth}\n"
+                    f"{sta.effective_lat},{sta.effective_lon},{sta.elevation},"
+                    f"{sta.depth},{sta.as_wkt()}\n"
                 )
 
     def export_vtk(self, reference: Location | None = None) -> None: ...

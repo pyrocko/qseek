@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
 from qseek.images.base import ImageFunction
-from qseek.images.phase_net import PhaseNet
+from qseek.images.seisbench import SeisBench
 from qseek.stats import Stats
-from qseek.utils import PhaseDescription, datetime_now, human_readable_bytes
+from qseek.utils import QUEUE_SIZE, PhaseDescription, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 ImageFunctionType = Annotated[
-    Union[PhaseNet, ImageFunction],
+    Union[SeisBench, ImageFunction],
     Field(..., discriminator="image"),
 ]
 
@@ -70,9 +70,11 @@ class ImageFunctionsStats(Stats):
 
 
 class ImageFunctions(RootModel):
-    root: list[ImageFunctionType] = [PhaseNet()]
+    root: list[ImageFunctionType] = [SeisBench()]
 
-    _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr()
+    _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr(
+        asyncio.Queue(maxsize=QUEUE_SIZE)
+    )
     _processed_images: int = PrivateAttr(0)
     _stats: ImageFunctionsStats = PrivateAttr(default_factory=ImageFunctionsStats)
 
@@ -81,7 +83,6 @@ class ImageFunctions(RootModel):
         phases = self.get_phases()
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
-        self._queue = asyncio.Queue(maxsize=16)
         self._stats.set_queue(self._queue)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
@@ -99,12 +100,11 @@ class ImageFunctions(RootModel):
         """Iterate over images from batches.
 
         Args:
-            batches (AsyncIterator[Batch]): Async iterator over batches.
+            batch_iterator (AsyncIterator[Batch]): Async iterator over batches.
 
         Yields:
             AsyncIterator[WaveformImages]: Async iterator over images.
         """
-
         stats = self._stats
 
         async def worker() -> None:
@@ -112,6 +112,10 @@ class ImageFunctions(RootModel):
                 "start pre-processing images, queue size %d", self._queue.maxsize
             )
             async for batch in batch_iterator:
+                if batch.is_empty():
+                    logger.debug("empty batch, skipping")
+                    continue
+
                 start_time = datetime_now()
                 images = await self.process_traces(batch.traces)
                 stats.time_per_batch = datetime_now() - start_time

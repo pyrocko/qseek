@@ -91,7 +91,6 @@ class Location(BaseModel):
         Returns:
             float: The surface distance in [m].
         """
-
         if self._same_origin(other):
             return math.sqrt(
                 (self.north_shift - other.north_shift) ** 2
@@ -129,7 +128,7 @@ class Location(BaseModel):
         return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
     def offset_from(self, other: Location) -> tuple[float, float, float]:
-        """Return offset vector (east, north, depth) from other location in [m]
+        """Return offset vector (east, north, depth) from other location in [m].
 
         Args:
             other (Location): The other location.
@@ -185,14 +184,19 @@ class Location(BaseModel):
         return shifted
 
     def origin(self) -> Location:
-        """
-        Returns the origin location based on the latitude, longitude,
-        and effective elevation.
+        """Get the origin location.
 
         Returns:
             Location: The origin location.
         """
         return Location(lat=self.lat, lon=self.lon, elevation=self.effective_elevation)
+
+    def as_wkt(self) -> str:
+        """Return the location as WKT string."""
+        return (
+            f"POINT Z({self.effective_lon} {self.effective_lat}"
+            f" {self.effective_elevation})"
+        )
 
     def __hash__(self) -> int:
         return hash(self.location_hash())
@@ -213,10 +217,10 @@ class Location(BaseModel):
 
 
 def locations_to_csv(locations: Iterable[Location], filename: Path) -> Path:
-    lines = ["lat, lon, elevation, type"]
+    lines = ["lat,lon,elevation,type"]
     for loc in locations:
         lines.append(
-            "%.4f, %.4f, %.4f, %s"
+            "%.4f,%.4f,%.4f,%s"
             % (*loc.effective_lat_lon, loc.effective_elevation, loc.__class__.__name__)
         )
     filename.write_text("\n".join(lines))

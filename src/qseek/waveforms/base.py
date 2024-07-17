@@ -46,7 +46,18 @@ class WaveformBatch:
 
     @property
     def cumulative_bytes(self) -> int:
+        """Cumulative size of the traces in the batch in bytes."""
         return sum(tr.ydata.nbytes for tr in self.traces)
+
+    @property
+    def n_stations(self) -> int:
+        """Number of unique stations in the batch."""
+        return len({(tr.network, tr.station, tr.location) for tr in self.traces})
+
+    @property
+    def n_networks(self) -> int:
+        """Number of unique networks in the batch."""
+        return len({tr.network for tr in self.traces})
 
     def is_empty(self) -> bool:
         """Check if the batch is empty.

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
 import aiofiles
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PrivateAttr, computed_field
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
 from pyrocko.trace import Trace
+from rich.progress import track
 from rich.table import Table
 
 from qseek.console import console
@@ -31,13 +33,36 @@ class EventCatalogStats(Stats):
     max_semblance: float = 0.0
 
     _position: int = 2
+    _catalog: EventCatalog = PrivateAttr()
+
+    def set_catalog(self, catalog: EventCatalog) -> None:
+        self._catalog = catalog
+        self.n_detections = catalog.n_events
+
+    @property
+    def magnitudes(self) -> list[float]:
+        return [det.magnitude.average for det in self._catalog if det.magnitude]
+
+    @computed_field
+    def mean_semblance(self) -> float:
+        return (
+            sum(detection.semblance for detection in self._catalog) / self.n_detections
+        )
+
+    @computed_field
+    def magnitude_min(self) -> float:
+        return min(self.magnitudes) if self.magnitudes else 0.0
+
+    @computed_field
+    def magnitude_max(self) -> float:
+        return max(self.magnitudes) if self.magnitudes else 0.0
 
     def new_detection(self, detection: EventDetection):
         self.n_detections += 1
         self.max_semblance = max(self.max_semblance, detection.semblance)
 
     def _populate_table(self, table: Table) -> None:
-        table.add_row("No. Detections", f"[bold]{self.n_detections} :dim_button:")
+        table.add_row("No. Detections", f"[bold]{self.n_detections} :fire:")
         table.add_row("Maximum semblance", f"{self.max_semblance:.4f}")
 
 
@@ -51,7 +76,7 @@ class EventCatalog(BaseModel):
 
     @property
     def n_events(self) -> int:
-        """Number of detections"""
+        """Number of detections."""
         return len(self.events)
 
     @property
@@ -65,6 +90,32 @@ class EventCatalog(BaseModel):
         dir = self.rundir / "csv"
         dir.mkdir(exist_ok=True)
         return dir
+
+    async def filter_events_by_time(
+        self,
+        start_time: datetime | None,
+        end_time: datetime | None,
+    ) -> None:
+        """Filter the detections based on the given time range.
+
+        Args:
+            start_time (datetime | None): Start time of the time range.
+            end_time (datetime | None): End time of the time range.
+        """
+        if not self.events:
+            return
+
+        events = []
+        if start_time is not None and min(det.time for det in self.events) < start_time:
+            logger.info("filtering detections after start time %s", start_time)
+            events = [det for det in self.events if det.time >= start_time]
+        if end_time is not None and max(det.time for det in self.events) > end_time:
+            logger.info("filtering detections before end time %s", end_time)
+            events = [det for det in self.events if det.time <= end_time]
+        if events:
+            self.events = events
+            self._stats.n_detections = len(self.events)
+            await self.save()
 
     async def add(self, detection: EventDetection) -> None:
         detection.set_index(self.n_events)
@@ -104,6 +155,19 @@ class EventCatalog(BaseModel):
         )
 
     @classmethod
+    def last_modification(cls, rundir: Path) -> datetime:
+        """Last modification of the event file.
+
+        Returns:
+            datetime: Last modification of the event file.
+        """
+        detection_file = rundir / FILENAME_DETECTIONS
+        return datetime.fromtimestamp(
+            detection_file.stat().st_mtime,
+            tz=timezone.utc,
+        )
+
+    @classmethod
     def load_rundir(cls, rundir: Path) -> EventCatalog:
         """Load detections from files in the detections directory."""
         detection_file = rundir / FILENAME_DETECTIONS
@@ -126,9 +190,47 @@ class EventCatalog(BaseModel):
 
         stats = catalog._stats
         stats.n_detections = catalog.n_events
-        if catalog:
+        if catalog and catalog.n_events:
             stats.max_semblance = max(detection.semblance for detection in catalog)
         return catalog
+
+    async def check(self, repair: bool = True) -> None:
+        """Check the catalog for errors and inconsistencies.
+
+        Args:
+            repair (bool, optional): If True, attempt to repair the catalog.
+                Defaults to True.
+        """
+        logger.info("checking catalog...")
+        found_bad = 0
+        found_duplicates = 0
+        event_uids = set()
+        for detection in track(
+            self.events.copy(),
+            description=f"checking {self.n_events} events...",
+        ):
+            try:
+                _ = detection.receivers
+            except ValueError:
+                found_bad += 1
+                if repair:
+                    self.events.remove(detection)
+
+            if detection.uid in event_uids:
+                found_duplicates += 1
+                if repair:
+                    self.events.remove(detection)
+
+            event_uids.add(detection.uid)
+
+        if found_bad or found_duplicates:
+            logger.info("found %d detections with invalid receivers", found_bad)
+            logger.info("found %d duplicate detections", found_duplicates)
+            if repair:
+                logger.info("repairing catalog")
+                await self.save()
+        else:
+            logger.info("all detections are ok")
 
     async def save(self) -> None:
         """Save catalog to current rundir."""
@@ -148,8 +250,7 @@ class EventCatalog(BaseModel):
                 await f.writelines(lines_recv)
 
     async def export_detections(self, jitter_location: float = 0.0) -> None:
-        """
-        Export detections to CSV and Pyrocko event lists in the current rundir.
+        """Export detections to CSV and Pyrocko event lists in the current rundir.
 
         Args:
             jitter_location (float): The amount of jitter in [m] to apply
@@ -178,6 +279,7 @@ class EventCatalog(BaseModel):
             jitter_location (float, optional): Randomize the location of each detection
                 by this many meters. Defaults to 0.0.
         """
+        logger.info("saving event CSV to %s", file)
         header = []
 
         if jitter_location:
@@ -225,10 +327,12 @@ class EventCatalog(BaseModel):
     def export_pyrocko_events(
         self, filename: Path, jitter_location: float = 0.0
     ) -> None:
-        """Export Pyrocko events for all detections to a file
+        """Export Pyrocko events for all detections to a file.
 
         Args:
             filename (Path): output filename
+            jitter_location (float, optional): Randomize the location of each detection
+                by this many meters. Defaults to 0.0.
         """
         logger.info("saving Pyrocko events to %s", filename)
         detections = self.events
@@ -241,7 +345,7 @@ class EventCatalog(BaseModel):
         )
 
     def export_pyrocko_markers(self, filename: Path) -> None:
-        """Export Pyrocko markers for all detections to a file
+        """Export Pyrocko markers for all detections to a file.
 
         Args:
             filename (Path): output filename
