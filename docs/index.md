@@ -16,7 +16,6 @@ The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https:
 * [x] Earthquake phase detection using machine-learning pickers from [SeisBench](https://github.com/seisbench/seisbench)
     * [x] [PhaseNet (Zhu and Beroza, 2018](https://doi.org/10.1093/gji/ggy423)
     * [x] [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
-    * [x] [GPD (Ross et al., 2018)](https://doi.org/10.1785/0120180080)
     * [x] [OBSTransformer (Niksejel and Zahng, 2024)](https://doi.org/10.1093/gji/ggae049)
     * [x] LFEDetect
 * [x] Octree localisation approach for efficient and accurate search

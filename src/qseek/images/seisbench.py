@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 ModelName = Literal[
     "PhaseNet",
     "EQTransformer",
-    "GPD",
     "OBSTransformer",
     "LFEDetect",
 ]
@@ -255,12 +254,12 @@ class SeisBench(ImageFunction):
                     self._seisbench_model.cuda(self.torch_use_cuda)
             except RuntimeError as exc:
                 logger.warning(
-                    "failed to use CUDA for PhaseNet model, using CPU.",
+                    "failed to use CUDA for SeisBench model, using CPU.",
                     exc_info=exc,
                 )
         self._seisbench_model.eval()
         try:
-            logger.info("compiling PhaseNet model...")
+            logger.info("compiling SeisBench model...")
             self._seisbench_model = torch.compile(
                 self._seisbench_model,
                 mode="max-autotune",
