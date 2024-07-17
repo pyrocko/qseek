@@ -13,7 +13,12 @@ Qseek is an earthquake detection and localisation framework based on stacking an
 
 Key features are of the earthquake detection and localisation framework are:
 
-* Earthquake phase detection using machine-learning pickers from [SeisBench](https://github.com/seisbench/seisbench)
+* Earthquake phase detection using machine-learning model from [SeisBench](https://github.com/seisbench/seisbench), pre-trained on different data sets.
+  * [PhaseNet (Zhu and Beroza, 2018](https://doi.org/10.1093/gji/ggy423)
+  * [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
+  * [GPD (Ross et al., 2018)](https://doi.org/10.1785/0120180080)
+  * [OBSTransformer (Niksejel and Zahng, 2024)](https://doi.org/10.1093/gji/ggae049)
+  * [LFEDetect](https://doi.org/10.1093/gji/ggae049)
 * Octree localisation approach for efficient and accurate search
 * Different velocity models:
   * Constant velocity

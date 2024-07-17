@@ -23,20 +23,42 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
-    from seisbench.models import PhaseNet as PhaseNetSeisBench
+    from seisbench.models import WaveformModel
+
 
 ModelName = Literal[
+    "PhaseNet",
+    "EQTransformer",
+    "GPD",
+    "OBSTransformer",
+    "LFEDetect",
+]
+
+
+PreTrainedName = Literal[
+    "cascadia",
+    "cms",
     "diting",
+    "dummy",
     "ethz",
     "geofon",
     "instance",
     "iquique",
+    "jcms",
+    "jcs",
+    "jms",
     "lendb",
+    "mexico",
+    "nankai",
     "neic",
     "obs",
+    "obst2024",
     "original",
+    "original_nonconservative",
+    "san_andreas",
     "scedc",
     "stead",
+    "volpick",
 ]
 
 PhaseName = Literal["P", "S"]
@@ -132,13 +154,19 @@ class PhaseNetImage(WaveformImage):
         )
 
 
-class PhaseNet(ImageFunction):
+class SeisBench(ImageFunction):
     """PhaseNet image function. For more details see SeisBench documentation."""
 
-    image: Literal["PhaseNet"] = "PhaseNet"
+    image: Literal["SeisBench"] = "SeisBench"
+
     model: ModelName = Field(
+        default="PhaseNet",
+        description="The model to use for the image function. Currently only `PhaseNet`",
+    )
+
+    pretrained: PreTrainedName = Field(
         default="original",
-        description="SeisBench pre-trained PhaseNet model to use. "
+        description="SeisBench pre-trained model to use. "
         "Choose from `ethz`, `geofon`, `instance`, `iquique`, `lendb`, `neic`, `obs`,"
         " `original`, `scedc`, `stead`."
         " For more details see SeisBench documentation",
@@ -189,46 +217,68 @@ class PhaseNet(ImageFunction):
         description="Weights for each phase.",
     )
 
-    _phase_net: PhaseNetSeisBench = PrivateAttr(None)
+    _seisbench_model: WaveformModel = PrivateAttr(None)
 
     @property
-    def phase_net(self) -> PhaseNetSeisBench:
-        if self._phase_net is None:
+    def seisbench_model(self) -> WaveformModel:
+        if self._seisbench_model is None:
             self._prepare()
-        return self._phase_net
+        return self._seisbench_model
 
     def _prepare(self) -> None:
+        import seisbench.models as sbm
         import torch
-        from seisbench.models import PhaseNet as PhaseNetSeisBench
 
         torch.set_num_threads(self.torch_cpu_threads)
-        self._phase_net = PhaseNetSeisBench.from_pretrained(self.model)
+
+        match self.model:
+            case "PhaseNet":
+                model = sbm.PhaseNet
+            case "EQTransformer":
+                model = sbm.EQTransformer
+            case "GPD":
+                model = sbm.GPD
+            case "OBSTransformer":
+                model = sbm.OBSTransformer
+            case "LFEDetect":
+                model = sbm.LFEDetect
+            case _:
+                raise ValueError(f"Model `{self.model}` not available.")
+
+        self._seisbench_model = model.from_pretrained(self.pretrained)
         if self.torch_use_cuda:
             try:
                 if isinstance(self.torch_use_cuda, bool):
-                    self._phase_net.cuda()
+                    self._seisbench_model.cuda()
                 else:
-                    self._phase_net.cuda(self.torch_use_cuda)
+                    self._seisbench_model.cuda(self.torch_use_cuda)
             except RuntimeError as exc:
                 logger.warning(
                     "failed to use CUDA for PhaseNet model, using CPU.",
                     exc_info=exc,
                 )
-        self._phase_net.eval()
+        self._seisbench_model.eval()
         try:
             logger.info("compiling PhaseNet model...")
-            self._phase_net = torch.compile(self._phase_net, mode="max-autotune")
+            self._seisbench_model = torch.compile(
+                self._seisbench_model,
+                mode="max-autotune",
+            )
         except RuntimeError as exc:
             logger.warning(
-                "failed to compile PhaseNet model, using uncompiled model.",
+                "failed to compile SeisBench model, using uncompiled model.",
                 exc_info=exc,
             )
 
+    def get_blinding_samples(self) -> tuple[int, int]:
+        try:
+            return self.seisbench_model.default_args["blinding"]
+        except KeyError:
+            return self.seisbench_model._annotate_args["blinding"][1]
+
     def get_blinding(self, sampling_rate: float) -> timedelta:
-        blinding_samples = (
-            max(self.phase_net.default_args["blinding"]) / self.rescale_input
-        )
-        return timedelta(seconds=blinding_samples / sampling_rate)
+        scaled_blinding_samples = max(self.get_blinding_samples()) / self.rescale_input
+        return timedelta(seconds=scaled_blinding_samples / sampling_rate)
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
@@ -244,7 +294,7 @@ class PhaseNet(ImageFunction):
                 tr.stats.sampling_rate /= scale
 
         annotations: Stream = await asyncio.to_thread(
-            self.phase_net.annotate,
+            self.seisbench_model.annotate,
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,
@@ -255,7 +305,7 @@ class PhaseNet(ImageFunction):
             scale = self.rescale_input
             for tr in annotations:
                 tr.stats.sampling_rate *= scale
-                blinding_samples = self.phase_net.default_args["blinding"][0]
+                blinding_samples = max(self.get_blinding_samples())
                 # 100 Hz is the native sampling rate of PhaseNet
                 blinding_seconds = (blinding_samples / 100.0) * (1.0 - 1 / scale)
                 tr.stats.starttime -= blinding_seconds
@@ -263,7 +313,7 @@ class PhaseNet(ImageFunction):
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()
             for tr in annotations
-            if not tr.stats.channel.endswith("N")
+            if tr.stats.channel.endswith("P") or tr.stats.channel.endswith("S")
         ]
 
         annotation_p = PhaseNetImage(

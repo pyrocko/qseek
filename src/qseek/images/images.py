@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
 from qseek.images.base import ImageFunction
-from qseek.images.phase_net import PhaseNet
+from qseek.images.seisbench import SeisBench
 from qseek.stats import Stats
 from qseek.utils import QUEUE_SIZE, PhaseDescription, datetime_now, human_readable_bytes
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 ImageFunctionType = Annotated[
-    Union[PhaseNet, ImageFunction],
+    Union[SeisBench, ImageFunction],
     Field(..., discriminator="image"),
 ]
 
@@ -70,7 +70,7 @@ class ImageFunctionsStats(Stats):
 
 
 class ImageFunctions(RootModel):
-    root: list[ImageFunctionType] = [PhaseNet()]
+    root: list[ImageFunctionType] = [SeisBench()]
 
     _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr(
         asyncio.Queue(maxsize=QUEUE_SIZE)

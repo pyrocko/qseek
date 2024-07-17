@@ -54,7 +54,7 @@ class RuntimeStats(BaseModel):
                 )
                 table.add_section()
                 stats._populate_table(table)
-            grid = table.grid(expand=True)
+            grid = Table.grid(expand=True)
             grid.add_row(PROGRESS)
             grid.add_row(Panel(table, title="QSeek"))
             return grid
