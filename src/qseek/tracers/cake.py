@@ -411,8 +411,9 @@ class TravelTimeTree(BaseModel):
         )
 
         for node, times in zip(nodes, traveltimes, strict=True):
+            times = times.astype(np.float32)
             times.setflags(write=False)
-            self._node_lut[node.hash()] = times.astype(np.float32)
+            self._node_lut[node.hash()] = times
 
     async def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
         try:

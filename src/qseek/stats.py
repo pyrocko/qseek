@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterator, NoReturn, Type
+import random
+import string
+from typing import Any, Iterator, NoReturn
 from weakref import WeakValueDictionary
 
-from pydantic import BaseModel, PrivateAttr, create_model
+from pydantic import BaseModel, PrivateAttr
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import Progress
 from rich.table import Table
-from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -27,23 +28,10 @@ def titelify(name: str) -> str:
 
 class RuntimeStats(BaseModel):
     @classmethod
-    def model(cls) -> Type[Self]:
-        return create_model(
-            "RuntimeStats",
-            **{stats.__name__: (stats, None) for stats in Stats.get_subclasses()},
-            __base__=cls,
-        )
-
-    @classmethod
-    def current(cls) -> Self:
-        """Get the current runtime stats instance."""
-        return cls.model()(**STATS_INSTANCES)
-
-    @classmethod
     async def live_view(cls) -> NoReturn:
         def generate_grid() -> Table:
             """Make a new table."""
-            table = Table(show_header=False, box=None)
+            table = Table(show_header=False, box=None, expand=True)
             stats_instaces = sorted(
                 STATS_INSTANCES.values(),
                 key=lambda s: s._position,
@@ -60,7 +48,6 @@ class RuntimeStats(BaseModel):
             return grid
 
         with Live(
-            generate_grid(),
             refresh_per_second=4,
             # screen=True,
         ) as live:
@@ -80,7 +67,8 @@ class Stats(BaseModel):
         return set(cls.__subclasses__())
 
     def model_post_init(self, __context: Any) -> None:
-        STATS_INSTANCES[self.__class__.__name__] = self
+        uid = "".join(random.choices(string.ascii_uppercase + string.digits, k=16))
+        STATS_INSTANCES[uid] = self
 
     def _populate_table(self, table: Table) -> None:
         for name, field in self.iter_fields():

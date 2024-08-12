@@ -44,6 +44,7 @@ from qseek.utils import (
     alog_call,
     datetime_now,
     get_cpu_count,
+    get_total_memory,
     human_readable_bytes,
     time_to_path,
 )
@@ -80,9 +81,7 @@ class SearchStats(Stats):
     current_networks: int = 0
     total_networks: int = 0
 
-    memory_total: ByteSize = Field(
-        default_factory=lambda: ByteSize(psutil.virtual_memory().total)
-    )
+    memory_total: ByteSize = Field(default_factory=lambda: ByteSize(get_total_memory()))
 
     _search_start: datetime = PrivateAttr(default_factory=datetime_now)
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
@@ -356,8 +355,6 @@ class Search(BaseModel):
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
-    _stats: SearchStats = PrivateAttr(default_factory=SearchStats)
-
     model_config = ConfigDict(extra="forbid")
 
     def init_rundir(self, force: bool = False) -> None:
@@ -507,10 +504,6 @@ class Search(BaseModel):
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
 
-        self._stats.project_name = self._rundir.name
-        self._stats.total_stations = self.stations.n_stations
-        self._stats.total_networks = self.stations.n_networks
-
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():
             self.init_rundir(force=force_rundir)
@@ -535,7 +528,11 @@ class Search(BaseModel):
         )
         processed_batches = self.pre_processing.iter_batches(batches)
 
-        stats = self._stats
+        stats = SearchStats(
+            project_name=self._rundir.name,
+            total_stations=self.stations.n_stations,
+            total_networks=self.stations.n_networks,
+        )
         stats.reset_start_time()
 
         processing_start = datetime_now()

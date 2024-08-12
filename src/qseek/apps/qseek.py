@@ -443,12 +443,12 @@ def main() -> None:
                 for module in modules.get_subclasses():
                     name = module.__name__
                     if is_insight(module):
-                        name += " 🔑"
+                        name += " 🚀"
                     table.add_row(f" {name}", module.__doc__, style="dim")
                 table.add_section()
 
             console.print(table)
-            console.print("Insight module are marked by 🔑\n")
+            console.print("Insight module are marked by 🚀\n")
             console.print(
                 "Use [bold]qseek modules <module_name>[/bold] "
                 "to print the JSON schema"

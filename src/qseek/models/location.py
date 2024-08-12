@@ -102,6 +102,26 @@ class Location(BaseModel):
             )[0]
         )
 
+    def azimuth_to(self, other: Location) -> float:
+        """Compute azimuth [°] to other location object.
+
+        Args:
+            other (Location): The other location.
+
+        Returns:
+            float: The azimuth in [°].
+        """
+        if self._same_origin(other):
+            return math.degrees(
+                math.atan2(
+                    other.east_shift - self.east_shift,
+                    other.north_shift - self.north_shift,
+                )
+            )
+        return float(
+            od.azimuth_numpy(*self.effective_lat_lon, *other.effective_lat_lon)
+        )
+
     def distance_to(self, other: Location) -> float:
         """Compute 3-dimensional distance [m] to other location object.
 

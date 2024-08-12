@@ -7,16 +7,19 @@ from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 from uuid import UUID, uuid4
+from weakref import WeakValueDictionary
 
 import aiofiles
+import numpy as np
 from pydantic import (
     AwareDatetime,
     BaseModel,
     Field,
     PositiveFloat,
     PrivateAttr,
+    ValidationError,
     computed_field,
     field_validator,
 )
@@ -55,6 +58,9 @@ UPDATE_LOCK = asyncio.Lock()
 SQUIRREL_SEM = asyncio.Semaphore(64)
 
 
+RECEIVER_CACHE: WeakValueDictionary[Path, ReceiverCache] = WeakValueDictionary()
+
+
 class ReceiverCache:
     file: Path
     lines: list[str] = []
@@ -88,23 +94,54 @@ class ReceiverCache:
         self._check_mtime()
         return self.lines[row_index]
 
-    def find_uid(self, uid: UUID) -> tuple[int, str]:
+    def find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
         """Find the given UID in the lines and return its index and value.
 
         get_line should be prefered over this method.
 
         Args:
             uid (UUID): The UID to search for.
+            start_idx (int, optional): The detection index to start the search from.
+                Defaults to 0.
 
         Returns:
             tuple[int, str]: A tuple containing the index and value of the found UID.
         """
         self._check_mtime()
         find_uid = str(uid)
-        for iline, line in enumerate(self.lines):
-            if find_uid in line:
-                return iline, line
-        raise KeyError
+
+        offset = 0
+        n_lines = len(self.lines)
+
+        # Search in both directions
+        while True:
+            left_idx = start_idx - offset
+            right_idx = start_idx + offset
+            if start_idx + offset >= n_lines and start_idx - offset < 0:
+                break
+            if left_idx >= 0 and find_uid in self.lines[left_idx]:
+                return left_idx, self.lines[left_idx]
+            if right_idx < n_lines and find_uid in self.lines[right_idx]:
+                return right_idx, self.lines[right_idx]
+            offset += 1
+
+        raise KeyError(f"UID {find_uid} not found in receiver cache.")
+
+    @classmethod
+    def get_instance(cls, file: Path) -> ReceiverCache:
+        """Get the receiver cache instance for the specified file.
+
+        Args:
+            file (Path): The path to the receiver cache file.
+
+        Returns:
+            ReceiverCache: The receiver cache instance.
+        """
+        if file not in RECEIVER_CACHE:
+            receiver_cache = cls(file)
+            RECEIVER_CACHE[file] = receiver_cache
+            return receiver_cache
+        return RECEIVER_CACHE[file]
 
 
 class PhaseDetection(BaseModel):
@@ -361,13 +398,13 @@ class EventReceivers(BaseModel):
             for response in responses:
                 if response.codes[:4] == tr.nslc_id:
                     return response
-            raise ValueError(f"cannot find response for {tr.nslc_id}")
+            raise AttributeError(f"cannot find response for {tr.nslc_id}")
 
         restituted_traces = []
         for tr in traces:
             try:
                 response = get_response(tr)
-            except ValueError:
+            except AttributeError:
                 logger.debug("cannot find response for %s", ".".join(tr.nslc_id))
                 continue
 
@@ -498,8 +535,7 @@ class EventDetection(Location):
     _receivers: EventReceivers | None = PrivateAttr(None)
 
     _detection_idx: int | None = PrivateAttr(None)
-    _rundir: ClassVar[Path | None] = None
-    _receiver_cache: ClassVar[ReceiverCache | None] = None
+    _receiver_cache: ReceiverCache | None = PrivateAttr(None)
 
     @field_validator("features", mode="before")
     @classmethod
@@ -509,15 +545,13 @@ class EventDetection(Location):
             return v.get("features", [])
         return v
 
-    @classmethod
-    def set_rundir(cls, rundir: Path) -> None:
+    def set_receiver_cache(self, rundir: Path) -> None:
         """Set the rundir for the detection model.
 
         Args:
             rundir (Path): The path to the rundir.
         """
-        cls._rundir = rundir
-        cls._receiver_cache = ReceiverCache(rundir / FILENAME_RECEIVERS)
+        self._receiver_cache = ReceiverCache.get_instance(rundir / FILENAME_RECEIVERS)
 
     @property
     def magnitude(self) -> EventMagnitude | None:
@@ -527,37 +561,34 @@ class EventDetection(Location):
         """
         return self.magnitudes[0] if self.magnitudes else None
 
-    async def update(self) -> None:
+    async def update(self, rundir: Path) -> None:
         """Update detection in database.
 
         Doing this often requires a lot of I/O.
         """
-        await self.save(update=True)
+        await self.save(rundir, update=True)
 
-    async def save(self, file: Path | None = None, update: bool = False) -> None:
+    async def save(self, rundir: Path, update: bool = False) -> None:
         """Dump the detection data to a file.
 
         After the detection is dumped, the receivers are dumped to a separate file and
         the receivers cache is cleared.
 
         Args:
-            file (Path|None): The file to dump the detection to.
-                If None, the rundir is used. Defaults to None.
+            rundir (Path): The path to the rundir.
             update (bool): Whether to update an existing detection or append a new one.
 
         Raises:
             ValueError: If the detection index is not set and update is True.
         """
-        if not file and self._rundir:
-            file = self._rundir / FILENAME_DETECTIONS
-        else:
-            raise ValueError("cannot dump detection without set rundir")
+        file = rundir / FILENAME_DETECTIONS
+        self.set_receiver_cache(rundir)
 
         json_data = self.model_dump_json(exclude={"receivers"})
 
         if update:
             if self._detection_idx is None:
-                raise ValueError("cannot update detection without set index")
+                raise AttributeError("cannot update detection without set index")
             logger.debug("updating detection %d", self._detection_idx)
 
             async with UPDATE_LOCK:
@@ -568,18 +599,18 @@ class EventDetection(Location):
                 async with aiofiles.open(file, "w") as f:
                     await asyncio.shield(f.writelines(lines))
         else:
-            logger.debug("appending detection %d", self._detection_idx)
+            logger.info("appending detection %d", self._detection_idx)
             async with UPDATE_LOCK:
                 async with aiofiles.open(file, "a") as f:
                     await f.write(f"{json_data}\n")
 
-                receiver_file = self._rundir / FILENAME_RECEIVERS
+                receiver_file = rundir / FILENAME_RECEIVERS
                 async with aiofiles.open(receiver_file, "a") as f:
                     await asyncio.shield(
                         f.write(f"{self.receivers.model_dump_json()}\n")
                     )
 
-            self._receivers = None  # Free the memory
+            self._receivers = None  # Free memory
 
     def set_index(self, index: int, force: bool = False) -> None:
         """Set the index of the detection.
@@ -593,7 +624,7 @@ class EventDetection(Location):
             None
         """
         if not force and self._detection_idx is not None:
-            raise ValueError("cannot set index twice")
+            raise AttributeError("cannot set index twice")
         self._detection_idx = index
 
     def set_uncertainty(self, uncertainty: DetectionUncertainty) -> None:
@@ -632,17 +663,20 @@ class EventDetection(Location):
             EventReceivers: The event receivers associated with the detection.
 
         Raises:
+            AttributeError: If the receivers cannot be fetched without a set rundir and
+                detection index.
             ValueError: If the receivers cannot be fetched due to missing rundir
-                        and index, or if there is a UID mismatch between the fetched
-                        receivers and the detection.
+                and index, or if there is a UID mismatch between the fetched receivers
+                and the detection.
         """
         if self._receivers is not None:
-            ...
-        elif self._detection_idx is None:
+            return self._receivers
+
+        if self._detection_idx is None:
             self._receivers = EventReceivers(event_uid=self.uid)
-        elif self._rundir and self._detection_idx is not None:
+        elif self._detection_idx is not None:
             if self._receiver_cache is None:
-                raise ValueError("cannot fetch receivers without set rundir")
+                raise AttributeError("cannot fetch receivers without set rundir")
             logger.debug("fetching receiver information from cache")
 
             try:
@@ -650,20 +684,79 @@ class EventDetection(Location):
                 receivers = EventReceivers.model_validate_json(line)
             except IndexError:
                 receivers = None
+            except ValidationError:
+                logger.warning("Could not parse receiver: %s", line)
+                receivers = None
 
             if not receivers or receivers.event_uid != self.uid:
-                logger.warning("event %s uid mismatch, using brute search", self.time)
                 try:
-                    idx, line = self._receiver_cache.find_uid(self.uid)
+                    idx, line = self._receiver_cache.find_uid(
+                        self.uid,
+                        start_idx=self._detection_idx,
+                    )
                     receivers = EventReceivers.model_validate_json(line)
                     self.set_index(idx, force=True)
-                except KeyError:
-                    raise ValueError(f"uid mismatch for event {self.time}") from None
+                    logger.debug(
+                        "found receivers for event %d by UID search",
+                        self._detection_idx,
+                    )
+                except KeyError as exc:
+                    raise ValueError(f"UID mismatch for event {self.time}") from exc
 
             self._receivers = receivers
         else:
-            raise ValueError("cannot fetch receivers without set rundir and index")
+            raise AttributeError(
+                "cannot fetch receivers without set receiver cache directory"
+            )
         return self._receivers
+
+    def get_receiver_azimuths(self, observed_only: bool = True):
+        """Get receiver azimuths.
+
+        Args:
+            observed_only (bool, optional): Return only observed azimuths.
+                Defaults to False.
+
+        Returns:
+            dict[str, float]: Receiver azimuths
+        """
+        azimuths = {}
+        for receiver in self.receivers:
+            for arrival in receiver.phase_arrivals.values():
+                if not arrival.observed and observed_only:
+                    continue
+                if receiver.nsl.pretty in azimuths:
+                    continue
+                azimuths[receiver.nsl.pretty] = self.azimuth_to(receiver)
+        return azimuths
+
+    def get_azimuthal_coverage(self, observed_only: bool = True) -> float:
+        """Get azimuthal coverage of the detection.
+
+        This is the reverse of the azimuthal gap: `360 - azimuthal_gap`.
+
+        Args:
+            observed_only (bool, optional): Consider only observed azimuths.
+                Defaults to True.
+        """
+        return 360.0 - self.get_azimuthal_gap(observed_only)
+
+    def get_azimuthal_gap(self, observed_only: bool = True) -> float:
+        """Get maximum azimuthal gap of the detection.
+
+        Args:
+            observed_only (bool, optional): Consider only observed azimuths.
+                Defaults to True.
+        """
+        azimuths = np.array(list(self.get_receiver_azimuths(observed_only).values()))
+        azimuths[azimuths < 0.0] += 360.0
+        if azimuths.size == 0:
+            return 360.0
+
+        azimuths_rolled = np.concatenate((azimuths, azimuths - 360.0))
+        azimuths_rolled.sort()
+        gaps = np.diff(azimuths_rolled)
+        return float(gaps.max())
 
     def as_pyrocko_event(self) -> Event:
         """Get detection as Pyrocko event.
@@ -700,6 +793,7 @@ class EventDetection(Location):
             "north_shift": round(self.north_shift, 2),
             "distance_border": round(self.distance_border, 2),
             "semblance": self.semblance,
+            "azimuthal_coverage": self.get_azimuthal_coverage(),
             "n_stations": self.n_stations,
         }
         if self.uncertainty:
