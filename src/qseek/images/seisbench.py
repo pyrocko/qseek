@@ -99,7 +99,7 @@ class PhaseNetImage(WaveformImage):
                 inplace=False,
             )
         except NoData:
-            logger.warning("No data to pick phase arrival.")
+            logger.warning("No data to pick phase arrival %s.", ".".join(trace.nslc_id))
             return None
 
         peak_idx, _ = signal.find_peaks(

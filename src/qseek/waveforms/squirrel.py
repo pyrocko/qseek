@@ -56,14 +56,15 @@ class SquirrelPrefetcher:
 
         async def load_data() -> None | Batch:
             while True:
-                start = datetime_now()
+                start_load = datetime_now()
+                logger.debug("loading waveform batch %d", self._fetched_batches)
                 batch = await asyncio.to_thread(next, self.iterator, None)
                 if batch is None:
                     await self.queue.put(None)
                     return
-                logger.debug("read waveform batch in %s", datetime_now() - start)
+                logger.debug("read waveform batch in %s", datetime_now() - start_load)
                 self._fetched_batches += 1
-                self.load_time = datetime_now() - start
+                self.load_time = datetime_now() - start_load
                 await self.queue.put(batch)
 
         await asyncio.create_task(load_data())
@@ -136,6 +137,7 @@ class PyrockoSquirrel(WaveformProvider):
     channel_selector: list[constr(to_upper=True, max_length=2, min_length=2)] | None = (
         Field(
             default=None,
+            min_length=1,
             description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
         )
     )
@@ -150,7 +152,6 @@ class PyrockoSquirrel(WaveformProvider):
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr(None)
-    _stats: SquirrelStats = PrivateAttr(default_factory=SquirrelStats)
 
     @model_validator(mode="after")
     def _validate_model(self) -> Self:
@@ -201,7 +202,7 @@ class PyrockoSquirrel(WaveformProvider):
             raise ValueError("no stations provided. has prepare() been called?")
 
         squirrel = self.get_squirrel()
-        stats = self._stats
+        stats = SquirrelStats()
         sq_tmin, sq_tmax = squirrel.get_time_span(["waveform"])
 
         start_time = start_time or self.start_time or to_datetime(sq_tmin)
@@ -249,7 +250,7 @@ class PyrockoSquirrel(WaveformProvider):
             )
 
             if batch.is_empty():
-                logger.warning("empty batch %d", batch.i_batch)
+                logger.warning("empty batch %d - %s", batch.i_batch, batch.start_time)
                 stats.empty_batches += 1
                 continue
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Union
+from typing import TYPE_CHECKING, Annotated, AsyncIterator, Iterator, Union
 
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
@@ -74,10 +74,6 @@ class PreProcessing(RootModel):
     _queue: asyncio.Queue[WaveformBatch | None] = PrivateAttr(
         asyncio.Queue(maxsize=QUEUE_SIZE)
     )
-    _stats: PreProcessingStats = PrivateAttr(default_factory=PreProcessingStats)
-
-    def model_post_init(self, __context: Any) -> None:
-        self._stats.set_queue(self._queue)
 
     def __iter__(self) -> Iterator[BatchPreProcessing]:
         return iter(self.root)
@@ -91,14 +87,15 @@ class PreProcessing(RootModel):
         self,
         batch_iterator: AsyncIterator[WaveformBatch],
     ) -> AsyncIterator[WaveformBatch]:
+        stats = PreProcessingStats()
+        stats.set_queue(self._queue)
+
         if not self.root:
             logger.debug("no pre-processing defined")
-            self._stats.set_queue(None)
+            stats.set_queue(None)
             async for batch in batch_iterator:
                 yield batch
             return
-
-        stats = self._stats
 
         async def worker() -> None:
             async for batch in batch_iterator:

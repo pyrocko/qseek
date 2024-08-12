@@ -26,6 +26,7 @@ from typing import (
 )
 
 import numpy as np
+import psutil
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ByteSize, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
@@ -231,11 +232,13 @@ def time_to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
 
 
-def as_array(iterable: Iterable[float], dtype: np.dtype = float) -> np.ndarray:
+def as_array(
+    iterable: Iterable[float | Iterable[float]], dtype: np.dtype = float
+) -> np.ndarray:
     """Convert an iterable of floats into a NumPy array.
 
     Parameters:
-        iterable (Iterable[float]): An iterable containing float values.
+        iterable (Iterable[float, ...]): An iterable containing float values.
 
     Returns:
         np.ndarray: A NumPy array containing the float values from the iterable.
@@ -402,7 +405,7 @@ def human_readable_bytes(size: int | float, decimal: bool = False) -> str:
         str: The human-readable string representation of the size.
 
     """
-    return ByteSize.human_readable(size, decimal=decimal)
+    return ByteSize(size).human_readable(decimal=decimal)
 
 
 def datetime_now() -> datetime:
@@ -436,6 +439,32 @@ def get_cpu_count() -> int:
             os.environ.get(
                 "PBS_NUM_PPN",
                 os.cpu_count() or 0,
+            ),
+        )
+    )
+
+
+def get_total_memory() -> int:
+    """Get the total memory in bytes for the current job/task.
+
+    The function first checks if the environment variable SLURM_MEM_PER_CPU is set.
+    If it is set, the value is returned as the available memory.
+
+    If SLURM_MEM_PER_CPU is not set, the function then checks if the environment
+    variable PBS_VMEM is set. If it is set, the value is returned as the available
+    memory.
+
+    If neither SLURM_MEM_PER_CPU nor PBS_VMEM is set, the function returns from psutil.
+
+    Returns:
+        int: The available memory in bytes for the current job/task.
+    """
+    return int(
+        os.environ.get(
+            "SLURM_MEM_PER_NODE",
+            os.environ.get(
+                "PBS_VMEM",
+                psutil.virtual_memory().total,
             ),
         )
     )
