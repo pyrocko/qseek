@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Iterator
 
 import aiofiles
-from pydantic import BaseModel, PrivateAttr, computed_field
+from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field
 from pyrocko import io
 from pyrocko.gui import marker
 from pyrocko.model import Event, dump_events
@@ -33,7 +33,7 @@ class EventCatalogStats(Stats):
     max_semblance: float = 0.0
 
     _position: int = 2
-    _catalog: EventCatalog = PrivateAttr()
+    _catalog: EventCatalog | None = PrivateAttr(None)
 
     def set_catalog(self, catalog: EventCatalog) -> None:
         self._catalog = catalog
@@ -41,10 +41,14 @@ class EventCatalogStats(Stats):
 
     @property
     def magnitudes(self) -> list[float]:
+        if not self._catalog:
+            return []
         return [det.magnitude.average for det in self._catalog if det.magnitude]
 
     @computed_field
     def mean_semblance(self) -> float:
+        if not self.n_detections or not self._catalog:
+            return 0.0
         return (
             sum(detection.semblance for detection in self._catalog) / self.n_detections
         )
@@ -57,7 +61,7 @@ class EventCatalogStats(Stats):
     def magnitude_max(self) -> float:
         return max(self.magnitudes) if self.magnitudes else 0.0
 
-    def new_detection(self, detection: EventDetection):
+    def new_detection(self, detection: EventDetection) -> None:
         self.n_detections += 1
         self.max_semblance = max(self.max_semblance, detection.semblance)
 
@@ -69,10 +73,7 @@ class EventCatalogStats(Stats):
 class EventCatalog(BaseModel):
     rundir: Path
     events: list[EventDetection] = []
-    _stats: EventCatalogStats = PrivateAttr(default_factory=EventCatalogStats)
-
-    def model_post_init(self, __context: Any) -> None:
-        EventDetection.set_rundir(self.rundir)
+    _stats: EventCatalogStats | None = None
 
     @property
     def n_events(self) -> int:
@@ -90,6 +91,12 @@ class EventCatalog(BaseModel):
         dir = self.rundir / "csv"
         dir.mkdir(exist_ok=True)
         return dir
+
+    def get_stats(self) -> EventCatalogStats:
+        if not self._stats:
+            self._stats = EventCatalogStats()
+            self._stats.set_catalog(self)
+        return self._stats
 
     async def filter_events_by_time(
         self,
@@ -114,7 +121,7 @@ class EventCatalog(BaseModel):
             events = [det for det in self.events if det.time <= end_time]
         if events:
             self.events = events
-            self._stats.n_detections = len(self.events)
+            self.get_stats().n_detections = len(self.events)
             await self.save()
 
     async def add(self, detection: EventDetection) -> None:
@@ -137,9 +144,9 @@ class EventCatalog(BaseModel):
             detection.semblance,
             detection.magnitude.average if detection.magnitude else 0.0,
         )
-        self._stats.new_detection(detection)
+        self.get_stats().new_detection(detection)
         # This has to happen after the markers are saved, cache is cleared
-        await detection.save()
+        await detection.save(self.rundir)
 
     def save_semblance_trace(self, trace: Trace) -> None:
         """Add semblance trace to detection and save to file.
@@ -182,13 +189,17 @@ class EventCatalog(BaseModel):
             open(detection_file) as f,
         ):
             for idx, line in enumerate(f):
-                detection = EventDetection.model_validate_json(line)
-                detection.set_index(idx)
-                catalog.events.append(detection)
+                try:
+                    detection = EventDetection.model_validate_json(line)
+                    detection.set_index(idx)
+                    detection.set_receiver_cache(rundir)
+                    catalog.events.append(detection)
+                except ValidationError as e:
+                    logger.error("error loading detection %d: %s", idx, e)
 
         logger.info("loaded %d detections", catalog.n_events)
 
-        stats = catalog._stats
+        stats = catalog.get_stats()
         stats.n_detections = catalog.n_events
         if catalog and catalog.n_events:
             stats.max_semblance = max(detection.semblance for detection in catalog)
@@ -205,6 +216,11 @@ class EventCatalog(BaseModel):
         found_bad = 0
         found_duplicates = 0
         event_uids = set()
+
+        def remove_event(detection: EventDetection) -> None:
+            logger.warning("removing event %s", detection)
+            self.events.remove(detection)
+
         for detection in track(
             self.events.copy(),
             description=f"checking {self.n_events} events...",
@@ -214,12 +230,12 @@ class EventCatalog(BaseModel):
             except ValueError:
                 found_bad += 1
                 if repair:
-                    self.events.remove(detection)
+                    remove_event(detection)
 
             if detection.uid in event_uids:
                 found_duplicates += 1
                 if repair:
-                    self.events.remove(detection)
+                    remove_event(detection)
 
             event_uids.add(detection.uid)
 

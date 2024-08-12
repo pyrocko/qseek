@@ -46,6 +46,7 @@ class Location(BaseModel):
     )
 
     _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
+    _cached_origin: Location | None = PrivateAttr(None)
 
     @property
     def effective_lat(self) -> float:
@@ -100,6 +101,26 @@ class Location(BaseModel):
             od.distance_accurate50m_numpy(
                 *self.effective_lat_lon, *other.effective_lat_lon
             )[0]
+        )
+
+    def azimuth_to(self, other: Location) -> float:
+        """Compute azimuth [°] to other location object.
+
+        Args:
+            other (Location): The other location.
+
+        Returns:
+            float: The azimuth in [°].
+        """
+        if self._same_origin(other):
+            return math.degrees(
+                math.atan2(
+                    other.east_shift - self.east_shift,
+                    other.north_shift - self.north_shift,
+                )
+            )
+        return float(
+            od.azimuth_numpy(*self.effective_lat_lon, *other.effective_lat_lon)
         )
 
     def distance_to(self, other: Location) -> float:
@@ -189,7 +210,13 @@ class Location(BaseModel):
         Returns:
             Location: The origin location.
         """
-        return Location(lat=self.lat, lon=self.lon, elevation=self.effective_elevation)
+        if self._cached_origin is None:
+            self._cached_origin = Location.model_construct(
+                lat=self.lat,
+                lon=self.lon,
+                elevation=self.effective_elevation,
+            )
+        return self._cached_origin
 
     def as_wkt(self) -> str:
         """Return the location as WKT string."""
@@ -200,6 +227,29 @@ class Location(BaseModel):
 
     def __hash__(self) -> int:
         return hash(self.location_hash())
+
+    def as_tuple(self) -> tuple[float, float, float, float, float]:
+        return (
+            self.lat,
+            self.lon,
+            self.east_shift,
+            self.north_shift,
+            self.elevation,
+            self.depth,
+        )
+
+    @classmethod
+    def from_tuple(
+        cls, values: tuple[float, float, float, float, float, float]
+    ) -> Self:
+        return cls.model_construct(
+            lat=values[0],
+            lon=values[1],
+            east_shift=values[2],
+            north_shift=values[3],
+            elevation=values[4],
+            depth=values[5],
+        )
 
     def location_hash(self) -> str:
         sha1 = hashlib.sha1(

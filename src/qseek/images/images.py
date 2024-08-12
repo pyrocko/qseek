@@ -76,14 +76,12 @@ class ImageFunctions(RootModel):
         asyncio.Queue(maxsize=QUEUE_SIZE)
     )
     _processed_images: int = PrivateAttr(0)
-    _stats: ImageFunctionsStats = PrivateAttr(default_factory=ImageFunctionsStats)
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice
         phases = self.get_phases()
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
-        self._stats.set_queue(self._queue)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
@@ -105,7 +103,8 @@ class ImageFunctions(RootModel):
         Yields:
             AsyncIterator[WaveformImages]: Async iterator over images.
         """
-        stats = self._stats
+        stats = ImageFunctionsStats()
+        stats.set_queue(self._queue)
 
         async def worker() -> None:
             logger.info(

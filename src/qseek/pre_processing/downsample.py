@@ -70,7 +70,10 @@ class Downsample(BatchPreProcessing):
             trace_groups = []
             for (delta_t, _), trace_group in group_traces(traces):
                 if desired_delta_t <= delta_t:
-                    logger.debug("traces sampling rate is smaller than desired")
+                    logger.debug(
+                        "The sampling rate of the traces is "
+                        "smaller or equal to the desired rate."
+                    )
                     continue
                 trace_groups.append(list(trace_group))
 
