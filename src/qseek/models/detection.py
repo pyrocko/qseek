@@ -148,7 +148,15 @@ class PhaseDetection(BaseModel):
     phase: PhaseDescription
     model: ModelledArrival
     observed: ObservedArrival | None = None
-    station_delay: timedelta | None = None
+    station_delay: timedelta = timedelta(seconds=0.0)
+
+    @field_validator("station_delay", mode="before")
+    @classmethod
+    def convert_delay(cls, v: timedelta | None) -> timedelta:
+        # Remove None values, this is for compatibility with older detections
+        if v is None:
+            return timedelta(seconds=0.0)
+        return v
 
     @property
     def traveltime_delay(self) -> timedelta | None:

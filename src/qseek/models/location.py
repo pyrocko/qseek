@@ -46,6 +46,7 @@ class Location(BaseModel):
     )
 
     _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
+    _cached_origin: Location | None = PrivateAttr(None)
 
     @property
     def effective_lat(self) -> float:
@@ -209,7 +210,13 @@ class Location(BaseModel):
         Returns:
             Location: The origin location.
         """
-        return Location(lat=self.lat, lon=self.lon, elevation=self.effective_elevation)
+        if self._cached_origin is None:
+            self._cached_origin = Location.model_construct(
+                lat=self.lat,
+                lon=self.lon,
+                elevation=self.effective_elevation,
+            )
+        return self._cached_origin
 
     def as_wkt(self) -> str:
         """Return the location as WKT string."""

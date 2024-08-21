@@ -229,11 +229,13 @@ def time_to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
 
 
-def as_array(iterable: Iterable[float], dtype: np.dtype = float) -> np.ndarray:
+def as_array(
+    iterable: Iterable[float | Iterable[float]], dtype: np.dtype = float
+) -> np.ndarray:
     """Convert an iterable of floats into a NumPy array.
 
     Parameters:
-        iterable (Iterable[float]): An iterable containing float values.
+        iterable (Iterable[float, ...]): An iterable containing float values.
 
     Returns:
         np.ndarray: A NumPy array containing the float values from the iterable.

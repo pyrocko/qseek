@@ -433,7 +433,7 @@ def main() -> None:
                             console.print_json(subclass().model_dump_json(indent=2))
                             parser.exit()
                 else:
-                    parser.error(f"unknown module: {args.json}")
+                    parser.error(f"unknown module: {args.name}")
 
             def is_insight(module: type) -> bool:
                 return "insight" in module.__module__
