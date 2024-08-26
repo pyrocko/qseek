@@ -607,7 +607,7 @@ class EventDetection(Location):
                 async with aiofiles.open(file, "w") as f:
                     await asyncio.shield(f.writelines(lines))
         else:
-            logger.info("appending detection %d", self._detection_idx)
+            logger.debug("appending detection %d", self._detection_idx)
             async with UPDATE_LOCK:
                 async with aiofiles.open(file, "a") as f:
                     await f.write(f"{json_data}\n")

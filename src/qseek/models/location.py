@@ -228,6 +228,29 @@ class Location(BaseModel):
     def __hash__(self) -> int:
         return hash(self.location_hash())
 
+    def as_tuple(self) -> tuple[float, float, float, float, float]:
+        return (
+            self.lat,
+            self.lon,
+            self.east_shift,
+            self.north_shift,
+            self.elevation,
+            self.depth,
+        )
+
+    @classmethod
+    def from_tuple(
+        cls, values: tuple[float, float, float, float, float, float]
+    ) -> Self:
+        return cls.model_construct(
+            lat=values[0],
+            lon=values[1],
+            east_shift=values[2],
+            north_shift=values[3],
+            elevation=values[4],
+            depth=values[5],
+        )
+
     def location_hash(self) -> str:
         sha1 = hashlib.sha1(
             struct.pack(
