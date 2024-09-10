@@ -526,7 +526,7 @@ class Search(BaseModel):
             start_time=self._progress.time_progress,
             min_length=2 * self._window_padding,
         )
-        processed_batches = self.pre_processing.iter_batches(batches)
+        pre_processed_batches = self.pre_processing.iter_batches(batches)
 
         stats = SearchStats(
             project_name=self._rundir.name,
@@ -538,7 +538,9 @@ class Search(BaseModel):
         processing_start = datetime_now()
         console = asyncio.create_task(RuntimeStats.live_view())
 
-        async for images, batch in self.image_functions.iter_images(processed_batches):
+        async for images, batch in self.image_functions.iter_images(
+            pre_processed_batches
+        ):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)
             images.apply_exponent(self.power_mean)
@@ -716,6 +718,9 @@ class SearchTraces:
                 f"image sampling rate {image.sampling_rate} does not match "
                 f"semblance sampling rate {semblance.sampling_rate}"
             )
+        if image.weight == 0.0:
+            return
+
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
@@ -825,7 +830,7 @@ class SearchTraces:
         )
 
         for image in images:
-            if not image.has_traces:
+            if not image.has_traces():
                 continue
             await self.calculate_semblance(
                 octree=octree,

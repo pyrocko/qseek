@@ -10,7 +10,7 @@ from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
-from qseek.utils import NSL, NSL_RE
+from qseek.utils import _NSL, NSL, NSL_RE
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -64,7 +64,7 @@ class Station(Location):
         Returns:
             tuple[str, str, str]: Network, Station, Location
         """
-        return NSL(self.network, self.station, self.location)
+        return _NSL(self.network, self.station, self.location)
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.nsl))
