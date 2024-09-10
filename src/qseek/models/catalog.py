@@ -196,6 +196,7 @@ class EventCatalog(BaseModel):
                     catalog.events.append(detection)
                 except ValidationError as e:
                     logger.error("error loading detection %d: %s", idx, e)
+                    logger.error("line: %s", line)
 
         logger.info("loaded %d detections", catalog.n_events)
 

@@ -124,6 +124,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
 
 class StationMomentMagnitude(NamedTuple):
+    station: NSL
     distance_epi: float
     magnitude: float
     error: float
@@ -133,7 +134,7 @@ class StationMomentMagnitude(NamedTuple):
 class MomentMagnitude(EventMagnitude):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
-    stations_magnitudes: list[StationMomentMagnitude] = Field(
+    station_magnitudes: list[StationMomentMagnitude] = Field(
         default_factory=list,
         description="The station moment magnitudes.",
     )
@@ -149,7 +150,7 @@ class MomentMagnitude(EventMagnitude):
     @property
     def n_stations(self) -> int:
         """Number of stations used for calculating the moment magnitude."""
-        return len(self.stations_magnitudes)
+        return len(self.station_magnitudes)
 
     def csv_row(self) -> dict[str, float]:
         return {
@@ -212,17 +213,18 @@ class MomentMagnitude(EventMagnitude):
 
             station_magnitude = StationMomentMagnitude(
                 # quantity=store.quantity,
+                station=receiver.nsl,
                 distance_epi=station.distance_epi,
                 magnitude=magnitude,
                 error=(error_upper + abs(error_lower)) / 2,
                 peak=station.peak,
             )
-            self.stations_magnitudes.append(station_magnitude)
+            self.station_magnitudes.append(station_magnitude)
 
-        if not self.stations_magnitudes:
+        if not self.station_magnitudes:
             return
 
-        magnitudes = np.array([sta.magnitude for sta in self.stations_magnitudes])
+        magnitudes = np.array([sta.magnitude for sta in self.station_magnitudes])
         median = np.median(magnitudes)
 
         self.median = float(median)

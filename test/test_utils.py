@@ -1,6 +1,6 @@
 import pytest
 from pydantic import BaseModel
-from qseek.utils import NSL
+from qseek.utils import _NSL, NSL
 
 
 def test_nsl():
@@ -36,12 +36,36 @@ def test_nsl():
     json_tpl = """
     {{
         "nsl": "{code}",
-        "nsl_list": []
+        "nsl_list": ["{code}"]
     }}
     """
 
-    invalid_codes = ["6E", "6E5.", "6E.", "6E.TE123112"]
+    invalid_codes = ["6E5.", "6E.TE123112"]
 
     for code in invalid_codes:
         with pytest.raises(ValueError):
             Model.model_validate_json(json_tpl.format(code=code))
+
+    net_code = _NSL(network="6E", station="", location="")
+    sta_code = _NSL(network="6E", station="TE234", location="")
+    assert net_code.match(sta_code)
+
+    code1 = _NSL(network="6E", station="TE234", location="")
+    code2 = _NSL(network="6E", station="TE234", location="")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE234", location="AB")
+    code2 = _NSL(network="6E", station="TE234", location="AB")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE234", location="AB")
+    code2 = _NSL(network="6E", station="TE234", location="")
+    assert not code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE", location="")
+    code2 = _NSL(network="6E", station="TE234", location="")
+    assert not code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE", location="")
+    code2 = _NSL(network="5E", station="TE234", location="")
+    assert not code1.match(code2)
