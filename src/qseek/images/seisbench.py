@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from obspy import Stream
-from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
+from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr, confloat
 from pyrocko import obspy_compat
 from pyrocko.trace import NoData
 from scipy import signal
@@ -209,7 +209,7 @@ class SeisBench(ImageFunction):
         },
         description="Phase mapping from SeisBench PhaseNet to Lassie phases.",
     )
-    weights: dict[PhaseName, PositiveFloat] = Field(
+    weights: dict[PhaseName, confloat(ge=0.0)] = Field(
         default={
             "P": 1.0,
             "S": 1.0,
