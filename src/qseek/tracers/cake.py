@@ -382,8 +382,9 @@ class TravelTimeTree(BaseModel):
         )
 
     async def init_lut(self, octree: Octree, stations: Stations) -> None:
-        logger.debug(
-            "initializing LUT for %d stations and %d nodes",
+        logger.info(
+            "initializing %s traveltime LUT for %d stations and %d nodes",
+            self.timing.definition,
             stations.n_stations,
             octree.n_nodes,
         )
@@ -391,10 +392,7 @@ class TravelTimeTree(BaseModel):
         self._cached_station_indices = {
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
-        station_traveltimes = await self.interpolate_travel_times(octree, stations)
-
-        for node, traveltimes in zip(octree, station_traveltimes, strict=True):
-            self._node_lut[node.hash()] = traveltimes.astype(np.float32)
+        await self.fill_lut(list(octree))
 
     def lut_fill_level(self) -> float:
         """Return the fill level of the LUT as a float between 0.0 and 1.0."""

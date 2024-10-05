@@ -153,14 +153,17 @@ class Stations(BaseModel):
         for sta in self.stations.copy():
             if sta.nsl.pretty not in available_squirrel_nsls:
                 logger.warning(
-                    "removing station %s: no waveforms available in squirrel",
+                    "removing station %s: no waveforms available in Squirrel",
                     sta.nsl.pretty,
                 )
                 self.stations.remove(sta)
                 n_removed_stations += 1
 
         if n_removed_stations:
-            logger.warning("removed %d stations without waveforms", n_removed_stations)
+            logger.warning(
+                "removed %d stations without waveforms from inventory",
+                n_removed_stations,
+            )
         if not self.stations:
             raise ValueError("no stations available, add waveforms to start detection")
 
