@@ -132,19 +132,19 @@ class PhaseNetImage(WaveformImage):
 
         times = search_trace.get_xdata()
         peak_times = times[peak_idx]
-        peak_delay = peak_times - event_time.timestamp()
+        peak_delays = peak_times - event_time.timestamp()
 
         # Limit to post-event peaks
-        after_event_peaks = peak_delay > 0.0
-        peak_idx = peak_idx[after_event_peaks]
-        peak_times = peak_times[after_event_peaks]
-        peak_delay = peak_delay[after_event_peaks]
+        post_event_peaks = peak_delays > 0.0
+        peak_idx = peak_idx[post_event_peaks]
+        peak_times = peak_times[post_event_peaks]
+        peak_residuals = peak_times - modelled_arrival.timestamp()
 
         if not peak_idx.size:
             return None
 
         peak_values = search_trace.get_ydata()[peak_idx]
-        closest_peak_idx = np.argmin(peak_delay)
+        closest_peak_idx = np.argmin(np.abs(peak_residuals))
 
         return ObservedArrival(
             time=to_datetime(peak_times[closest_peak_idx]),
@@ -252,7 +252,7 @@ class SeisBench(ImageFunction):
                     self._seisbench_model.cuda()
                 else:
                     self._seisbench_model.cuda(self.torch_use_cuda)
-            except RuntimeError as exc:
+            except (RuntimeError, AssertionError) as exc:
                 logger.warning(
                     "failed to use CUDA for SeisBench model, using CPU.",
                     exc_info=exc,

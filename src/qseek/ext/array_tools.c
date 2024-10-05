@@ -148,12 +148,15 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
       sum_mask += 1;
     }
   }
+
   if (!PyList_Check(cache)) {
     PyErr_SetString(PyExc_ValueError, "cache is not a list");
+    free(cumsum_mask);
     return NULL;
   }
   if (PyList_Size(cache) != sum_mask) {
     PyErr_SetString(PyExc_ValueError, "cache elements does not match mask");
+    free(cumsum_mask);
     return NULL;
   }
 
@@ -161,24 +164,29 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
     PyObject *item = PyList_GetItem(cache, i_node);
     if (!PyArray_Check(item)) {
       PyErr_SetString(PyExc_ValueError, "cache item is not a NumPy array");
+      free(cumsum_mask);
       return NULL;
     }
     cached_row = (PyArrayObject *)item;
     if (PyArray_TYPE(cached_row) != NPY_FLOAT) {
       PyErr_SetString(PyExc_ValueError, "cache item is not of type np.float32");
+      free(cumsum_mask);
       return NULL;
     }
     if (PyArray_NDIM(cached_row) != 1) {
       PyErr_SetString(PyExc_ValueError, "cache item is not a 1D NumPy array");
+      free(cumsum_mask);
       return NULL;
     }
     if (!PyArray_IS_C_CONTIGUOUS(cached_row)) {
       PyErr_SetString(PyExc_ValueError, "cache item is not C contiguous");
+      free(cumsum_mask);
       return NULL;
     }
     if (PyArray_SIZE(cached_row) != n_samples) {
       PyErr_SetString(PyExc_ValueError,
                       "cache item size does not match array nsamples");
+      free(cumsum_mask);
       return NULL;
     }
   }
@@ -198,7 +206,7 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
         PyArray_DATA((PyArrayObject *)cached_row), n_bytes);
   }
   Py_END_ALLOW_THREADS;
-
+  free(cumsum_mask);
   Py_RETURN_NONE;
 }
 

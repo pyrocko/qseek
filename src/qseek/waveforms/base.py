@@ -59,13 +59,19 @@ class WaveformBatch:
         """Number of unique networks in the batch."""
         return len({tr.network for tr in self.traces})
 
-    def is_empty(self) -> bool:
+    def is_healthy(self) -> bool:
         """Check if the batch is empty.
 
         Returns:
             bool: True if the batch is empty, False otherwise.
         """
-        return not bool(self.traces)
+        if self.n_stations < 3:
+            logger.warning("batch has less than 3 stations")
+            return False
+        if not self.traces:
+            logger.warning("batch is empty")
+            return False
+        return True
 
     def clean_traces(self) -> None:
         """Remove empty or bad traces."""

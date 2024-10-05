@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Iterable
 
 import numpy as np
-from pydantic import computed_field
+from pydantic import PrivateAttr, computed_field
 from pyrocko import parstack
 from pyrocko.trace import Trace
 from rich.table import Table
@@ -33,7 +33,7 @@ class SemblanceStats(Stats):
     semblance_size_bytes: int = 0
     semblance_allocation_bytes: int = 0
 
-    _position: int = 30
+    _position: int = PrivateAttr(50)
 
     def add_stacking_time(self, calculation_time: timedelta, n_nodes: int) -> None:
         self.last_stacking_time = calculation_time
@@ -175,12 +175,12 @@ class Semblance:
             seconds=self._offset_samples / self.sampling_rate
         )
 
-    def get_cache(self) -> SemblanceCache:
+    async def get_cache(self) -> SemblanceCache:
         """Return a cache dictionary containing the semblance data.
 
         We make a copy to keep the original data paged in memory.
         """
-        cached_semblance = self.semblance_unpadded.copy()
+        cached_semblance = await asyncio.to_thread(self.semblance_unpadded.copy)
         return SemblanceCache(
             {
                 node_hash: cached_semblance[i]
@@ -211,7 +211,7 @@ class Semblance:
         return self.semblance[:, time_idx]
 
     async def apply_cache(self, cache: SemblanceCache) -> None:
-        """Applies the cached data to the `semblance_unpadded` array.
+        """Applies cached data to the `semblance_unpadded` array and clears the cache.
 
         Args:
             cache (SemblanceCache): The cache containing the cached data.
@@ -237,6 +237,7 @@ class Semblance:
             mask,
             nthreads=8,
         )
+        cache.clear()
 
     def maximum_node_semblance(self) -> np.ndarray:
         semblance = self.semblance.max(axis=1)

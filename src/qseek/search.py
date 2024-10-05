@@ -845,7 +845,6 @@ class SearchTraces:
 
         if semblance_cache:
             await semblance.apply_cache(semblance_cache)
-            del semblance_cache
 
         threshold = parent.detection_threshold ** (1.0 / parent.power_mean)
         detection_idx, detection_semblance = await semblance.find_peaks(
@@ -896,7 +895,7 @@ class SearchTraces:
                 new_level,
                 node_size_max,
             )
-            cache = semblance.get_cache()
+            cache = await semblance.get_cache()
             del semblance
             return await self.search(
                 octree,

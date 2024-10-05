@@ -5,7 +5,7 @@ import glob
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
+from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal
 
 from pydantic import (
     AwareDatetime,
@@ -78,7 +78,7 @@ class SquirrelStats(Stats):
     bytes_per_seconds: float = 0.0
 
     _queue: asyncio.Queue[Batch | None] | None = PrivateAttr(None)
-    _position: int = 3
+    _position: int = PrivateAttr(20)
 
     def set_queue(self, queue: asyncio.Queue[Batch | None]) -> None:
         self._queue = queue
@@ -152,6 +152,7 @@ class PyrockoSquirrel(WaveformProvider):
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr(None)
+    _stats: ClassVar[SquirrelStats] = SquirrelStats()
 
     @model_validator(mode="after")
     def _validate_model(self) -> Self:
@@ -163,7 +164,10 @@ class PyrockoSquirrel(WaveformProvider):
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
-            logger.info("loading squirrel environment from %s", self.environment)
+            logger.info(
+                "loading squirrel environment from %s",
+                self.environment or "home directory",
+            )
             squirrel = Squirrel(
                 env=str(self.environment.expanduser()) if self.environment else None,
                 persistent=self.persistent,
@@ -202,7 +206,7 @@ class PyrockoSquirrel(WaveformProvider):
             raise ValueError("no stations provided. has prepare() been called?")
 
         squirrel = self.get_squirrel()
-        stats = SquirrelStats()
+        stats = self._stats
         sq_tmin, sq_tmax = squirrel.get_time_span(["waveform"])
 
         start_time = start_time or self.start_time or to_datetime(sq_tmin)
@@ -249,8 +253,12 @@ class PyrockoSquirrel(WaveformProvider):
                 batch.cumulative_bytes / prefetcher.load_time.total_seconds()
             )
 
-            if batch.is_empty():
-                logger.warning("empty batch %d - %s", batch.i_batch, batch.start_time)
+            if not batch.is_healthy():
+                logger.warning(
+                    "unhealthy batch %d - %s",
+                    batch.i_batch,
+                    batch.start_time,
+                )
                 stats.empty_batches += 1
                 continue
 

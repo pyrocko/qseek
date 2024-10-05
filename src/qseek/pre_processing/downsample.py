@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# TODO make nthreads configurable
 THREAD_POOL = ThreadPoolExecutor(max_workers=4)
 
 

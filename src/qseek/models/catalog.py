@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, ClassVar, Iterator
 
 import aiofiles
 from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field
@@ -32,7 +32,7 @@ class EventCatalogStats(Stats):
     n_detections: int = 0
     max_semblance: float = 0.0
 
-    _position: int = 2
+    _position: int = PrivateAttr(10)
     _catalog: EventCatalog | None = PrivateAttr(None)
 
     def set_catalog(self, catalog: EventCatalog) -> None:
@@ -73,7 +73,8 @@ class EventCatalogStats(Stats):
 class EventCatalog(BaseModel):
     rundir: Path
     events: list[EventDetection] = []
-    _stats: EventCatalogStats | None = None
+
+    _stats: ClassVar[EventCatalogStats] = EventCatalogStats()
 
     @property
     def n_events(self) -> int:
@@ -94,7 +95,6 @@ class EventCatalog(BaseModel):
 
     def get_stats(self) -> EventCatalogStats:
         if not self._stats:
-            self._stats = EventCatalogStats()
             self._stats.set_catalog(self)
         return self._stats
 

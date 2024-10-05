@@ -60,7 +60,7 @@ class RuntimeStats(BaseModel):
 
 
 class Stats(BaseModel):
-    _position: int = PrivateAttr(10)
+    _position: int = PrivateAttr(1)
 
     @classmethod
     def get_subclasses(cls) -> set[type[Stats]]:
