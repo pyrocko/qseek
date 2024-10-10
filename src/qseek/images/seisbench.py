@@ -204,8 +204,8 @@ class SeisBench(ImageFunction):
     )
     phase_map: dict[PhaseName, str] = Field(
         default={
-            "P": "constant:P",
-            "S": "constant:S",
+            "P": "cake:P",
+            "S": "cake:S",
         },
         description="Phase mapping from SeisBench PhaseNet to Lassie phases.",
     )

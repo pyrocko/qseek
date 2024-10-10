@@ -17,7 +17,6 @@ from pydantic import (
     ConfigDict,
     Field,
     PositiveFloat,
-    PositiveInt,
     PrivateAttr,
     computed_field,
 )
@@ -325,8 +324,9 @@ class Search(BaseModel):
         description="Number of threads for stacking and migration. "
         "`0` uses all available cores.",
     )
-    n_threads_argmax: PositiveInt = Field(
+    n_threads_argmax: int = Field(
         default=16,
+        ge=0,
         description="Number of threads for argmax. Don't use all core for this"
         " operation. Default is `16`.",
     )
@@ -503,6 +503,8 @@ class Search(BaseModel):
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
+
+        self._catalog.prepare()
 
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():

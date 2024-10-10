@@ -199,11 +199,6 @@ class EventCatalog(BaseModel):
                     logger.error("line: %s", line)
 
         logger.info("loaded %d detections", catalog.n_events)
-
-        stats = catalog.get_stats()
-        stats.n_detections = catalog.n_events
-        if catalog and catalog.n_events:
-            stats.max_semblance = max(detection.semblance for detection in catalog)
         return catalog
 
     async def check(self, repair: bool = True) -> None:
@@ -248,6 +243,14 @@ class EventCatalog(BaseModel):
                 await self.save()
         else:
             logger.info("all detections are ok")
+
+    def prepare(self) -> None:
+        """Prepare the search run."""
+        logger.debug("preparing catalog")
+        stats = self.get_stats()
+        stats.n_detections = self.n_events
+        if self and self.n_events:
+            stats.max_semblance = max(detection.semblance for detection in self)
 
     async def save(self) -> None:
         """Save catalog to current rundir."""

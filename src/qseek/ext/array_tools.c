@@ -7,19 +7,35 @@
 static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
                                  PyObject *kwds) {
   PyObject *array;
+  int n_threads = 8;
+  int thread_num;
+  npy_intp n_bytes, start, size;
 
-  static char *kwlist[] = {"array", NULL};
+  static char *kwlist[] = {"array", "n_threads", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &array))
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|i", kwlist, &array,
+                                   &n_threads))
     return NULL;
 
   if (!PyArray_Check(array)) {
     PyErr_SetString(PyExc_ValueError, "object is not a NumPy array");
     return NULL;
   }
+  if (n_threads < 0) {
+    PyErr_SetString(PyExc_ValueError, "n_threads must be greater than 0");
+    return NULL;
+  }
+
   Py_BEGIN_ALLOW_THREADS;
-  memset(PyArray_DATA((PyArrayObject *)array), 0,
-         PyArray_NBYTES((PyArrayObject *)array));
+  n_bytes = PyArray_NBYTES((PyArrayObject *)array);
+#pragma omp parallel num_threads(n_threads) private(thread_num, start, size)
+  {
+    thread_num = omp_get_thread_num();
+    start = (thread_num * n_bytes) / n_threads;
+    size = ((thread_num + 1) * n_bytes) / n_threads - start;
+
+    memset(PyArray_DATA((PyArrayObject *)array) + start, 0, size);
+  }
   Py_END_ALLOW_THREADS;
   Py_RETURN_NONE;
 }
@@ -32,10 +48,12 @@ static PyObject *fill_zero_bytes_mask(PyObject *module, PyObject *args,
   npy_bool *mask_data;
   npy_intp *array_shape, n_nodes, n_samples;
   size_t n_bytes;
+  int n_threads = 8;
 
-  static char *kwlist[] = {"array", "mask", NULL};
+  static char *kwlist[] = {"array", "mask", "n_threads", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &array, &mask))
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|i", kwlist, &array, &mask,
+                                   &n_threads))
     return NULL;
 
   if (!PyArray_Check(array)) {
@@ -71,6 +89,7 @@ static PyObject *fill_zero_bytes_mask(PyObject *module, PyObject *args,
   mask_data = PyArray_DATA(mask_arr);
   n_bytes = (size_t)n_samples * PyArray_ITEMSIZE(array_arr);
   Py_BEGIN_ALLOW_THREADS;
+#pragma omp parallel for num_threads(n_threads)
   for (int i_node = 0; i_node < PyArray_SIZE(mask_arr); i_node++) {
     if (mask_data[i_node]) {
       memset(PyArray_GETPTR2((PyArrayObject *)array, (npy_intp)i_node, 0), 0,
@@ -86,7 +105,7 @@ static PyObject *apply_cache(PyObject *module, PyObject *args, PyObject *kwds) {
   PyArrayObject *array, *mask_array, *cached_row;
   npy_intp *array_shape;
   npy_intp n_nodes, n_samples;
-  int n_threads = 1;
+  int n_threads = 8;
   uint sum_mask = 0;
 
   npy_int *cumsum_mask, mask_value;
