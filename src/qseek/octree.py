@@ -348,6 +348,7 @@ class Octree(BaseModel, Iterator[Node]):
     _root_nodes: list[Node] = PrivateAttr([])
     _semblance: np.ndarray | None = PrivateAttr(None)
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
+    _iter_cache: list[Node] = PrivateAttr([])
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
@@ -423,7 +424,7 @@ class Octree(BaseModel, Iterator[Node]):
 
         Args:
             level (int, optional): Level to iterate over. Defaults to None.
-                If None, all node levels are iterated.
+                If None, all node levels of the current octree state are iterated.
 
         Yields:
             Iterator[Node]: Node iterator.
@@ -432,9 +433,20 @@ class Octree(BaseModel, Iterator[Node]):
             if level is None or node.level == level:
                 yield node
 
+    def _fill_iter_cache(self) -> None:
+        def iterator() -> Iterator[Node]:
+            for node in self._root_nodes:
+                yield from node
+
+        self._iter_cache = list(iterator())
+
+    def _clear_iter_cache(self) -> None:
+        self._iter_cache.clear()
+
     def __iter__(self) -> Iterator[Node]:
-        for node in self._root_nodes:
-            yield from node
+        if not self._iter_cache:
+            self._fill_iter_cache()
+        yield from self._iter_cache
 
     def __next__(self) -> Node:
         for node in self:
@@ -450,6 +462,7 @@ class Octree(BaseModel, Iterator[Node]):
     def _clear_cache(self) -> None:
         self._cached_coordinates.clear()
         self._semblance = None
+        self._clear_iter_cache()
         with contextlib.suppress(AttributeError):
             del self.n_nodes
 
