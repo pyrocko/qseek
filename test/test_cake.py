@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 import pytest
+
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.octree import Octree

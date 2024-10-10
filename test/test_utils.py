@@ -1,5 +1,6 @@
 import pytest
 from pydantic import BaseModel
+
 from qseek.utils import _NSL, NSL
 
 
