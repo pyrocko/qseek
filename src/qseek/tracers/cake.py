@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 import struct
@@ -427,9 +426,10 @@ class TravelTimeTree(BaseModel):
 
         stations_travel_times = []
         fill_nodes = []
+        node_lut = self._node_lut
         for node in octree:
             try:
-                node_travel_times = self._node_lut[node.hash()][station_indices]
+                node_travel_times = node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
                 continue
@@ -438,7 +438,7 @@ class TravelTimeTree(BaseModel):
         if fill_nodes:
             await self.fill_lut(fill_nodes)
 
-            cache_hits, cache_misses = self._node_lut.get_stats()
+            cache_hits, cache_misses = node_lut.get_stats()
             total_hits = cache_hits + cache_misses
             cache_hit_rate = cache_hits / (total_hits or 1)
             logger.debug(
@@ -494,7 +494,6 @@ class TravelTimeTree(BaseModel):
         for coords in coordinates:
             travel_times.append(self._interpolate_traveltimes_sptree(coords))
             PROGRESS.update(status, advance=1)
-            await asyncio.sleep(0.0)
 
         PROGRESS.remove_task(status)
 

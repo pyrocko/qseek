@@ -109,16 +109,17 @@ class DistanceWeights(BaseModel):
         )
 
         fill_nodes = []
+        node_lut = self._node_lut
         for idx, node in enumerate(octree):
             try:
-                distances[idx] = self._node_lut[node.hash()][station_indices]
+                distances[idx] = node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
                 continue
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
-            cache_hits, cache_misses = self._node_lut.get_stats()
+            cache_hits, cache_misses = node_lut.get_stats()
             total_hits = cache_hits + cache_misses
             cache_hit_rate = cache_hits / (total_hits or 1)
             logger.debug(
