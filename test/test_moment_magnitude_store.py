@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from pyrocko import gf
+
 from qseek.magnitudes.moment_magnitude_store import (
     ModelledAmplitude,
     PeakAmplitude,

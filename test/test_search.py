@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from qseek.models.location import locations_to_csv
 from qseek.search import Search
 
