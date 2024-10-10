@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 
 import numpy as np
+
 from qseek.models import Location
 
 KM = 1e3
