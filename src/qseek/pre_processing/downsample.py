@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from pydantic import Field, PositiveFloat
 from pyrocko.trace import _configure_downsampling
-from pyrocko.util import decimate_coeffs
+from pyrocko.util import UnavailableDecimation, decimate_coeffs
 from scipy import signal
 
 from qseek.pre_processing.base import BatchPreProcessing, group_traces, traces_data
@@ -32,9 +32,17 @@ def downsample(
     data = traces_data(traces)
     trace_deltat = traces[0].deltat
 
-    upscale_sratio, decimation_sequence = _configure_downsampling(
-        trace_deltat, delta_t, allow_upsample_max=5
-    )
+    try:
+        upscale_sratio, decimation_sequence = _configure_downsampling(
+            trace_deltat, delta_t, allow_upsample_max=5
+        )
+    except UnavailableDecimation:
+        logger.warning(
+            "Cannot downsample traces to desired sampling rate. "
+            "The current sampling rate is %s Hz.",
+            1.0 / trace_deltat,
+        )
+        return traces
 
     if demean:
         data -= np.mean(data, axis=1, keepdims=True)

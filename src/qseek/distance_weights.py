@@ -77,7 +77,7 @@ class DistanceWeights(BaseModel):
         self._cached_stations_indices = {
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
-        self.fill_lut(nodes=list(octree))
+        self.fill_lut(nodes=octree.nodes)
 
     def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling distance weight LUT for %d nodes", len(nodes))
