@@ -246,7 +246,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
         description="Waveforms to extract after S phase arrival.",
     )
     taper_seconds: PositiveFloat = Field(
-        default=5.0,
+        default=10.0,
         description="Seconds tapering before and after the extraction window."
         " The taper stabalizes the restitution and is cut off from the traces "
         "before the analysis.",

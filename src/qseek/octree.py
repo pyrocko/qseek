@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from qseek.models.station import Stations
 
 logger = logging.getLogger(__name__)
+
 KM = 1e3
 
 
@@ -86,7 +87,7 @@ class Node:
     def split(self) -> tuple[Node, ...]:
         """Split the node into 8 children."""
         if not self.tree:
-            raise EnvironmentError("Parent tree is not set.")
+            raise EnvironmentError("Parent octree is not set.")
 
         if not self.can_split():
             raise NodeSplitError("Cannot split node below limit.")
@@ -110,8 +111,7 @@ class Node:
             )
 
         self.children = self._children_cached
-        if self.tree:
-            self.tree._clear_cache()
+        self.tree._clear_cache()
         return self.children
 
     @property
@@ -138,7 +138,7 @@ class Node:
             float: Distance to the closest border.
         """
         if not self.tree:
-            raise AttributeError("parent tree not set")
+            raise AttributeError("parent octree not set")
         tree = self.tree
         border_distance = min(
             self.north - tree.north_bounds[0],
@@ -186,12 +186,12 @@ class Node:
             bool: True if the node can be split.
         """
         if self.tree is None:
-            raise AttributeError("parent tree not set")
+            raise AttributeError("parent octree not set")
         return (self.level + 1) < self.tree.n_levels
 
     def reset(self) -> None:
         """Reset the node to its initial state."""
-        self._children_cached = self.children
+        _ = [child.reset() for child in self.children]
         self.children = ()
         self.semblance = 0.0
 
@@ -231,7 +231,7 @@ class Node:
             Location: Location of the node.
         """
         if not self.tree:
-            raise AttributeError("parent tree not set")
+            raise AttributeError("parent octree not set")
         if not self._location:
             reference = self.tree.location
             self._location = Location.model_construct(
@@ -262,15 +262,18 @@ class Node:
     def get_neighbours(self) -> list[Node]:
         """Get the direct neighbours of the node from the parent tree.
 
+        Neighbours are nodes that touch by vertice, edge or face, regardless of the
+        nodes level.
+
         Returns:
             list[Node]: List of direct neighbours.
         """
         if not self.tree:
-            raise AttributeError("parent tree not set")
+            raise AttributeError("parent octree not set")
 
         return [
             node
-            for node in self.tree.iter_nodes()
+            for node in self.tree.nodes
             if self.is_colliding(node) and node is not self
         ]
 
@@ -298,8 +301,8 @@ class Node:
 
     def hash(self) -> bytes:
         if not self.tree:
-            raise AttributeError("parent tree not set")
-        if self._hash is None:
+            raise AttributeError("parent octree not set")
+        if not self._hash:
             self._hash = sha1(
                 struct.pack(
                     "dddddd",
@@ -348,7 +351,6 @@ class Octree(BaseModel, Iterator[Node]):
     _root_nodes: list[Node] = PrivateAttr([])
     _semblance: np.ndarray | None = PrivateAttr(None)
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
-    _iter_cache: list[Node] = PrivateAttr([])
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
@@ -373,7 +375,7 @@ class Octree(BaseModel, Iterator[Node]):
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model."""
-        self._root_nodes = self.get_root_nodes(self.root_node_size)
+        self._root_nodes = self.create_root_nodes(self.root_node_size)
 
         logger.info(
             "initializing octree volume with %d nodes and %.1f km³,"
@@ -395,7 +397,7 @@ class Octree(BaseModel, Iterator[Node]):
             self.depth_bounds.max - self.depth_bounds.min,
         )
 
-    def get_root_nodes(self, length: float) -> list[Node]:
+    def create_root_nodes(self, length: float) -> list[Node]:
         ln = length
         ext_east, ext_north, ext_depth = self.extent()
         east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.min
@@ -412,68 +414,51 @@ class Octree(BaseModel, Iterator[Node]):
     @cached_property
     def n_nodes(self) -> int:
         """Number of nodes in the octree."""
-        return sum(1 for _ in self)
+        return len(self.nodes)
+
+    @cached_property
+    def nodes(self) -> list[Node]:
+        """List of nodes in the octree."""
+        return [node for root in self._root_nodes for node in root]
 
     @property
     def volume(self) -> float:
         """Volume of the octree in cubic meters."""
         return reduce(mul, self.extent())
 
-    def iter_nodes(self, level: int | None = None) -> Iterator[Node]:
-        """Iterate over nodes.
-
-        Args:
-            level (int, optional): Level to iterate over. Defaults to None.
-                If None, all node levels of the current octree state are iterated.
-
-        Yields:
-            Iterator[Node]: Node iterator.
-        """
-        for node in self:
-            if level is None or node.level == level:
-                yield node
-
-    def _fill_iter_cache(self) -> None:
-        def iterator() -> Iterator[Node]:
-            for node in self._root_nodes:
-                yield from node
-
-        self._iter_cache = list(iterator())
-
-    def _clear_iter_cache(self) -> None:
-        self._iter_cache.clear()
-
     def __iter__(self) -> Iterator[Node]:
-        if not self._iter_cache:
-            self._fill_iter_cache()
-        yield from self._iter_cache
+        yield from self.nodes
 
     def __next__(self) -> Node:
-        for node in self:
-            return node
-        raise StopIteration
+        return next(iter(self.nodes))
 
     def __getitem__(self, idx: int) -> Node:
-        for inode, node in enumerate(self):
-            if inode == idx:
-                return node
-        raise IndexError(f"bad node index {idx}")
+        try:
+            return self.nodes[idx]
+        except IndexError:
+            raise IndexError(f"Bad node index {idx}") from None
 
     def _clear_cache(self) -> None:
-        self._cached_coordinates.clear()
-        self._semblance = None
-        self._clear_iter_cache()
+        with contextlib.suppress(AttributeError):
+            del self.nodes
         with contextlib.suppress(AttributeError):
             del self.n_nodes
+        self._cached_coordinates.clear()
+        self._semblance = None
 
     def reset(self) -> Self:
         """Reset the octree to its initial state and return it."""
-        logger.debug("resetting tree")
+        _ = [node.reset() for node in self._root_nodes]
         self._clear_cache()
-        self._root_nodes = self.get_root_nodes(self.root_node_size)
         return self
 
-    def set_level(self, level: int):
+    def clear(self) -> None:
+        """Clear the octree's cached data."""
+        logger.debug("clearing octree")
+        self._root_nodes = self.create_root_nodes(self.root_node_size)
+        self._clear_cache()
+
+    def set_level(self, level: int) -> None:
         """Set the octree to a specific level.
 
         Args:
@@ -483,8 +468,8 @@ class Octree(BaseModel, Iterator[Node]):
             raise ValueError(
                 f"invalid level {level}, expected level <= {self.n_levels}"
             )
-        self.reset()
         logger.debug("setting tree to level %d", level)
+        self.reset()
         for _ in range(level):
             for node in self:
                 node.split()
@@ -546,8 +531,7 @@ class Octree(BaseModel, Iterator[Node]):
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if self._cached_coordinates.get(system) is None:
-            nodes = (node for node in self)
-            coords = get_node_coordinates(nodes, system=system)
+            coords = get_node_coordinates(self.nodes, system=system)
             coords.setflags(write=False)
             self._cached_coordinates[system] = coords
         return self._cached_coordinates[system]
@@ -598,12 +582,7 @@ class Octree(BaseModel, Iterator[Node]):
         Returns:
             list[Node]: A list of nodes corresponding to the given indices.
         """
-        indices_list = list(indices)
-        node_list = [None] * len(indices_list)
-        for i_node, node in enumerate(self):
-            if i_node in indices_list:
-                node_list[indices_list.index(i_node)] = node
-        return node_list
+        return [self[idx] for idx in indices]
 
     def get_nodes_by_threshold(self, semblance_threshold: float = 0.0) -> list[Node]:
         """Get all nodes with a semblance above a threshold.
@@ -668,8 +647,8 @@ class Octree(BaseModel, Iterator[Node]):
         neighbor_nodes = peak_node.get_neighbours()
         neighbor_coords = np.array(
             [
-                (n.east, n.north, n.depth, n.semblance)
-                for n in [peak_node, *neighbor_nodes]
+                (node.east, node.north, node.depth, node.semblance)
+                for node in [peak_node, *neighbor_nodes]
             ]
         )
 
