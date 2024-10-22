@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from qseek.models.station import Stations
-    from qseek.octree import Octree
+    from qseek.octree import Node, Octree
 
 _LocationType = TypeVar("_LocationType", bound=Location)
 
@@ -66,14 +66,14 @@ class RayTracer(BaseModel):
     async def get_travel_times(
         self,
         phase: str,
-        octree: Octree,
+        nodes: Sequence[Node],
         stations: Stations,
     ) -> np.ndarray:
         """Get travel times for a phase from a source to a set of stations.
 
         Args:
             phase: Phase name.
-            octree: Octree containing the source.
+            nodes: Nodes to get traveltime for.
             stations: Stations to calculate travel times to.
 
         Returns:

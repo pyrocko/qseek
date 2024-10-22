@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, ClassVar, Iterable
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from pydantic import PrivateAttr, computed_field
@@ -12,17 +12,23 @@ from pyrocko.trace import Trace
 from rich.table import Table
 from scipy import signal
 
-from qseek.ext.array_tools import apply_cache, fill_zero_bytes, fill_zero_bytes_mask
+from qseek.ext import array_tools
+from qseek.ext.array_tools import fill_zero_bytes
 from qseek.stats import Stats
 from qseek.utils import datetime_now, get_cpu_count, human_readable_bytes
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from qseek.octree import Node
-
 
 logger = logging.getLogger(__name__)
+
+MB = 1024**2
+
+
+def next_ram_array_size(nbytes: int) -> int:
+    """Get the next RAM chunk size in 200 MB increments."""
+    return int(np.ceil(nbytes / (256 * MB)) * (256 * MB)) // 4
 
 
 class SemblanceStats(Stats):
@@ -80,24 +86,10 @@ class SemblanceStats(Stats):
         )
 
 
-class SemblanceCache(dict[bytes, np.ndarray]):
-    def get_mask(self, node_hashes: list[bytes]) -> np.ndarray:
-        """Get the mask for the node hashes.
-
-        Args:
-            node_hashes (list[bytes]): List of the node hashes in the current tree.
-
-        Returns:
-            np.ndarray: The boolean mask for the node hashes.
-        """
-        # This is a "bit" of a hack to generate a hash from the node_hashes list
-        return np.array([hash in self for hash in node_hashes])
-
-
 class Semblance:
     _max_semblance: np.ndarray | None = None
     _node_max_idx: np.ndarray | None = None
-    node_hashes: list[bytes]
+    _leaf_nodes: np.ndarray | None = None
     _offset_samples: int = 0
 
     _stats: ClassVar[SemblanceStats] = SemblanceStats()
@@ -105,61 +97,29 @@ class Semblance:
 
     def __init__(
         self,
-        nodes: Iterable[Node],
         n_samples: int,
         start_time: datetime,
         sampling_rate: float,
         padding_samples: int = 0,
         exponent: float = 1.0,
-        cache: SemblanceCache | None = None,
     ) -> None:
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
         self.exponent = exponent
+        self.semblance_unpadded = np.array([], dtype=np.float32)
 
         self._start_time = start_time
-        self.node_hashes = [node.hash() for node in nodes]
-        n_nodes = len(self.node_hashes)
-
-        n_values = n_nodes * n_samples
-
-        if (
-            self._semblance_allocation is not None
-            and self._semblance_allocation.size >= n_values
-        ):
-            logger.debug("recycling paged semblance memory allocation")
-            self.semblance_unpadded = self._semblance_allocation[:n_values].reshape(
-                (n_nodes, n_samples)
-            )
-            if cache:
-                # If a cache is supplied only zero the missing nodes
-                fill_zero_bytes_mask(
-                    self.semblance_unpadded,
-                    mask=~cache.get_mask(self.node_hashes),
-                )
-            else:
-                fill_zero_bytes(self.semblance_unpadded)
-        else:
-            logger.info(
-                "re-allocating semblance memory: %s", human_readable_bytes(n_values * 4)
-            )
-            self.semblance_unpadded = np.zeros((n_nodes, n_samples), dtype=np.float32)
-
-            Semblance._semblance_allocation = self.semblance_unpadded.ravel()
-            Semblance._stats.semblance_allocation_bytes = self.semblance_unpadded.nbytes
-
         self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes
 
     @property
     def n_nodes(self) -> int:
-        """Number of nodes."""
-        return self.semblance.shape[0]
+        return self.semblance_unpadded.shape[0]
 
     @property
     def n_samples(self) -> int:
         """Number of samples."""
-        return self.semblance.shape[1]
+        return self.n_samples_unpadded
 
     @property
     def semblance(self) -> np.ndarray:
@@ -175,18 +135,51 @@ class Semblance:
             seconds=self._offset_samples / self.sampling_rate
         )
 
-    async def get_cache(self) -> SemblanceCache:
-        """Return a cache dictionary containing the semblance data.
+    def set_leaf_nodes(self, leaf_nodes: np.ndarray | None) -> None:
+        """Set the leaf nodes."""
+        if leaf_nodes is not None and leaf_nodes.size != self.n_nodes:
+            raise ValueError(
+                "Leaf nodes must have the same size as the"
+                f" number of nodes: {self.n_nodes}"
+            )
+        self._leaf_nodes = leaf_nodes
+        self._clear_cache()
 
-        We make a copy to keep the original data paged in memory.
-        """
-        cached_semblance = await asyncio.to_thread(self.semblance_unpadded.copy)
-        return SemblanceCache(
-            {
-                node_hash: cached_semblance[i]
-                for i, node_hash in enumerate(self.node_hashes)
-            }
-        )
+    async def set_n_nodes(self, n_nodes: int) -> None:
+        """Set the number of nodes."""
+        old_n_nodes = self.n_nodes
+        n_samples = self.n_samples_unpadded
+        n_values = n_nodes * n_samples
+
+        if (
+            self._semblance_allocation is not None
+            and self._semblance_allocation.size >= n_values
+        ):
+            logger.debug("recycling paged semblance memory allocation")
+            self.semblance_unpadded = self._semblance_allocation[:n_values].reshape(
+                (n_nodes, n_samples)
+            )
+            await asyncio.to_thread(
+                fill_zero_bytes, self.semblance_unpadded[old_n_nodes:n_nodes]
+            )
+        else:
+            logger.info(
+                "re-allocating semblance memory: %s", human_readable_bytes(n_values * 4)
+            )
+            old_semblance = self.semblance_unpadded.ravel()
+            next_size = next_ram_array_size(n_values * 4)
+            self.semblance_unpadded = np.zeros(next_size, dtype=np.float32)
+            # copy old values
+            if old_semblance.size:
+                self.semblance_unpadded.ravel()[: old_semblance.size] = old_semblance
+
+            Semblance._semblance_allocation = self.semblance_unpadded.ravel()
+            self._stats.semblance_allocation_bytes = self.semblance_unpadded.nbytes
+            return await self.set_n_nodes(n_nodes)
+
+        self._stats.semblance_size_bytes = self.semblance_unpadded.nbytes
+        self._clear_cache()
+        return None
 
     def get_time_from_index(self, index: int) -> datetime:
         """Get the time from a sample index.
@@ -208,42 +201,25 @@ class Semblance:
         Returns:
             np.ndarray: The semblance values at the specified time index.
         """
+        if self._leaf_nodes is not None:
+            return self.semblance[self._leaf_nodes, time_idx]
         return self.semblance[:, time_idx]
-
-    async def apply_cache(self, cache: SemblanceCache) -> None:
-        """Applies cached data to the `semblance_unpadded` array and clears the cache.
-
-        Args:
-            cache (SemblanceCache): The cache containing the cached data.
-
-        Returns:
-            None
-        """
-        if not cache:
-            return
-        mask = cache.get_mask(self.node_hashes)
-        logger.debug("applying cache for %d nodes", mask.sum())
-        data = [cache[hash] for hash in self.node_hashes if hash in cache]
-
-        # memoryview is faster then
-        # self.semblance_unpadded[mask, :] = data
-        # for idx, copy in enumerate(mask):
-        #     if copy:
-        #         memoryview(self.semblance_unpadded[idx])[:] = memoryview(data.pop(0))
-        await asyncio.to_thread(
-            apply_cache,
-            self.semblance_unpadded,
-            data,
-            mask,
-            nthreads=8,
-        )
-        cache.clear()
 
     def maximum_node_semblance(self) -> np.ndarray:
         semblance = self.semblance.max(axis=1)
         if self.exponent != 1.0:
             semblance **= self.exponent
         return semblance
+
+    async def _calculate_maxima(self, nthreads: int) -> None:
+        self._node_max_idx, self._max_semblance = await asyncio.to_thread(
+            array_tools.argmax_masked,
+            self.semblance_unpadded,
+            mask=self._leaf_nodes,
+            n_threads=nthreads,
+        )
+        self._node_max_idx.setflags(write=False)
+        self._max_semblance.setflags(write=False)
 
     async def maxima_semblance(
         self,
@@ -261,12 +237,7 @@ class Semblance:
             np.ndarray: Maximum semblance.
         """
         if self._max_semblance is None:
-            node_idx = await self.maxima_node_idx(trim_padding=False, nthreads=nthreads)
-            self._max_semblance = self.semblance_unpadded[
-                node_idx, np.arange(self.n_samples_unpadded)
-            ]
-            self._max_semblance.setflags(write=False)
-
+            await self._calculate_maxima(nthreads)
         if trim_padding:
             return self._max_semblance[
                 self.padding_samples : -(self.padding_samples + 1)
@@ -290,12 +261,7 @@ class Semblance:
             np.ndarray: Node indices.
         """
         if self._node_max_idx is None:
-            self._node_max_idx = await asyncio.to_thread(
-                parstack.argmax,
-                self.semblance_unpadded,
-                nparallel=nthreads,
-            )
-            self._node_max_idx.setflags(write=False)
+            await self._calculate_maxima(nthreads)
         if trim_padding:
             return self._node_max_idx[
                 self.padding_samples : -(self.padding_samples + 1)
@@ -387,7 +353,7 @@ class Semblance:
         self._node_max_idx = None
         self._max_semblance = None
 
-    async def calculate_semblance(
+    async def add_semblance(
         self,
         trace_data: list[np.ndarray],
         offsets: np.ndarray,
@@ -397,6 +363,9 @@ class Semblance:
     ) -> None:
         # Hold threads back for I/O
         threads = threads or max(1, get_cpu_count() - 6)
+
+        n_nodes = weights.shape[0]
+        await self.set_n_nodes(n_nodes)
 
         start_time = datetime_now()
         _, offset_samples = await asyncio.to_thread(
@@ -419,25 +388,4 @@ class Semblance:
                 offset_samples,
             )
         self._offset_samples = offset_samples
-        self._clear_cache()
-
-    def normalize(
-        self,
-        factor: int | float,
-        semblance_cache: SemblanceCache | None = None,
-    ) -> None:
-        """Normalize semblance by a factor.
-
-        Args:
-            factor (int | float): Normalization factor.
-            semblance_cache (SemblanceCache | None, optional): Cache of the semblance.
-                Defaults to None.
-        """
-        if factor == 1.0:
-            return
-        if semblance_cache:
-            cache_mask = semblance_cache.get_mask(self.node_hashes)
-            self.semblance_unpadded[~cache_mask] /= factor
-        else:
-            self.semblance_unpadded /= factor
         self._clear_cache()
