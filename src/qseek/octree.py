@@ -10,7 +10,7 @@ from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, Sequence
 
 import numpy as np
 import scipy.interpolate
@@ -64,6 +64,24 @@ def get_node_coordinates(
     raise ValueError(f"Unknown coordinate system: {system}")
 
 
+def distances_stations(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
+    """Returns the 3D distances from all nodes to all stations.
+
+    Args:
+        nodes (Sequence[Node]): Nodes to calculate distance from.
+        stations (Stations): Stations to calculate distance to.
+
+    Returns:
+        np.ndarray: Of shape (n-nodes, n-stations).
+    """
+    node_coords = get_node_coordinates(nodes, system="geographic")
+    sta_coords = stations.get_coordinates(system="geographic")
+
+    sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
+    node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
+    return np.linalg.norm(sta_coords - node_coords[:, np.newaxis], axis=2)
+
+
 class NodeSplitError(Exception): ...
 
 
@@ -111,7 +129,8 @@ class Node:
             )
 
         self.children = self._children_cached
-        self.tree._clear_cache()
+        self.tree._add_nodes(self.children)
+
         return self.children
 
     @property
@@ -189,6 +208,14 @@ class Node:
             raise AttributeError("parent octree not set")
         return (self.level + 1) < self.tree.n_levels
 
+    def is_leaf(self) -> bool:
+        """Check if the node is a leaf node.
+
+        Returns:
+            bool: True if the node is a leaf node.
+        """
+        return not bool(self.children)
+
     def reset(self) -> None:
         """Reset the node to its initial state."""
         _ = [child.reset() for child in self.children]
@@ -259,7 +286,7 @@ class Node:
             and abs(self.depth - other.depth) <= (self.size + other.size) / 2
         )
 
-    def get_neighbours(self) -> list[Node]:
+    def get_neighbours(self, leafs_only: bool = True) -> list[Node]:
         """Get the direct neighbours of the node from the parent tree.
 
         Neighbours are nodes that touch by vertice, edge or face, regardless of the
@@ -267,15 +294,14 @@ class Node:
 
         Returns:
             list[Node]: List of direct neighbours.
+            leafs_only (bool): If True, only leaf nodes are returned.
         """
         if not self.tree:
             raise AttributeError("parent octree not set")
 
-        return [
-            node
-            for node in self.tree.nodes
-            if self.is_colliding(node) and node is not self
-        ]
+        nodes = self.tree.leaf_nodes if leafs_only else self.tree.nodes
+
+        return [node for node in nodes if self.is_colliding(node) and node is not self]
 
     def distance_to(self, other: Node) -> float:
         """Distance to another node.
@@ -351,6 +377,7 @@ class Octree(BaseModel, Iterator[Node]):
     _root_nodes: list[Node] = PrivateAttr([])
     _semblance: np.ndarray | None = PrivateAttr(None)
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
+    _nodes: list[Node] = PrivateAttr([])
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
@@ -376,6 +403,7 @@ class Octree(BaseModel, Iterator[Node]):
     def model_post_init(self, __context: Any) -> None:
         """Initialize octree. This method is called by the pydantic model."""
         self._root_nodes = self.create_root_nodes(self.root_node_size)
+        self._add_nodes(self._root_nodes)
 
         logger.info(
             "initializing octree volume with %d nodes and %.1f km³,"
@@ -416,15 +444,28 @@ class Octree(BaseModel, Iterator[Node]):
         """Number of nodes in the octree."""
         return len(self.nodes)
 
-    @cached_property
+    @property
     def nodes(self) -> list[Node]:
         """List of nodes in the octree."""
-        return [node for root in self._root_nodes for node in root]
+        return self._nodes
+
+    def _add_nodes(self, nodes: Iterable[Node]) -> None:
+        self._nodes.extend(nodes)
+        self._clear_cache()
 
     @property
     def volume(self) -> float:
         """Volume of the octree in cubic meters."""
         return reduce(mul, self.extent())
+
+    @cached_property
+    def leaf_nodes(self) -> list[Node]:
+        """Get all leaf nodes of the octree.
+
+        Returns:
+            list[Node]: List of leaf nodes.
+        """
+        return [node for node in self if node.is_leaf()]
 
     def __iter__(self) -> Iterator[Node]:
         yield from self.nodes
@@ -440,16 +481,17 @@ class Octree(BaseModel, Iterator[Node]):
 
     def _clear_cache(self) -> None:
         with contextlib.suppress(AttributeError):
-            del self.nodes
-        with contextlib.suppress(AttributeError):
             del self.n_nodes
+        with contextlib.suppress(AttributeError):
+            del self.leaf_nodes
         self._cached_coordinates.clear()
         self._semblance = None
 
     def reset(self) -> Self:
         """Reset the octree to its initial state and return it."""
         _ = [node.reset() for node in self._root_nodes]
-        self._clear_cache()
+        self._nodes.clear()
+        self._add_nodes(self._root_nodes)
         return self
 
     def clear(self) -> None:
@@ -471,7 +513,7 @@ class Octree(BaseModel, Iterator[Node]):
         logger.debug("setting tree to level %d", level)
         self.reset()
         for _ in range(level):
-            for node in self:
+            for node in self.nodes.copy():
                 node.split()
 
     def reduce_axis(
@@ -519,14 +561,18 @@ class Octree(BaseModel, Iterator[Node]):
         """Returns the semblance values of all nodes."""
         return np.array([node.semblance for node in self])
 
-    def map_semblance(self, semblance: np.ndarray) -> None:
+    def map_semblance(self, semblance: np.ndarray, leaf_only: bool = True) -> None:
         """Maps semblance values to nodes.
 
         Args:
             semblance (np.ndarray): Of shape (n-nodes,).
+            leaf_only (bool, optional): If True, only leaf nodes are mapped.
+                Defaults to True.
         """
         self._semblance = semblance
-        for node, node_semblance in zip(self, semblance, strict=True):
+        nodes = self.leaf_nodes if leaf_only else self.nodes
+
+        for node, node_semblance in zip(nodes, semblance, strict=True):
             node.semblance = float(node_semblance)
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:

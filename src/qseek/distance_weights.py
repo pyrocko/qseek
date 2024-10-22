@@ -99,18 +99,19 @@ class DistanceWeights(BaseModel):
         """Return the fill level of the LUT as a float between 0.0 and 1.0."""
         return len(self._node_lut) / self._node_lut.get_size()
 
-    async def get_weights(self, octree: Octree, stations: Stations) -> np.ndarray:
+    async def get_weights(
+        self, nodes: Sequence[Node], stations: Stations
+    ) -> np.ndarray:
+        n_nodes = len(nodes)
         station_indices = np.fromiter(
             (self._cached_stations_indices[sta.nsl.pretty] for sta in stations),
             dtype=int,
         )
-        distances = np.zeros(
-            shape=(octree.n_nodes, stations.n_stations), dtype=np.float32
-        )
+        distances = np.zeros(shape=(n_nodes, stations.n_stations), dtype=np.float32)
 
         fill_nodes = []
         node_lut = self._node_lut
-        for idx, node in enumerate(octree):
+        for idx, node in enumerate(nodes):
             try:
                 distances[idx] = node_lut[node.hash()][station_indices]
             except KeyError:
@@ -127,6 +128,6 @@ class DistanceWeights(BaseModel):
                 self.lut_fill_level() * 100,
                 cache_hit_rate * 100,
             )
-            return await self.get_weights(octree, stations)
+            return await self.get_weights(nodes, stations)
 
         return self.calc_weights(distances)

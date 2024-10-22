@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Literal
+from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
 from pydantic import BaseModel
 
@@ -54,14 +54,14 @@ class TravelTimeCorrections(BaseModel):
         self,
         station_nsls: Iterable[NSL],
         phase: PhaseDescription,
-        octree: Octree,
+        nodes: Sequence[Node],
     ) -> np.ndarray:
         """Get the traveltime delays for a set of stations and a phase.
 
         Args:
             station_nsls: The stations to get the delays for.
             phase: The phase to get the delays for.
-            octree: The octree to use for the delays.
+            nodes: The nodes to get the delays for.
 
         Returns:
             np.ndarray: The traveltime delays for the given stations and phase.
