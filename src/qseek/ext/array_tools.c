@@ -1,6 +1,5 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_SSIZE_T_CLEAN /* Make "s#" use Py_ssize_t rather than int. */
-#define BLOCK_SIZE 64
 
 #include "numpy/arrayobject.h"
 #include <Python.h>
@@ -35,8 +34,10 @@ static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
 
   Py_BEGIN_ALLOW_THREADS;
   n_bytes = PyArray_NBYTES((PyArrayObject *)array);
-#pragma omp parallel num_threads(n_threads) private(thread_num, start, size)
+#pragma omp parallel num_threads(n_threads) private(thread_num, n_threads,     \
+                                                        start, size)
   {
+    n_threads = omp_get_num_threads();
     thread_num = omp_get_thread_num();
     start = (thread_num * n_bytes) / n_threads;
     size = ((thread_num + 1) * n_bytes) / n_threads - start;
@@ -52,11 +53,11 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
   PyObject *node_mask = Py_None;
   PyArrayObject *data_arr, *node_mask_arr;
 
-  npy_intp *shape, shapeout[1], block_length, *result_max_idx_data;
-  npy_intp ix, i_node, n_nodes, n_samples, ix_offset, idx_max[BLOCK_SIZE];
-  float val_max[BLOCK_SIZE], *result_max_values_data, value;
+  npy_intp *shape, shapeout[1], *result_max_idx_data, ix, i_node, n_nodes,
+      i_sample, n_samples, start_sample, end_sample;
+  float *result_max_values_data, value, *data_arr_data;
 
-  int n_threads = 8;
+  int thread_num, n_threads = 8;
 
   static char *kwlist[] = {"array", "mask", "n_threads", NULL};
 
@@ -109,44 +110,38 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
   }
 
   result_max_idx = PyArray_ZEROS(1, shapeout, NPY_INTP, 0);
-  result_max_values = PyArray_ZEROS(1, shapeout, NPY_FLOAT32, 0);
+  result_max_values = PyArray_EMPTY(1, shapeout, NPY_FLOAT32, 0);
   result_max_idx_data =
       (npy_intp *)PyArray_DATA((PyArrayObject *)result_max_idx);
   result_max_values_data =
       (float *)PyArray_DATA((PyArrayObject *)result_max_values);
+  memset(result_max_values_data, FLT_MIN, n_samples * sizeof(float));
+
+  data_arr_data = (float *)PyArray_DATA(data_arr);
 
   Py_BEGIN_ALLOW_THREADS;
+#pragma omp parallel num_threads(n_threads) private(                           \
+        thread_num, start_sample, end_sample, i_node, n_threads, i_sample,     \
+            value)
+  {
+    n_threads = omp_get_num_threads();
+    thread_num = omp_get_thread_num();
 
-#pragma omp parallel for private(i_node, ix_offset, idx_max, val_max,          \
-                                     block_length, value)                      \
-    num_threads(n_threads) schedule(dynamic, 1)
-  for (ix = 0; ix < n_samples; ix += BLOCK_SIZE) {
-    block_length = min_intp(BLOCK_SIZE, n_samples - ix);
-
-#pragma omp simd
-    for (ix_offset = 0; ix_offset < block_length; ix_offset++) {
-      idx_max[ix_offset] = 0;
-      val_max[ix_offset] = FLT_MIN;
-    }
+    start_sample = (thread_num * n_samples) / n_threads;
+    end_sample = ((thread_num + 1) * n_samples) / n_threads;
 
     for (i_node = 0; i_node < n_nodes; i_node++) {
       if (node_mask != Py_None &&
           !*(npy_bool *)PyArray_GETPTR1(node_mask_arr, i_node)) {
         continue;
       }
-      for (ix_offset = 0; ix_offset < block_length; ix_offset++) {
-        value = *(float *)PyArray_GETPTR2(data_arr, i_node, ix + ix_offset);
-        if (value > val_max[ix_offset]) {
-          val_max[ix_offset] = value;
-          idx_max[ix_offset] = i_node;
+      for (i_sample = start_sample; i_sample < end_sample; i_sample++) {
+        value = data_arr_data[i_node * n_samples + i_sample];
+        if (value > result_max_values_data[i_sample]) {
+          result_max_values_data[i_sample] = value;
+          result_max_idx_data[i_sample] = i_node;
         }
       }
-    }
-
-#pragma omp simd
-    for (ix_offset = 0; ix_offset < block_length; ix_offset++) {
-      result_max_idx_data[ix + ix_offset] = idx_max[ix_offset];
-      result_max_values_data[ix + ix_offset] = val_max[ix_offset];
     }
   }
   Py_END_ALLOW_THREADS;
