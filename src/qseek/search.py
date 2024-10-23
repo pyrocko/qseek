@@ -361,21 +361,22 @@ class Search(BaseModel):
 
     @field_validator("n_threads_parstack", "n_threads_argmax")
     @classmethod
-    def check_threads_compute(cls, value: int | Literal["auto"]) -> int:
+    def check_threads_compute(cls, n_threads: int | Literal["auto"]) -> int:
         # We limit the number of threads to the number of available cores and leave some
         # cores for other processes.
-        max_compute_threads = max(get_cpu_count() - 4, 1)
-        if value == "auto":
-            value = max_compute_threads
-        if value < 0:
+        cpu_count = get_cpu_count()
+        max_compute_threads = max(cpu_count - 4, 1)
+        if n_threads == "auto":
+            n_threads = max_compute_threads
+        if n_threads < 0:
             raise ValueError("Number of threads must be greater than 0")
-        if value > max_compute_threads:
+        if n_threads > cpu_count:
             logger.warning(
                 "number of compute threads exceeds available cores, reducing to %d",
                 max_compute_threads,
             )
-            value = max_compute_threads
-        return max(1, value)
+            n_threads = cpu_count
+        return n_threads
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (

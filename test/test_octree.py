@@ -6,14 +6,15 @@ km = 1e3
 
 
 def test_octree(octree: Octree, plot: bool) -> None:
+    octree.reset()
     assert octree.n_nodes > 0
 
     nnodes = octree.n_nodes
 
-    for node in octree:
+    for node in octree.nodes.copy():
         node.split()
 
-    assert nnodes * 8 == octree.n_nodes
+    assert nnodes * 8 == octree.n_leaf_nodes
 
     child, *_ = octree[80].split()
     while True:
