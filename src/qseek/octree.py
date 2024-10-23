@@ -444,6 +444,11 @@ class Octree(BaseModel, Iterator[Node]):
         """Number of nodes in the octree."""
         return len(self.nodes)
 
+    @cached_property
+    def n_leaf_nodes(self) -> int:
+        """Number of nodes in the octree."""
+        return len(self.leaf_nodes)
+
     @property
     def nodes(self) -> list[Node]:
         """List of nodes in the octree."""
@@ -482,6 +487,8 @@ class Octree(BaseModel, Iterator[Node]):
     def _clear_cache(self) -> None:
         with contextlib.suppress(AttributeError):
             del self.n_nodes
+        with contextlib.suppress(AttributeError):
+            del self.n_leaf_nodes
         with contextlib.suppress(AttributeError):
             del self.leaf_nodes
         self._cached_coordinates.clear()
@@ -546,7 +553,7 @@ class Octree(BaseModel, Iterator[Node]):
                 f"Unknown surface component: {surface}, expected NE, ED or ND."
             )
 
-        for node in self:
+        for node in self.leaf_nodes:
             if max_level >= 0 and node.level > max_level:
                 continue
             groups[component_map[surface](node)].append(node.semblance)

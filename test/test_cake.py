@@ -31,7 +31,6 @@ def small_octree() -> Octree:
         east_bounds=Range(-2 * KM, 2 * KM),
         north_bounds=Range(-2 * KM, 2 * KM),
         depth_bounds=Range(0 * KM, 2 * KM),
-        absorbing_boundary=1 * KM,
     )
 
 
@@ -90,23 +89,23 @@ async def test_lut(
     stations: Stations,
 ) -> None:
     model = travel_time_tree
-    await model.init_lut(octree, stations)
+    await model.init_lut(octree.nodes, stations)
 
     traveltimes_tree = await model.interpolate_travel_times(octree, stations)
-    traveltimes_lut = await model.get_travel_times(octree, stations)
+    traveltimes_lut = await model.get_travel_times(octree.nodes, stations)
     np.testing.assert_equal(traveltimes_tree, traveltimes_lut)
 
     # Test refilling the LUT
     model._node_lut.clear()
     traveltimes_tree = await model.interpolate_travel_times(octree, stations)
-    traveltimes_lut = await model.get_travel_times(octree, stations)
+    traveltimes_lut = await model.get_travel_times(octree.nodes, stations)
     np.testing.assert_equal(traveltimes_tree, traveltimes_lut)
     assert len(model._node_lut) > 0, "did not refill lut"
 
     stations_selection = stations.model_copy()
     stations_selection.stations = stations_selection.stations[:5]
     traveltimes_tree = await model.interpolate_travel_times(octree, stations_selection)
-    traveltimes_lut = await model.get_travel_times(octree, stations_selection)
+    traveltimes_lut = await model.get_travel_times(octree.nodes, stations_selection)
     np.testing.assert_equal(traveltimes_tree, traveltimes_lut)
 
 
@@ -136,7 +135,7 @@ async def test_travel_times_constant_velocity(
 
     cake_travel_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
     constant_traveltimes = await constant.get_travel_times(
-        "constant:P", octree, stations
+        "constant:P", octree.nodes, stations
     )
 
     nan_mask = np.isnan(cake_travel_times)
