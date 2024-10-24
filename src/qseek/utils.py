@@ -615,9 +615,6 @@ class ChannelSelectors:
     NorthEast = ChannelSelector("NE", 2)
 
 
-NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"
-
-
 def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     """Takes model and dumps markdown for documentation."""
 
