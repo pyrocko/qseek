@@ -5,7 +5,7 @@ import glob
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
+from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal
 
 from pydantic import (
     AwareDatetime,
@@ -56,14 +56,15 @@ class SquirrelPrefetcher:
 
         async def load_data() -> None | Batch:
             while True:
-                start = datetime_now()
+                start_load = datetime_now()
+                logger.debug("loading waveform batch %d", self._fetched_batches)
                 batch = await asyncio.to_thread(next, self.iterator, None)
                 if batch is None:
                     await self.queue.put(None)
                     return
-                logger.debug("read waveform batch in %s", datetime_now() - start)
+                logger.debug("read waveform batch in %s", datetime_now() - start_load)
                 self._fetched_batches += 1
-                self.load_time = datetime_now() - start
+                self.load_time = datetime_now() - start_load
                 await self.queue.put(batch)
 
         await asyncio.create_task(load_data())
@@ -77,7 +78,7 @@ class SquirrelStats(Stats):
     bytes_per_seconds: float = 0.0
 
     _queue: asyncio.Queue[Batch | None] | None = PrivateAttr(None)
-    _position: int = 3
+    _position: int = PrivateAttr(20)
 
     def set_queue(self, queue: asyncio.Queue[Batch | None]) -> None:
         self._queue = queue
@@ -136,8 +137,13 @@ class PyrockoSquirrel(WaveformProvider):
     channel_selector: list[constr(to_upper=True, max_length=2, min_length=2)] | None = (
         Field(
             default=None,
+            min_length=1,
             description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
         )
+    )
+    n_threads: PositiveInt = Field(
+        default=8,
+        description="Number of threads for loading waveforms.",
     )
     n_threads: PositiveInt = Field(
         default=8,
@@ -146,7 +152,7 @@ class PyrockoSquirrel(WaveformProvider):
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr(None)
-    _stats: SquirrelStats = PrivateAttr(default_factory=SquirrelStats)
+    _stats: ClassVar[SquirrelStats] = SquirrelStats()
 
     @model_validator(mode="after")
     def _validate_model(self) -> Self:
@@ -158,7 +164,10 @@ class PyrockoSquirrel(WaveformProvider):
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
-            logger.info("loading squirrel environment from %s", self.environment)
+            logger.info(
+                "loading squirrel environment from %s",
+                self.environment or "home directory",
+            )
             squirrel = Squirrel(
                 env=str(self.environment.expanduser()) if self.environment else None,
                 persistent=self.persistent,
@@ -244,8 +253,12 @@ class PyrockoSquirrel(WaveformProvider):
                 batch.cumulative_bytes / prefetcher.load_time.total_seconds()
             )
 
-            if batch.is_empty():
-                logger.warning("empty batch %d", batch.i_batch)
+            if not batch.is_healthy():
+                logger.warning(
+                    "unhealthy batch %d - %s",
+                    batch.i_batch,
+                    batch.start_time,
+                )
                 stats.empty_batches += 1
                 continue
 

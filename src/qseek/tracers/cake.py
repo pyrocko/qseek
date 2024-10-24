@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 import struct
@@ -11,7 +10,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -187,7 +186,7 @@ class Timing(BaseModel):
         return re.sub(r"[\,\s\;]", "", self.definition)
 
 
-def surface_distances(nodes: Iterator[Node], stations: Stations) -> np.ndarray:
+def surface_distances(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
     """Returns the surface distance from all nodes to all stations.
 
     Args:
@@ -381,20 +380,18 @@ class TravelTimeTree(BaseModel):
             coordinates,
         )
 
-    async def init_lut(self, octree: Octree, stations: Stations) -> None:
-        logger.debug(
-            "initializing LUT for %d stations and %d nodes",
+    async def init_lut(self, nodes: Sequence[Node], stations: Stations) -> None:
+        logger.info(
+            "initializing %s traveltime LUT for %d stations and %d nodes",
+            self.timing.definition,
             stations.n_stations,
-            octree.n_nodes,
+            len(nodes),
         )
         self._cached_stations = stations
         self._cached_station_indices = {
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
-        station_traveltimes = await self.interpolate_travel_times(octree, stations)
-
-        for node, traveltimes in zip(octree, station_traveltimes, strict=True):
-            self._node_lut[node.hash()] = traveltimes.astype(np.float32)
+        await self.fill_lut(nodes)
 
     def lut_fill_level(self) -> float:
         """Return the fill level of the LUT as a float between 0.0 and 1.0."""
@@ -411,10 +408,15 @@ class TravelTimeTree(BaseModel):
         )
 
         for node, times in zip(nodes, traveltimes, strict=True):
+            times = times.astype(np.float32)
             times.setflags(write=False)
-            self._node_lut[node.hash()] = times.astype(np.float32)
+            self._node_lut[node.hash()] = times
 
-    async def get_travel_times(self, octree: Octree, stations: Stations) -> np.ndarray:
+    async def get_travel_times(
+        self,
+        nodes: Sequence[Node],
+        stations: Stations,
+    ) -> np.ndarray:
         try:
             station_indices = np.fromiter(
                 (self._cached_station_indices[sta.nsl.pretty] for sta in stations),
@@ -428,9 +430,10 @@ class TravelTimeTree(BaseModel):
 
         stations_travel_times = []
         fill_nodes = []
-        for node in octree:
+        node_lut = self._node_lut
+        for node in nodes:
             try:
-                node_travel_times = self._node_lut[node.hash()][station_indices]
+                node_travel_times = node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
                 continue
@@ -439,7 +442,7 @@ class TravelTimeTree(BaseModel):
         if fill_nodes:
             await self.fill_lut(fill_nodes)
 
-            cache_hits, cache_misses = self._node_lut.get_stats()
+            cache_hits, cache_misses = node_lut.get_stats()
             total_hits = cache_hits + cache_misses
             cache_hit_rate = cache_hits / (total_hits or 1)
             logger.debug(
@@ -447,7 +450,7 @@ class TravelTimeTree(BaseModel):
                 self.lut_fill_level() * 100,
                 cache_hit_rate * 100,
             )
-            return await self.get_travel_times(octree, stations)
+            return await self.get_travel_times(nodes, stations)
 
         return np.asarray(stations_travel_times).astype(float, copy=False)
 
@@ -456,7 +459,7 @@ class TravelTimeTree(BaseModel):
         octree: Octree,
         stations: Stations,
     ) -> np.ndarray:
-        receiver_distances = surface_distances(octree, stations)
+        receiver_distances = surface_distances(octree.nodes, stations)
         receiver_depths = np.array([sta.effective_depth for sta in stations])
         source_depths = np.array(
             [node.as_location().effective_depth for node in octree]
@@ -495,7 +498,6 @@ class TravelTimeTree(BaseModel):
         for coords in coordinates:
             travel_times.append(self._interpolate_traveltimes_sptree(coords))
             PROGRESS.update(status, advance=1)
-            await asyncio.sleep(0.0)
 
         PROGRESS.remove_task(status)
 
@@ -583,8 +585,9 @@ class CakeTracer(RayTracer):
         )
 
         cached_trees = self._load_cached_trees()
+        octree.reset()
 
-        distances = surface_distances(octree, stations)
+        distances = surface_distances(octree.leaf_nodes, stations)
         source_depths = np.asarray(octree.depth_bounds) - octree.location.elevation
         receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
 
@@ -615,7 +618,7 @@ class CakeTracer(RayTracer):
                 tree = TravelTimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
-            await tree.init_lut(octree, stations)
+            await tree.init_lut(octree.leaf_nodes, stations)
             self._travel_time_trees[phase_descr] = tree
 
         if rundir:
@@ -657,12 +660,12 @@ class CakeTracer(RayTracer):
     async def get_travel_times(
         self,
         phase: str,
-        octree: Octree,
+        nodes: Sequence[Node],
         stations: Stations,
     ) -> np.ndarray:
         try:
             return await self._get_sptree_model(phase).get_travel_times(
-                octree,
+                nodes,
                 stations,
             )
         except KeyError as exc:

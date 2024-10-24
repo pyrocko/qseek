@@ -5,7 +5,16 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from itertools import chain
-from typing import TYPE_CHECKING, Annotated, Any, AsyncIterator, Iterator, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    AsyncIterator,
+    ClassVar,
+    Iterator,
+    Tuple,
+    Union,
+)
 
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
@@ -39,6 +48,7 @@ class ImageFunctionsStats(Stats):
     _queue: asyncio.Queue[Tuple[WaveformImages | WaveformBatch] | None] | None = (
         PrivateAttr(None)
     )
+    _position: int = PrivateAttr(40)
 
     def set_queue(
         self,
@@ -76,14 +86,13 @@ class ImageFunctions(RootModel):
         asyncio.Queue(maxsize=QUEUE_SIZE)
     )
     _processed_images: int = PrivateAttr(0)
-    _stats: ImageFunctionsStats = PrivateAttr(default_factory=ImageFunctionsStats)
+    _stats: ClassVar[ImageFunctionsStats] = ImageFunctionsStats()
 
     def model_post_init(self, __context: Any) -> None:
         # Check if phases are provided twice
         phases = self.get_phases()
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
-        self._stats.set_queue(self._queue)
 
     async def process_traces(self, traces: list[Trace]) -> WaveformImages:
         images = []
@@ -106,14 +115,15 @@ class ImageFunctions(RootModel):
             AsyncIterator[WaveformImages]: Async iterator over images.
         """
         stats = self._stats
+        stats.set_queue(self._queue)
 
         async def worker() -> None:
             logger.info(
                 "start pre-processing images, queue size %d", self._queue.maxsize
             )
             async for batch in batch_iterator:
-                if batch.is_empty():
-                    logger.debug("empty batch, skipping")
+                if not batch.is_healthy():
+                    logger.debug("unhealthy batch, skipping")
                     continue
 
                 start_time = datetime_now()

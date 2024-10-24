@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, DirectoryPath, Field, FilePath, constr
+from pydantic import BaseModel, DirectoryPath, Field, FilePath
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
-from qseek.utils import NSL, NSL_RE
+from qseek.utils import _NSL, NSL
 
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
@@ -58,13 +58,13 @@ class Station(Location):
         )
 
     @property
-    def nsl(self) -> NSL:
+    def nsl(self) -> _NSL:
         """Network Station Location code as tuple.
 
         Returns:
             tuple[str, str, str]: Network, Station, Location
         """
-        return NSL(self.network, self.station, self.location)
+        return _NSL(self.network, self.station, self.location)
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.nsl))
@@ -82,7 +82,7 @@ class Stations(BaseModel):
         "directories containing StationXML (.xml) files.",
     )
 
-    blacklist: set[constr(pattern=NSL_RE)] = Field(
+    blacklist: set[NSL] = Field(
         default=set(),
         description="Blacklist stations and exclude from detecion. "
         "Format is `['NET.STA.LOC', ...]`.",
@@ -153,14 +153,17 @@ class Stations(BaseModel):
         for sta in self.stations.copy():
             if sta.nsl.pretty not in available_squirrel_nsls:
                 logger.warning(
-                    "removing station %s: no waveforms available in squirrel",
+                    "removing station %s: no waveforms available in Squirrel",
                     sta.nsl.pretty,
                 )
                 self.stations.remove(sta)
                 n_removed_stations += 1
 
         if n_removed_stations:
-            logger.warning("removed %d stations without waveforms", n_removed_stations)
+            logger.warning(
+                "removed %d stations without waveforms from inventory",
+                n_removed_stations,
+            )
         if not self.stations:
             raise ValueError("no stations available, add waveforms to start detection")
 

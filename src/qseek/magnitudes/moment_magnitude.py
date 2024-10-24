@@ -124,6 +124,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
 
 class StationMomentMagnitude(NamedTuple):
+    station: NSL
     distance_epi: float
     magnitude: float
     error: float
@@ -133,7 +134,7 @@ class StationMomentMagnitude(NamedTuple):
 class MomentMagnitude(EventMagnitude):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
-    stations_magnitudes: list[StationMomentMagnitude] = Field(
+    station_magnitudes: list[StationMomentMagnitude] = Field(
         default_factory=list,
         description="The station moment magnitudes.",
     )
@@ -149,7 +150,7 @@ class MomentMagnitude(EventMagnitude):
     @property
     def n_stations(self) -> int:
         """Number of stations used for calculating the moment magnitude."""
-        return len(self.stations_magnitudes)
+        return len(self.station_magnitudes)
 
     def csv_row(self) -> dict[str, float]:
         return {
@@ -164,7 +165,7 @@ class MomentMagnitude(EventMagnitude):
         event: EventDetection,
         receivers: list[Receiver],
         traces: list[list[Trace]],
-        noise_padding: float = 3.0,
+        noise_padding: float = 0.0,
     ) -> None:
         for receiver, rcv_traces in zip(receivers, traces, strict=False):
             try:
@@ -212,17 +213,18 @@ class MomentMagnitude(EventMagnitude):
 
             station_magnitude = StationMomentMagnitude(
                 # quantity=store.quantity,
+                station=receiver.nsl,
                 distance_epi=station.distance_epi,
                 magnitude=magnitude,
                 error=(error_upper + abs(error_lower)) / 2,
                 peak=station.peak,
             )
-            self.stations_magnitudes.append(station_magnitude)
+            self.station_magnitudes.append(station_magnitude)
 
-        if not self.stations_magnitudes:
+        if not self.station_magnitudes:
             return
 
-        magnitudes = np.array([sta.magnitude for sta in self.stations_magnitudes])
+        magnitudes = np.array([sta.magnitude for sta in self.station_magnitudes])
         median = np.median(magnitudes)
 
         self.median = float(median)
@@ -236,16 +238,18 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
     seconds_before: PositiveFloat = Field(
-        default=10.0,
-        description="Seconds before first phase arrival to extract.",
+        default=2.0,
+        description="Waveforms to extract before P phase arrival.",
     )
     seconds_after: PositiveFloat = Field(
-        default=10.0,
-        description="Seconds after last phase arrival to extract.",
+        default=4.0,
+        description="Waveforms to extract after S phase arrival.",
     )
-    padding_seconds: PositiveFloat = Field(
+    taper_seconds: PositiveFloat = Field(
         default=10.0,
-        description="Seconds padding before and after the extraction window.",
+        description="Seconds tapering before and after the extraction window."
+        " The taper stabalizes the restitution and is cut off from the traces "
+        "before the analysis.",
     )
 
     gf_store_dirs: list[DirectoryPath] = Field(
@@ -320,7 +324,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 seconds_before=self.seconds_before,
                 seconds_after=self.seconds_after,
                 demean=True,
-                seconds_fade=self.padding_seconds,
+                seconds_fade=self.taper_seconds,
                 cut_off_fade=False,
                 filter_clipped=True,
             )
@@ -341,7 +345,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                     store.frequency_range.max,
                     demean=False,
                 )
-                tr.chop(tr.tmin + self.padding_seconds, tr.tmax - self.padding_seconds)
+                tr.chop(tr.tmin + self.taper_seconds, tr.tmax - self.taper_seconds)
 
             if self.processed_mseed_export is not None:
                 logger.debug(

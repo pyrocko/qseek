@@ -141,16 +141,18 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
     seconds_before: PositiveFloat = Field(
-        default=10.0,
-        description="Seconds before first phase arrival to extract.",
+        default=2.0,
+        description="Waveforms to extract before P phase arrival.",
     )
     seconds_after: PositiveFloat = Field(
-        default=10.0,
-        description="Seconds after last phase arrival to extract.",
+        default=4.0,
+        description="Waveforms to extract after S phase arrival.",
     )
-    padding_seconds: PositiveFloat = Field(
+    taper_seconds: PositiveFloat = Field(
         default=10.0,
-        description="Seconds padding before and after the extraction window.",
+        description="Seconds tapering before and after the extraction window."
+        " The taper stabalizes the restitution and is cut off from the traces "
+        "before the analysis.",
     )
     model: ModelName = Field(
         default="iaspei-southern-california",
@@ -182,7 +184,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             squirrel,
             seconds_before=self.seconds_before,
             seconds_after=self.seconds_after,
-            seconds_fade=self.padding_seconds,
+            seconds_fade=self.taper_seconds,
             cut_off_fade=cut_off_fade,
             quantity=model.restitution_quantity,
             phase=None,
@@ -197,7 +199,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
                 await asyncio.to_thread(
                     tr.transfer,
                     transfer_function=WOOD_ANDERSON,
-                    tfade=self.padding_seconds,
+                    tfade=self.taper_seconds,
                     cut_off_fading=True,
                     demean=True,
                     invert=False,
@@ -209,7 +211,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
                 await asyncio.to_thread(
                     tr.transfer,
                     transfer_function=WOOD_ANDERSON_OLD,
-                    tfade=self.padding_seconds,
+                    tfade=self.taper_seconds,
                     cut_off_fading=True,
                     demean=True,
                     invert=False,

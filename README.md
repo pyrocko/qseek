@@ -4,7 +4,7 @@
 
 [![Build and test](https://github.com/pyrocko/qseek/actions/workflows/build.yaml/badge.svg)](https://github.com/pyrocko/qseek/actions/workflows/build.yaml)
 [![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/qseek/)
-![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.10+-blue.svg)
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
@@ -34,7 +34,7 @@ Key features are of the earthquake detection and localisation framework are:
 
 Qseek is built on top of [Pyrocko](https://pyrocko.org).
 
-For more information check out the documentation at https://pyrocko.github.io/qseek/.
+For more information check out the documentation at <https://pyrocko.github.io/qseek/>.
 
 ## Installation
 

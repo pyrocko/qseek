@@ -66,16 +66,15 @@ class WaveformImage:
         return 1.0 / self.delta_t
 
     @property
-    def has_traces(self) -> bool:
-        return bool(self.traces)
-
-    @property
     def delta_t(self) -> float:
         return self.traces[0].deltat
 
     @property
     def n_traces(self) -> int:
         return len(self.traces)
+
+    def has_traces(self) -> bool:
+        return bool(self.traces)
 
     def set_stations(self, stations: Stations) -> None:
         """Set stations from the image's available traces."""
@@ -89,6 +88,8 @@ class WaveformImage:
             max_normalize (bool): Normalize by maximum value to keep the scale of the
                 maximum detection. Defaults to False.
         """
+        if not self.has_traces():
+            return
         if self.sampling_rate == sampling_rate:
             return
 

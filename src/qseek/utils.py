@@ -26,6 +26,7 @@ from typing import (
 )
 
 import numpy as np
+import psutil
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ByteSize, constr
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
@@ -110,9 +111,9 @@ class _NSL(NamedTuple):
         Returns:
             bool: True if the objects match, False otherwise.
         """
-        if other.location:
+        if self.location:
             return self == other
-        if other.station:
+        if self.station:
             return self.network == other.network and self.station == other.station
         return self.network == other.network
 
@@ -144,12 +145,14 @@ class _NSL(NamedTuple):
             return cls(*parts[:3])
         if n_parts == 2:
             return cls(parts[0], parts[1], "")
+        if n_parts == 1:
+            return cls(parts[0], "", "")
         raise ValueError(
             f"invalid NSL `{nsl}`, expecting `<net>.<sta>.<loc>`, "
             "e.g. `6A.STA130.00`, `6A.`, `6A.STA130` or `.STA130`"
         )
 
-    def _check(self) -> None:
+    def _check(self) -> NSL:
         """Check if the current NSL object matches another NSL object.
 
         Args:
@@ -163,16 +166,20 @@ class _NSL(NamedTuple):
                 f"invalid network {self.network} for {self.pretty},"
                 " expected 0-2 characters for network code"
             )
-        if len(self.station) > 5 or len(self.station) < 1:
+        if len(self.station) > 5:
             raise ValueError(
                 f"invalid station {self.station} for {self.pretty},"
-                " expected 1-5 characters for station code"
+                " expected 0-5 characters for station code"
             )
         if len(self.location) > 2:
             raise ValueError(
                 f"invalid location {self.location} for {self.pretty},"
                 " expected 0-2 characters for location code"
             )
+        return self
+
+
+NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
 
 
 NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
@@ -228,11 +235,13 @@ def time_to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
 
 
-def as_array(iterable: Iterable[float], dtype: np.dtype = float) -> np.ndarray:
+def as_array(
+    iterable: Iterable[float | Iterable[float]], dtype: np.dtype = float
+) -> np.ndarray:
     """Convert an iterable of floats into a NumPy array.
 
     Parameters:
-        iterable (Iterable[float]): An iterable containing float values.
+        iterable (Iterable[float, ...]): An iterable containing float values.
 
     Returns:
         np.ndarray: A NumPy array containing the float values from the iterable.
@@ -399,7 +408,7 @@ def human_readable_bytes(size: int | float, decimal: bool = False) -> str:
         str: The human-readable string representation of the size.
 
     """
-    return ByteSize.human_readable(size, decimal=decimal)
+    return ByteSize(size).human_readable(decimal=decimal)
 
 
 def datetime_now() -> datetime:
@@ -433,6 +442,32 @@ def get_cpu_count() -> int:
             os.environ.get(
                 "PBS_NUM_PPN",
                 os.cpu_count() or 0,
+            ),
+        )
+    )
+
+
+def get_total_memory() -> int:
+    """Get the total memory in bytes for the current job/task.
+
+    The function first checks if the environment variable SLURM_MEM_PER_CPU is set.
+    If it is set, the value is returned as the available memory.
+
+    If SLURM_MEM_PER_CPU is not set, the function then checks if the environment
+    variable PBS_VMEM is set. If it is set, the value is returned as the available
+    memory.
+
+    If neither SLURM_MEM_PER_CPU nor PBS_VMEM is set, the function returns from psutil.
+
+    Returns:
+        int: The available memory in bytes for the current job/task.
+    """
+    return int(
+        os.environ.get(
+            "SLURM_MEM_PER_NODE",
+            os.environ.get(
+                "PBS_VMEM",
+                psutil.virtual_memory().total,
             ),
         )
     )
@@ -578,9 +613,6 @@ class ChannelSelectors:
     Horizontal = ChannelSelector("EN123RT", 2)
     Vertical = ChannelSelector("Z0", 1)
     NorthEast = ChannelSelector("NE", 2)
-
-
-NSL_RE = r"^[a-zA-Z0-9]{0,2}\.[a-zA-Z0-9]{0,5}\.[a-zA-Z0-9]{0,3}$"
 
 
 def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:

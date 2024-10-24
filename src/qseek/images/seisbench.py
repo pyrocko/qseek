@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from obspy import Stream
-from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
+from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr, confloat
 from pyrocko import obspy_compat
 from pyrocko.trace import NoData
 from scipy import signal
@@ -99,7 +99,7 @@ class PhaseNetImage(WaveformImage):
                 inplace=False,
             )
         except NoData:
-            logger.warning("No data to pick phase arrival.")
+            logger.warning("No data to pick phase arrival %s.", ".".join(trace.nslc_id))
             return None
 
         peak_idx, _ = signal.find_peaks(
@@ -132,19 +132,19 @@ class PhaseNetImage(WaveformImage):
 
         times = search_trace.get_xdata()
         peak_times = times[peak_idx]
-        peak_delay = peak_times - event_time.timestamp()
+        peak_delays = peak_times - event_time.timestamp()
 
         # Limit to post-event peaks
-        after_event_peaks = peak_delay > 0.0
-        peak_idx = peak_idx[after_event_peaks]
-        peak_times = peak_times[after_event_peaks]
-        peak_delay = peak_delay[after_event_peaks]
+        post_event_peaks = peak_delays > 0.0
+        peak_idx = peak_idx[post_event_peaks]
+        peak_times = peak_times[post_event_peaks]
+        peak_residuals = peak_times - modelled_arrival.timestamp()
 
         if not peak_idx.size:
             return None
 
         peak_values = search_trace.get_ydata()[peak_idx]
-        closest_peak_idx = np.argmin(peak_delay)
+        closest_peak_idx = np.argmin(np.abs(peak_residuals))
 
         return ObservedArrival(
             time=to_datetime(peak_times[closest_peak_idx]),
@@ -204,12 +204,12 @@ class SeisBench(ImageFunction):
     )
     phase_map: dict[PhaseName, str] = Field(
         default={
-            "P": "constant:P",
-            "S": "constant:S",
+            "P": "cake:P",
+            "S": "cake:S",
         },
         description="Phase mapping from SeisBench PhaseNet to Lassie phases.",
     )
-    weights: dict[PhaseName, PositiveFloat] = Field(
+    weights: dict[PhaseName, confloat(ge=0.0)] = Field(
         default={
             "P": 1.0,
             "S": 1.0,
@@ -252,7 +252,7 @@ class SeisBench(ImageFunction):
                     self._seisbench_model.cuda()
                 else:
                     self._seisbench_model.cuda(self.torch_use_cuda)
-            except RuntimeError as exc:
+            except (RuntimeError, AssertionError) as exc:
                 logger.warning(
                     "failed to use CUDA for SeisBench model, using CPU.",
                     exc_info=exc,
@@ -279,6 +279,11 @@ class SeisBench(ImageFunction):
     def get_blinding(self, sampling_rate: float) -> timedelta:
         scaled_blinding_samples = max(self.get_blinding_samples()) / self.rescale_input
         return timedelta(seconds=scaled_blinding_samples / sampling_rate)
+
+    def _detection_half_width(self) -> float:
+        """Half width of the detection window in seconds."""
+        # The 0.2 seconds is the default value from SeisBench training
+        return 0.2 / self.rescale_input
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""

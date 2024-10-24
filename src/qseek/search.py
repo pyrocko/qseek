@@ -6,7 +6,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Deque, Literal
+from typing import TYPE_CHECKING, Deque, Literal, Sequence
 
 import numpy as np
 import psutil
@@ -17,9 +17,9 @@ from pydantic import (
     ConfigDict,
     Field,
     PositiveFloat,
-    PositiveInt,
     PrivateAttr,
     computed_field,
+    field_validator,
 )
 
 from qseek.corrections.corrections import StationCorrectionType
@@ -31,7 +31,7 @@ from qseek.models import Stations
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
-from qseek.models.semblance import Semblance, SemblanceCache
+from qseek.models.semblance import Semblance
 from qseek.octree import Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
@@ -44,6 +44,7 @@ from qseek.utils import (
     alog_call,
     datetime_now,
     get_cpu_count,
+    get_total_memory,
     human_readable_bytes,
     time_to_path,
 )
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
 
     from qseek.images.base import WaveformImage
     from qseek.octree import Node
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +82,7 @@ class SearchStats(Stats):
     current_networks: int = 0
     total_networks: int = 0
 
-    memory_total: ByteSize = Field(
-        default_factory=lambda: ByteSize(psutil.virtual_memory().total)
-    )
+    memory_total: ByteSize = Field(default_factory=lambda: ByteSize(get_total_memory()))
 
     _search_start: datetime = PrivateAttr(default_factory=datetime_now)
     _batch_processing_times: Deque[timedelta] = PrivateAttr(
@@ -277,7 +277,7 @@ class Search(BaseModel):
         "Choose from `10, 20, 25, 50, 100, 200 or 400` Hz.",
     )
     detection_threshold: PositiveFloat = Field(
-        default=0.05,
+        default=0.2,
         description="Detection threshold for semblance.",
     )
     absorbing_boundary: Literal[False, "with_surface", "without_surface"] = Field(
@@ -320,16 +320,17 @@ class Search(BaseModel):
         " consuming. Default is 5 minutes.",
     )
 
-    n_threads_parstack: int = Field(
-        default=0,
-        ge=0,
+    n_threads_parstack: int | Literal["auto"] = Field(
+        default="auto",
         description="Number of threads for stacking and migration. "
-        "`0` uses all available cores.",
+        "`'auto'` will use the maximum number of cores and leaves resources "
+        "for I/O and other work. `0` uses all available cores.",
     )
-    n_threads_argmax: PositiveInt = Field(
-        default=16,
-        description="Number of threads for argmax. Don't use all core for this"
-        " operation. Default is `16`.",
+    n_threads_argmax: int | Literal["auto"] = Field(
+        default="auto",
+        description="Number of threads for argmax. `'auto'` will use the "
+        "maximum number of cores and leaves resources for I/O and other work. "
+        "`0` uses all available cores.",
     )
 
     plot_octree_surface: bool = False
@@ -356,9 +357,26 @@ class Search(BaseModel):
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
-    _stats: SearchStats = PrivateAttr(default_factory=SearchStats)
-
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("n_threads_parstack", "n_threads_argmax")
+    @classmethod
+    def check_threads_compute(cls, n_threads: int | Literal["auto"]) -> int:
+        # We limit the number of threads to the number of available cores and leave some
+        # cores for other processes.
+        cpu_count = get_cpu_count()
+        max_compute_threads = max(cpu_count - 4, 1)
+        if n_threads == "auto":
+            n_threads = max_compute_threads
+        if n_threads < 0:
+            raise ValueError("Number of threads must be greater than 0")
+        if n_threads > cpu_count:
+            logger.warning(
+                "number of compute threads exceeds available cores, reducing to %d",
+                max_compute_threads,
+            )
+            n_threads = cpu_count
+        return n_threads
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (
@@ -507,9 +525,7 @@ class Search(BaseModel):
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
 
-        self._stats.project_name = self._rundir.name
-        self._stats.total_stations = self.stations.n_stations
-        self._stats.total_networks = self.stations.n_networks
+        self._catalog.prepare()
 
     async def start(self, force_rundir: bool = False) -> None:
         if not self.has_rundir():
@@ -533,15 +549,21 @@ class Search(BaseModel):
             start_time=self._progress.time_progress,
             min_length=2 * self._window_padding,
         )
-        processed_batches = self.pre_processing.iter_batches(batches)
+        pre_processed_batches = self.pre_processing.iter_batches(batches)
 
-        stats = self._stats
+        stats = SearchStats(
+            project_name=self._rundir.name,
+            total_stations=self.stations.n_stations,
+            total_networks=self.stations.n_networks,
+        )
         stats.reset_start_time()
 
         processing_start = datetime_now()
         console = asyncio.create_task(RuntimeStats.live_view())
 
-        async for images, batch in self.image_functions.iter_images(processed_batches):
+        async for images, batch in self.image_functions.iter_images(
+            pre_processed_batches
+        ):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)
             images.apply_exponent(self.power_mean)
@@ -563,8 +585,6 @@ class Search(BaseModel):
                 duration=datetime_now() - batch_processing_start,
                 show_log=True,
             )
-
-            self.set_progress(batch.end_time)
 
         await BackgroundTasks.wait_all()
         await self._catalog.save()
@@ -706,25 +726,28 @@ class SearchTraces:
         return int(round(time_span.total_seconds() * parent.semblance_sampling_rate))
 
     @alog_call
-    async def calculate_semblance(
+    async def add_semblance(
         self,
         octree: Octree,
         image: WaveformImage,
         ray_tracer: RayTracer,
         semblance: Semblance,
-        semblance_cache: SemblanceCache | None = None,
+        nodes: Sequence[Node],
     ) -> None:
         if image.sampling_rate != semblance.sampling_rate:
             raise ValueError(
                 f"image sampling rate {image.sampling_rate} does not match "
                 f"semblance sampling rate {semblance.sampling_rate}"
             )
+        if image.weight == 0.0:
+            return
+
         logger.debug("stacking image %s", image.image_function.name)
         parent = self.parent
 
         traveltimes = await ray_tracer.get_travel_times(
             image.phase,
-            octree,
+            nodes,
             image.stations,
         )
 
@@ -732,7 +755,7 @@ class SearchTraces:
             station_delays = await parent.station_corrections.get_delays(
                 image.stations.get_all_nsl(),
                 image.phase,
-                octree,
+                nodes,
             )
             traveltimes += station_delays
 
@@ -750,7 +773,10 @@ class SearchTraces:
         weights[traveltimes_bad] = 0.0
 
         if parent.distance_weights:
-            weights *= await parent.distance_weights.get_weights(octree, image.stations)
+            weights *= await parent.distance_weights.get_weights(
+                nodes,
+                image.stations,
+            )
 
         with np.errstate(divide="ignore", invalid="ignore"):
             weights /= weights.sum(axis=1, keepdims=True)
@@ -758,15 +784,22 @@ class SearchTraces:
         # applying waterlevel
         weights[weights < 1e-3] = 0.0
 
-        if semblance_cache:
-            cache_mask = semblance_cache.get_mask(semblance.node_hashes)
-            weights[cache_mask] = 0.0
+        def expand_array(array: np.ndarray) -> np.ndarray:
+            """Fill arrays with zeros to pad the matrix."""
+            array_n_nodes = array.shape[0]
+            if array_n_nodes == octree.n_nodes:
+                return array
 
-        await semblance.calculate_semblance(
+            n_stations = image.stations.n_stations
+            filled = np.zeros((octree.n_nodes, n_stations), dtype=array.dtype)
+            filled[-array_n_nodes:] = array
+            return filled
+
+        await semblance.add_semblance(
             trace_data=image.get_trace_data(),
             offsets=image.get_offsets(self.start_time - parent._window_padding),
-            shifts=shifts,
-            weights=weights,
+            shifts=expand_array(shifts),
+            weights=expand_array(weights),
             threads=self.parent.n_threads_parstack,
         )
 
@@ -794,15 +827,19 @@ class SearchTraces:
     async def search(
         self,
         octree: Octree | None = None,
-        semblance_cache: SemblanceCache | None = None,
+        new_nodes: Sequence[Node] | None = None,
+        semblance: Semblance | None = None,
     ) -> tuple[list[EventDetection], Trace]:
         """Searches for events in the given traces.
 
         Args:
             octree (Octree | None, optional): The octree to use for the search.
                 Defaults to None.
-            semblance_cache (SemblanceCache | None, optional): The semblance cache to
-                use for the search. Defaults to None.
+            new_nodes (Sequence[Node] | None, optional): The new nodes to use for the
+                search. If none all nodes from the provided octree are taken.
+                Defaults to None.
+            semblance (Semblance | None, optional): The semblance to use for the search.
+                If None, a new instance is created. Defaults to None.
 
         Returns:
             tuple[list[EventDetection], Trace]: The event detections and the
@@ -812,38 +849,39 @@ class SearchTraces:
         sampling_rate = parent.semblance_sampling_rate
 
         octree = octree or parent.octree.reset()
+        new_nodes = new_nodes or octree.nodes
+
         images = await self.get_images(sampling_rate=float(sampling_rate))
 
         padding_samples = int(
             round(parent._window_padding.total_seconds() * sampling_rate)
         )
-        semblance = Semblance(
-            nodes=octree,
-            n_samples=self._n_samples_semblance(),
-            start_time=self.start_time,
-            sampling_rate=sampling_rate,
-            padding_samples=padding_samples,
-            exponent=1.0 / parent.power_mean,
-            cache=semblance_cache,
-        )
+
+        if not semblance:
+            semblance = Semblance(
+                n_samples=self._n_samples_semblance(),
+                start_time=self.start_time,
+                sampling_rate=sampling_rate,
+                padding_samples=padding_samples,
+                exponent=1.0 / parent.power_mean,
+            )
 
         for image in images:
-            if not image.has_traces:
+            if not image.has_traces():
                 continue
-            await self.calculate_semblance(
+            await self.add_semblance(
                 octree=octree,
                 image=image,
                 ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
                 semblance=semblance,
-                semblance_cache=semblance_cache,
+                nodes=new_nodes,
             )
 
         # Applying the generalized mean to the semblance
-        # semblance.normalize(images.cumulative_weight(), semblance_cache=semblance_cache)
+        # semblance.normalize(images.cumulative_weight())
 
-        if semblance_cache:
-            await semblance.apply_cache(semblance_cache)
-            del semblance_cache
+        leaf_node_mask = np.array([node.is_leaf() for node in octree.nodes], dtype=bool)
+        semblance.set_leaf_nodes(leaf_node_mask)
 
         threshold = parent.detection_threshold ** (1.0 / parent.power_mean)
         detection_idx, detection_semblance = await semblance.find_peaks(
@@ -860,10 +898,15 @@ class SearchTraces:
         # in frame
         maxima_node_indices = await semblance.maxima_node_idx()
         refine_nodes: set[Node] = set()
+
         for time_idx in detection_idx:
             octree.map_semblance(semblance.get_semblance(time_idx))
             node_idx = maxima_node_indices[time_idx]
-            source_node = octree[node_idx]
+            source_node = octree.nodes[node_idx]
+
+            if not source_node.is_leaf():
+                logger.error("Hit a non-leaf node!")
+                continue
 
             if parent.absorbing_boundary and source_node.is_inside_border(
                 with_surface=parent.absorbing_boundary == "with_surface",
@@ -873,18 +916,19 @@ class SearchTraces:
             refine_nodes.update(source_node)
             refine_nodes.update(source_node.get_neighbours())
 
-            densest_node = max(octree, key=lambda node: node.semblance_density())
+            densest_node = max(octree.leaf_nodes, key=lambda n: n.semblance_density())
             refine_nodes.add(densest_node)
             refine_nodes.update(densest_node.get_neighbours())
 
         refine_nodes = {node for node in refine_nodes if node.can_split()}
 
         # refine_nodes is empty when all sources fall into smallest octree nodes
+        new_nodes = []
         if refine_nodes:
             node_size_max = max(node.size for node in refine_nodes)
             new_level = 0
             for node in refine_nodes:
-                node.split()
+                new_nodes.extend(node.split())
                 new_level = max(new_level, node.level + 1)
             logger.info(
                 "detected %d energy burst%s - refined %d nodes, level %d (%.1f m)",
@@ -894,11 +938,10 @@ class SearchTraces:
                 new_level,
                 node_size_max,
             )
-            cache = semblance.get_cache()
-            del semblance
             return await self.search(
                 octree,
-                semblance_cache=cache,
+                semblance=semblance,
+                new_nodes=new_nodes,
             )
 
         detections = []
@@ -907,10 +950,10 @@ class SearchTraces:
         ):
             time = semblance.get_time_from_index(time_idx)
             semblance_event = semblance.get_semblance(time_idx)
-            node_idx = (await semblance.maxima_node_idx())[time_idx]
+            node_idx = maxima_node_indices[time_idx]
 
             octree.map_semblance(semblance_event)
-            source_node = octree[node_idx]
+            source_node = octree.nodes[node_idx]
             if parent.absorbing_boundary and source_node.is_inside_border(
                 with_surface=parent.absorbing_boundary == "with_surface",
                 border_width=parent.absorbing_boundary_width,

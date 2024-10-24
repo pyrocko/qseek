@@ -90,6 +90,14 @@ class Bandpass(BatchPreProcessing):
         def worker() -> None:
             traces = self.select_traces(batch)
             for (deltat, _), trace_group in group_traces(traces):
+                sampling_rate = 1.0 / deltat
+                if self.bandpass.max >= sampling_rate / 2:
+                    logger.debug(
+                        "Highpass frequency is higher than Nyquist frequency %s. "
+                        "No filtering is applied.",
+                        sampling_rate / 2,
+                    )
+                    continue
                 sos = butter_sos(
                     N=self.corners,
                     Wn=self.bandpass,
@@ -127,8 +135,9 @@ class Highpass(BatchPreProcessing):
                 sampling_rate = 1.0 / deltat
                 if self.frequency >= sampling_rate / 2:
                     logger.debug(
-                        "Highpass frequency is higher than Nyquist frequency. "
-                        "No filtering is applied."
+                        "Highpass frequency is higher than Nyquist frequency %s. "
+                        "No filtering is applied.",
+                        sampling_rate / 2,
                     )
                     continue
                 sos = butter_sos(

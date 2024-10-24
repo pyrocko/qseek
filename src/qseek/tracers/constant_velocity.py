@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal, Sequence
 
 from pydantic import Field, PositiveFloat
 
+from qseek.octree import distances_stations
 from qseek.tracers.base import ModelledArrival, RayTracer
 from qseek.utils import PhaseDescription
 
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
     from qseek.models.location import Location
     from qseek.models.station import Stations
-    from qseek.octree import Octree
+    from qseek.octree import Node
 
 
 class ConstantVelocityTracer(RayTracer):
@@ -48,12 +49,12 @@ class ConstantVelocityTracer(RayTracer):
     async def get_travel_times(
         self,
         phase: str,
-        octree: Octree,
+        nodes: Sequence[Node],
         stations: Stations,
     ) -> np.ndarray:
         self._check_phase(phase)
 
-        distances = octree.distances_stations(stations)
+        distances = distances_stations(nodes, stations)
         return distances / self.velocity
 
     def get_arrivals(

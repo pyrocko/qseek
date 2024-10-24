@@ -176,9 +176,10 @@ class StationAmplitudes(NamedTuple):
         receiver: Receiver,
         traces: list[Trace],
         event: EventDetection,
-        noise_padding: float = 3.0,
+        noise_padding: float = 0.0,
     ) -> Self:
         time_arrival = min(receiver.get_arrivals_time_window()).timestamp()
+
         noise_traces = [
             tr.chop(tmin=tr.tmin, tmax=time_arrival - noise_padding, inplace=False)
             for tr in traces

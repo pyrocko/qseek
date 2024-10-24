@@ -77,7 +77,7 @@ class DistanceWeights(BaseModel):
         self._cached_stations_indices = {
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
-        self.fill_lut(nodes=list(octree))
+        self.fill_lut(nodes=octree.nodes)
 
     def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling distance weight LUT for %d nodes", len(nodes))
@@ -99,26 +99,28 @@ class DistanceWeights(BaseModel):
         """Return the fill level of the LUT as a float between 0.0 and 1.0."""
         return len(self._node_lut) / self._node_lut.get_size()
 
-    async def get_weights(self, octree: Octree, stations: Stations) -> np.ndarray:
+    async def get_weights(
+        self, nodes: Sequence[Node], stations: Stations
+    ) -> np.ndarray:
+        n_nodes = len(nodes)
         station_indices = np.fromiter(
             (self._cached_stations_indices[sta.nsl.pretty] for sta in stations),
             dtype=int,
         )
-        distances = np.zeros(
-            shape=(octree.n_nodes, stations.n_stations), dtype=np.float32
-        )
+        distances = np.zeros(shape=(n_nodes, stations.n_stations), dtype=np.float32)
 
         fill_nodes = []
-        for idx, node in enumerate(octree):
+        node_lut = self._node_lut
+        for idx, node in enumerate(nodes):
             try:
-                distances[idx] = self._node_lut[node.hash()][station_indices]
+                distances[idx] = node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
                 continue
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
-            cache_hits, cache_misses = self._node_lut.get_stats()
+            cache_hits, cache_misses = node_lut.get_stats()
             total_hits = cache_hits + cache_misses
             cache_hit_rate = cache_hits / (total_hits or 1)
             logger.debug(
@@ -126,6 +128,6 @@ class DistanceWeights(BaseModel):
                 self.lut_fill_level() * 100,
                 cache_hit_rate * 100,
             )
-            return await self.get_weights(octree, stations)
+            return await self.get_weights(nodes, stations)
 
         return self.calc_weights(distances)
