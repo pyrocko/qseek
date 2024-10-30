@@ -38,7 +38,7 @@ Check out the `my-search.json` config file and add your waveform data and veloci
     qseek config
     ```
 
-For more details and information about the component, head over to [details of the modules](components/seismic_data.md).
+For more details and information about the component, head over to [details of the modules](components/configuration.md).
 
 ## Starting the Search
 

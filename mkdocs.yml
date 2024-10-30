@@ -79,10 +79,11 @@ nav:
     - Benchmark: benchmark.md
   - Configuration:
     - The Search: components/configuration.md
-    - Seismic Data: components/seismic_data.md
+    - Station Metadata: components/stations.md
+    - Waveform Data: components/waveform_data.md
+    - Octree: components/octree.md
     - Ray Tracer: components/ray_tracer.md
     - Image Function: components/image_function.md
-    - Octree: components/octree.md
     - Station Corrections: components/station_corrections.md
     - EQ Feature Extraction: components/feature_extraction.md
     - General Configuration: components/general.md

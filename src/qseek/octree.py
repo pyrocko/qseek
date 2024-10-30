@@ -349,17 +349,17 @@ class Node:
 class Octree(BaseModel, Iterator[Node]):
     location: Location = Field(
         default=Location(lat=0.0, lon=0.0),
-        description="The reference location of the octree.",
+        description="The geographical center of the octree.",
     )
     root_node_size: PositiveFloat = Field(
         default=1 * KM,
-        description="Initial size of the root octree node at level 0 in meters.",
+        description="Size of the root node at the initial level (level 0) in meters.",
     )
     n_levels: int = Field(
         default=5,
         ge=1,
-        description="Number of levels in the octree, this defines the final "
-        "resolution of the detection. Default is 1.",
+        description="Number of levels in the octree, defining the final resolution"
+        " of the detection. Default is 5.",
     )
     east_bounds: Range = Field(
         default=Range(-10 * KM, 10 * KM),

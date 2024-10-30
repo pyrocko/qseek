@@ -398,7 +398,6 @@ class Search(BaseModel):
         if not rundir.exists():
             rundir.mkdir()
 
-        self.write_config()
         self._init_logging()
 
         logger.info("created new rundir %s", rundir)
@@ -419,7 +418,7 @@ class Search(BaseModel):
         logger.debug("writing search config to %s", path)
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
 
-        logger.debug("dumping stations")
+        logger.debug("writing stations")
         self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
 
         csv_dir = rundir / "csv"
@@ -532,6 +531,7 @@ class Search(BaseModel):
             self.init_rundir(force=force_rundir)
 
         await self.prepare()
+        self.write_config()
 
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
