@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,8 @@ if TYPE_CHECKING:
     from contextvars import Context
 
     from pyrocko.trace import Trace
+
+PYTHON_VERSION = (sys.version_info.major, sys.version_info.minor)
 
 logger = logging.getLogger(__name__)
 FORMAT = "%(message)s"
@@ -75,7 +78,10 @@ class BackgroundTasks:
         name: str | None = None,
         context: Context | None = None,
     ) -> asyncio.Task:
-        task = asyncio.create_task(coro, name=name, context=context)
+        if PYTHON_VERSION >= (3, 11):
+            task = asyncio.create_task(coro, name=name, context=context)
+        else:
+            task = asyncio.create_task(coro, name=name)
         cls.tasks.add(task)
         task.add_done_callback(cls.tasks.remove)
         return task

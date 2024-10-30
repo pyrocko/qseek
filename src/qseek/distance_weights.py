@@ -82,10 +82,11 @@ class DistanceWeights(BaseModel):
     def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling distance weight LUT for %d nodes", len(nodes))
         distances = self.get_distances(nodes)
+        node_lut = self._node_lut
         for node, sta_distances in zip(nodes, distances, strict=True):
             sta_distances = sta_distances.astype(np.float32)
             sta_distances.setflags(write=False)
-            self._node_lut[node.hash()] = sta_distances
+            node_lut[node.hash()] = sta_distances
 
     def get_node_weights(self, node: Node, stations: list[Station]) -> np.ndarray:
         try:

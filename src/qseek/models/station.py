@@ -134,7 +134,7 @@ class Stations(BaseModel):
 
     def blacklist_station(self, station: Station, reason: str) -> None:
         logger.warning("blacklisting station %s: %s", station.nsl.pretty, reason)
-        self.blacklist.add(station.nsl.pretty)
+        self.blacklist.add(station.nsl)
         if self.n_stations == 0:
             raise ValueError("no stations available, all stations blacklisted")
 
@@ -168,7 +168,8 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def __iter__(self) -> Iterator[Station]:
-        return (sta for sta in self.stations if sta.nsl.pretty not in self.blacklist)
+        blacklist_pretty = {nsl.pretty for nsl in self.blacklist}
+        return (sta for sta in self.stations if sta.nsl.pretty not in blacklist_pretty)
 
     @property
     def n_stations(self) -> int:
@@ -198,7 +199,7 @@ class Stations(BaseModel):
         available_stations = {sta.nsl: sta for sta in self}
         try:
             selected_stations = [
-                available_stations[(tr.network, tr.station, tr.location)]
+                available_stations[_NSL(tr.network, tr.station, tr.location)]
                 for tr in traces
             ]
         except KeyError as exc:

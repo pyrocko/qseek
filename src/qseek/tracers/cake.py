@@ -407,10 +407,11 @@ class TravelTimeTree(BaseModel):
             np.array([node.as_location().effective_depth for node in nodes]),
         )
 
+        node_lut = self._node_lut
         for node, times in zip(nodes, traveltimes, strict=True):
             times = times.astype(np.float32)
             times.setflags(write=False)
-            self._node_lut[node.hash()] = times
+            node_lut[node.hash()] = times
 
     async def get_travel_times(
         self,
