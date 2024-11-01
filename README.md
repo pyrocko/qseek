@@ -34,6 +34,8 @@ Key features are of the earthquake detection and localisation framework are:
 
 Qseek is built on top of [Pyrocko](https://pyrocko.org).
 
+## Documentation
+
 For more information check out the documentation at <https://pyrocko.github.io/qseek/>.
 
 ## Installation

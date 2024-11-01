@@ -12,3 +12,5 @@ from qseek.octree import Octree
 
 print(generate_docs(Octree()))
 ```
+
+::: qseek.octree.Octree
