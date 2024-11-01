@@ -2,11 +2,11 @@
 
 At center is a JSON configuration file which is parsed by [Pydantic](https://docs.pydantic.dev/). The following pages will detail how to setup this JSON file for the search.
 
-Also see the [getting started guide](../getting_started.md) for a brief introduction into the CLI.
+See the [getting started guide](../getting_started.md) for a brief introduction into the CLI.
 
 [General configuration conventions](general.md) are outlines in this guide as well.
 
-!!! tip "Create a fresh config file."
+!!! tip "Create a new config file."
 
     ```sh title="Using the CLI"
     qseek config

@@ -105,11 +105,14 @@ class ImageFunctions(RootModel):
     async def iter_images(
         self,
         batch_iterator: AsyncIterator[WaveformBatch],
+        min_stations: int = 3,
     ) -> AsyncIterator[Tuple[WaveformImages, WaveformBatch]]:
         """Iterate over images from batches.
 
         Args:
             batch_iterator (AsyncIterator[Batch]): Async iterator over batches.
+            min_stations (int): Minimum number of stations required in a batch.
+                Defaults to 3.
 
         Yields:
             AsyncIterator[WaveformImages]: Async iterator over images.
@@ -122,7 +125,7 @@ class ImageFunctions(RootModel):
                 "start pre-processing images, queue size %d", self._queue.maxsize
             )
             async for batch in batch_iterator:
-                if not batch.is_healthy():
+                if not batch.is_healthy(min_stations=min_stations):
                     logger.debug("unhealthy batch, skipping")
                     continue
 

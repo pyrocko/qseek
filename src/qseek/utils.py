@@ -565,6 +565,7 @@ class ChannelSelector:
     channels: str
     number_channels: int
     normalize: bool = False
+    average: bool = False
 
     def get_traces(self, traces_flt: list[Trace]) -> list[Trace]:
         """Filter and normalize a list of traces based on the specified channels.
@@ -608,6 +609,14 @@ class ChannelSelector:
 
             traces_norm.ydata = np.linalg.norm(data, axis=0)
             return [traces_norm]
+
+        if self.average:
+            traces_avg = traces_flt[0].copy()
+            data = np.atleast_2d(np.array([tr.ydata for tr in traces_flt]))
+
+            traces_avg.ydata = np.mean(data, axis=0)
+            return [traces_avg]
+
         return traces_flt
 
     __call__ = get_traces
@@ -616,6 +625,7 @@ class ChannelSelector:
 class ChannelSelectors:
     All = ChannelSelector("ENZ0123RT", 3)
     HorizontalAbs = ChannelSelector("EN123RT", 2, normalize=True)
+    HorizontalAvg = ChannelSelector("EN123RT", 2, average=True)
     Horizontal = ChannelSelector("EN123RT", 2)
     Vertical = ChannelSelector("Z0", 1)
     NorthEast = ChannelSelector("NE", 2)

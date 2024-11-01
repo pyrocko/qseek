@@ -22,7 +22,14 @@ MM = 1e3
 UM = 1e6
 M2NM = 1e9
 
-Component = Literal["all", "horizontal-abs", "vertical", "north-east-separate"]
+Component = Literal[
+    "all",
+    "horizontal-abs",
+    "horizontal-avg",
+    "vertical",
+    "north-east-separate",
+]
+
 MaxAmplitudeType = Literal[
     "acceleration",
     "velocity",
@@ -37,6 +44,7 @@ MaxAmplitudeType = Literal[
 _COMPONENT_MAP: dict[Component, ChannelSelector] = {
     "all": ChannelSelectors.All,
     "horizontal-abs": ChannelSelectors.HorizontalAbs,
+    "horizontal-avg": ChannelSelectors.HorizontalAvg,
     "vertical": ChannelSelectors.Vertical,
     "north-east-separate": ChannelSelectors.NorthEast,
 }
@@ -387,6 +395,17 @@ class ArgentinaVolcanoes(WoodAnderson, LocalMagnitudeModel):
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
         return 2.76 * np.log10(dist_epi_km) - 2.48
+
+
+class NetherlandsGroningen(WoodAnderson, LocalMagnitudeModel):
+    author = "Dost et al. (2018)"
+
+    epicentral_range = Range(0.0 * KM, 80.0 * KM)
+    component = "horizontal-avg"
+
+    @staticmethod
+    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        return 1.33 * np.log10(dist_hypo_km) + 0.00139 * dist_hypo_km + 0.424
 
 
 ModelName = Literal[LocalMagnitudeModel.model_names()]

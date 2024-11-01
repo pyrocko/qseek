@@ -120,7 +120,7 @@ class PyrockoSquirrel(WaveformProvider):
         description="Name of the persistent collection for faster loading.",
     )
     waveform_dirs: list[Path] = Field(
-        default=[],
+        default=["./data"],
         description="List of directories holding the waveform files.",
     )
     start_time: AwareDatetime | None = Field(

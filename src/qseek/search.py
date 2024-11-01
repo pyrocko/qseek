@@ -280,6 +280,12 @@ class Search(BaseModel):
         default=0.2,
         description="Detection threshold for semblance.",
     )
+    min_stations: int = Field(
+        default=3,
+        ge=0,
+        description="Minimum number of stations required for"
+        " detection and localization.",
+    )
     absorbing_boundary: Literal[False, "with_surface", "without_surface"] = Field(
         default=False,
         description="Ignore events that are inside the first root node layer of"
@@ -562,7 +568,8 @@ class Search(BaseModel):
         console = asyncio.create_task(RuntimeStats.live_view())
 
         async for images, batch in self.image_functions.iter_images(
-            pre_processed_batches
+            pre_processed_batches,
+            min_stations=self.min_stations,
         ):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)
