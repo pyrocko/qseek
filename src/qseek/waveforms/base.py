@@ -66,7 +66,7 @@ class WaveformBatch:
             bool: True if the batch is empty, False otherwise.
         """
         if self.n_stations < min_stations:
-            logger.warning("batch has less than 3 stations")
+            logger.warning("batch has less than only %d stations", self.n_stations)
             return False
         if not self.traces:
             logger.warning("batch is empty")
