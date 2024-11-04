@@ -168,11 +168,22 @@ class PyrockoSquirrel(WaveformProvider):
                 "loading squirrel environment from %s",
                 self.environment or "home directory",
             )
-            squirrel = Squirrel(
-                env=str(self.environment.expanduser()) if self.environment else None,
-                persistent=self.persistent,
-                n_threads=self.n_threads,
-            )
+            try:
+                squirrel = Squirrel(
+                    env=str(self.environment.expanduser())
+                    if self.environment
+                    else None,
+                    persistent=self.persistent,
+                    n_threads=self.n_threads,
+                )
+            except TypeError:
+                logger.warning("Squirrel does not support n_threads")
+                squirrel = Squirrel(
+                    env=str(self.environment.expanduser())
+                    if self.environment
+                    else None,
+                    persistent=self.persistent,
+                )
             paths = []
             for path in self.waveform_dirs:
                 if "**" in str(path):
