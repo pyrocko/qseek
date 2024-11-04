@@ -102,7 +102,11 @@ class Stations(BaseModel):
             else:
                 continue
             for file in station_xmls:
-                station_xml = load_xml(filename=str(file.expanduser()))
+                try:
+                    station_xml = load_xml(filename=str(file.expanduser()))
+                except StopIteration:
+                    logger.error("could not load StationXML file: %s", file)
+                    continue
                 loaded_stations += station_xml.get_pyrocko_stations()
 
         for sta in loaded_stations:
