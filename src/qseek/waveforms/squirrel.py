@@ -212,6 +212,7 @@ class PyrockoSquirrel(WaveformProvider):
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         min_length: timedelta | None = None,
+        min_stations: int = 0,
     ) -> AsyncIterator[WaveformBatch]:
         if not self._stations:
             raise ValueError("no stations provided. has prepare() been called?")
@@ -264,7 +265,7 @@ class PyrockoSquirrel(WaveformProvider):
                 batch.cumulative_bytes / prefetcher.load_time.total_seconds()
             )
 
-            if not batch.is_healthy():
+            if not batch.is_healthy(min_stations=min_stations):
                 logger.warning(
                     "unhealthy batch %d - %s",
                     batch.i_batch,
