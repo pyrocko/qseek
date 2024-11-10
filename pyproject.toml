@@ -70,7 +70,7 @@ dev = ["pre-commit>=3.4", "ruff>=0.3.0", "pytest>=7.4", "pytest-asyncio>=0.21"]
 docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.25",
-    "griffe-pydantic>=1.0.0",
+    "griffe-pydantic>=1.1.0",
     "markdown-exec>=1.9",
 ]
 completion = ["argcomplete>=3.2"]

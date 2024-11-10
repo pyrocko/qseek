@@ -554,6 +554,7 @@ class Search(BaseModel):
             window_padding=self._window_padding,
             start_time=self._progress.time_progress,
             min_length=2 * self._window_padding,
+            min_stations=self.min_stations,
         )
         pre_processed_batches = self.pre_processing.iter_batches(batches)
 
@@ -568,8 +569,7 @@ class Search(BaseModel):
         console = asyncio.create_task(RuntimeStats.live_view())
 
         async for images, batch in self.image_functions.iter_images(
-            pre_processed_batches,
-            min_stations=self.min_stations,
+            pre_processed_batches
         ):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)

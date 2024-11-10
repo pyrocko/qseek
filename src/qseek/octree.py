@@ -609,7 +609,6 @@ class Octree(BaseModel, Iterator[Node]):
         """Returns the surface distance from all nodes to all stations.
 
         Args:
-            nodes (Sequence[Node]): Nodes to calculate distance from.
             stations (Stations): Stations to calculate distance to.
 
         Returns:
@@ -650,7 +649,7 @@ class Octree(BaseModel, Iterator[Node]):
             return list(self)
         return [node for node in self if node.semblance >= semblance_threshold]
 
-    def get_nodes_level(self, level: int = 0):
+    def get_nodes_level(self, level: int = 0) -> list[Node]:
         """Get all nodes at a specific level.
 
         Args:
