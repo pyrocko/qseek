@@ -31,6 +31,7 @@ ModelName = Literal[
     "EQTransformer",
     "OBSTransformer",
     "LFEDetect",
+    "GPD",
 ]
 
 
@@ -274,7 +275,11 @@ class SeisBench(ImageFunction):
         try:
             return self.seisbench_model.default_args["blinding"]
         except KeyError:
-            return self.seisbench_model._annotate_args["blinding"][1]
+            try:
+                return self.seisbench_model._annotate_args["blinding"][1]
+            except KeyError:
+                # Fix to run GPD model that should be improved.
+                return (0, 0)
 
     def get_blinding(self, sampling_rate: float) -> timedelta:
         scaled_blinding_samples = max(self.get_blinding_samples()) / self.rescale_input
