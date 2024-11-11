@@ -31,6 +31,7 @@ ModelName = Literal[
     "EQTransformer",
     "OBSTransformer",
     "LFEDetect",
+    "GPD",
 ]
 
 
