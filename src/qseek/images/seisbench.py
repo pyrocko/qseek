@@ -293,7 +293,7 @@ class SeisBench(ImageFunction):
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        if self.rescale_input != 1:
+        if self.rescale_input != 1.0:
             scale = self.rescale_input
             for tr in stream:
                 tr.stats.sampling_rate /= scale
@@ -306,7 +306,7 @@ class SeisBench(ImageFunction):
             copy=False,
         )
 
-        if self.rescale_input > 1:
+        if self.rescale_input != 1.0:
             scale = self.rescale_input
             for tr in annotations:
                 tr.stats.sampling_rate *= scale
