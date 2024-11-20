@@ -417,9 +417,14 @@ class Search(BaseModel):
         file_logger = logging.FileHandler(self._rundir / "qseek.log")
         logging.root.addHandler(file_logger)
 
+    def create_folders(self, path: Path | None = None) -> None:
+        rundir = path or self._rundir
+        csv_dir = rundir / "csv"
+        csv_dir.mkdir(exist_ok=True)
+
     def write_config(self, path: Path | None = None) -> None:
-        rundir = self._rundir
-        path = path or rundir / "search.json"
+        rundir = path or self._rundir
+        path = rundir / "search.json"
 
         logger.debug("writing search config to %s", path)
         path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
@@ -536,6 +541,7 @@ class Search(BaseModel):
         if not self.has_rundir():
             self.init_rundir(force=force_rundir)
 
+        self.create_folders()
         await self.prepare()
         self.write_config()
 
