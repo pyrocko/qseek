@@ -592,6 +592,7 @@ class Search(BaseModel):
                 duration=datetime_now() - batch_processing_start,
                 show_log=True,
             )
+            self.set_progress(batch.end_time)
 
         await BackgroundTasks.wait_all()
         await self._catalog.save()
