@@ -382,7 +382,7 @@ class TravelTimeTree(BaseModel):
 
     async def init_lut(self, nodes: Sequence[Node], stations: Stations) -> None:
         logger.info(
-            "initializing %s traveltime LUT for %d stations and %d nodes",
+            "warming up traveltime LUT %s for %d stations and %d nodes",
             self.timing.definition,
             stations.n_stations,
             len(nodes),

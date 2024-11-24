@@ -225,6 +225,14 @@ class Receiver(Station):
     def add_phase_detection(self, arrival: PhaseDetection) -> None:
         self.phase_arrivals[arrival.phase] = arrival
 
+    def n_picks(self, phase: PhaseDescription | None = None) -> int:
+        """Number of observations for all phases."""
+        if phase:
+            return int(self.phase_arrivals[phase].observed is not None)
+        return sum(
+            arrival.observed is not None for arrival in self.phase_arrivals.values()
+        )
+
     def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
         """Convert the phase arrivals to Pyrocko markers.
 
@@ -275,13 +283,18 @@ class EventReceivers(BaseModel):
         """Number of receivers in the receiver set."""
         return len(self.receivers)
 
-    def n_observations(self, phase: PhaseDescription) -> int:
-        """Number of observations for a given phase."""
-        n_observations = 0
-        for receiver in self:
-            if (arrival := receiver.phase_arrivals.get(phase)) and arrival.observed:
-                n_observations += 1
-        return n_observations
+    def n_picks(self, phase: PhaseDescription | None = None) -> int:
+        """Number of pick observations for a given phase.
+
+        Args:
+            phase (PhaseDescription | None): The phase description.
+                If None, the total number of picks is returned.
+                Defaults to None.
+
+        Returns:
+            int: The number of picks for the given phase.
+        """
+        return sum(receiver.n_picks(phase) for receiver in self.receivers)
 
     async def get_waveforms(
         self,
@@ -718,6 +731,12 @@ class EventDetection(Location):
             )
         return self._receivers
 
+    @computed_field
+    @property
+    def n_picks(self) -> int:
+        """Number of phase picks in the detection."""
+        return self.receivers.n_picks()
+
     def get_receiver_azimuths(self, observed_only: bool = True):
         """Get receiver azimuths.
 
@@ -803,6 +822,7 @@ class EventDetection(Location):
             "semblance": self.semblance,
             "azimuthal_coverage": self.get_azimuthal_coverage(),
             "n_stations": self.n_stations,
+            "n_picks": self.n_picks,
         }
         if self.uncertainty:
             csv_line.update(

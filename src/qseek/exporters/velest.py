@@ -133,7 +133,7 @@ class Velest(Exporter):
         for event in catalog:
             if event.semblance < self.min_event_semblance:
                 continue
-            if event.receivers.n_observations(phase_p) < self.min_receivers_number:
+            if event.receivers.n_picks(phase_p) < self.min_receivers_number:
                 continue
             if event.distance_border < self.min_distance_to_border:
                 continue
