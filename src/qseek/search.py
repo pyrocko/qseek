@@ -280,6 +280,12 @@ class Search(BaseModel):
         default=0.2,
         description="Detection threshold for semblance.",
     )
+    pick_confidence_threshold: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=1.0,
+        description="Confidence threshold for picking.",
+    )
     min_stations: int = Field(
         default=3,
         ge=0,
@@ -1012,7 +1018,7 @@ class SearchTraces:
                 arrivals_observed = image.search_phase_arrivals(
                     event_time=time,
                     modelled_arrivals=[arr if arr else None for arr in arrival_times],
-                    threshold=parent.detection_threshold,
+                    threshold=parent.pick_confidence_threshold,
                 )
 
                 phase_detections = [
