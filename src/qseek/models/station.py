@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
+    from qseek.octree import Octree
+
 from qseek.models.location import CoordSystem, Location
 
 logger = logging.getLogger(__name__)
@@ -88,6 +90,12 @@ class Stations(BaseModel):
         "Format is `['NET.STA.LOC', ...]`.",
     )
     stations: list[Station] = []
+
+    max_distance: float | None = Field(
+        default=None,
+        description="Maximum distance in meters from the centroid location to "
+        "include stations for detection. If None, all stations are included.",
+    )
 
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
@@ -170,6 +178,18 @@ class Stations(BaseModel):
             )
         if not self.stations:
             raise ValueError("no stations available, add waveforms to start detection")
+
+    def prepare(self, octree: Octree) -> None:
+        if self.max_distance is not None:
+            for sta in self.stations.copy():
+                distance = octree.location.surface_distance_to(sta)
+                if distance > self.max_distance:
+                    logger.warning(
+                        "removing station %s: distance to octree is %d m",
+                        sta.nsl.pretty,
+                        distance,
+                    )
+                    self.stations.remove(sta)
 
     def __iter__(self) -> Iterator[Station]:
         blacklist_pretty = {nsl.pretty for nsl in self.blacklist}
