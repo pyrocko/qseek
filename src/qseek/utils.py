@@ -188,9 +188,6 @@ class _NSL(NamedTuple):
 NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
 
 
-NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
-
-
 class _Range(NamedTuple):
     min: float
     max: float

@@ -15,3 +15,9 @@ from qseek.models.station import Stations
 
 print(generate_docs(Stations()))
 ```
+
+::: qseek.models.station.Stations
+    options:
+        heading_level: 4
+        extensions:
+        - griffe_pydantic
