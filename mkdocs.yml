@@ -67,9 +67,29 @@ watch:
 
 plugins:
   - search
+  - markdown-exec
   - mkdocstrings:
       default_handler: python
-  - markdown-exec
+      handlers:
+        python:
+          paths: [src]
+          import:
+          - https://docs.python.org/3/objects.inv
+          - https://docs.pydantic.dev/latest/objects.inv
+          options:
+            extensions:
+              - griffe_pydantic:
+                  schema: false
+            inherited_members: true
+            show_signature_annotations: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            show_root_heading: true
+            show_source: false
+            show_symbol_type_heading: true
+            signature_crossrefs: true
+            summary: true
+
 
 nav:
   - The Earthquake Detector:
@@ -79,7 +99,7 @@ nav:
     - Benchmark: benchmark.md
   - Configuration:
     - The Search: components/configuration.md
-    - Station Metadata: components/stations.md
+    - Station Metadata: components/station_metadata.md
     - Waveform Data: components/waveform_data.md
     - Octree: components/octree.md
     - Ray Tracer: components/ray_tracer.md
