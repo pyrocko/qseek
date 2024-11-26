@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import glob
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal
 
@@ -15,6 +15,7 @@ from pydantic import (
     PrivateAttr,
     computed_field,
     constr,
+    field_validator,
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
@@ -113,11 +114,12 @@ class PyrockoSquirrel(WaveformProvider):
 
     environment: DirectoryPath | None = Field(
         default=None,
-        description="Path to a Squirrel environment.",
+        description="Path to a [Pyrocko Squirrel environment](https://pyrocko.org/docs/current/apps/squirrel/reference/squirrel_init.html).",
     )
     persistent: str | None = Field(
         default=None,
-        description="Name of the persistent collection for faster loading.",
+        description="Name of the [Squirrel's persistent collection](https://pyrocko.org/docs/current/apps/squirrel/reference/squirrel_persistent.html)"
+        " for faster loading of large data sets.",
     )
     waveform_dirs: list[Path] = Field(
         default=["./data"],
@@ -126,12 +128,14 @@ class PyrockoSquirrel(WaveformProvider):
     start_time: AwareDatetime | None = Field(
         default=None,
         description="Start time for the search in "
-        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
+        "E.g. `2024-12-30T00:00:00Z`.",
     )
     end_time: AwareDatetime | None = Field(
         default=None,
         description="End time for the search in "
-        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601).",
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
+        "E.g. `2024-12-31T00:00:00Z`.",
     )
 
     channel_selector: list[constr(to_upper=True, max_length=2, min_length=2)] | None = (
@@ -143,11 +147,15 @@ class PyrockoSquirrel(WaveformProvider):
     )
     n_threads: PositiveInt = Field(
         default=8,
-        description="Number of threads for loading waveforms.",
+        description="Number of threads for loading waveforms,"
+        " important for large data sets.",
     )
-    n_threads: PositiveInt = Field(
-        default=8,
-        description="Number of threads for loading waveforms.",
+
+    watch_waveforms: bool | timedelta = Field(
+        default=False,
+        description="Watch the waveform directories for changes. If `True` it will "
+        "check every ten minutes. If a `timedelta` is provided it will check every "
+        "specified time. Default is False.",
     )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
@@ -160,7 +168,20 @@ class PyrockoSquirrel(WaveformProvider):
             raise ValueError("start_time must be before end_time")
         if not self.waveform_dirs and not self.persistent:
             raise ValueError("no waveform directories or persistent selection provided")
+        if self.watch_waveforms and not self.waveform_dirs:
+            raise ValueError("watch_waveforms requires waveform_dirs")
+        if self.watch_waveforms and self.end_time:
+            raise ValueError("watch_waveforms does not support end_time")
         return self
+
+    @field_validator("watch_waveforms", mode="after")
+    @classmethod
+    def _validate_watch(cls, value: bool | timedelta) -> timedelta | bool:
+        if value is True:
+            return timedelta(minutes=10)
+        if isinstance(value, timedelta) and value < timedelta(minutes=10):
+            raise ValueError("watch_waveform_dirs must be at least 10 minutes")
+        return value
 
     def get_squirrel(self) -> Squirrel:
         if not self._squirrel:
@@ -184,20 +205,26 @@ class PyrockoSquirrel(WaveformProvider):
                     else None,
                     persistent=self.persistent,
                 )
-            paths = []
-            for path in self.waveform_dirs:
-                if "**" in str(path):
-                    paths.extend(glob.glob(str(path.expanduser()), recursive=True))
-                else:
-                    paths.append(str(path.expanduser()))
 
-            squirrel.add(paths, check=False)
+            if self.waveform_dirs:
+                self.scan_waveform_dirs(squirrel)
+
             if self._stations:
                 for path in self._stations.station_xmls:
                     logger.info("loading StationXML responses from %s", path)
                     squirrel.add(str(path), check=False)
             self._squirrel = squirrel
         return self._squirrel
+
+    def scan_waveform_dirs(self, squirrel: Squirrel) -> None:
+        logger.info("scanning waveform directories")
+        paths = []
+        for path in self.waveform_dirs:
+            if "**" in str(path):
+                paths.extend(glob.glob(str(path.expanduser()), recursive=True))
+            else:
+                paths.append(str(path.expanduser()))
+        squirrel.add(paths, check=False)
 
     def prepare(self, stations: Stations) -> None:
         logger.info("preparing squirrel waveform provider")
@@ -219,36 +246,62 @@ class PyrockoSquirrel(WaveformProvider):
 
         squirrel = self.get_squirrel()
         stats = self._stats
-        sq_tmin, sq_tmax = squirrel.get_time_span(["waveform"])
 
-        start_time = start_time or self.start_time or to_datetime(sq_tmin)
-        end_time = end_time or self.end_time or to_datetime(sq_tmax)
+        if self.watch_waveforms:
+            logger.info("scanning for new waveforms every %s", self.watch_waveforms)
 
-        logger.info(
-            "searching time span from %s to %s (%s)",
-            start_time,
-            end_time,
-            end_time - start_time,
-        )
+        def init_prefetcher(
+            chop_start_time: datetime | None = None,
+            chop_end_time: datetime | None = None,
+        ) -> SquirrelPrefetcher:
+            sq_tmin, sq_tmax = map(to_datetime, squirrel.get_time_span(["waveform"]))
+            chop_start_time = chop_start_time or self.start_time or sq_tmin
+            chop_end_time = chop_end_time or self.end_time or sq_tmax
 
-        iterator = squirrel.chopper_waveforms(
-            tmin=(start_time + window_padding).timestamp(),
-            tmax=(end_time - window_padding).timestamp(),
-            tinc=window_increment.total_seconds(),
-            tpad=window_padding.total_seconds(),
-            want_incomplete=False,
-            codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
-            channel_priorities=self.channel_selector,
-        )
-        prefetcher = SquirrelPrefetcher(iterator)
-        stats.set_queue(prefetcher.queue)
+            logger.info(
+                "searching time span from %s to %s (%s)",
+                chop_start_time,
+                chop_end_time,
+                chop_end_time - chop_start_time,
+            )
+            iterator = squirrel.chopper_waveforms(
+                tmin=(chop_start_time + window_padding).timestamp(),
+                tmax=(chop_end_time - window_padding).timestamp(),
+                tinc=window_increment.total_seconds(),
+                tpad=window_padding.total_seconds(),
+                want_incomplete=False,
+                codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
+                channel_priorities=self.channel_selector,
+            )
+            prefetcher = SquirrelPrefetcher(iterator)
+            stats.set_queue(prefetcher.queue)
+            return prefetcher
+
+        prefetcher = init_prefetcher(chop_start_time=start_time, chop_end_time=end_time)
+        last_batch_end_time = None
 
         while True:
             start = datetime_now()
             pyrocko_batch = await prefetcher.queue.get()
+
             if pyrocko_batch is None:
-                prefetcher.queue.task_done()
-                break
+                if isinstance(self.watch_waveforms, timedelta):
+                    logger.info(
+                        "re-scanning waveform directories at %s",
+                        datetime.now(tz=timezone.utc) + self.watch_waveforms,
+                    )
+
+                    await asyncio.sleep(self.watch_waveforms.total_seconds())
+                    self.scan_waveform_dirs(squirrel)
+                    prefetcher = init_prefetcher(
+                        chop_start_time=last_batch_end_time,
+                        chop_end_time=None,
+                    )
+                    continue
+                else:
+                    logger.debug("no more waveforms to load")
+                    prefetcher.queue.task_done()
+                    break
 
             batch = WaveformBatch(
                 traces=pyrocko_batch.traces,
@@ -257,7 +310,6 @@ class PyrockoSquirrel(WaveformProvider):
                 i_batch=pyrocko_batch.i,
                 n_batches=pyrocko_batch.n,
             )
-
             batch.clean_traces()
 
             stats.time_per_batch = datetime_now() - start
@@ -283,6 +335,7 @@ class PyrockoSquirrel(WaveformProvider):
                 stats.short_batches += 1
                 continue
 
+            last_batch_end_time = batch.end_time
             yield batch
 
             prefetcher.queue.task_done()
