@@ -518,6 +518,7 @@ class Search(BaseModel):
         asyncio.get_running_loop().set_exception_handler(
             lambda loop, context: logger.error(context)
         )
+        self.stations.prepare(self.octree)
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
 

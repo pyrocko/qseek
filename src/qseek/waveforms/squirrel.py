@@ -150,7 +150,6 @@ class PyrockoSquirrel(WaveformProvider):
         description="Number of threads for loading waveforms,"
         " important for large data sets.",
     )
-
     watch_waveforms: bool | timedelta = Field(
         default=False,
         description="Watch the waveform directories for changes. If `True` it will "
