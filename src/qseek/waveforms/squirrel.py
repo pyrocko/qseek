@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import glob
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal
 
@@ -252,10 +252,13 @@ class PyrockoSquirrel(WaveformProvider):
         def init_prefetcher(
             chop_start_time: datetime | None = None,
             chop_end_time: datetime | None = None,
+            trim_end: timedelta | None = None,
         ) -> SquirrelPrefetcher:
             sq_tmin, sq_tmax = map(to_datetime, squirrel.get_time_span(["waveform"]))
             chop_start_time = chop_start_time or self.start_time or sq_tmin
             chop_end_time = chop_end_time or self.end_time or sq_tmax
+            if trim_end:
+                chop_end_time -= trim_end
 
             logger.info(
                 "searching time span from %s to %s (%s)",
@@ -263,6 +266,7 @@ class PyrockoSquirrel(WaveformProvider):
                 chop_end_time,
                 chop_end_time - chop_start_time,
             )
+
             iterator = squirrel.chopper_waveforms(
                 tmin=(chop_start_time + window_padding).timestamp(),
                 tmax=(chop_end_time - window_padding).timestamp(),
@@ -286,8 +290,7 @@ class PyrockoSquirrel(WaveformProvider):
             if pyrocko_batch is None:
                 if isinstance(self.watch_waveforms, timedelta):
                     logger.info(
-                        "re-scanning waveform directories at %s",
-                        datetime.now(tz=timezone.utc) + self.watch_waveforms,
+                        "re-scanning waveform directories in %s", self.watch_waveforms
                     )
 
                     await asyncio.sleep(self.watch_waveforms.total_seconds())
@@ -295,6 +298,7 @@ class PyrockoSquirrel(WaveformProvider):
                     prefetcher = init_prefetcher(
                         chop_start_time=last_batch_end_time,
                         chop_end_time=None,
+                        trim_end=timedelta(seconds=30),  # Trim as SeedLink is slow!
                     )
                     continue
                 else:
