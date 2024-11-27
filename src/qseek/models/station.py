@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
-from pydantic import BaseModel, DirectoryPath, Field, FilePath
+from pydantic import BaseModel, DirectoryPath, Field, FilePath, PositiveFloat
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
@@ -91,7 +91,7 @@ class Stations(BaseModel):
     )
     stations: list[Station] = []
 
-    max_distance: float | None = Field(
+    max_distance: PositiveFloat | None = Field(
         default=None,
         description="Maximum distance in meters from the centroid location to "
         "include stations for detection. If None, all stations are included.",
@@ -131,7 +131,12 @@ class Stations(BaseModel):
         seen_nsls = set()
         for sta in self.stations.copy():
             if sta.lat == 0.0 or sta.lon == 0.0:
-                logger.warning("removing station %s: bad coordinates", sta.nsl.pretty)
+                logger.warning(
+                    "removing station %s: bad coordinates (%.2f, %.2f)",
+                    sta.nsl.pretty,
+                    sta.lat,
+                    sta.lon,
+                )
                 self.stations.remove(sta)
                 continue
 
@@ -180,12 +185,14 @@ class Stations(BaseModel):
             raise ValueError("no stations available, add waveforms to start detection")
 
     def prepare(self, octree: Octree) -> None:
+        logger.info("preparing station inventory")
+
         if self.max_distance is not None:
             for sta in self.stations.copy():
-                distance = octree.location.surface_distance_to(sta)
+                distance = octree.location.distance_to(sta)
                 if distance > self.max_distance:
                     logger.warning(
-                        "removing station %s: distance to octree is %d m",
+                        "removing station %s: distance to octree is %g m",
                         sta.nsl.pretty,
                         distance,
                     )
@@ -195,10 +202,24 @@ class Stations(BaseModel):
         blacklist_pretty = {nsl.pretty for nsl in self.blacklist}
         return (sta for sta in self.stations if sta.nsl.pretty not in blacklist_pretty)
 
+    def mean_interstation_distance(self) -> float:
+        """Calculate the mean interstation distance.
+
+        Returns:
+            float: Mean interstation distance in meters.
+        """
+        distances = [
+            sta_1.distance_to(sta_2)
+            for sta_1 in self
+            for sta_2 in self
+            if sta_1 is not sta_2
+        ]
+        return float(np.mean(distances))
+
     @property
     def n_stations(self) -> int:
         """Number of stations."""
-        return sum(1 for _ in self)
+        return len(list(self))
 
     @property
     def n_networks(self) -> int:

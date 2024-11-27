@@ -98,6 +98,10 @@ class EventCatalog(BaseModel):
             self._stats.set_catalog(self)
         return self._stats
 
+    def sort(self) -> None:
+        """Sort the detections by time."""
+        self.events = sorted(self.events, key=lambda d: d.time)
+
     async def filter_events_by_time(
         self,
         start_time: datetime | None,
@@ -124,7 +128,19 @@ class EventCatalog(BaseModel):
             self.get_stats().n_detections = len(self.events)
             await self.save()
 
-    async def add(self, detection: EventDetection) -> None:
+    async def add(
+        self,
+        detection: EventDetection,
+        jitter_location: float = 0.0,
+    ) -> None:
+        """Add a detection to the catalog.
+
+        Args:
+            detection (EventDetection): The detection to add.
+            jitter_location (float, optional): Randomize the location of the detection
+                by this many meters. This is only exported to the CSV
+                and Pyrocko detections. Defaults to 0.0.
+        """
         detection.set_index(self.n_events)
 
         markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
@@ -146,7 +162,7 @@ class EventCatalog(BaseModel):
         )
         self.get_stats().new_detection(detection)
         # This has to happen after the markers are saved, cache is cleared
-        await detection.save(self.rundir)
+        await detection.save(self.rundir, jitter_location=jitter_location)
 
     def save_semblance_trace(self, trace: Trace) -> None:
         """Add semblance trace to detection and save to file.
@@ -276,7 +292,8 @@ class EventCatalog(BaseModel):
             jitter_location (float): The amount of jitter in [m] to apply
                 to the detection locations. Defaults to 0.0.
         """
-        logger.debug("dumping detections")
+        logger.debug("exporting detections")
+        self.sort()
 
         await self.export_csv(self.csv_dir / "detections.csv")
         self.export_pyrocko_events(self.rundir / "pyrocko_detections.list")
@@ -299,7 +316,7 @@ class EventCatalog(BaseModel):
             jitter_location (float, optional): Randomize the location of each detection
                 by this many meters. Defaults to 0.0.
         """
-        logger.info("saving event CSV to %s", file)
+        logger.info("exporting event CSV to %s", file)
         header = []
 
         if jitter_location:
@@ -333,10 +350,10 @@ class EventCatalog(BaseModel):
         return [det.as_pyrocko_event() for det in self.events]
 
     def get_pyrocko_markers(self) -> list[EventMarker | PhaseMarker]:
-        """Get Pyrocko markers for all detections.
+        """Get Pyrocko phase pick markers for all detections.
 
         Returns:
-            list[EventMarker | PhaseMarker]: A list of Pyrocko markers.
+            list[EventMarker | PhaseMarker]: A list of Pyrocko PhaseMarker.
         """
         logger.info("loading Pyrocko markers...")
         pyrocko_markers = []
@@ -354,7 +371,7 @@ class EventCatalog(BaseModel):
             jitter_location (float, optional): Randomize the location of each detection
                 by this many meters. Defaults to 0.0.
         """
-        logger.info("saving Pyrocko events to %s", filename)
+        logger.info("exporting Pyrocko events to %s", filename)
         detections = self.events
         if jitter_location:
             detections = [det.jitter_location(jitter_location) for det in detections]
@@ -370,7 +387,7 @@ class EventCatalog(BaseModel):
         Args:
             filename (Path): output filename
         """
-        logger.info("saving Pyrocko markers to %s", filename)
+        logger.info("exporting Pyrocko markers to %s", filename)
         pyrocko_markers = []
         for detection in self:
             pyrocko_markers.extend(detection.get_pyrocko_markers())

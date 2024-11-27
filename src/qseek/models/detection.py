@@ -589,7 +589,12 @@ class EventDetection(Location):
         """
         await self.save(rundir, update=True)
 
-    async def save(self, rundir: Path, update: bool = False) -> None:
+    async def save(
+        self,
+        rundir: Path,
+        update: bool = False,
+        jitter_location: float = 0.0,
+    ) -> None:
         """Dump the detection data to a file.
 
         After the detection is dumped, the receivers are dumped to a separate file and
@@ -598,11 +603,13 @@ class EventDetection(Location):
         Args:
             rundir (Path): The path to the rundir.
             update (bool): Whether to update an existing detection or append a new one.
+            jitter_location (float, optional): The amount of spatial jitter to apply to
+                the exported detection. Defaults to 0.0.
 
         Raises:
             ValueError: If the detection index is not set and update is True.
         """
-        file = rundir / FILENAME_DETECTIONS
+        detection_file = rundir / FILENAME_DETECTIONS
         self.set_receiver_cache(rundir)
 
         json_data = self.model_dump_json(exclude={"receivers"})
@@ -613,16 +620,16 @@ class EventDetection(Location):
             logger.debug("updating detection %d", self._detection_idx)
 
             async with UPDATE_LOCK:
-                async with aiofiles.open(file, "r") as f:
+                async with aiofiles.open(detection_file, "r") as f:
                     lines = await f.readlines()
 
                 lines[self._detection_idx] = f"{json_data}\n"
-                async with aiofiles.open(file, "w") as f:
+                async with aiofiles.open(detection_file, "w") as f:
                     await asyncio.shield(f.writelines(lines))
         else:
             logger.debug("appending detection %d", self._detection_idx)
             async with UPDATE_LOCK:
-                async with aiofiles.open(file, "a") as f:
+                async with aiofiles.open(detection_file, "a") as f:
                     await f.write(f"{json_data}\n")
 
                 receiver_file = rundir / FILENAME_RECEIVERS
@@ -632,6 +639,57 @@ class EventDetection(Location):
                     )
 
             self._receivers = None  # Free memory
+
+        if not update:
+            self.export_csv_line(
+                rundir / "csv" / "detections.csv",
+            )
+            self.export_pyrocko_event(
+                rundir / "pyrocko_detections.list",
+            )
+            if jitter_location:
+                self.export_csv_line(
+                    rundir / "csv" / "detections_jittered.csv",
+                    jitter_location=jitter_location,
+                )
+                self.export_pyrocko_event(
+                    rundir / "pyrocko_detections_jittered.list",
+                    jitter_location=jitter_location,
+                )
+
+    def export_csv_line(self, file: Path, jitter_location: float = 0.0) -> None:
+        """Save the detection as a CSV line.
+
+        Args:
+            file (Path): The path to the CSV file.
+            jitter_location (float, optional): The amount of spatial jitter to apply.
+                Defaults to 0.0.
+        """
+        detection = self.jitter_location(jitter_location) if jitter_location else self
+        csv_line = detection.get_csv_dict()
+
+        if not file.exists():
+            header = ",".join(csv_line.keys())
+            file.write_text(f"{header}\n")
+        with file.open("a") as f:
+            line = ",".join(str(value) for value in csv_line.values())
+            f.write(f"{line}\n")
+
+    def export_pyrocko_event(self, file: Path, jitter_location: float = 0.0) -> None:
+        """Write the detection as a Pyrocko event to a file.
+
+        Args:
+            file (Path): The path to the output file.
+            jitter_location (float, optional): The amount of spatial jitter to apply.
+                Defaults to 0.0.
+        """
+        detection = self.jitter_location(jitter_location) if jitter_location else self
+        if not file.exists():
+            file.write_text("%YAML 1.1\n")
+
+        event = detection.as_pyrocko_event()
+        with file.open("a") as f:
+            f.write(event.dump())
 
     def set_index(self, index: int, force: bool = False) -> None:
         """Set the index of the detection.
