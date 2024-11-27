@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Iterable, Sequence
+from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
 import numpy as np
 import pyrocko.orthodrome as od
@@ -25,8 +25,8 @@ class DistanceWeights(BaseModel):
         description="Exponent of the spatial decay function. Default is 3.",
         ge=0.0,
     )
-    radius_meters: PositiveFloat = Field(
-        default=8000.0,
+    radius_meters: PositiveFloat | Literal["mean_interstation"] = Field(
+        default="mean_interstation",
         description="Cutoff distance for the spatial decay function in meters."
         " Default is 8000.",
     )
@@ -67,6 +67,13 @@ class DistanceWeights(BaseModel):
 
     def prepare(self, stations: Stations, octree: Octree) -> None:
         logger.info("preparing distance weights")
+
+        if self.radius_meters == "mean_interstation":
+            self.radius_meters = stations.mean_interstation_distance()
+            logger.info(
+                "using mean interstation distance as radius: %g m",
+                self.radius_meters,
+            )
 
         bytes_per_node = stations.n_stations * np.float32().itemsize
         lru_cache_size = int(self.lut_cache_size / bytes_per_node)
