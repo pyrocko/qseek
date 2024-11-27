@@ -628,7 +628,10 @@ class Search(BaseModel):
         )
 
         for detection in detections:
-            await catalog.add(detection)
+            await catalog.add(
+                detection,
+                jitter_location=self.octree.smallest_node_size(),
+            )
             await self._new_detection.emit(detection)
 
         if not catalog.n_events:
@@ -637,9 +640,9 @@ class Search(BaseModel):
         threshold = np.floor(np.log10(catalog.n_events)) - 1
         new_threshold = max(10, 10**threshold)
         if catalog.n_events - self._last_detection_export > new_threshold:
-            await catalog.export_detections(
-                jitter_location=self.octree.smallest_node_size()
-            )
+            # await catalog.export_detections(
+            #     jitter_location=self.octree.smallest_node_size()
+            # )
             self._last_detection_export = catalog.n_events
 
     async def add_magnitude_and_features(
