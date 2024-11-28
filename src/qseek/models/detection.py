@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import cached_property
 from itertools import chain
@@ -119,10 +120,12 @@ class ReceiverCache:
             right_idx = start_idx + offset
             if start_idx + offset >= n_lines and start_idx - offset < 0:
                 break
-            if left_idx >= 0 and find_uid in self.lines[left_idx]:
-                return left_idx, self.lines[left_idx]
-            if right_idx < n_lines and find_uid in self.lines[right_idx]:
-                return right_idx, self.lines[right_idx]
+            with suppress(IndexError):
+                if left_idx >= 0 and find_uid in self.lines[left_idx]:
+                    return left_idx, self.lines[left_idx]
+            with suppress(IndexError):
+                if right_idx < n_lines and find_uid in self.lines[right_idx]:
+                    return right_idx, self.lines[right_idx]
             offset += 1
 
         raise KeyError(f"UID {find_uid} not found in receiver cache.")

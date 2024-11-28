@@ -24,9 +24,9 @@ Key features are of the earthquake detection and localisation framework are:
   * 1D Layered velocity model
   * 3D fast-marching velocity model (NonLinLoc compatible)
 * Extraction of earthquake event features:
+  * Local magnitudes (ML), different attenuation models
   * Moment Magnitudes (MW) based on modelled peak ground motions
-  * Local magnitudes (ML), different models
-  * Ground motion attributes (e.g. PGA, PGV, ...)
+  * Different ground motion attributes (e.g. PGA, PGV, ...)
 * Automatic extraction of modelled and picked travel times
 * Station Corrections
   * station specific corrections (SST)

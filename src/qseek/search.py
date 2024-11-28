@@ -281,7 +281,7 @@ class Search(BaseModel):
         description="Detection threshold for semblance.",
     )
     pick_confidence_threshold: float = Field(
-        default=0.1,
+        default=0.2,
         gt=0.0,
         le=1.0,
         description="Confidence threshold for picking.",
@@ -310,7 +310,7 @@ class Search(BaseModel):
         "the event hypocentre.",
     )
     detection_blinding: timedelta = Field(
-        default=timedelta(seconds=2.0),
+        default=timedelta(seconds=1.0),
         description="Blinding time in seconds before and after the detection peak. "
         "This is used to avoid detecting the same event multiple times. "
         "Default is 2 seconds.",
@@ -521,6 +521,12 @@ class Search(BaseModel):
         self.stations.prepare(self.octree)
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
+        await self.ray_tracers.prepare(
+            self.octree,
+            self.stations,
+            phases=self.image_functions.get_phases(),
+            rundir=self._rundir,
+        )
 
         if self.distance_weights:
             self.distance_weights.prepare(self.stations, self.octree)
@@ -532,12 +538,6 @@ class Search(BaseModel):
                 self.image_functions.get_phases(),
                 self._rundir,
             )
-        await self.ray_tracers.prepare(
-            self.octree,
-            self.stations,
-            phases=self.image_functions.get_phases(),
-            rundir=self._rundir,
-        )
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
         await self.init_boundaries()
