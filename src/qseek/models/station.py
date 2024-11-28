@@ -132,7 +132,7 @@ class Stations(BaseModel):
         for sta in self.stations.copy():
             if sta.lat == 0.0 or sta.lon == 0.0:
                 logger.warning(
-                    "removing station %s: bad coordinates (%.2f, %.2f)",
+                    "removing station %s with bad coordinates: lat %.4f, lon %.4f",
                     sta.nsl.pretty,
                     sta.lat,
                     sta.lon,
