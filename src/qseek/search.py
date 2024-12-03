@@ -405,7 +405,7 @@ class Search(BaseModel):
             ).split(".")[0]
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
-            logger.info("created backup of existing rundir to %s", rundir_backup)
+            logger.info("created backup of existing rundir at %s", rundir_backup)
 
         if not rundir.exists():
             rundir.mkdir()

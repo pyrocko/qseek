@@ -559,9 +559,9 @@ MeasurementUnit = Literal[
 
 @dataclass
 class ChannelSelector:
-    channels: str
-    number_channels: int
-    normalize: bool = False
+    channels: str  # Channel selectors
+    number_channels: int  # Number of required channels for the selector
+    absolute: bool = False
     average: bool = False
 
     def get_traces(self, traces_flt: list[Trace]) -> list[Trace]:
@@ -579,7 +579,7 @@ class ChannelSelector:
         """
         nsls = {tr.nslc_id[:3] for tr in traces_flt}
         if len(nsls) != 1:
-            raise KeyError(
+            raise AttributeError(
                 f"cannot get traces for selector {self.channels}"
                 f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces_flt)}"
             )
@@ -589,7 +589,7 @@ class ChannelSelector:
         tmins = {tr.tmin for tr in traces_flt}
         tmaxs = {tr.tmax for tr in traces_flt}
         if len(tmins) != 1 or len(tmaxs) != 1:
-            raise KeyError(
+            raise AttributeError(
                 f"unhealthy timing on channels {self.channels}",
                 f" for: {', '.join('.'.join(tr.nslc_id) for tr in traces_flt)}",
             )
@@ -600,17 +600,15 @@ class ChannelSelector:
                 f" for selector {self.channels}"
                 f" available: {', '.join('.'.join(tr.nslc_id) for tr in traces_flt)}"
             )
-        if self.normalize:
+        if self.absolute:
             traces_norm = traces_flt[0].copy()
             data = np.atleast_2d(np.array([tr.ydata for tr in traces_flt]))
-
             traces_norm.ydata = np.linalg.norm(data, axis=0)
             return [traces_norm]
 
         if self.average:
             traces_avg = traces_flt[0].copy()
             data = np.atleast_2d(np.array([tr.ydata for tr in traces_flt]))
-
             traces_avg.ydata = np.mean(data, axis=0)
             return [traces_avg]
 
@@ -620,12 +618,12 @@ class ChannelSelector:
 
 
 class ChannelSelectors:
-    All = ChannelSelector("ENZ0123RT", 3)
-    HorizontalAbs = ChannelSelector("EN123RT", 2, normalize=True)
-    HorizontalAvg = ChannelSelector("EN123RT", 2, average=True)
-    Horizontal = ChannelSelector("EN123RT", 2)
-    Vertical = ChannelSelector("Z0", 1)
-    NorthEast = ChannelSelector("NE", 2)
+    All = ChannelSelector("ENZ0123RT", number_channels=3)
+    HorizontalAbs = ChannelSelector("EN123RT", number_channels=2, absolute=True)
+    HorizontalAvg = ChannelSelector("EN123RT", number_channels=2, average=True)
+    Horizontal = ChannelSelector("EN123RT", number_channels=2)
+    Vertical = ChannelSelector("Z0", number_channels=1)
+    NorthEast = ChannelSelector("NE", number_channels=2)
 
 
 def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:

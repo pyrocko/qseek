@@ -216,7 +216,10 @@ class PyrockoSquirrel(WaveformProvider):
         return self._squirrel
 
     def scan_waveform_dirs(self, squirrel: Squirrel) -> None:
-        logger.info("scanning waveform directories")
+        logger.info(
+            "scanning waveform directories %s",
+            ".".join(map(str, self.waveform_dirs)),
+        )
         paths = []
         for path in self.waveform_dirs:
             if "**" in str(path):
