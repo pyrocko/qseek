@@ -170,7 +170,7 @@ class MomentMagnitude(EventMagnitude):
         for receiver, rcv_traces in zip(receivers, traces, strict=False):
             try:
                 rcv_traces = _TRACE_SELECTORS[peak_amplitude](rcv_traces)
-            except KeyError:
+            except (KeyError, AttributeError):
                 continue
             if not rcv_traces:
                 logger.warning("No traces for peak amplitude %s", receiver.nsl.pretty)

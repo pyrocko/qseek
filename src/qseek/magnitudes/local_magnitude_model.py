@@ -166,7 +166,7 @@ class LocalMagnitudeModel:
 
         try:
             traces = _COMPONENT_MAP[self.component](traces)
-        except KeyError:
+        except (KeyError, AttributeError):
             logger.debug("Could not get channels for %s", receiver.nsl.pretty)
             return None
         if not traces:
