@@ -20,12 +20,11 @@ authors = [
     { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
     { name = "Marius Kriegerowski", email = "mk@quakesaver.de" },
 ]
-maintainers = [
-    { name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" },
-    { name = "Sebastian Heimann", email = "heimann@uni-potsdam.de" },
-]
+maintainers = [{ name = "Marius Paul Isken", email = "mi@gfz-potsdam.de" }]
 keywords = [
+    "seismology",
     "earthquake",
+    "seismicity",
     "detection",
     "localization",
     "stacking-migration",
