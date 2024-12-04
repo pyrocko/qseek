@@ -28,8 +28,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_SKIP: "cp311-* cp312-*"
-          CIBW_BUILD: "cp310-manylinux_x86_64"
+          CIBW_SKIP: "cp313-*"
+        #   CIBW_BUILD: "cp310-manylinux_x86_64"  # For debugging
         with:
           config-file: "{package}/pyproject.toml"
 
@@ -73,6 +73,5 @@ jobs:
           pattern: cibw-*
           path: dist
           merge-multiple: true
-          verbose: true
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
