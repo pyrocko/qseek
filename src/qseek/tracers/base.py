@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Sequence, TypeVar
 
 import numpy as np
@@ -9,7 +10,6 @@ from pydantic import BaseModel
 from qseek.models.location import Location
 
 if TYPE_CHECKING:
-    from datetime import datetime
     from pathlib import Path
 
     from qseek.models.station import Stations
