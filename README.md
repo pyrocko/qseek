@@ -6,6 +6,7 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 [![Build and test](https://github.com/pyrocko/qseek/actions/workflows/build.yaml/badge.svg)](https://github.com/pyrocko/qseek/actions/workflows/build.yaml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org/)
+![PyPI - Version](https://img.shields.io/pypi/v/qseek)
 [![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/qseek/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
 
@@ -14,7 +15,7 @@ Qseek is a data-driven earthquake detection and localisation framework for large
 Key features are of the earthquake detection and localisation framework are:
 
 * Earthquake phase detection using machine-learning model from [SeisBench](https://github.com/seisbench/seisbench), pre-trained on different data sets.
-  * [PhaseNet (Zhu and Beroza, 2018](https://doi.org/10.1093/gji/ggy423)
+  * [PhaseNet (Zhu and Beroza, 2018)](https://doi.org/10.1093/gji/ggy423)
   * [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
   * [OBSTransformer (Niksejel and Zahng, 2024)](https://doi.org/10.1093/gji/ggae049)
   * LFEDetect
