@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -10,8 +11,6 @@ from qseek.models.station import Stations
 from qseek.utils import PhaseDescription, resample
 
 if TYPE_CHECKING:
-    from datetime import datetime, timedelta
-
     from pyrocko.trace import Trace
 
 
