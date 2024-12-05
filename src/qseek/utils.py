@@ -42,6 +42,11 @@ PYTHON_VERSION = (sys.version_info.major, sys.version_info.minor)
 logger = logging.getLogger(__name__)
 FORMAT = "%(message)s"
 
+SDS_PYROCKO_SCHEME = (
+    "%(tmin_year)s/%(network)s/%(station)s/%(channel)s.D"
+    "/%(network)s.%(station)s.%(location)s.%(channel)s.D"
+    ".%(tmin_year)s.%(julianday)s"
+)
 
 PhaseDescription = Annotated[str, constr(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
 
