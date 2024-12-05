@@ -336,6 +336,9 @@ class SeisBench(ImageFunction):
             traces=[tr for tr in annotated_traces if tr.channel.endswith("S")],
         )
 
+        for tr in annotation_s.traces + annotation_p.traces:
+            tr.set_channel(tr.channel[-1])
+
         return [annotation_s, annotation_p]
 
     def get_provided_phases(self) -> tuple[str, ...]:
