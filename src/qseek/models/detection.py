@@ -433,7 +433,7 @@ class EventReceivers(BaseModel):
                 await asyncio.to_thread(
                     tr.transfer,
                     transfer_function=response.get_effective(input_quantity=quantity),
-                    freqlimits=(0.005, 0.01, 0.45 / tr.deltat, 0.5 / tr.deltat),
+                    freqlimits=(0.005, 0.05, 0.45 / tr.deltat, 0.5 / tr.deltat),
                     tfade=seconds_fade,
                     cut_off_fading=cut_off_fade,
                     demean=demean,

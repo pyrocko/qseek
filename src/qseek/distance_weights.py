@@ -9,6 +9,7 @@ from lru import LRU
 from pydantic import BaseModel, ByteSize, Field, PositiveFloat, PrivateAttr
 
 from qseek.octree import get_node_coordinates
+from qseek.utils import alog_call
 
 if TYPE_CHECKING:
     from qseek.models.station import Station, Stations
@@ -114,6 +115,7 @@ class DistanceWeights(BaseModel):
         """Return the fill level of the LUT as a float between 0.0 and 1.0."""
         return len(self._node_lut) / self._node_lut.get_size()
 
+    @alog_call
     async def get_weights(
         self, nodes: Sequence[Node], stations: Stations
     ) -> np.ndarray:
