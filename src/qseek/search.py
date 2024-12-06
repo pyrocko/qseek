@@ -345,7 +345,10 @@ class Search(BaseModel):
         "`0` uses all available cores.",
     )
 
-    plot_octree_surface: bool = False
+    save_images: bool = Field(
+        default=False,
+        description="Save annotation images to disk for debugging and analysis.",
+    )
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     _progress: SearchProgress = PrivateAttr(SearchProgress())
@@ -596,9 +599,11 @@ class Search(BaseModel):
 
             detections, semblance_trace = await search_block.search()
 
-            self._catalog.save_semblance_trace(semblance_trace)
+            await self._catalog.save_semblance_trace(semblance_trace)
             if detections:
                 BackgroundTasks.create_task(self.new_detections(detections))
+            if self.save_images:
+                await images.save_mseed(self._rundir / "images")
 
             stats.add_processed_batch(
                 batch,
