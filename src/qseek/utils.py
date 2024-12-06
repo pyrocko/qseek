@@ -385,8 +385,11 @@ def log_call(func: Callable[P, T]) -> Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         start = time.time()
         ret = func(*args, **kwargs)
-        duration = timedelta(seconds=time.time() - start)
-        logger.debug("executed %s in %s", func.__qualname__, duration)
+        logger.debug(
+            "executed %s in %s",
+            func.__qualname__,
+            timedelta(seconds=time.time() - start),
+        )
         return ret
 
     return wrapper
@@ -397,8 +400,11 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         start = time.time()
         ret = await func(*args, **kwargs)
-        duration = timedelta(seconds=time.time() - start)
-        logger.debug("executed %s in %s", func.__qualname__, duration)
+        logger.debug(
+            "executed %s in %s",
+            func.__qualname__,
+            timedelta(seconds=time.time() - start),
+        )
         return ret
 
     return wrapper
