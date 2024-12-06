@@ -36,6 +36,10 @@ class DistanceWeights(BaseModel):
         le=1.0,
         description="Waterlevel for the exponential decay function. Default is 0.0.",
     )
+    normalize: bool = Field(
+        default=True,
+        description="Normalize the weights to the range [0, 1]. Default is True.",
+    )
     lut_cache_size: ByteSize = Field(
         default=200 * MB,
         description="Size of the LRU cache in bytes. Default is 200 MB.",
@@ -61,9 +65,12 @@ class DistanceWeights(BaseModel):
     def calc_weights(self, distances: np.ndarray) -> np.ndarray:
         exp = self.exponent
         radius = self.radius_meters
-        return (1 - self.waterlevel) / (
+        weights = (1 - self.waterlevel) / (
             1 + (distances / radius) ** exp
         ) + self.waterlevel
+        if self.normalize:
+            weights /= weights.max()
+        return weights
 
     def prepare(self, stations: Stations, octree: Octree) -> None:
         logger.info("preparing distance weights")
