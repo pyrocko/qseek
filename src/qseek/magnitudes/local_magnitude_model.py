@@ -258,6 +258,17 @@ class SouthernCalifornia(WoodAnderson, LocalMagnitudeModel):
         return 1.11 * np.log10(dist_hypo_km / 100) + 0.00189 * (dist_hypo_km - 100) + 3
 
 
+class CentralCalifornia(WoodAnderson, LocalMagnitudeModel):
+    author = "Bakun and Joyner (1984)"
+
+    epicentral_range = Range(0.0 * KM, 400.0 * KM)
+    component = "north-east-separate"
+
+    @staticmethod
+    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        return np.log10(dist_epi_km / 100) + 0.00301 * (dist_epi_km - 100) + 3.0
+
+
 class IaspeiSouthernCalifornia(WoodAnderson, LocalMagnitudeModel):
     author = "Hutton and Boore (1987)"
 
