@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from matplotlib.ticker import FuncFormatter
 from pydantic import Field, PositiveFloat, PrivateAttr, model_validator
+from pyrocko import io
 from typing_extensions import Self
 
 from qseek.magnitudes.base import (
@@ -21,12 +23,13 @@ from qseek.magnitudes.local_magnitude_model import (
     ModelName,
     StationLocalMagnitude,
 )
+from qseek.utils import time_to_path
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
     from qseek.models.detection import EventDetection, Receiver
+    from qseek.waveforms.providers import WaveformProvider
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +45,6 @@ class LocalMagnitude(EventMagnitude):
         description="The estimator to use for calculating the local magnitude.",
     )
     station_magnitudes: list[StationLocalMagnitude] = []
-    average: float = Field(
-        default=0.0,
-        description="The network's local magnitude, as median of"
-        " all station magnitudes.",
-    )
-    error: float = Field(
-        default=0.0,
-        description="Average error of local magnitude, as median absolute deviation.",
-    )
 
     @classmethod
     async def from_model(
@@ -75,12 +69,12 @@ class LocalMagnitude(EventMagnitude):
             self.station_magnitudes.append(station_magnitude)
 
         if not self.station_magnitudes:
+            logger.warning("No station magnitudes found for event %s", event.time)
             return self
 
         median = np.median(self.magnitudes)
         self.average = float(median)
         self.error = float(np.median(np.abs(self.magnitudes - median)))  # MAD
-
         return self
 
     @property
@@ -109,7 +103,7 @@ class LocalMagnitude(EventMagnitude):
         ax.errorbar(
             station_distances_hypo,
             self.magnitudes,
-            yerr=[sta.magnitude_error for sta in self.station_magnitudes],
+            yerr=[sta.error for sta in self.station_magnitudes],
             marker="o",
             mec="k",
             mfc="k",
@@ -145,9 +139,9 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
 
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
-    seconds_before: PositiveFloat = Field(
-        default=2.0,
-        ge=1.0,
+    noise_window: PositiveFloat = Field(
+        default=5.0,
+        ge=1.5,
         description="Waveforms to extract before P phase arrival. The noise amplitude "
         "is extracted from before the P phase arrival, with 0.5 s padding.",
     )
@@ -174,6 +168,11 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
         description="The estimator to use for calculating the local magnitude.",
     )
 
+    export_mseed: Path | None = Field(
+        default=None,
+        description="Path to export the processed mseed traces to.",
+    )
+
     _model: LocalMagnitudeModel = PrivateAttr()
 
     @model_validator(mode="after")
@@ -187,63 +186,77 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
                 return True
         return False
 
-    async def add_magnitude(self, squirrel: Squirrel, event: EventDetection) -> None:
+    async def add_magnitude(
+        self, waveform_provider: WaveformProvider, event: EventDetection
+    ) -> None:
         model = self._model
 
         traces = await event.receivers.get_waveforms_restituted(
-            squirrel,
-            seconds_before=self.seconds_before,
+            waveform_provider.get_squirrel(),
+            seconds_before=self.noise_window,
             seconds_after=self.seconds_after,
-            seconds_fade=self.taper_seconds,
+            seconds_taper=self.taper_seconds,
             quantity=model.restitution_quantity,
-            cut_off_fade=False,
+            channels=waveform_provider.channel_selector,
             phase=None,
+            cut_off_taper=False,
             filter_clipped=True,
         )
         if not traces:
             logger.warning("No restituted traces found for event %s", event.time)
             return
 
+        if model.max_amplitude == "wood-anderson":
+            traces = await asyncio.gather(
+                *[
+                    asyncio.to_thread(
+                        tr.transfer,
+                        transfer_function=WOOD_ANDERSON,
+                        freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
+                        tfade=self.taper_seconds,
+                        cut_off_fading=False,
+                        demean=True,
+                        invert=False,
+                    )
+                    for tr in traces
+                ]
+            )
+        elif model.max_amplitude == "wood-anderson-old":
+            traces = await asyncio.gather(
+                *[
+                    asyncio.to_thread(
+                        tr.transfer,
+                        transfer_function=WOOD_ANDERSON_OLD,
+                        freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
+                        tfade=self.taper_seconds,
+                        cut_off_fading=False,
+                        demean=True,
+                        invert=False,
+                    )
+                    for tr in traces
+                ]
+            )
+
         if model.highpass_freq is not None:
             for tr in traces:
-                tr.highpass(order=4, corner=model.highpass_freq)
+                await asyncio.to_thread(
+                    tr.highpass, order=4, corner=model.highpass_freq
+                )
         if model.lowpass_freq is not None:
             for tr in traces:
-                tr.lowpass(order=4, corner=model.lowpass_freq)
+                await asyncio.to_thread(tr.lowpass, order=4, corner=model.lowpass_freq)
 
-        if model.max_amplitude == "wood-anderson":
-            traces = [
-                await asyncio.to_thread(
-                    tr.transfer,
-                    transfer_function=WOOD_ANDERSON,
-                    freqlimits=(0.5, 1.0, 100.0, 200.0),
-                    tfade=self.taper_seconds,
-                    cut_off_fading=True,
-                    demean=True,
-                    invert=False,
-                )
-                for tr in traces
-            ]
-        elif model.max_amplitude == "wood-anderson-old":
-            traces = [
-                await asyncio.to_thread(
-                    tr.transfer,
-                    transfer_function=WOOD_ANDERSON_OLD,
-                    freqlimits=(0.5, 1.0, 100.0, 200.0),
-                    tfade=self.taper_seconds,
-                    cut_off_fading=True,
-                    demean=True,
-                    invert=False,
-                )
-                for tr in traces
-            ]
-        else:
-            for tr in traces:
-                tr.chop(
-                    tr.tmin + self.taper_seconds,
-                    tr.tmax - self.taper_seconds,
-                    inplace=True,
-                )
+        for tr in traces:
+            await asyncio.to_thread(
+                tr.chop,
+                tr.tmin + self.taper_seconds,
+                tr.tmax - self.taper_seconds,
+            )
+
+        if self.export_mseed is not None:
+            file_name = self.export_mseed / f"{time_to_path(event.time)}.mseed"
+            logger.debug("saving restituted mseed traces to %s", file_name)
+            await asyncio.to_thread(io.save, traces, str(file_name))
 
         grouped_traces = []
         receivers = []
@@ -258,9 +271,5 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             event=event,
             min_snr=self.min_signal_noise_ratio,
         )
-
-        if not np.isfinite(local_magnitude.average):
-            logger.warning("Local magnitude is NaN, skipping event %s", event.time)
-            return
 
         event.add_magnitude(local_magnitude)
