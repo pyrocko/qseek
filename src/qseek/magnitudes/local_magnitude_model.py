@@ -99,10 +99,11 @@ class Range(NamedTuple):
 class StationLocalMagnitude(NamedTuple):
     station: NSL
     magnitude: float
-    magnitude_error: float
+    error: float
     peak_amp: float
     distance_epi: float
     distance_hypo: float
+    snr: float = 0.0
 
 
 class LocalMagnitudeModel:
@@ -175,8 +176,12 @@ class LocalMagnitudeModel:
 
         try:
             traces = _COMPONENT_MAP[self.component](traces)
-        except (KeyError, AttributeError):
-            logger.debug("Could not get channels for %s", receiver.nsl.pretty)
+        except (KeyError, AttributeError) as exc:
+            logger.warning(
+                "Could get all required channels for %s: %s",
+                receiver.nsl.pretty,
+                str(exc),
+            )
             return None
         if not traces:
             return None
@@ -210,8 +215,9 @@ class LocalMagnitudeModel:
         return StationLocalMagnitude(
             station=sta.station_nsl,
             magnitude=magnitude,
-            magnitude_error=(magnitude_error_upper + abs(magnitude_error_lower)) / 2,
+            error=(magnitude_error_upper + abs(magnitude_error_lower)) / 2,
             peak_amp=sta.peak,
+            snr=sta.snr,
             distance_epi=sta.distance_epi,
             distance_hypo=sta.distance_hypo,
         )
