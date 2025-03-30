@@ -1,6 +1,6 @@
 # Qseek
 
-*The friendly earthquake detector*
+*The wholesome earthquake detector*
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
@@ -10,7 +10,7 @@
 [![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/qseek/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
 
-Qseek is a data-driven earthquake detection and localisation framework for large seismic data sets. The framework is based on a stacking and migration approach, a beamforming method. It combines neural network phase annotations with an iterative octree localisation approach for efficient and accurate localisation of seismic events.
+Qseek is a data-driven earthquake detection and localisation framework driven by machine-learning and designed for large seismic data sets. The method is based on a stacking and migration approach, a beamforming method. It combines neural network phase annotations with an iterative octree localisation approach for accurate localisation of seismicity.
 
 Key features are of the earthquake detection and localisation framework are:
 
@@ -19,16 +19,15 @@ Key features are of the earthquake detection and localisation framework are:
   * [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
   * [OBSTransformer (Niksejel and Zahng, 2024)](https://doi.org/10.1093/gji/ggae049)
   * LFEDetect
-* Octree localisation approach for efficient and accurate search
+* Octree localisation for efficient and accurate search
 * Different velocity models:
   * Constant velocity
   * 1D Layered velocity model
   * 3D fast-marching velocity model (NonLinLoc compatible)
-* Extraction of earthquake event features:
-  * Local magnitudes (ML), different attenuation models
-  * Moment Magnitudes (MW) based on modelled peak ground motions
+* Earthquake magnitudes and other features:
+  * Local magnitudes (ML) with different attenuation models
+  * Moment Magnitudes (MW) based on modelled attenuation curves ([Dahm et al., 2024](https://doi.org/10.26443/seismica.v3i2.1205))
   * Different ground motion attributes (e.g. PGA, PGV, ...)
-* Automatic extraction of modelled and picked travel times
 * Station Corrections
   * station specific corrections (SST)
   * source specific station corrections (SSST)
@@ -37,7 +36,7 @@ Qseek is built on top of [Pyrocko](https://pyrocko.org).
 
 ## Documentation
 
-For more information check out the documentation at <https://pyrocko.github.io/qseek/>.
+An online is available at <https://pyrocko.github.io/qseek/>.
 
 ## Installation
 
@@ -49,7 +48,7 @@ pip install git+https://github.com/pyrocko/qseek
 
 ## Project Initialisation
 
-Show the default config.
+Print the default config.
 
 ```sh
 qseek config
@@ -86,7 +85,7 @@ pre-commit install
 
 Please cite Qseek as:
 
-> Marius Paul Isken, Peter Niemz, Jannes Münchmeyer, Sebastian Heimann, Simone Cesca, Torsten Dahm, Qseek: A data-driven Framework for Machine-Learning Earthquake Detection, Localization and Characterization, Seismica, 2024, *submitted*
+> Isken, M., Niemz, P., Münchmeyer, J., Büyükakpınar, P., Heimann, S., Cesca, S., Vasyura-Bathke, H., & Dahm, T. (2025). Qseek: A data-driven Framework for Automated Earthquake Detection, Localization and Characterization. Seismica, 4(1). <https://doi.org/10.26443/seismica.v4i1.1283>
 
 ## License
 
