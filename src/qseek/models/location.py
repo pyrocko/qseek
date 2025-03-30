@@ -228,7 +228,7 @@ class Location(BaseModel):
     def __hash__(self) -> int:
         return hash(self.location_hash())
 
-    def as_tuple(self) -> tuple[float, float, float, float, float]:
+    def as_tuple(self) -> tuple[float, float, float, float, float, float]:
         return (
             self.lat,
             self.lon,
