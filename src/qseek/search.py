@@ -1012,21 +1012,21 @@ class SearchTraces:
                     receivers=image.stations,
                 )
 
-                arrival_times = [arr.time if arr else None for arr in arrivals_model]
-                station_delays = []
-
                 if parent.station_corrections:
-                    for nsl in image.stations.get_all_nsl():
+                    for arrival, nsl in zip(
+                        arrivals_model, image.stations.get_all_nsl(), strict=True
+                    ):
                         delay = parent.station_corrections.get_delay(
-                            nsl,
-                            image.phase,
-                            node=source_node,
+                            nsl, image.phase, node=source_node
                         )
-                        station_delays.append(timedelta(seconds=delay))
+                        if arrival and delay:
+                            arrival.time += timedelta(seconds=delay)
+
+                arrival_times = [arr.time if arr else None for arr in arrivals_model]
 
                 arrivals_observed = image.search_phase_arrivals(
                     event_time=time,
-                    modelled_arrivals=[arr if arr else None for arr in arrival_times],
+                    modelled_arrivals=arrival_times,
                     threshold=parent.pick_confidence_threshold,
                 )
 

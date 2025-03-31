@@ -53,26 +53,37 @@ class LocalMagnitude(EventMagnitude):
         receivers: list[Receiver],
         grouped_traces: list[list[Trace]],
         min_snr: float = 3.0,
+        max_station_std: float = 3.0,
     ) -> Self:
         self = cls(model=model.model_name())
 
         for traces, receiver in zip(grouped_traces, receivers, strict=True):
-            station_magnitude = model.get_station_magnitude(
+            mag = model.get_station_magnitude(
                 event=event,
                 traces=traces,
                 receiver=receiver,
                 min_snr=min_snr,
             )
-            if station_magnitude is None:
+            if mag is None:
                 continue
-            self.station_magnitudes.append(station_magnitude)
+            self.station_magnitudes.append(mag)
 
         if not self.station_magnitudes:
             logger.warning("No station magnitudes found for event %s", event.time)
             return self
 
-        magnitudes = np.array([sta.magnitude for sta in self.station_magnitudes])
+        std = np.std([sta.magnitude for sta in self.station_magnitudes])
+        unclean_mean = np.mean([sta.magnitude for sta in self.station_magnitudes])
 
+        for mag in self.station_magnitudes.copy():
+            if np.abs(mag.magnitude - unclean_mean) > max_station_std * std:
+                logger.warning(
+                    "%s magnitude removed due to high std",
+                    mag.station,
+                )
+                self.station_magnitudes.remove(mag)
+
+        magnitudes = np.array([sta.magnitude for sta in self.station_magnitudes])
         median = np.median(magnitudes)
         self.average = float(median)
         self.error = float(np.median(np.abs(magnitudes - median)))  # MAD
@@ -116,6 +127,12 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
         description="Minimum signal-to-noise ratio for the local magnitude estimation. "
         "The noise amplitude is extracted from before the P phase arrival,"
         " with 0.5 s padding.",
+    )
+    max_station_std: float = Field(
+        default=3.0,
+        ge=0.0,
+        description="Maximum standard deviation of the station magnitudes to include "
+        "in the local magnitude estimation.",
     )
 
     model: ModelName = Field(
@@ -225,6 +242,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             receivers=receivers,
             event=event,
             min_snr=self.min_signal_noise_ratio,
+            max_station_std=self.max_station_std,
         )
 
         event.add_magnitude(local_magnitude)
