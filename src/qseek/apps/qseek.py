@@ -93,16 +93,22 @@ snuffler_rundir = snuffler.add_argument(
     help="path of the existing rundir",
 )
 snuffler.add_argument(
-    "--show-picks",
+    "--show-observed",
     action="store_true",
     default=False,
-    help="load and show picks in snuffler",
+    help="show observed picks",
+)
+snuffler.add_argument(
+    "--show-modelled",
+    action="store_true",
+    default=False,
+    help="show modelled picks",
 )
 snuffler.add_argument(
     "--show-semblance",
     action="store_true",
     default=False,
-    help="show semblance trace in snuffler",
+    help="show stacked semblance trace",
 )
 
 
@@ -276,12 +282,20 @@ def main() -> None:
         case "snuffler":
             search = Search.load_rundir(args.rundir)
             squirrel = search.data_provider.get_squirrel()
-            show_picks = args.show_picks
+            show_observed = args.show_observed
+            show_modelled = args.show_modelled
             if args.show_semblance:
                 squirrel.add([str(search._rundir / "semblance.mseed")])
+
+            markers = None
+            if show_observed or show_modelled:
+                markers = search.catalog.get_pyrocko_markers(
+                    modelled=show_modelled, observed=show_observed
+                )
+
             squirrel.snuffle(
-                events=None if show_picks else search.catalog.as_pyrocko_events(),
-                markers=search.catalog.get_pyrocko_markers() if show_picks else None,
+                events=None if show_observed else search.catalog.as_pyrocko_events(),
+                markers=markers,
                 stations=search.stations.as_pyrocko_stations(),
             )
 
