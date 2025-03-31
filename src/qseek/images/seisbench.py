@@ -107,7 +107,7 @@ class PhaseNetImage(WaveformImage):
             search_trace.ydata,
             height=threshold,
             prominence=threshold,
-            distance=int(detection_blinding_seconds * 1 / search_trace.deltat),
+            distance=int(detection_blinding_seconds * 1.0 / search_trace.deltat),
         )
         if False:
             import matplotlib.pyplot as plt

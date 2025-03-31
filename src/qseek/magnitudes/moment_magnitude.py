@@ -170,6 +170,7 @@ class MomentMagnitude(EventMagnitude):
         traces: list[list[Trace]],
         noise_padding: float = 0.5,
         min_snr: float = 3.0,
+        max_station_std: float = 3.0,
     ) -> None:
         for receiver, rcv_traces in zip(receivers, traces, strict=False):
             try:
@@ -230,6 +231,18 @@ class MomentMagnitude(EventMagnitude):
         if not self.station_magnitudes:
             return
 
+        # Remove outliers by std
+        std = np.std([sta.magnitude for sta in self.station_magnitudes])
+        unclean_mean = np.mean([sta.magnitude for sta in self.station_magnitudes])
+
+        for mag in self.station_magnitudes.copy():
+            if np.abs(mag.magnitude - unclean_mean) > max_station_std * std:
+                logger.warning(
+                    "%s magnitude removed due to high std",
+                    mag.station,
+                )
+                self.station_magnitudes.remove(mag)
+
         magnitudes = np.array([sta.magnitude for sta in self.station_magnitudes])
         median = np.median(magnitudes)
         self.average = float(median)
@@ -263,6 +276,12 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
         description="Minimum signal-to-noise ratio for the magnitude estimation. "
         "The noise amplitude is extracted from before the P phase arrival,"
         " with 0.5 s padding.",
+    )
+    max_station_std: float = Field(
+        default=3.0,
+        ge=0.0,
+        description="Maximum standard deviation of the station magnitudes to include "
+        "in the local magnitude estimation.",
     )
 
     gf_store_dirs: list[DirectoryPath] = Field(
@@ -358,12 +377,17 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
             else:
                 for tr in traces:
                     await asyncio.to_thread(
-                        tr.lowpass, 4, store.frequency_range.max, demean=False
+                        tr.lowpass,
+                        4,
+                        store.frequency_range.max,
+                        demean=False,
                     )
 
             for tr in traces:
                 await asyncio.to_thread(
-                    tr.chop, tr.tmin + self.taper_seconds, tr.tmax - self.taper_seconds
+                    tr.chop,
+                    tr.tmin + self.taper_seconds,
+                    tr.tmax - self.taper_seconds,
                 )
 
             if self.export_mseed is not None:
@@ -386,6 +410,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 traces=grouped_traces,
                 peak_amplitude=definition.peak_amplitude,
                 min_snr=self.min_signal_noise_ratio,
+                max_station_std=self.max_station_std,
             )
 
         if not moment_magnitude.magnitude:
