@@ -193,23 +193,34 @@ class PhaseDetection(BaseModel):
             )
         return csv_dict
 
-    def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+    def as_pyrocko_markers(
+        self,
+        modelled: bool = True,
+        observed: bool = True,
+    ) -> list[marker.PhaseMarker]:
         """Convert the observed and modeled arrivals to a list of Pyrocko PhaseMarkers.
+
+        Args:
+            modelled (bool, optional): Include modelled arrival. Defaults to True.
+            observed (bool, optional): Include observed arrival. Defaults to True.
 
         Returns:
             list[marker.PhaseMarker]: List of Pyrocko PhaseMarker objects representing
                 the phase detection.
         """
-        phase_picks = [
-            marker.PhaseMarker(
-                nslc_ids=[()],  # Patched by Receiver.as_pyrocko_marker
-                tmax=self.model.time.timestamp(),
-                tmin=self.model.time.timestamp(),
-                kind=0,
-                phasename=f"{self.phase[-1]}mod",
-            )
-        ]
-        if self.observed:
+        if modelled:
+            phase_picks = [
+                marker.PhaseMarker(
+                    nslc_ids=[()],  # Patched by Receiver.as_pyrocko_marker
+                    tmax=self.model.time.timestamp(),
+                    tmin=self.model.time.timestamp(),
+                    kind=0,
+                    phasename=f"{self.phase[-1]}mod",
+                )
+            ]
+        else:
+            phase_picks = []
+        if observed and self.observed:
             phase_picks.append(
                 marker.PhaseMarker(
                     nslc_ids=[()],  # Patched by Receiver.as_pyrocko_marker
@@ -237,15 +248,26 @@ class Receiver(Station):
             arrival.observed is not None for arrival in self.phase_arrivals.values()
         )
 
-    def as_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+    def as_pyrocko_markers(
+        self,
+        modelled: bool = True,
+        observed: bool = True,
+    ) -> list[marker.PhaseMarker]:
         """Convert the phase arrivals to Pyrocko markers.
+
+        Args:
+            modelled (bool, optional): Include modelled arrivals. Defaults to True.
+            observed (bool, optional): Include observed arrivals. Defaults to True.
 
         Returns:
             A list of Pyrocko PhaseMarker objects.
         """
         picks = []
         for pick in chain.from_iterable(
-            (arr.as_pyrocko_markers() for arr in self.phase_arrivals.values())
+            (
+                arr.as_pyrocko_markers(modelled, observed)
+                for arr in self.phase_arrivals.values()
+            )
         ):
             pick.nslc_ids = [(*self.nsl, "*")]
             picks.append(pick)
@@ -516,14 +538,22 @@ class EventReceivers(BaseModel):
                 return receiver
         raise KeyError(f"cannot find station {nsl.pretty}")
 
-    def get_pyrocko_markers(self) -> list[marker.PhaseMarker]:
+    def get_pyrocko_markers(
+        self, modelled: bool = True, observed: bool = True
+    ) -> list[marker.PhaseMarker]:
         """Get a list of Pyrocko phase markers from all receivers.
+
+        Args:
+            modelled (bool, optional): Include modelled arrivals. Defaults to True.
+            observed (bool, optional): Include observed arrivals. Defaults to True.
 
         Returns:
             A list of Pyrocko phase markers.
         """
         return list(
-            chain.from_iterable((receiver.as_pyrocko_markers() for receiver in self))
+            chain.from_iterable(
+                (receiver.as_pyrocko_markers(modelled, observed) for receiver in self)
+            )
         )
 
     def __iter__(self) -> Iterator[Receiver]:
@@ -771,7 +801,6 @@ class EventDetection(Location):
         elif self._detection_idx is not None:
             if self._receiver_cache is None:
                 raise AttributeError("cannot fetch receivers without set rundir")
-            logger.debug("fetching receiver information from cache")
 
             try:
                 line = self._receiver_cache.get_line(self._detection_idx)
@@ -875,7 +904,11 @@ class EventDetection(Location):
             depth=self.effective_depth,
             magnitude=magnitude.average if magnitude else self.semblance,
             magnitude_type=magnitude.name if magnitude else "semblance",
-            extras={"semblance": self.semblance},
+            extras={
+                "semblance": self.semblance,
+                "n_stations": self.n_stations,
+                "n_picks": self.n_picks,
+            },
         )
 
     def get_csv_dict(self) -> dict[str, Any]:
@@ -910,8 +943,14 @@ class EventDetection(Location):
             csv_line.update(magnitude.csv_row())
         return csv_line
 
-    def get_pyrocko_markers(self) -> list[marker.EventMarker | marker.PhaseMarker]:
+    def get_pyrocko_markers(
+        self, modelled: bool = True, observed: bool = True
+    ) -> list[marker.EventMarker | marker.PhaseMarker]:
         """Get detections as Pyrocko markers.
+
+        Args:
+            modelled (bool, optional): Include modelled arrivals. Defaults to True.
+            observed (bool, optional): Include observed arrivals. Defaults to True.
 
         Returns:
             list[marker.EventMarker | marker.PhaseMarker]: Pyrocko markers
@@ -921,7 +960,7 @@ class EventDetection(Location):
         pyrocko_markers: list[marker.EventMarker | marker.PhaseMarker] = [
             marker.EventMarker(event)
         ]
-        for phase_pick in self.receivers.get_pyrocko_markers():
+        for phase_pick in self.receivers.get_pyrocko_markers(modelled, observed):
             phase_pick.set_event(event)
             pyrocko_markers.append(phase_pick)
         return pyrocko_markers

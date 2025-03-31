@@ -371,8 +371,16 @@ class EventCatalog(BaseModel):
         """
         return [det.as_pyrocko_event() for det in self.events]
 
-    def get_pyrocko_markers(self) -> list[EventMarker | PhaseMarker]:
+    def get_pyrocko_markers(
+        self,
+        modelled: bool = True,
+        observed: bool = True,
+    ) -> list[EventMarker | PhaseMarker]:
         """Get Pyrocko phase pick markers for all detections.
+
+        Args:
+            modelled (bool, optional): Include modelled picks. Defaults to True.
+            observed (bool, optional): Include observed picks. Defaults to True.
 
         Returns:
             list[EventMarker | PhaseMarker]: A list of Pyrocko PhaseMarker.
@@ -380,7 +388,7 @@ class EventCatalog(BaseModel):
         logger.info("loading Pyrocko markers...")
         pyrocko_markers = []
         for detection in self:
-            pyrocko_markers.extend(detection.get_pyrocko_markers())
+            pyrocko_markers.extend(detection.get_pyrocko_markers(modelled, observed))
         return pyrocko_markers
 
     def export_pyrocko_events(
