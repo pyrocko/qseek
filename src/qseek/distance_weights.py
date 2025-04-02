@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
 import numpy as np
 import pyrocko.orthodrome as od
-from lru import LRU
-from pydantic import BaseModel, ByteSize, Field, PositiveFloat, PrivateAttr
+from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
 
+from qseek.cache_lru import ArrayLRUCache
 from qseek.octree import get_node_coordinates
 from qseek.utils import alog_call
 
@@ -41,12 +41,8 @@ class DistanceWeights(BaseModel):
         default=True,
         description="Normalize the weights to the range [0, 1]. Default is True.",
     )
-    lut_cache_size: ByteSize = Field(
-        default=200 * MB,
-        description="Size of the LRU cache in bytes. Default is 200 MB.",
-    )
 
-    _node_lut: dict[bytes, np.ndarray] = PrivateAttr()
+    _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
     _cached_stations_indices: dict[str, int] = PrivateAttr()
     _station_coords_ecef: np.ndarray = PrivateAttr()
 
@@ -83,9 +79,7 @@ class DistanceWeights(BaseModel):
                 self.radius_meters,
             )
 
-        bytes_per_node = stations.n_stations * np.float32().itemsize
-        lru_cache_size = int(self.lut_cache_size / bytes_per_node)
-        self._node_lut = LRU(size=lru_cache_size)
+        self._node_lut = ArrayLRUCache(name="distance_weights", short_name="DW")
 
         sta_coords = stations.get_coordinates(system="geographic")
         self._station_coords_ecef = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
@@ -111,10 +105,6 @@ class DistanceWeights(BaseModel):
             return self.get_node_weights(node, stations)
         return self.calc_weights(distances)
 
-    def lut_fill_level(self) -> float:
-        """Return the fill level of the LUT as a float between 0.0 and 1.0."""
-        return len(self._node_lut) / self._node_lut.get_size()
-
     @alog_call
     async def get_weights(
         self, nodes: Sequence[Node], stations: Stations
@@ -137,13 +127,10 @@ class DistanceWeights(BaseModel):
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
-            cache_hits, cache_misses = node_lut.get_stats()
-            total_hits = cache_hits + cache_misses
-            cache_hit_rate = cache_hits / (total_hits or 1)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
-                self.lut_fill_level() * 100,
-                cache_hit_rate * 100,
+                node_lut.fill_level() * 100,
+                node_lut.hit_rate() * 100,
             )
             return await self.get_weights(nodes, stations)
 

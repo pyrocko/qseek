@@ -35,7 +35,7 @@ from pyrocko.guts import Float
 from pyrocko.trace import FrequencyResponse
 from typing_extensions import Self
 
-from qseek.stats import PROGRESS
+from qseek.stats import get_progress
 from qseek.utils import (
     ChannelSelector,
     ChannelSelectors,
@@ -733,32 +733,38 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         receivers = []
         receiver_traces = []
         magnitudes = []
-        status = PROGRESS.add_task(
-            f"Calculating Mw {reference_magnitude} amplitudes for depth {source_depth}",
-            total=n_sources,
-        )
-        for _ in range(n_sources):
-            targets = self._get_random_targets(target_distances, n_targets_per_source)
-            source = self._get_random_source(source_depth, reference_magnitude)
-            response = await asyncio.to_thread(engine.process, source, targets)
+        with get_progress() as progress:
+            status = progress.add_task(
+                f"Calculating Mw {reference_magnitude} amplitudes"
+                f" for depth {source_depth}",
+                total=n_sources,
+            )
+            for _ in range(n_sources):
+                targets = self._get_random_targets(
+                    target_distances, n_targets_per_source
+                )
+                source = self._get_random_source(source_depth, reference_magnitude)
+                response = await asyncio.to_thread(engine.process, source, targets)
 
-            traces: list[Trace] = response.pyrocko_traces()
-            for tr in traces:
-                tr.transfer(transfer_function=BruneResponse(duration=source.duration))
-                if self.frequency_range:
-                    if self.frequency_range.min > 0.0:
-                        tr.highpass(4, self.frequency_range.min, demean=False)
-                    if self.frequency_range.max < 1.0 / tr.deltat:
-                        tr.lowpass(4, self.frequency_range.max, demean=False)
+                traces: list[Trace] = response.pyrocko_traces()
+                for tr in traces:
+                    tr.transfer(
+                        transfer_function=BruneResponse(duration=source.duration)
+                    )
+                    if self.frequency_range:
+                        if self.frequency_range.min > 0.0:
+                            tr.highpass(4, self.frequency_range.min, demean=False)
+                        if self.frequency_range.max < 1.0 / tr.deltat:
+                            tr.lowpass(4, self.frequency_range.max, demean=False)
 
-            for nsl, grp_traces in itertools.groupby(
-                traces, key=lambda tr: tr.nslc_id[:3]
-            ):
-                receivers.append(_get_target(targets, nsl))
-                receiver_traces.append(list(grp_traces))
-                magnitudes.append(reference_magnitude)
-            PROGRESS.update(status, advance=1)
-        PROGRESS.remove_task(status)
+                for nsl, grp_traces in itertools.groupby(
+                    traces, key=lambda tr: tr.nslc_id[:3]
+                ):
+                    receivers.append(_get_target(targets, nsl))
+                    receiver_traces.append(list(grp_traces))
+                    magnitudes.append(reference_magnitude)
+                progress.update(status, advance=1)
+            progress.remove_task(status)
 
         try:
             collection = self.get_collection(source_depth)

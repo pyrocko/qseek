@@ -36,7 +36,8 @@ class PreProcessingStats(Stats):
     bytes_per_second: float = 0.0
     _queue: asyncio.Queue[WaveformBatch | None] | None = PrivateAttr(None)
 
-    _position: int = PrivateAttr(30)
+    _position = 30
+    _show_header = False
 
     def set_queue(self, queue: asyncio.Queue[WaveformBatch | None] | None) -> None:
         self._queue = queue
@@ -58,11 +59,12 @@ class PreProcessingStats(Stats):
     def _populate_table(self, table: Table) -> None:
         if not self._queue:
             return
-        prefix = "[bold red]" if self.queue_size <= 2 else ""
-        table.add_row("Queue", f"{prefix}{self.queue_size} / {self.queue_size_max}")
+        alert = self.queue_size <= 2
+        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
         table.add_row(
-            "Waveform processing",
-            f"{human_readable_bytes(self.bytes_per_second)}/s",
+            "[bold]Waveform PreProcessing[/bold]",
+            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
+            f" {human_readable_bytes(self.bytes_per_second) + '/s':>10}",
         )
 
 

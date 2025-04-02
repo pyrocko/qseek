@@ -14,10 +14,8 @@ from typing import TYPE_CHECKING, Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lru import LRU
 from pydantic import (
     BaseModel,
-    ByteSize,
     ConfigDict,
     Field,
     FilePath,
@@ -32,15 +30,15 @@ from pyrocko.cake import LayeredModel, PhaseDef, load_model, m2d
 from pyrocko.gf import meta
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
 
+from qseek.cache_lru import ArrayLRUCache
 from qseek.octree import get_node_coordinates
-from qseek.stats import PROGRESS
+from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
 from qseek.utils import (
     CACHE_DIR,
     PhaseDescription,
     alog_call,
     datetime_now,
-    human_readable_bytes,
 )
 
 if TYPE_CHECKING:
@@ -225,9 +223,7 @@ class TravelTimeTree(BaseModel):
 
     _cached_stations: Stations = PrivateAttr()
     _cached_station_indices: dict[str, int] = PrivateAttr({})
-    _node_lut: dict[bytes, np.ndarray] = PrivateAttr(
-        default_factory=lambda: LRU(LRU_CACHE_SIZE)
-    )
+    _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
 
     def calculate_tree(self) -> spit.SPTree:
         layered_model = self.earthmodel.layered_model
@@ -382,6 +378,10 @@ class TravelTimeTree(BaseModel):
         )
 
     async def init_lut(self, nodes: Sequence[Node], stations: Stations) -> None:
+        self._node_lut = ArrayLRUCache(
+            f"cake-ttt-{self.timing.id}",
+            short_name=self.timing.id,
+        )
         logger.info(
             "warming up traveltime LUT %s for %d stations and %d nodes",
             self.timing.definition,
@@ -393,10 +393,6 @@ class TravelTimeTree(BaseModel):
             sta.nsl.pretty: idx for idx, sta in enumerate(stations)
         }
         await self.fill_lut(nodes)
-
-    def lut_fill_level(self) -> float:
-        """Return the fill level of the LUT as a float between 0.0 and 1.0."""
-        return len(self._node_lut) / self._node_lut.get_size()
 
     async def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling traveltimes LUT for %d nodes", len(nodes))
@@ -444,13 +440,10 @@ class TravelTimeTree(BaseModel):
         if fill_nodes:
             await self.fill_lut(fill_nodes)
 
-            cache_hits, cache_misses = node_lut.get_stats()
-            total_hits = cache_hits + cache_misses
-            cache_hit_rate = cache_hits / (total_hits or 1)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
-                self.lut_fill_level() * 100,
-                cache_hit_rate * 100,
+                node_lut.fill_level() * 100,
+                node_lut.hit_rate() * 100,
             )
             return await self.get_travel_times(nodes, stations)
 
@@ -491,17 +484,18 @@ class TravelTimeTree(BaseModel):
             coordinates.append(np.asarray(node_receivers_distances).T)
 
         n_nodes = len(coordinates)
-        status = PROGRESS.add_task(
-            f"interpolating {self.timing.definition} travel times "
-            f"for {n_nodes} nodes",
-            total=len(coordinates),
-        )
-        travel_times = []
-        for coords in coordinates:
-            travel_times.append(self._interpolate_traveltimes_sptree(coords))
-            PROGRESS.update(status, advance=1)
+        with get_progress() as progress:
+            status = progress.add_task(
+                f"interpolating {self.timing.definition} travel times "
+                f"for {n_nodes} nodes",
+                total=len(coordinates),
+            )
+            travel_times = []
+            for coords in coordinates:
+                travel_times.append(self._interpolate_traveltimes_sptree(coords))
+                progress.update(status, advance=1)
 
-        PROGRESS.remove_task(status)
+            progress.remove_task(status)
 
         return np.asarray(travel_times).astype(float)
 
@@ -537,10 +531,6 @@ class CakeTracer(RayTracer):
         default=True,
         description="Trim earth model to max depth of the octree.",
     )
-    lut_cache_size: ByteSize = Field(
-        default=2 * GiB,
-        description="Size of the LUT cache. Default is `2G`.",
-    )
 
     _travel_time_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
@@ -570,22 +560,6 @@ class CakeTracer(RayTracer):
         stations: Stations,
         rundir: Path | None = None,
     ) -> None:
-        global LRU_CACHE_SIZE
-
-        bytes_per_node = stations.n_stations * np.float32().itemsize
-        n_trees = len(self.phases)
-        LRU_CACHE_SIZE = int(self.lut_cache_size / bytes_per_node / n_trees)
-
-        # TODO: This should be total number nodes. Not only leaf nodes.
-        node_cache_fraction = LRU_CACHE_SIZE / octree.total_number_nodes()
-        logging.info(
-            "limiting traveltime LUT size to %d nodes (%s),"
-            " caching %.1f%% of possible octree nodes",
-            LRU_CACHE_SIZE,
-            human_readable_bytes(self.lut_cache_size),
-            node_cache_fraction * 100,
-        )
-
         cached_trees = self._load_cached_trees()
         octree.reset()
 
