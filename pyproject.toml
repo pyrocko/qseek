@@ -33,19 +33,17 @@ dependencies = [
     "numpy>=1.17.3, <2",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
-    "seisbench>=0.5.0",
-    "pydantic>=2.5.0",
+    "seisbench>=0.8.0",
+    "pydantic>=2.11.0",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
-    "lru-dict@git+https://github.com/miili/lru-dict#egg=feature/lru-subclassing",
+    "lru-dict@git+https://github.com/miili/lru-dict@feature/lru-subclassing",
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
     "psutil>=5.9",
     "aiofiles>=23.0",
-    "typer >=0.12.3",
-    "scikit-fmm >= 2024.05",
 ]
 
 classifiers = [
@@ -62,10 +60,8 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit>=3.4", "ruff>=0.3.0", "pytest>=7.4", "pytest-asyncio>=0.21"]
-
 docs = [
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.6",
     "mkdocstrings[python]>=0.25",
     "griffe-pydantic>=1.1.0",
     "markdown-exec>=1.9",
@@ -127,3 +123,11 @@ markers = ["plot: plot figures in tests"]
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "ruff>=0.11.2",
+]

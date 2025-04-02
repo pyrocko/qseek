@@ -229,16 +229,8 @@ except ImportError:
 
 
 def main() -> None:
-    from qseek.utils import CACHE_DIR, load_insights, setup_rich_logging
-
-    load_insights()
-    from rich import box
-    from rich.progress import Progress
-    from rich.table import Table
-
     from qseek.console import console
-    from qseek.search import Search
-    from qseek.server import WebServer
+    from qseek.utils import CACHE_DIR, load_insights, setup_rich_logging
 
     args = parser.parse_args()
 
@@ -246,12 +238,19 @@ def main() -> None:
     loop_debug = log_level < logging.INFO
     setup_rich_logging(level=log_level)
 
+    load_insights()
+
     match args.command:
         case "config":
+            from qseek.search import Search
+
             config = Search()
             console.print_json(config.model_dump_json(by_alias=False, indent=2))
 
         case "search":
+            from qseek.search import Search
+            from qseek.server import WebServer
+
             search = Search.from_config(args.config)
 
             webserver = WebServer(search)
@@ -264,6 +263,9 @@ def main() -> None:
             asyncio.run(run(), debug=loop_debug)
 
         case "continue":
+            from qseek.search import Search
+            from qseek.server import WebServer
+
             search = Search.load_rundir(args.rundir)
             if search._progress.time_progress:
                 console.rule(f"Continuing search from {search._progress.time_progress}")
@@ -280,6 +282,8 @@ def main() -> None:
             asyncio.run(run(), debug=loop_debug)
 
         case "snuffler":
+            from qseek.search import Search
+
             search = Search.load_rundir(args.rundir)
             squirrel = search.data_provider.get_squirrel()
             show_observed = args.show_observed
@@ -300,6 +304,10 @@ def main() -> None:
             )
 
         case "feature-extraction":
+            from rich.progress import Progress
+
+            from qseek.search import Search
+
             search = Search.load_rundir(args.rundir)
             search.data_provider.prepare(search.stations)
             recalculate_magnitudes = args.recalculate
@@ -358,6 +366,9 @@ def main() -> None:
             asyncio.run(worker(), debug=loop_debug)
 
         case "serve":
+            from qseek.search import Search
+            from qseek.server import WebServer
+
             search = Search.load_rundir(args.rundir)
             webserver = WebServer(search)
 
@@ -371,6 +382,9 @@ def main() -> None:
             shutil.rmtree(CACHE_DIR)
 
         case "export":
+            from rich import box
+            from rich.table import Table
+
             from qseek.exporters.base import Exporter
 
             def show_table():
@@ -419,6 +433,9 @@ def main() -> None:
                 )
 
         case "modules":
+            from rich import box
+            from rich.table import Table
+
             from qseek.corrections.base import TravelTimeCorrections
             from qseek.features.base import FeatureExtractor
             from qseek.magnitudes.base import EventMagnitudeCalculator
@@ -472,6 +489,7 @@ def main() -> None:
             import json
 
             from qseek.models.catalog import EventCatalog
+            from qseek.search import Search
 
             if not args.folder.exists():
                 raise EnvironmentError(f"folder {args.folder} does not exist")
