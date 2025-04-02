@@ -38,7 +38,7 @@ dependencies = [
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
-    "lru-dict@git+https://github.com/miili/lru-dict@feature/lru-subclassing",
+    "lru-dict @ git+https://github.com/miili/lru-dict@feature/lru-subclassing",
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
