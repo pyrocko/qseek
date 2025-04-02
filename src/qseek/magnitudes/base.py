@@ -34,11 +34,11 @@ class StationLocalMagnitude(NamedTuple):
 class EventMagnitude(BaseModel):
     magnitude: Literal["EventMagnitude"] = "EventMagnitude"
 
-    average: float = Field(
+    average: float | None = Field(
         default=math.nan,
         description="The network's magnitude, as median of" " all station magnitudes.",
     )
-    error: float = Field(
+    error: float | None = Field(
         default=math.nan,
         description="Average error of the magnitude from median absolute deviation.",
     )
