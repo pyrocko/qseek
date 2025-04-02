@@ -23,6 +23,7 @@ from pydantic import (
 )
 from scipy import stats
 
+from qseek.cache_lru import CACHES
 from qseek.corrections.corrections import StationCorrectionType
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
@@ -210,9 +211,15 @@ class SearchStats(Stats):
         )
         table.add_row(
             "Resources",
-            f"CPU {self.cpu_percent:.1f}%, "
+            f"CPU {self.cpu_percent:>6.1f}%, "
             f"RAM {human_readable_bytes(self.memory_used, decimal=True)}"
             f"/{self.memory_total.human_readable(decimal=True)}",
+        )
+        table.add_row(
+            "Caches",
+            f"{human_readable_bytes(CACHES.get_fill_bytes())}"
+            f" {CACHES.get_fill_level()*100:.1f}% - "
+            f"{' '.join(cache.__rich__() for cache in CACHES)}",
         )
         table.add_row(
             "Remaining Time",
@@ -293,18 +300,18 @@ class Search(BaseModel):
         description="Minimum number of stations required for"
         " detection and localization.",
     )
-    absorbing_boundary: Literal[False, "with_surface", "without_surface"] = Field(
+    ignore_boundary: Literal[False, "with_surface", "without_surface"] = Field(
         default=False,
         description="Ignore events that are inside the first root node layer of"
         " the octree. If `with_surface`, all events inside the boundaries of the volume"
         " are absorbed. If `without_surface`, events at the surface are not absorbed.",
     )
-    absorbing_boundary_width: float | Literal["root_node_size"] = Field(
+    ignore_boundary_width: float | Literal["root_node_size"] = Field(
         default="root_node_size",
         description="Width of the absorbing boundary around the octree volume. "
         "If 'octree' the width is set to the root node size of the octree.",
     )
-    node_peak_interpolation: bool = Field(
+    node_interpolation: bool = Field(
         default=True,
         description="Interpolate intranode locations for detected events using radial"
         " basis functions. If `False`, the node center location is used for "
@@ -533,7 +540,10 @@ class Search(BaseModel):
         )
 
         if self.distance_weights:
-            self.distance_weights.prepare(self.stations, self.octree)
+            self.distance_weights.prepare(
+                self.stations,
+                self.octree,
+            )
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -937,9 +947,9 @@ class SearchTraces:
                 logger.error("Hit a non-leaf node!")
                 continue
 
-            if parent.absorbing_boundary and source_node.is_inside_border(
-                with_surface=parent.absorbing_boundary == "with_surface",
-                border_width=parent.absorbing_boundary_width,
+            if parent.ignore_boundary and source_node.is_inside_border(
+                with_surface=parent.ignore_boundary == "with_surface",
+                border_width=parent.ignore_boundary_width,
             ):
                 continue
             refine_nodes.update(source_node)
@@ -983,13 +993,13 @@ class SearchTraces:
 
             octree.map_semblance(semblance_event)
             source_node = octree.nodes[node_idx]
-            if parent.absorbing_boundary and source_node.is_inside_border(
-                with_surface=parent.absorbing_boundary == "with_surface",
-                border_width=parent.absorbing_boundary_width,
+            if parent.ignore_boundary and source_node.is_inside_border(
+                with_surface=parent.ignore_boundary == "with_surface",
+                border_width=parent.ignore_boundary_width,
             ):
                 continue
 
-            if parent.node_peak_interpolation:
+            if parent.node_interpolation:
                 source_location = await octree.interpolate_max_semblance(source_node)
             else:
                 source_location = source_node.as_location()

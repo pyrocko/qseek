@@ -4,6 +4,7 @@ import asyncio
 import glob
 import logging
 from datetime import datetime, timedelta
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal
 
@@ -78,7 +79,8 @@ class SquirrelStats(Stats):
     bytes_per_seconds: float = 0.0
 
     _queue: asyncio.Queue[Batch | None] | None = PrivateAttr(None)
-    _position: int = PrivateAttr(20)
+    _position = 20
+    _show_header = False
 
     def set_queue(self, queue: asyncio.Queue[Batch | None]) -> None:
         self._queue = queue
@@ -98,11 +100,12 @@ class SquirrelStats(Stats):
         return self._queue.maxsize
 
     def _populate_table(self, table: Table) -> None:
-        prefix = "[bold red]" if self.queue_size <= 1 else ""
-        table.add_row("Queue", f"{prefix}{self.queue_size} / {self.queue_size_max}")
+        alert = self.queue_size <= 2
+        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
         table.add_row(
-            "Waveform loading",
-            f"{human_readable_bytes(self.bytes_per_seconds)}/s",
+            "[bold]Waveform loading[/bold]",
+            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
+            f" {human_readable_bytes(self.bytes_per_seconds) + '/s':>10}",
         )
 
 
@@ -180,22 +183,22 @@ class PyrockoSquirrel(WaveformProvider):
                 "loading squirrel environment from %s",
                 self.environment or "home directory",
             )
-            try:
-                squirrel = Squirrel(
-                    env=str(self.environment.expanduser())
-                    if self.environment
-                    else None,
-                    persistent=self.persistent,
-                    n_threads=self.n_threads,
-                )
-            except TypeError:
+            squirrel_args = {
+                "env": str(self.environment.expanduser()) if self.environment else None,
+                "persistent": self.persistent,
+                "n_threads": self.n_threads,
+                "caching": "lru",
+            }
+
+            squirrel_sig = signature(Squirrel)
+            if "n_threads" not in squirrel_sig.parameters:
                 logger.warning("Squirrel does not support n_threads")
-                squirrel = Squirrel(
-                    env=str(self.environment.expanduser())
-                    if self.environment
-                    else None,
-                    persistent=self.persistent,
-                )
+                squirrel_args.pop("n_threads")
+            if "caching" not in squirrel_sig.parameters:
+                logger.warning("Squirrel does not support caching='lru'")
+                squirrel_args.pop("caching")
+
+            squirrel = Squirrel(**squirrel_args)
 
             if self.waveform_dirs:
                 self.scan_waveform_dirs(squirrel)
@@ -208,9 +211,12 @@ class PyrockoSquirrel(WaveformProvider):
         return self._squirrel
 
     def scan_waveform_dirs(self, squirrel: Squirrel) -> None:
+        if not self.waveform_dirs:
+            return
+
         logger.info(
             "scanning waveform directories %s",
-            ".".join(map(str, self.waveform_dirs)),
+            ", ".join(map(str, self.waveform_dirs)),
         )
         paths = []
         for path in self.waveform_dirs:

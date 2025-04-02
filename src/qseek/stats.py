@@ -4,7 +4,8 @@ import asyncio
 import logging
 import random
 import string
-from typing import Any, Iterator, NoReturn
+from contextlib import contextmanager
+from typing import Any, Generator, Iterator, NoReturn
 from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, PrivateAttr
@@ -18,8 +19,20 @@ logger = logging.getLogger(__name__)
 
 STATS_INSTANCES: WeakValueDictionary[str, Stats] = WeakValueDictionary()
 
-
+_PROGRESS = None
 PROGRESS = Progress()
+
+
+@contextmanager
+def get_progress() -> Generator[Progress, None, None]:
+    if _PROGRESS is None:
+        with Progress() as progress:
+            yield progress
+    else:
+        try:
+            yield _PROGRESS
+        finally:
+            pass
 
 
 def titelify(name: str) -> str:
@@ -29,6 +42,9 @@ def titelify(name: str) -> str:
 class RuntimeStats(BaseModel):
     @classmethod
     async def live_view(cls) -> NoReturn:
+        global _PROGRESS
+        _PROGRESS = Progress()
+
         def generate_grid() -> Table:
             """Make a new table."""
             table = Table(show_header=False, box=None, expand=True)
@@ -37,11 +53,14 @@ class RuntimeStats(BaseModel):
                 key=lambda s: s._position,
             )
             for stats in stats_instaces:
-                table.add_row(
-                    f"{stats.__class__.__name__.removesuffix('Stats')}", style="bold"
-                )
+                if stats._show_header:
+                    table.add_row(
+                        f"{stats.__class__.__name__.removesuffix('Stats')}",
+                        style="bold",
+                    )
                 table.add_section()
                 stats._populate_table(table)
+
             grid = Table.grid(expand=True)
             grid.add_row(PROGRESS)
             grid.add_row(Panel(table, title="QSeek"))
@@ -61,6 +80,7 @@ class RuntimeStats(BaseModel):
 
 class Stats(BaseModel):
     _position: int = PrivateAttr(1)
+    _show_header: bool = PrivateAttr(True)
 
     @classmethod
     def get_subclasses(cls) -> set[type[Stats]]:

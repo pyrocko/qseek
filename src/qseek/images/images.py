@@ -49,7 +49,8 @@ class ImageFunctionsStats(Stats):
     _queue: asyncio.Queue[Tuple[WaveformImages | WaveformBatch] | None] | None = (
         PrivateAttr(None)
     )
-    _position: int = PrivateAttr(40)
+    _position = 40
+    _show_header = False
 
     def set_queue(
         self,
@@ -72,11 +73,12 @@ class ImageFunctionsStats(Stats):
         return self._queue.maxsize
 
     def _populate_table(self, table: Table) -> None:
-        prefix = "[bold red]" if self.queue_size <= 2 else ""
-        table.add_row("Queue", f"{prefix}{self.queue_size} / {self.queue_size_max}")
+        alert = self.queue_size <= 2
+        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
         table.add_row(
-            "Waveform processing",
-            f"{human_readable_bytes(self.bytes_per_second)}/s",
+            "[bold]Phase annotation[/bold]",
+            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
+            f" {human_readable_bytes(self.bytes_per_second) + '/s':>10}",
         )
 
 
