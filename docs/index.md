@@ -5,11 +5,11 @@ Qseek is an earthquake detection and localisation framework. It combines modern 
 The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https://github.com/seisbench/seisbench), it is highly-performant and can search massive data sets for seismic activity efficiently.
 
 !!! abstract "Citation"
-    Marius Paul Isken, Peter Niemz, Jannes Münchmeyer, Sebastian Heimann, Simone Cesca, Torsten Dahm, Qseek: A data-driven Framework for Machine-Learning Earthquake Detection, Localization and Characterization, Seismica, 2024, *submitted*
+    Isken, M., Niemz, P., Münchmeyer, J., Büyükakpınar, P., Heimann, S., Cesca, S., Vasyura-Bathke, H., & Dahm, T. (2025). Qseek: A data-driven Framework for Automated Earthquake Detection, Localization and Characterization. Seismica, 4(1). [https://doi.org/10.26443/seismica.v4i1.1283](https://doi.org/10.26443/seismica.v4i1.1283)
 
 ![Reykjanes detections](images/reykjanes-demo.webp)
 
-*Seismic swarm activity at Iceland, Reykjanes Peninsula during a 2020 unrest. 15,000+ earthquakes detected, outlining a dike intrusion, preceeding the 2021 Fagradasfjall eruption. Visualized in [Pyrocko Sparrow](https://pyrocko.org).*
+*Seismic swarm activity at Iceland, Reykjanes Peninsula during a 2020 unrest. 30k+ earthquakes detected, outlining a dike intrusion, preceeding the 2021 Fagradasfjall eruption.*
 
 ## Features
 
@@ -34,6 +34,6 @@ The detector is leveraging [Pyrocko](https://pyrocko.org) and [SeisBench](https:
 
 ## Build with
 
-![Pyrocko](https://pyrocko.org/docs/current/_images/pyrocko_shadow.png){ width="100" }
-![SeisBench](https://seisbench.readthedocs.io/en/stable/_images/seisbench_logo_subtitle_outlined.svg){ width="400" padding-right="40" }
-![GFZ](https://www.gfz-potsdam.de/fileadmin/gfz/GFZ.svg){ width="100" }
+[![GFZ](https://www.gfz.de/fileadmin/gfz/medien_kommunikation/Infothek/Mediathek/Bilder/GFZ/GFZ_Logo/GFZ-Wortbildmarke-DE-Helmholtzdunkelblau_RGB.svg){ width="240" padding-right="100" }](https://gfz.de)
+[![SeisBench](https://seisbench.readthedocs.io/en/stable/_images/seisbench_logo_subtitle_outlined.svg){ width="200" padding-right="100" }](https://github.com/seisbench/seisbench)
+[![Pyrocko](https://pyrocko.org/docs/current/_images/pyrocko_shadow.png){ width="45" padding-right="100" }](https://pyrocko.org)
