@@ -3,11 +3,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import numpy as np
 from obspy import Stream
-from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr, confloat
+from pydantic import (
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    PrivateAttr,
+)
 from pyrocko import obspy_compat
 from pyrocko.trace import NoData
 from scipy import signal
@@ -210,7 +215,7 @@ class SeisBench(ImageFunction):
         },
         description="Phase mapping from SeisBench PhaseNet to Lassie phases.",
     )
-    weights: dict[PhaseName, confloat(ge=0.0)] = Field(
+    weights: dict[PhaseName, Annotated[float, Field(strict=True, ge=0.0)]] = Field(
         default={
             "P": 1.0,
             "S": 1.0,
@@ -218,7 +223,7 @@ class SeisBench(ImageFunction):
         description="Weights for each phase.",
     )
 
-    _seisbench_model: WaveformModel = PrivateAttr(None)
+    _seisbench_model: WaveformModel | None = PrivateAttr(None)
 
     @property
     def seisbench_model(self) -> WaveformModel:

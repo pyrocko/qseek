@@ -302,17 +302,20 @@ class Search(BaseModel):
     )
     ignore_boundary: Literal[False, "with_surface", "without_surface"] = Field(
         default=False,
+        alias="absorbing_boundary",
         description="Ignore events that are inside the first root node layer of"
         " the octree. If `with_surface`, all events inside the boundaries of the volume"
         " are absorbed. If `without_surface`, events at the surface are not absorbed.",
     )
     ignore_boundary_width: float | Literal["root_node_size"] = Field(
         default="root_node_size",
+        alias="absorbing_boundary_width",
         description="Width of the absorbing boundary around the octree volume. "
         "If 'octree' the width is set to the root node size of the octree.",
     )
     node_interpolation: bool = Field(
         default=True,
+        alias="node_peak_interpolation",
         description="Interpolate intranode locations for detected events using radial"
         " basis functions. If `False`, the node center location is used for "
         "the event hypocentre.",
@@ -1043,12 +1046,12 @@ class SearchTraces:
                 phase_detections = [
                     PhaseDetection(
                         phase=image.phase,
-                        model=modeled_time,
+                        model=modelled_time,
                         observed=obs,
                     )
-                    if modeled_time
+                    if modelled_time
                     else None
-                    for modeled_time, obs in zip(
+                    for modelled_time, obs in zip(
                         arrivals_model,
                         arrivals_observed,
                         strict=True,

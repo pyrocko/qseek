@@ -76,11 +76,11 @@ class SemblanceStats(Stats):
         )
         table.add_row(
             "Trace stacking",
-            f"{human_readable_bytes(self.bytes_per_second)}/s",
+            f"{human_readable_bytes(self.bytes_per_second) + '/s':>10}",
         )
         table.add_row(
             "Semblance size",
-            f"{human_readable_bytes(self.semblance_size_bytes)}/"
+            f"{human_readable_bytes(self.semblance_size_bytes):>6}/"
             f"{human_readable_bytes(self.semblance_allocation_bytes)}"
             f" ({self.last_nodes_stacked} nodes)",
         )

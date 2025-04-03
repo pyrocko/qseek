@@ -28,7 +28,13 @@ from typing import (
 
 import numpy as np
 import psutil
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ByteSize, constr
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ByteSize,
+    StringConstraints,
+)
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
@@ -48,7 +54,7 @@ SDS_PYROCKO_SCHEME = (
     ".%(tmin_year)s.%(julianday)s"
 )
 
-PhaseDescription = Annotated[str, constr(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
+PhaseDescription = Annotated[str, StringConstraints(pattern=r"[a-zA-Z]*:[a-zA-Z]*")]
 
 QUEUE_SIZE = 16
 CACHE_DIR = Path.home() / ".cache" / "qseek"

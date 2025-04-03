@@ -4,10 +4,10 @@ import logging
 from asyncio import Queue
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, AsyncIterator, Literal
+from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr, constr
+from pydantic import BaseModel, Field, PrivateAttr, StringConstraints
 from pyrocko.trace import Trace
 
 from qseek.stats import Stats
@@ -93,12 +93,15 @@ class WaveformBatch:
 class WaveformProvider(BaseModel):
     provider: Literal["WaveformProvider"] = "WaveformProvider"
 
-    channel_selector: list[constr(to_upper=True, max_length=2, min_length=2)] | None = (
-        Field(
-            default=None,
-            min_length=1,
-            description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
-        )
+    channel_selector: (
+        list[
+            Annotated[str, StringConstraints(to_upper=True, max_length=2, min_length=2)]
+        ]
+        | None
+    ) = Field(
+        default=None,
+        min_length=1,
+        description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
     )
 
     _queue: Queue[WaveformBatch | None] = PrivateAttr(default_factory=lambda: Queue())
