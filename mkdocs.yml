@@ -10,17 +10,27 @@ theme:
   name: material
   custom_dir: docs/theme
   palette:
-  - scheme: default
-    primary: blue grey
+  # Palette toggle for automatic mode
+  - media: "(prefers-color-scheme)"
     toggle:
-       icon: material/eye
-       name: Switch to dark mode
-    # Palette toggle for dark mode
-  - scheme: slate
-    primary: blue grey
-    toggle:
-      icon: material/eye-outline
+      icon: material/brightness-auto
       name: Switch to light mode
+
+  # Palette toggle for light mode
+  - media: "(prefers-color-scheme: light)"
+    scheme: default
+    primary: black
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+
+  # Palette toggle for dark mode
+  - media: "(prefers-color-scheme: dark)"
+    scheme: slate
+    primary: blue grey
+    toggle:
+      icon: material/brightness-4
+      name: Switch to system preference
   icon:
     repo: fontawesome/brands/git-alt
   logo: images/logo.webp
@@ -92,12 +102,12 @@ plugins:
 
 
 nav:
-  - The Earthquake Detector:
+  - Home:
     - Welcome: index.md
-    - Getting Started 🚀: getting_started.md
+    - Quick Start 🚀: getting_started.md
     - Visualising Detections: visualizing_results.md
     - Benchmark: benchmark.md
-  - Configuration:
+  - Reference:
     - The Search: components/configuration.md
     - Station Metadata: components/station_metadata.md
     - Waveform Data: components/waveform_data.md
