@@ -62,7 +62,7 @@ def test_sptree_model(travel_time_tree: TravelTimeTree):
         file = model.save(tmp)
 
         model2 = TravelTimeTree.load(file)
-        model2._load_sptree()
+        model2._get_sptree()
 
     source = Location(
         lat=0.0,
@@ -133,9 +133,15 @@ async def test_travel_times_constant_velocity(
 
     await cake_tracer.prepare(octree, stations)
 
-    cake_travel_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
+    cake_travel_times = await cake_tracer.get_travel_times(
+        "cake:P",
+        octree.nodes,
+        stations,
+    )
     constant_traveltimes = await constant.get_travel_times(
-        "constant:P", octree.nodes, stations
+        "constant:P",
+        octree.nodes,
+        stations,
     )
 
     nan_mask = np.isnan(cake_travel_times)

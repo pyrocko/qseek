@@ -559,7 +559,7 @@ class CakeTracer(RayTracer):
         receiver_vmin = np.array(
             [self.get_min_velocity_at_depth(sta.effective_depth) for sta in stations]
         )
-        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 2.0)
+        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 4.0)
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,
