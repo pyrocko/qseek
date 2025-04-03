@@ -173,7 +173,7 @@ class SearchStats(Stats):
 
     def log(self) -> None:
         log_str = (
-            f"{self.batch_count+1}/{self.batch_count_total or '?'} {self.batch_time}"
+            f"{self.batch_count + 1}/{self.batch_count_total or '?'} {self.batch_time}"
         )
         logger.info(
             "%s%% processed - batch %s in %s",
@@ -197,10 +197,15 @@ class SearchStats(Stats):
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
             f" ([bold]{self.batch_count}[/bold]/{self.batch_count_total or '?'},"
-            f' {self.batch_time.strftime("%Y-%m-%d %H:%M:%S")})',
+            f" {self.batch_time.strftime('%Y-%m-%d %H:%M:%S')})",
         )
         table.add_row(
-            "Stations",
+            "Remaining Time",
+            f"[bold]{tts(self.time_remaining)}[/bold], "
+            f"finish at {datetime.now() + self.time_remaining:%c}",  # noqa: DTZ005
+        )
+        table.add_row(
+            "Current Stations",
             f"{self.current_stations}/{self.total_stations}"
             f" ({self.current_networks}/{self.total_networks} networks)",
         )
@@ -218,13 +223,8 @@ class SearchStats(Stats):
         table.add_row(
             "Caches",
             f"{human_readable_bytes(CACHES.get_fill_bytes())}"
-            f" {CACHES.get_fill_level()*100:.1f}% - "
+            f" {CACHES.get_fill_level() * 100:.1f}% - "
             f"{' '.join(cache.__rich__() for cache in CACHES)}",
-        )
-        table.add_row(
-            "Remaining Time",
-            f"{tts(self.time_remaining)}, "
-            f"finish at {datetime.now() + self.time_remaining:%c}",  # noqa: DTZ005
         )
 
 
@@ -500,7 +500,7 @@ class Search(BaseModel):
                 f"theoretical travel time range {self._shift_range} and "
                 f"cummulative window padding of {self._window_padding}."
                 " Increase the window_length time to at least "
-                f"{self._shift_range +2*self._window_padding }"
+                f"{self._shift_range + 2 * self._window_padding}"
             )
 
         logger.info("using trace window padding: %s", self._window_padding)
