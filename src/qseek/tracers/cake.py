@@ -10,7 +10,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Annotated, Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,8 +20,8 @@ from pydantic import (
     Field,
     FilePath,
     PrivateAttr,
+    StringConstraints,
     ValidationError,
-    constr,
     model_validator,
 )
 from pyrocko import orthodrome as od
@@ -95,7 +95,9 @@ class EarthModel(BaseModel):
         default="nd",
         description="Format of the velocity model. `nd` or `hyposat` is supported.",
     )
-    crust2_profile: constr(to_upper=True) | tuple[float, float] = Field(
+    crust2_profile: (
+        Annotated[str, StringConstraints(to_upper=True)] | tuple[float, float]
+    ) = Field(
         default="",
         description="Crust2 profile name or a tuple of `(lat, lon)` coordinates.",
     )
@@ -129,15 +131,6 @@ class EarthModel(BaseModel):
             raise AttributeError("No velocity model or crust2 profile defined.")
         return self
 
-    def trim(self, depth_max: float) -> None:
-        """Trim the model to a maximum depth.
-
-        Args:
-            depth_max (float): Maximum depth in meters.
-        """
-        logger.debug("trimming earth model to %.1f km depth", depth_max / KM)
-        self._layered_model = self.layered_model.extract(depth_max=depth_max)
-
     @property
     def layered_model(self) -> LayeredModel:
         return self._layered_model
@@ -147,6 +140,9 @@ class EarthModel(BaseModel):
 
     def get_profile_vs(self) -> np.ndarray:
         return self.layered_model.profile("vs")
+
+    def get_profile_depth(self) -> np.ndarray:
+        return self.layered_model.profile("z")
 
     def save_plot(self, filename: Path) -> None:
         """Plot the layered model and save the figure to a file.
@@ -172,7 +168,7 @@ class EarthModel(BaseModel):
 
 
 class Timing(BaseModel):
-    definition: constr(strip_whitespace=True) = "P,p"
+    definition: Annotated[str, StringConstraints(strip_whitespace=True)] = "P,p"
 
     def as_phase_defs(self) -> list[PhaseDef]:
         return [PhaseDef(definition=phase) for phase in self.definition.split(",")]
@@ -348,34 +344,20 @@ class TravelTimeTree(BaseModel):
         model._file = file
         return model
 
-    def _load_sptree(self) -> spit.SPTree:
-        if not self._file or not self._file.exists():
-            raise FileNotFoundError(f"file {self._file} not found")
-
-        with (
-            zipfile.ZipFile(self._file, "r") as archive,
-            TemporaryDirectory() as temp_dir,
-        ):
-            archive.extract("model.sptree", path=temp_dir)
-            return spit.SPTree(filename=str(Path(temp_dir) / "model.sptree"))
-
     def _get_sptree(self) -> spit.SPTree:
         if self._sptree is None:
-            self._sptree = self._load_sptree()
+            if not self._file or not self._file.exists():
+                raise FileNotFoundError(f"file {self._file} not found")
+
+            with (
+                zipfile.ZipFile(self._file, "r") as archive,
+                TemporaryDirectory() as temp_dir,
+            ):
+                archive.extract("model.sptree", path=temp_dir)
+                self._sptree = spit.SPTree(
+                    filename=str(Path(temp_dir) / "model.sptree")
+                )
         return self._sptree
-
-    def _interpolate_traveltimes_sptree(
-        self,
-        coordinates: np.ndarray | list[float],
-    ) -> np.ndarray:
-        sptree = self._get_sptree()
-        timing = self.timing.as_pyrocko_timing()
-
-        coordinates = np.atleast_2d(np.ascontiguousarray(coordinates))
-        return timing.evaluate(
-            lambda phase: sptree.interpolate_many,
-            coordinates,
-        )
 
     async def init_lut(self, nodes: Sequence[Node], stations: Stations) -> None:
         self._node_lut = ArrayLRUCache(
@@ -439,7 +421,6 @@ class TravelTimeTree(BaseModel):
 
         if fill_nodes:
             await self.fill_lut(fill_nodes)
-
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
                 node_lut.fill_level() * 100,
@@ -459,7 +440,6 @@ class TravelTimeTree(BaseModel):
         source_depths = np.array(
             [node.as_location().effective_depth for node in octree]
         )
-
         return await self._interpolate_travel_times(
             receiver_distances, receiver_depths, source_depths
         )
@@ -470,6 +450,7 @@ class TravelTimeTree(BaseModel):
         receiver_depths: np.ndarray,
         source_depths: np.ndarray,
     ) -> np.ndarray:
+        sptree = self._get_sptree()
         coordinates = []
         for distances, source_depth in zip(
             receiver_distances,
@@ -481,18 +462,18 @@ class TravelTimeTree(BaseModel):
                 np.full_like(distances, source_depth),
                 distances,
             )
-            coordinates.append(np.asarray(node_receivers_distances).T)
+            coordinates.append(np.asarray(node_receivers_distances).T.copy())
 
         n_nodes = len(coordinates)
+        travel_times = []
         with get_progress() as progress:
             status = progress.add_task(
-                f"interpolating {self.timing.definition} travel times "
-                f"for {n_nodes} nodes",
+                f"interpolating {self.timing.definition} travel times"
+                f" for {n_nodes} nodes",
                 total=len(coordinates),
             )
-            travel_times = []
             for coords in coordinates:
-                travel_times.append(self._interpolate_traveltimes_sptree(coords))
+                travel_times.append(sptree.interpolate_many(np.atleast_2d(coords)))
                 progress.update(status, advance=1)
 
             progress.remove_task(status)
@@ -527,10 +508,6 @@ class CakeTracer(RayTracer):
         default_factory=EarthModel,
         description="Earth model to calculate travel times for.",
     )
-    trim_earth_model_depth: bool = Field(
-        default=True,
-        description="Trim earth model to max depth of the octree.",
-    )
 
     _travel_time_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
 
@@ -549,10 +526,13 @@ class CakeTracer(RayTracer):
     def get_available_phases(self) -> tuple[str, ...]:
         return tuple(self.phases.keys())
 
-    def get_vmin(self) -> float:
+    def get_min_velocity_at_depth(self, depth: float) -> float:
         earthmodel = self.earthmodel
-        vel = np.concatenate((earthmodel.get_profile_vp(), earthmodel.get_profile_vs()))
-        return float((vel[vel != 0.0]).min())
+        depths = earthmodel.get_profile_depth()
+
+        vp_interpolated = np.interp(depth, depths, earthmodel.get_profile_vp())
+        vs_interpolated = np.interp(depth, depths, earthmodel.get_profile_vs())
+        return min(vp_interpolated, vs_interpolated)
 
     async def prepare(
         self,
@@ -565,15 +545,21 @@ class CakeTracer(RayTracer):
 
         distances = surface_distances(octree.leaf_nodes, stations)
         source_depths = np.asarray(octree.depth_bounds) - octree.location.elevation
-        receiver_depths = np.fromiter((sta.effective_depth for sta in stations), float)
+        receiver_depths = np.array([sta.effective_depth for sta in stations])
 
         distance_bounds = (distances.min(), distances.max())
         source_depth_bounds = (source_depths.min(), source_depths.max())
-        receiver_depths_bounds = (receiver_depths.min(), receiver_depths.max())
-        # FIXME: Time tolerance is too hardcoded. Is 5x a good value?
-        time_tolerance = octree.smallest_node_size() / (self.get_vmin() * 5.0)
-        # if self.trim_earth_model_depth:
-        #     self.earthmodel.trim(-source_depth_bounds[1])
+
+        receiver_depth_padding = np.ptp(receiver_depths) * 0.01
+        receiver_depths_bounds = (
+            receiver_depths.min() - receiver_depth_padding,
+            receiver_depths.max() + receiver_depth_padding,
+        )
+        # FIXME: Time tolerance is too hardcoded. Is 2x a good value?
+        receiver_vmin = np.array(
+            [self.get_min_velocity_at_depth(sta.effective_depth) for sta in stations]
+        )
+        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 2.0)
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,
@@ -588,6 +574,7 @@ class CakeTracer(RayTracer):
             for tree in cached_trees:
                 if tree.is_suited(timing=timing, **traveltime_tree_args):
                     logger.info("using cached travel time tree for %s", phase_descr)
+                    logger.debug("from file %s", tree.filename)
                     break
             else:
                 logger.info("pre-calculating travel time tree for %s", phase_descr)
