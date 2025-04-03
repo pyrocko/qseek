@@ -28,8 +28,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.2
         env:
-          CIBW_SKIP: "cp313-*"
-          # CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_SKIP: "cp313-* pp* *musllinux*"
+          CIBW_BUILD_FRONTEND: "build[uv]"
           # CIBW_BUILD: "cp310-manylinux_x86_64"  # For debugging
         with:
           config-file: "{package}/pyproject.toml"
