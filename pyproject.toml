@@ -15,9 +15,7 @@ dynamic = ["version"]
 
 description = "qseek - Data-driven Earthquake Detection"
 readme = "README.md"
-authors = [
-    { name = "Marius Paul Isken", email = "mi@gfz.de" },
-]
+authors = [{ name = "Marius Paul Isken", email = "mi@gfz.de" }]
 maintainers = [{ name = "Marius Paul Isken", email = "mi@gfz.de" }]
 keywords = [
     "seismology",
@@ -30,7 +28,7 @@ keywords = [
 ]
 
 dependencies = [
-    "numpy>=1.17.3, <2",
+    "numpy>=1.26, <2",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
     "seisbench>=0.8.0",
