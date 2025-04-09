@@ -57,7 +57,7 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         self.size_bytes = 0
         self._max_size_bytes = size_bytes
         self.name = name
-        self.short_name = short_name
+        self.short_name = short_name or name
         CACHES.add(self)
 
     def set_name(self, name: str) -> None:
@@ -68,10 +68,6 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         """Set the short name of the cache for display."""
         self.short_name = short_name
 
-    def get_short_name(self) -> str:
-        """Get the short name of the cache."""
-        return self.short_name or self.name
-
     def set_size_bytes(self, size_bytes: int) -> None:
         """Set the size of the cache in bytes."""
         self._max_size_bytes = size_bytes
@@ -80,14 +76,16 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         """Get the size of the cache in bytes."""
         return self.size_bytes
 
-    def __setitem__(self, key, value: np.ndarray):
+    def __setitem__(self, key, value: np.ndarray) -> None:
         self.size_bytes += value.nbytes
         self._all_caches_bytes += value.nbytes
+        value.setflags(write=False)
+
         if self.size_bytes < self._max_size_bytes:
             self.set_size(len(self) + 1)
         super().__setitem__(key, value)
 
-    def _remove_callback(self, key, value):
+    def _remove_callback(self, key, value) -> None:
         self.size_bytes -= value.nbytes
         self._all_caches_bytes -= value.nbytes
         if self.size_bytes > self._max_size_bytes:
@@ -117,7 +115,7 @@ class ArrayLRUCache(LRU, Generic[_KT]):
     def __rich__(self) -> str:
         bar_idx = self.fill_level() // (1 / NBARS)
         bar_idx = min(len(BARS) - 1, int(bar_idx))
-        return f"{self.get_short_name()}:{BARS[bar_idx]}"
+        return f"{self.short_name}:{BARS[bar_idx]}"
 
 
 class CachesStats(BaseModel):

@@ -124,5 +124,4 @@ class WaveformProvider(BaseModel):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> AsyncIterator[WaveformBatch]:
-        yield
         raise NotImplementedError

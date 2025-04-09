@@ -21,15 +21,20 @@ logger = logging.getLogger(__name__)
 
 
 class DistanceWeights(BaseModel):
+    shape: Literal["exponential", "gaussian"] = Field(
+        default="gaussian",
+        description="Shape of the decay function.",
+    )
     exponent: float = Field(
-        default=3.0,
-        description="Exponent of the spatial decay function. Default is 3.",
+        default=0.5,
+        description="Exponent of the spatial decay function. Default is 0.5.",
         ge=0.0,
     )
     radius_meters: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Cutoff distance for the spatial decay function in meters."
-        " Default is 8000.",
+        " Default is 8000. 'mean_interstation' uses the mean interstation distance"
+        " for the radius.",
     )
     waterlevel: float = Field(
         default=0.0,
@@ -53,24 +58,34 @@ class DistanceWeights(BaseModel):
             self._station_coords_ecef - node_coords[:, np.newaxis], axis=2
         )
 
-    def calc_weights_exp(self, distances: np.ndarray) -> np.ndarray:
+    def calc_weights_gaussian(self, distances: np.ndarray) -> np.ndarray:
         exp = self.exponent
-        # radius = distances.min(axis=1)[:, np.newaxis]
         radius = self.radius_meters
-        return np.exp(-(distances**exp) / (radius**exp))
+        weights = np.exp(-((distances / radius) ** exp))
+        if self.normalize:
+            weights /= weights.max()
+        return weights
 
     def calc_weights(self, distances: np.ndarray) -> np.ndarray:
         exp = self.exponent
         radius = self.radius_meters
-        weights = (1 - self.waterlevel) / (
-            1 + (distances / radius) ** exp
-        ) + self.waterlevel
+        waterlevel = self.waterlevel
+
+        weights = (1 - waterlevel) / (1 + (distances / radius) ** exp) + waterlevel
         if self.normalize:
             weights /= weights.max()
         return weights
 
     def prepare(self, stations: Stations, octree: Octree) -> None:
         logger.info("preparing distance weights")
+
+        if self.shape == "gaussian":
+            if self.radius_meters == "mean_interstation":
+                logger.warning(
+                    "gaussian distance weighting uses mean interstation"
+                    " distance as radius"
+                )
+            self.radius_meters = "mean_interstation"
 
         if self.radius_meters == "mean_interstation":
             self.radius_meters = stations.mean_interstation_distance()
@@ -93,9 +108,7 @@ class DistanceWeights(BaseModel):
         distances = self.get_distances(nodes)
         node_lut = self._node_lut
         for node, sta_distances in zip(nodes, distances, strict=True):
-            sta_distances = sta_distances.astype(np.float32)
-            sta_distances.setflags(write=False)
-            node_lut[node.hash()] = sta_distances
+            node_lut[node.hash()] = sta_distances.astype(np.float32)
 
     def get_node_weights(self, node: Node, stations: list[Station]) -> np.ndarray:
         try:
@@ -134,4 +147,4 @@ class DistanceWeights(BaseModel):
             )
             return await self.get_weights(nodes, stations)
 
-        return self.calc_weights(distances)
+        return self.calc_weights_gaussian(distances)

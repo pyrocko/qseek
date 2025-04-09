@@ -388,9 +388,9 @@ class TravelTimeTree(BaseModel):
 
         node_lut = self._node_lut
         for node, times in zip(nodes, traveltimes, strict=True):
-            times = times.astype(np.float32)
-            times.setflags(write=False)
-            node_lut[node.hash()] = times
+            if np.all(np.isnan(times)):
+                logger.warning("no traveltimes for node %s", node)
+            node_lut[node.hash()] = times.astype(np.float32)
 
     async def get_travel_times(
         self,

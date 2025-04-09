@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 MB = 1024**2
 
 
-def next_ram_array_size(nbytes: int) -> int:
+def next_array_byte_size(nbytes: int) -> int:
     """Get the next RAM chunk size in 200 MB increments."""
     return int(np.ceil(nbytes / (256 * MB)) * (256 * MB)) // 4
 
@@ -164,10 +164,10 @@ class Semblance:
             )
         else:
             logger.info(
-                "re-allocating semblance memory: %s", human_readable_bytes(n_values * 4)
+                "reallocating semblance memory: %s", human_readable_bytes(n_values * 4)
             )
             old_semblance = self.semblance_unpadded.ravel()
-            next_size = next_ram_array_size(n_values * 4)
+            next_size = next_array_byte_size(n_values * 4)
             self.semblance_unpadded = np.zeros(next_size, dtype=np.float32)
             # copy old values
             if old_semblance.size:
