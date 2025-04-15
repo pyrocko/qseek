@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 KM = 1e3
-GiB = int(1024**3)
+GiB = 1024**3
 MAX_DBS = 16
 
 LRU_CACHE_SIZE = 2000
@@ -88,7 +88,7 @@ if not DEFAULT_VELOCITY_MODEL_FILE.exists():
 
 class EarthModel(BaseModel):
     filename: FilePath | None = Field(
-        default=DEFAULT_VELOCITY_MODEL_FILE,
+        default=Path("./model.nd"),
         description="Path to velocity model.",
     )
     format: Literal["nd", "hyposat"] = Field(
@@ -99,7 +99,7 @@ class EarthModel(BaseModel):
         Annotated[str, StringConstraints(to_upper=True)] | tuple[float, float]
     ) = Field(
         default="",
-        description="Crust2 profile name or a tuple of `(lat, lon)` coordinates.",
+        description="Crust2 profile name or `[lat, lon]` coordinates.",
     )
 
     raw_file_data: str | None = Field(
@@ -108,17 +108,22 @@ class EarthModel(BaseModel):
     )
     _layered_model: LayeredModel = PrivateAttr()
 
+    _raw_file_data: str | None = PrivateAttr(None)
+
     model_config = ConfigDict(ignored_types=(cached_property,))
 
     @model_validator(mode="after")
     def load_model(self) -> EarthModel:
         if self.filename is not None and self.raw_file_data is None:
             logger.info("loading velocity model from %s", self.filename)
-            self.raw_file_data = self.filename.read_text()
+            self._raw_file_data = self.filename.read_text()
 
         if self.raw_file_data is not None:
+            self._raw_file_data = self.raw_file_data
+
+        if self._raw_file_data is not None:
             with NamedTemporaryFile("w") as tmpfile:
-                tmpfile.write(self.raw_file_data)
+                tmpfile.write(self._raw_file_data)
                 tmpfile.flush()
                 self._layered_model = load_model(
                     tmpfile.name,
@@ -134,6 +139,10 @@ class EarthModel(BaseModel):
     @property
     def layered_model(self) -> LayeredModel:
         return self._layered_model
+
+    def fortify(self) -> None:
+        """Fortify the model for faster access."""
+        self.raw_file_data = self._raw_file_data
 
     def get_profile_vp(self) -> np.ndarray:
         return self.layered_model.profile("vp")
@@ -311,6 +320,7 @@ class TravelTimeTree(BaseModel):
         """
         file = path / self.filename if path.is_dir() else path
         logger.info("saving traveltimes to %s", file)
+        self.earthmodel.fortify()
 
         with zipfile.ZipFile(file, "w") as archive:
             archive.writestr(
@@ -318,7 +328,6 @@ class TravelTimeTree(BaseModel):
                 self.model_dump_json(
                     indent=2,
                     exclude={"earthmodel": {"filename"}},
-                    # include={"earthmodel": {"raw_file_data"}},
                 ),
             )
             with NamedTemporaryFile() as tmpfile:
@@ -559,14 +568,15 @@ class CakeTracer(RayTracer):
         receiver_vmin = np.array(
             [self.get_min_velocity_at_depth(sta.effective_depth) for sta in stations]
         )
-        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 4.0)
+        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 2.0)
+        spatial_tolerance = octree.smallest_node_size() / 2
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,
             "distance_bounds": distance_bounds,
             "source_depth_bounds": source_depth_bounds,
             "receiver_depth_bounds": receiver_depths_bounds,
-            "spatial_tolerance": octree.smallest_node_size() / 2,
+            "spatial_tolerance": spatial_tolerance,
             "time_tolerance": time_tolerance,
         }
 
@@ -577,7 +587,14 @@ class CakeTracer(RayTracer):
                     logger.debug("from file %s", tree.filename)
                     break
             else:
-                logger.info("pre-calculating travel time tree for %s", phase_descr)
+                logger.info(
+                    "pre-calculating travel time tree for %s"
+                    " with tolerances %.4f s and %.2f m",
+                    phase_descr,
+                    time_tolerance,
+                    spatial_tolerance,
+                )
+
                 tree = TravelTimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 

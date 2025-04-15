@@ -96,7 +96,7 @@ class SearchStats(Stats):
     @computed_field
     @property
     def time_remaining(self) -> timedelta:
-        if not self.batch_count:
+        if not self.batch_count or not self.batch_count_total:
             return timedelta()
 
         remaining_batches = self.batch_count_total - self.batch_count
@@ -243,26 +243,28 @@ class Search(BaseModel):
         description="Data provider for waveform data.",
     )
     pre_processing: PreProcessing = Field(
-        default=PreProcessing(root=[Downsample(), Bandpass()]),
+        default_factory=lambda: PreProcessing(root=[Downsample(), Bandpass()]),
         description="Pre-processing steps for waveform data.",
     )
 
     octree: Octree = Field(
-        default=Octree(),
+        default_factory=Octree,
         description="Octree volume for the search.",
     )
 
     image_functions: ImageFunctions = Field(
-        default=ImageFunctions(),
+        default_factory=ImageFunctions,
         description="Image functions for waveform processing and "
         "phase on-set detection.",
     )
     ray_tracers: RayTracers = Field(
-        default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
+        default_factory=lambda: RayTracers(
+            root=[tracer() for tracer in RayTracer.get_subclasses()]
+        ),
         description="List of ray tracers for travel time calculation.",
     )
     distance_weights: DistanceWeights | None = Field(
-        default=DistanceWeights(),
+        default_factory=DistanceWeights,
         validation_alias=AliasChoices("spatial_weights", "distance_weights"),
         description="Spatial weights for distance weighting.",
     )
@@ -271,11 +273,11 @@ class Search(BaseModel):
         description="Apply station corrections extracted from a previous run.",
     )
     magnitudes: list[EventMagnitudeCalculatorType] = Field(
-        default=[],
+        default_factory=list,
         description="Magnitude calculators to use.",
     )
     features: list[FeatureExtractorType] = Field(
-        default=[],
+        default_factory=list,
         description="Event features to extract.",
     )
 
@@ -526,9 +528,6 @@ class Search(BaseModel):
             None
         """
         logger.info("preparing search components")
-        asyncio.get_running_loop().set_exception_handler(
-            lambda loop, context: logger.error(context)
-        )
         self.stations.prepare(self.octree)
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
