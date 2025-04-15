@@ -59,7 +59,7 @@ async def save_traces_sds(
         )
         filename = str(sds_directory / SDS_TEMPLATE)
         tr_tmin = datetime.fromtimestamp(trace.tmin, tz=timezone.utc)
-        tr_julianday = (tr_tmin + timedelta(seconds=10.0)).timetuple().tm_yday
+        tr_julianday = (tr_tmin + timedelta(seconds=5.0)).timetuple().tm_yday
         fns = await asyncio.to_thread(
             save,
             [trace],
@@ -108,7 +108,12 @@ class SeedLink(WaveformProvider):
         description="Maximum wait time for new traces.",
     )
 
-    clients: list[SeedLinkClient] = Field(default=[SeedLinkClient()])
+    clients: list[SeedLinkClient] = Field(
+        default=[SeedLinkClient()],
+        min_length=1,
+        description="List of SeedLink clients to connect to. "
+        "If multiple clients are given, they will be used in parallel.",
+    )
     save_sds_archive: Path = Field(
         default=Path("./sds-seedlink"),
         description="Path to save MiniSeed in an SDS structure. Give a path to save "
@@ -120,7 +125,7 @@ class SeedLink(WaveformProvider):
     _saved_filenames: set[Path] = PrivateAttr(default_factory=set)
 
     def prepare(self, stations: Stations) -> None:
-        """Prepare the SeedLink client."""
+        logger.info("preparing SeedLink streaming")
         self._stats.set_seedlink(self)
         self.save_sds_archive.mkdir(parents=True, exist_ok=True)
 
@@ -135,7 +140,7 @@ class SeedLink(WaveformProvider):
         stations.weed_from_nsls(streaming_nsls)
 
         for client in self.clients:
-            client.prepare(stations)
+            client.prepare(timeout=self.timeout.total_seconds())
 
         for client in self.clients:
             client.start_streams()
@@ -148,6 +153,12 @@ class SeedLink(WaveformProvider):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> AsyncIterator[WaveformBatch]:
+        logger.info("waiting for first SeedLink traces")
+        while True:
+            await asyncio.sleep(1.0)
+            if sum(len(client.streams) for client in self.clients) > 0:
+                break
+
         start_time = datetime_now()
         i_batch = 0
 
@@ -155,7 +166,7 @@ class SeedLink(WaveformProvider):
             await asyncio.sleep(0)
             start_time_padded = start_time - window_padding
             end_time_padded = start_time + window_increment + window_padding
-            logger.info("streaming traces to %s", end_time_padded)
+            logger.info("awaiting waveforms until %s", end_time_padded)
             try:
                 seedlink_traces = await asyncio.gather(
                     *(

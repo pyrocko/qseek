@@ -16,7 +16,6 @@ from qseek.utils import NSL, datetime_now, human_readable_bytes
 if TYPE_CHECKING:
     from rich.table import Table
 
-    from qseek.models.station import Stations
 
 logger = logging.getLogger(__file__)
 
@@ -75,10 +74,29 @@ class SeedLinkStream(BaseModel):
 
 
 class StationSelection(BaseModel):
-    network: str = Field(default="1D", max_length=2)
-    station: str = Field(default="SYRAU", max_length=5)
-    location: str = Field(default="", max_length=2)
-    channel: str = Field(default="???", max_length=3)
+    network: str = Field(
+        default="1D",
+        min_length=1,
+        max_length=2,
+        pattern="[A-Z0-9]{2}",
+    )
+    station: str = Field(
+        default="SYRAU",
+        min_length=1,
+        max_length=5,
+        pattern="[A-Z0-9]",
+    )
+    location: str = Field(
+        default="",
+        max_length=2,
+        pattern="[A-Z0-9]{0,2}",
+    )
+    channel: str = Field(
+        default="???",
+        min_length=3,
+        max_length=3,
+        pattern="[A-Z?]",
+    )
 
     def seedlink_str(self) -> str:
         return f"{self.network}_{self.station}:{self.location}{self.channel}"
@@ -109,12 +127,12 @@ class SeedLinkData:
         """
         pretty_nslc = ".".join(trace.nslc_id)
         if self._trace is None:
-            logger.info("receiving new stream from %s", pretty_nslc)
+            logger.info("receiving new stream %s", pretty_nslc)
             self._trace = trace
 
         merged_traces = degapper([self._trace, trace])
         if len(merged_traces) != 1:
-            logger.warning("gap in trace %s", pretty_nslc)
+            logger.warning("gap in stream %s", pretty_nslc)
         # Only take the latest trace
         new_trace = merged_traces[-1]
 
@@ -163,6 +181,11 @@ class SeedLinkData:
     def length(self) -> timedelta:
         return self.end_time - self.start_time
 
+    @property
+    def delay(self) -> timedelta:
+        """Get the delay of the stream."""
+        return datetime_now() - self.end_time
+
     def is_online(self, timeout: float = 60.0) -> bool:
         """Check if the stream is online in the seconds.
 
@@ -207,7 +230,12 @@ class SeedLinkData:
                     timeout=(timeout_time - datetime_now()).total_seconds(),
                 )
             except asyncio.TimeoutError as exc:
-                logger.warning("no data received for %s", nslc_pretty)
+                logger.warning(
+                    "no data from %s with timeout %s s, stream has %.1f s delay",
+                    nslc_pretty,
+                    timeout,
+                    self.delay.total_seconds(),
+                )
                 raise TimeoutError("No data received in the given time window") from exc
 
         if self._trace is None:
@@ -233,15 +261,19 @@ class SeedLinkClientStats(BaseModel):
         default=0,
         description="Total number of bytes received from SeedLink.",
     )
-    last_data: datetime = Field(
+    last_packet: datetime = Field(
         default=datetime.min.replace(tzinfo=timezone.utc),
         description="Last time data was received from SeedLink.",
     )
 
     _seedlink_client: SeedLinkClient | None = PrivateAttr(default=None)
+    _timeout: float = PrivateAttr(default=60.0)
 
     def set_seedlink_client(self, client: SeedLinkClient) -> None:
         self._seedlink_client = client
+
+    def set_timeout(self, timeout: float) -> None:
+        self._timeout = timeout
 
     @computed_field
     @property
@@ -269,33 +301,54 @@ class SeedLinkClientStats(BaseModel):
     def online_stations(self) -> int:
         if not self._seedlink_client:
             return 0
-        return len({st.nsl for st in self._seedlink_client.streams if st.is_online()})
+        streams = self._seedlink_client.streams
+        return len({st.nsl for st in streams if st.is_online(self._timeout)})
+
+    @computed_field
+    @property
+    def min_delay(self) -> timedelta:
+        if not self._seedlink_client:
+            return timedelta(seconds=0)
+        streams = self._seedlink_client.streams
+        if not streams:
+            return timedelta(seconds=0)
+        return min([st.delay for st in streams])
 
     @computed_field
     @property
     def host(self) -> str:
         if not self._seedlink_client:
-            return ""
+            return "unknown:18000"
         return f"{self._seedlink_client.host}:{self._seedlink_client.port}"
 
+    def is_running(self) -> bool:
+        if not self._seedlink_client or not self._seedlink_client._task:
+            return False
+        return not self._seedlink_client._task.done()
+
+    def add_bytes(self, n_bytes: int) -> None:
+        self.received_bytes += n_bytes
+        self.last_packet = datetime_now()
+
     def add_table_row(self, table: Table) -> None:
-        age_data = datetime_now() - self.last_data
+        host, port = self.host.split(":")
+        sign = "↓" if self.is_running() else "[red bold]x[/red bold]"
         table.add_row(
             "Host",
-            f"{self.host}",
+            f"[bold]{host}[/bold]:{port}",
         )
         table.add_row(
             "Streams",
-            f"{human_readable_bytes(self.received_bytes)} rcvd, "
+            f"{sign} {human_readable_bytes(self.received_bytes)}, "
             f"{self.online_stations}/{self.total_stations} online, "
-            f"{age_data.total_seconds():.0f}s since last data",
+            f"{self.min_delay.total_seconds():.2f} s delay",
         )
 
 
 class SeedLinkClient(BaseModel):
     host: str = Field(
         default="geofon.gfz-potsdam.de",
-        description="SeedLink shostname.",
+        description="SeedLink server hostname or IP address.",
     )
     port: int = Field(
         default=18000,
@@ -314,6 +367,7 @@ class SeedLinkClient(BaseModel):
             StationSelection(network="WB", station="STC", location="", channel="HH?"),
             StationSelection(network="WB", station="VAC", location="", channel="HH?"),
         ],
+        min_length=1,
         description="List of stations to request streams from.",
     )
     buffer_length: timedelta = Field(
@@ -341,9 +395,9 @@ class SeedLinkClient(BaseModel):
         """Get the stats for this client."""
         return self._stats
 
-    def prepare(self, stations: Stations) -> None:
+    def prepare(self, timeout: float = 60.0) -> None:
         self._stats.set_seedlink_client(self)
-        self._stations = stations
+        self._stats.set_timeout(timeout)
 
     async def get_available_stations(self) -> list[SeedLinkStream]:
         logger.info("requesting station list from %s", self._slink_host)
@@ -356,9 +410,13 @@ class SeedLinkClient(BaseModel):
 
         proc = await asyncio.subprocess.create_subprocess_exec(
             "slinktool",
-            "-o",
+            "-nt",  # reconnect timeout
+            "60",
+            "-k",  # heartbeat
+            "10",
+            "-o",  # output to stdout
             "-",
-            "-S",
+            "-S",  # selectors
             selectors,
             self._slink_host,
             stdout=asyncio.subprocess.PIPE,
@@ -367,8 +425,8 @@ class SeedLinkClient(BaseModel):
         try:
             while True:
                 data = await proc.stdout.read(RECORD_LENGTH)
-                self._stats.last_data = datetime_now()
-                self._stats.received_bytes += len(data)
+                self._stats.add_bytes(len(data))
+
                 with NamedTemporaryFile() as tmpfile:
                     tmpfile.write(data)
                     tmpfile.flush()
@@ -388,6 +446,7 @@ class SeedLinkClient(BaseModel):
                     *trace.nslc_id,
                     self._slink_host,
                 )
+
                 station_data = self._stream_data[trace.nslc_id]
                 station_data.add_trace(
                     trace,
@@ -395,7 +454,6 @@ class SeedLinkClient(BaseModel):
                 )
         finally:
             proc.terminate()
-            raise
 
     def start_streams(self) -> None:
         if self._task is not None:
