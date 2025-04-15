@@ -23,7 +23,7 @@ from typing_extensions import Self
 
 from qseek.models.station import Stations
 from qseek.stats import Stats
-from qseek.utils import QUEUE_SIZE, datetime_now, human_readable_bytes, to_datetime
+from qseek.utils import NSL, QUEUE_SIZE, datetime_now, human_readable_bytes, to_datetime
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
@@ -230,7 +230,9 @@ class PyrockoSquirrel(WaveformProvider):
         logger.info("preparing squirrel waveform provider")
         self._stations = stations
         squirrel = self.get_squirrel()
-        stations.weed_from_squirrel_waveforms(squirrel)
+        available_codes = squirrel.get_codes(kind="waveform")
+        available_nsls = {NSL(*code[0:3]) for code in available_codes}
+        stations.weed_from_nsls(available_nsls)
 
     async def iter_batches(
         self,

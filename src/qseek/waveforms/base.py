@@ -101,7 +101,7 @@ class WaveformProvider(BaseModel):
     ) = Field(
         default=None,
         min_length=1,
-        description="Channel selector for waveforms, " "e.g. `['HH', 'EN']`.",
+        description="Channel selector for waveforms, e.g. `['HH', 'EN']`.",
     )
 
     _queue: Queue[WaveformBatch | None] = PrivateAttr(default_factory=lambda: Queue())
