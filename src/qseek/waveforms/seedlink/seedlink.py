@@ -142,9 +142,6 @@ class SeedLink(WaveformProvider):
         for client in self.clients:
             client.prepare(timeout=self.timeout.total_seconds())
 
-        for client in self.clients:
-            client.start_streams()
-
     async def iter_batches(
         self,
         window_increment: timedelta,
@@ -153,13 +150,14 @@ class SeedLink(WaveformProvider):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> AsyncIterator[WaveformBatch]:
+        for client in self.clients:
+            client.start_streams(start_time - window_padding if start_time else None)
         logger.info("waiting for first SeedLink traces")
         while True:
             await asyncio.sleep(1.0)
             if sum(len(client.streams) for client in self.clients) > 0:
                 break
-
-        start_time = datetime_now()
+        start_time = start_time or datetime_now()
         i_batch = 0
 
         while True:
@@ -187,8 +185,7 @@ class SeedLink(WaveformProvider):
             batch_traces = [tr for tr in seedlink_traces if isinstance(tr, Trace)]
             if not batch_traces:
                 logger.warning("no traces received")
-                start_time += timedelta(seconds=5.0)
-                await asyncio.sleep(5.0)
+                start_time += window_increment
                 continue
 
             logger.debug("received %d traces", len(batch_traces))

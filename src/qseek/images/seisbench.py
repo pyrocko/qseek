@@ -258,6 +258,7 @@ class SeisBench(ImageFunction):
                     self._seisbench_model.cuda()
                 else:
                     self._seisbench_model.cuda(self.torch_use_cuda)
+                logger.info("using CUDA for SeisBench model.")
             except (RuntimeError, AssertionError) as exc:
                 logger.warning(
                     "failed to use CUDA for SeisBench model, using CPU.",

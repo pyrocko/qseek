@@ -22,6 +22,15 @@ logger = logging.getLogger(__file__)
 RECORD_LENGTH = 512
 
 
+def as_seedlink_time(time: datetime) -> str:
+    """Convert a datetime object to a SeedLink time string."""
+    # Format: 2002,08,05,14,00,00
+    return (
+        f"{time.year},{time.month:02d},{time.day:02d},"
+        f"{time.hour:02d},{time.minute:02d},{time.second:02d}"
+    )
+
+
 def _as_datetime(timestamp: float):
     """Convert a timestamp to a datetime object in UTC."""
     return datetime.fromtimestamp(timestamp, tz=timezone.utc)
@@ -265,6 +274,14 @@ class SeedLinkClientStats(BaseModel):
         default=datetime.min.replace(tzinfo=timezone.utc),
         description="Last time data was received from SeedLink.",
     )
+    connected_at: datetime | None = Field(
+        default=None,
+        description="Time when the SeedLink client was connected.",
+    )
+    reconnects: int = Field(
+        default=0,
+        description="Number of times the SeedLink client has reconnected.",
+    )
 
     _seedlink_client: SeedLinkClient | None = PrivateAttr(default=None)
     _timeout: float = PrivateAttr(default=60.0)
@@ -337,12 +354,15 @@ class SeedLinkClientStats(BaseModel):
             "Host",
             f"[bold]{host}[/bold]:{port}",
         )
-        table.add_row(
-            "Streams",
-            f"{sign} {human_readable_bytes(self.received_bytes)}, "
-            f"{self.online_stations}/{self.total_stations} online, "
-            f"{self.min_delay.total_seconds():.2f} s delay",
-        )
+        try:
+            table.add_row(
+                "Streams",
+                f"{sign} {human_readable_bytes(self.received_bytes)}, "
+                f"{self.online_stations}/{self.total_stations} online, "
+                f"{self.min_delay.total_seconds():.2f} s delay",
+            )
+        except Exception as exc:
+            logger.warning("failed to add table row: %s", exc)
 
 
 class SeedLinkClient(BaseModel):
@@ -371,8 +391,13 @@ class SeedLinkClient(BaseModel):
         description="List of stations to request streams from.",
     )
     buffer_length: timedelta = Field(
-        default=timedelta(minutes=10),
+        default=timedelta(minutes=30),
         description="Length of the buffer to keep in memory.",
+    )
+    reconnect_timeout: float = Field(
+        default=60.0,
+        ge=10.0,
+        description="Timeout for reconnecting to the SeedLink server.",
     )
 
     _stream_data: defaultdict[tuple[str, str, str, str], SeedLinkData] = PrivateAttr(
@@ -404,12 +429,15 @@ class SeedLinkClient(BaseModel):
         ret = await call_slinktool(["-Q", self._slink_host])
         return [SeedLinkStream.from_line(line.decode()) for line in ret.splitlines()]
 
-    async def stream(self) -> None:
+    async def stream(
+        self,
+        start_time: datetime | None = None,
+    ) -> None:
         selectors = ",".join(sta.seedlink_str() for sta in self.station_selection)
-        logger.info("start streaming stations %s from %s", selectors, self._slink_host)
+        nsls = ",".join(sta.nsl.pretty for sta in self.station_selection)
+        logger.info("start streaming stations %s from %s", nsls, self._slink_host)
 
-        proc = await asyncio.subprocess.create_subprocess_exec(
-            "slinktool",
+        slinktool_args = [
             "-nt",  # reconnect timeout
             "60",
             "-k",  # heartbeat
@@ -418,13 +446,39 @@ class SeedLinkClient(BaseModel):
             "-",
             "-S",  # selectors
             selectors,
+        ]
+
+        if start_time is not None:
+            # some SeedLink servers do not support the -tw option and stop delivering
+            # data
+            logger.info("starting stream at %s", start_time)
+            start_time_str = as_seedlink_time(start_time)
+            slinktool_args.extend(["-tw", f"{start_time_str}:"])
+
+        logger.debug("calling: slinktool %s", " ".join(slinktool_args))
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            "slinktool",
+            *slinktool_args,
             self._slink_host,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self._stats.connected_at = self._stats.connected_at
         try:
             while True:
-                data = await proc.stdout.read(RECORD_LENGTH)
+                try:
+                    data = await asyncio.wait_for(
+                        proc.stdout.read(RECORD_LENGTH),
+                        timeout=self.reconnect_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "timeout waiting for data from %s, restarting...",
+                        self._slink_host,
+                    )
+                    self._stats.reconnects += 1
+                    asyncio.get_running_loop().call_soon(self.restart_stream)
+                    break
                 self._stats.add_bytes(len(data))
 
                 with NamedTemporaryFile() as tmpfile:
@@ -454,14 +508,20 @@ class SeedLinkClient(BaseModel):
                 )
         finally:
             proc.terminate()
+            self._stats.connected_at = None
 
-    def start_streams(self) -> None:
+    def start_streams(self, start_time: datetime | None = None) -> None:
         if self._task is not None:
             raise RuntimeError("Stream is already running")
-        self._task = asyncio.create_task(self.stream())
+        self._task = asyncio.create_task(self.stream(start_time=start_time))
 
     def stop_stream(self) -> None:
         if self._task:
             self._task.cancel()
             self._task = None
         self._stream_data.clear()
+
+    def restart_stream(self) -> None:
+        logger.info("restarting streaming %s", self._slink_host)
+        self.stop_stream()
+        self.start_streams()
