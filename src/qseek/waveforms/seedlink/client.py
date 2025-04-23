@@ -83,22 +83,9 @@ class SeedLinkStream(BaseModel):
 
 
 class StationSelection(BaseModel):
-    network: str = Field(
-        default="1D",
-        min_length=1,
-        max_length=2,
-        pattern="[A-Z0-9]{2}",
-    )
-    station: str = Field(
-        default="SYRAU",
-        min_length=1,
-        max_length=5,
-        pattern="[A-Z0-9]",
-    )
-    location: str = Field(
-        default="",
-        max_length=2,
-        pattern="[A-Z0-9]{0,2}",
+    nsl: NSL = Field(
+        default=NSL("1D", "SYRAU", ""),
+        description="Network, station, and location code.",
     )
     channel: str = Field(
         default="???",
@@ -108,11 +95,9 @@ class StationSelection(BaseModel):
     )
 
     def seedlink_str(self) -> str:
-        return f"{self.network}_{self.station}:{self.location}{self.channel}"
-
-    @property
-    def nsl(self) -> NSL:
-        return NSL(self.network, self.station, self.location)
+        """Get the SeedLink string for this station."""
+        nsl = self.nsl
+        return f"{nsl.network}_{nsl.station}f:{nsl.location}{self.channel}"
 
 
 class SeedLinkData:
@@ -378,14 +363,14 @@ class SeedLinkClient(BaseModel):
     )
     station_selection: list[StationSelection] = Field(
         default=[
-            StationSelection(network="1D", station="SYRAU", location="", channel="HH?"),
-            StationSelection(network="1D", station="WBERG", location="", channel="HH?"),
-            StationSelection(network="WB", station="KOC", location="", channel="HH?"),
-            StationSelection(network="WB", station="KRC", location="", channel="HH?"),
-            StationSelection(network="WB", station="LBC", location="", channel="HH?"),
-            StationSelection(network="WB", station="SKC", location="", channel="HH?"),
-            StationSelection(network="WB", station="STC", location="", channel="HH?"),
-            StationSelection(network="WB", station="VAC", location="", channel="HH?"),
+            StationSelection(nsl=NSL("1D", "SYRAU", ""), channel="HH?"),
+            StationSelection(nsl=NSL("1D", "WBERG", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "KOC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "KRC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "LBC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "SKC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "STC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "VAC", ""), channel="HH?"),
         ],
         min_length=1,
         description="List of stations to request streams from.",

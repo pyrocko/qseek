@@ -161,9 +161,17 @@ class SeedLink(WaveformProvider):
         i_batch = 0
 
         while True:
-            await asyncio.sleep(0)
             start_time_padded = start_time - window_padding
-            end_time_padded = start_time + window_increment + window_padding
+            end_time = start_time + window_increment
+            end_time_padded = end_time + window_padding
+
+            wait_time = end_time - datetime_now()
+            if wait_time > timedelta(seconds=0):
+                logger.debug("waiting for %s", wait_time)
+                await asyncio.sleep(wait_time.total_seconds())
+            else:
+                await asyncio.sleep(0)
+
             logger.info("awaiting waveforms until %s", end_time_padded)
             try:
                 seedlink_traces = await asyncio.gather(
@@ -182,6 +190,10 @@ class SeedLink(WaveformProvider):
                 logger.warning("failed to get traces: %s", exc)
                 start_time += window_increment
                 continue
+
+            for exc in (exc for exc in seedlink_traces if isinstance(exc, Exception)):
+                logger.warning("failed to get trace: %s", exc)
+
             batch_traces = [tr for tr in seedlink_traces if isinstance(tr, Trace)]
             if not batch_traces:
                 logger.warning("no traces received")
