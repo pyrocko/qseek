@@ -54,7 +54,7 @@ async def call_slinktool(cmd_args: list[str]) -> bytes:
     return ret
 
 
-class SeedLinkStream(BaseModel):
+class SeedLinkStation(BaseModel):
     network: str
     station: str
     location: str
@@ -65,7 +65,7 @@ class SeedLinkStream(BaseModel):
     endtime: datetime
 
     @classmethod
-    def from_line(cls, line: str) -> SeedLinkStream:
+    def from_line(cls, line: str) -> SeedLinkStation:
         # ZB VOSXX 00 HHZ D 2021/10/08 04:20:36.4200  -  2021/10/08 11:31:00.220
         starttime = datetime.strptime(line[18:42], "%Y/%m/%d %H:%M:%S.%f")  # noqa DTZ007
         endtime = datetime.strptime(line[47:71], "%Y/%m/%d %H:%M:%S.%f")  # noqa DTZ007
@@ -97,10 +97,10 @@ class StationSelection(BaseModel):
     def seedlink_str(self) -> str:
         """Get the SeedLink string for this station."""
         nsl = self.nsl
-        return f"{nsl.network}_{nsl.station}f:{nsl.location}{self.channel}"
+        return f"{nsl.network}_{nsl.station}:{nsl.location}{self.channel}"
 
 
-class SeedLinkData:
+class SeedLinkStream:
     _trace: Trace | None = None
     _last_data: datetime
 
@@ -230,7 +230,9 @@ class SeedLinkData:
                     timeout,
                     self.delay.total_seconds(),
                 )
-                raise TimeoutError("No data received in the given time window") from exc
+                raise TimeoutError(
+                    f"{nslc_pretty} No data received within timeout"
+                ) from exc
 
         if self._trace is None:
             raise ValueError("No trace available")
@@ -245,7 +247,7 @@ class SeedLinkData:
         except NoData as exc:
             logger.warning("no data in the given time window for %s", nslc_pretty)
             raise ValueError(
-                f"{nslc_pretty} No data available in the given time window"
+                f"{nslc_pretty} No data available in window {start_time} - {end_time}"
             ) from exc
         return cropped_trace
 
@@ -385,8 +387,8 @@ class SeedLinkClient(BaseModel):
         description="Timeout for reconnecting to the SeedLink server.",
     )
 
-    _stream_data: defaultdict[tuple[str, str, str, str], SeedLinkData] = PrivateAttr(
-        default_factory=lambda: defaultdict(SeedLinkData)
+    _stream_data: defaultdict[tuple[str, str, str, str], SeedLinkStream] = PrivateAttr(
+        default_factory=lambda: defaultdict(SeedLinkStream)
     )
     _task: asyncio.Task | None = PrivateAttr(default=None)
     _stats: SeedLinkClientStats = PrivateAttr(default_factory=SeedLinkClientStats)
@@ -396,7 +398,7 @@ class SeedLinkClient(BaseModel):
         return f"{self.host}:{self.port}"
 
     @property
-    def streams(self) -> list[SeedLinkData]:
+    def streams(self) -> list[SeedLinkStream]:
         if self._task is None:
             raise RuntimeError("Stream is not running")
         return list(self._stream_data.values())
@@ -409,10 +411,10 @@ class SeedLinkClient(BaseModel):
         self._stats.set_seedlink_client(self)
         self._stats.set_timeout(timeout)
 
-    async def get_available_stations(self) -> list[SeedLinkStream]:
+    async def get_available_stations(self) -> list[SeedLinkStation]:
         logger.info("requesting station list from %s", self._slink_host)
         ret = await call_slinktool(["-Q", self._slink_host])
-        return [SeedLinkStream.from_line(line.decode()) for line in ret.splitlines()]
+        return [SeedLinkStation.from_line(line.decode()) for line in ret.splitlines()]
 
     async def stream(
         self,

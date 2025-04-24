@@ -15,7 +15,11 @@ from rich.table import Table
 from qseek.stats import Stats
 from qseek.utils import datetime_now
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
-from qseek.waveforms.seedlink.client import SeedLinkClient, SeedLinkClientStats
+from qseek.waveforms.seedlink.client import (
+    SeedLinkClient,
+    SeedLinkClientStats,
+    SeedLinkStream,
+)
 
 if TYPE_CHECKING:
     from qseek.models.station import Stations
@@ -104,7 +108,7 @@ class SeedLink(WaveformProvider):
 
     provider: Literal["SeedLink"] = "SeedLink"
     timeout: timedelta = Field(
-        default=timedelta(seconds=20),
+        default=timedelta(seconds=20.0),
         description="Maximum wait time for new traces.",
     )
 
@@ -121,8 +125,21 @@ class SeedLink(WaveformProvider):
     )
 
     _stats: SeedLinkStats = PrivateAttr(default_factory=SeedLinkStats)
-    _squirrel: Squirrel = PrivateAttr(None)
+    _squirrel: Squirrel | None = PrivateAttr(None)
     _saved_filenames: set[Path] = PrivateAttr(default_factory=set)
+
+    def get_stream_start_time(self) -> datetime:
+        """Get the start time of the client."""
+        online_streams = [
+            stream for stream in self.get_seedlink_streams() if stream.is_online()
+        ]
+        if not online_streams:
+            raise RuntimeError("No online streams available")
+        return min(st.start_time for st in online_streams)
+
+    def get_seedlink_streams(self) -> list[SeedLinkStream]:
+        """Get the SeedLink streams."""
+        return [stream for client in self.clients for stream in client.streams]
 
     def prepare(self, stations: Stations) -> None:
         logger.info("preparing SeedLink streaming")
@@ -165,9 +182,9 @@ class SeedLink(WaveformProvider):
             end_time = start_time + window_increment
             end_time_padded = end_time + window_padding
 
-            wait_time = end_time - datetime_now()
+            wait_time = end_time_padded - datetime_now()
             if wait_time > timedelta(seconds=0):
-                logger.debug("waiting for %s", wait_time)
+                logger.info("next batch %s", end_time_padded)
                 await asyncio.sleep(wait_time.total_seconds())
             else:
                 await asyncio.sleep(0)
@@ -181,23 +198,30 @@ class SeedLink(WaveformProvider):
                             end_time=end_time_padded,
                             timeout=self.timeout.total_seconds(),
                         )
-                        for client in self.clients
-                        for stream in client.streams
+                        for stream in self.get_seedlink_streams()
                     ),
                     return_exceptions=True,
                 )
             except Exception as exc:
-                logger.warning("failed to get traces: %s", exc)
+                logger.warning("%s", exc)
                 start_time += window_increment
                 continue
 
             for exc in (exc for exc in seedlink_traces if isinstance(exc, Exception)):
-                logger.warning("failed to get trace: %s", exc)
+                logger.warning("%s", exc)
 
             batch_traces = [tr for tr in seedlink_traces if isinstance(tr, Trace)]
             if not batch_traces:
-                logger.warning("no traces received")
-                start_time += window_increment
+                logger.warning("no data received")
+                try:
+                    available_start_time = self.get_stream_start_time() + window_padding
+                except RuntimeError:
+                    logger.warning("no online streams available")
+                    start_time += window_increment
+                    continue
+
+                logger.info("skipping to first available data %s", available_start_time)
+                start_time = available_start_time
                 continue
 
             logger.debug("received %d traces", len(batch_traces))
@@ -235,4 +259,6 @@ class SeedLink(WaveformProvider):
 
     def get_squirrel(self) -> Squirrel:
         """Get the Squirrel instance."""
+        if self._squirrel is None:
+            raise RuntimeError("Squirrel instance not initialized")
         return self._squirrel
