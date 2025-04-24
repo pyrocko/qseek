@@ -660,6 +660,21 @@ class Octree(BaseModel, Iterator[Node]):
         """
         return [node for node in self if node.level <= level]
 
+    def get_node_size(self, level: int = 0) -> float:
+        """Get the size of a node at a specific level.
+
+        Args:
+            level (int): Level to get node size from.
+
+        Returns:
+            float: Size of the node.
+        """
+        if level < 0 or level >= self.n_levels:
+            raise ValueError(
+                f"invalid level {level}, expected level <= {self.n_levels}"
+            )
+        return self.root_node_size / (2**level)
+
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.
 
@@ -801,8 +816,24 @@ class Octree(BaseModel, Iterator[Node]):
             (
                 self.root_node_size,
                 self.n_levels,
+                self.location,
                 self.east_bounds,
                 self.north_bounds,
                 self.depth_bounds,
             )
         )
+
+    def hash(self) -> str:
+        sha = sha1()
+        sha.update(
+            struct.pack(
+                "dddddddi",
+                self.root_node_size,
+                *self.east_bounds,
+                *self.north_bounds,
+                *self.depth_bounds,
+                self.n_levels,
+            )
+        )
+        sha.update(self.location.location_hash().encode())
+        return sha.hexdigest()

@@ -243,7 +243,9 @@ class Receiver(Station):
     def n_picks(self, phase: PhaseDescription | None = None) -> int:
         """Number of observations for all phases."""
         if phase:
-            return int(self.phase_arrivals[phase].observed is not None)
+            if phase in self.phase_arrivals:
+                return int(self.phase_arrivals[phase].observed is not None)
+            return 0
         return sum(
             arrival.observed is not None for arrival in self.phase_arrivals.values()
         )
@@ -321,6 +323,23 @@ class EventReceivers(BaseModel):
             int: The number of picks for the given phase.
         """
         return sum(receiver.n_picks(phase) for receiver in self.receivers)
+
+    def get_num_phase_picks(self) -> dict[str, int]:
+        """Get the number of picks for each phase.
+
+        Returns:
+            dict[str, int]: A dictionary with phase names as keys and the number of
+                picks as values.
+        """
+        phases = set()
+        for receiver in self.receivers:
+            phases.update(receiver.phase_arrivals.keys())
+        return {
+            f"n_picks:{phase}": sum(
+                receiver.n_picks(phase) for receiver in self.receivers
+            )
+            for phase in phases
+        }
 
     async def get_waveforms(
         self,
@@ -929,6 +948,7 @@ class EventDetection(Location):
             "azimuthal_coverage": self.get_azimuthal_coverage(),
             "n_stations": self.n_stations,
             "n_picks": self.n_picks,
+            **self.receivers.get_num_phase_picks(),
         }
         if self.uncertainty:
             csv_line.update(
