@@ -6,7 +6,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Deque, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Deque, Literal, Sequence
 
 import numpy as np
 import psutil
@@ -24,7 +24,7 @@ from pydantic import (
 from scipy import stats
 
 from qseek.cache_lru import CACHES
-from qseek.corrections.corrections import StationCorrectionType
+from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
@@ -270,7 +270,8 @@ class Search(BaseModel):
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
-        description="Apply station corrections extracted from a previous run.",
+        description="Apply station corrections extracted from a previous run or a path"
+        " to a directory with station correction files.",
     )
     magnitudes: list[EventMagnitudeCalculatorType] = Field(
         default_factory=list,
@@ -383,6 +384,16 @@ class Search(BaseModel):
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("station_corrections", mode="before")
+    @classmethod
+    def load_path(cls, v: Any) -> StationCorrectionType:
+        if isinstance(v, str):
+            path = Path(v)
+            if not path.is_dir():
+                raise ValueError(f"station_corrections path {path} is not a directory")
+            return corrections_from_path(path)
+        return v
 
     @field_validator("n_threads_parstack", "n_threads_argmax")
     @classmethod
