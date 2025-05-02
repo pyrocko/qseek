@@ -76,11 +76,11 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
         description="The peak amplitude to use.",
     )
     station_epicentral_range: Range = Field(
-        default=_Range(min=1 * KM, max=100 * KM),
+        default=_Range(start=1 * KM, end=100 * KM),
         description="The epicentral distance range of the stations.",
     )
     frequency_range: Range = Field(
-        default=_Range(min=2.0, max=20.0),
+        default=_Range(start=2.0, end=20.0),
         description="The frequency range in Hz to filter the traces.",
     )
 
@@ -312,8 +312,8 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
         octree_depth = octree.location.effective_depth
         for store, definition in zip(self._stores, self.models, strict=True):
             await store.fill_source_depth_range(
-                depth_min=octree.depth_bounds.min + octree_depth,
-                depth_max=octree.depth_bounds.max + octree_depth,
+                depth_min=octree.depth_bounds.start + octree_depth,
+                depth_max=octree.depth_bounds.end + octree_depth,
                 depth_delta=definition.source_depth_delta,
             )
 
@@ -365,13 +365,13 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
             if not traces:
                 continue
 
-            if store.frequency_range.min != 0.0:
+            if store.frequency_range.start != 0.0:
                 for tr in traces:
                     await asyncio.to_thread(
                         tr.bandpass,
                         4,
-                        store.frequency_range.min,
-                        store.frequency_range.max,
+                        store.frequency_range.start,
+                        store.frequency_range.end,
                         demean=False,
                     )
             else:
@@ -379,7 +379,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                     await asyncio.to_thread(
                         tr.lowpass,
                         4,
-                        store.frequency_range.max,
+                        store.frequency_range.end,
                         demean=False,
                     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Literal
 
@@ -176,6 +177,7 @@ class SeedLink(WaveformProvider):
                 break
         start_time = start_time or datetime_now()
         i_batch = 0
+        loop = asyncio.get_event_loop()
 
         while True:
             start_time_padded = start_time - window_padding
@@ -231,7 +233,14 @@ class SeedLink(WaveformProvider):
                 crop_padding=window_padding,
             )
             self._saved_filenames.update(filenames)
-            self._squirrel.add(map(str, filenames), check=False)
+            if self._squirrel:
+                loop.call_soon(
+                    partial(
+                        self._squirrel.add,
+                        map(str, filenames),
+                        check=False,
+                    )
+                )
 
             i_batch += 1
             batch = WaveformBatch(

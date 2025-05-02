@@ -442,9 +442,9 @@ class SiteAmplitudesCollection(BaseModel):
             f"""n={self.n_amplitudes}
 $M_w^{{ref}}$={reference_magnitude}
 $z$={self.source_depth / KM} km
-$v_r$=[{self.rupture_velocities.min}, {self.rupture_velocities.max}]$\\cdot v_s$
-$\\Delta\\sigma$=[{self.stress_drop.min / 1e6}, {self.stress_drop.max / 1e6}] MPa
-$f$=[{self.frequency_range.min}, {self.frequency_range.max}] Hz""",
+$v_r$=[{self.rupture_velocities.start}, {self.rupture_velocities.end}]$\\cdot v_s$
+$\\Delta\\sigma$=[{self.stress_drop.start / 1e6}, {self.stress_drop.end / 1e6}] MPa
+$f$=[{self.frequency_range.start}, {self.frequency_range.end}] Hz""",
             alpha=0.5,
             transform=ax.transAxes,
             va="bottom",
@@ -453,8 +453,7 @@ $f$=[{self.frequency_range.min}, {self.frequency_range.max}] Hz""",
         ax.text(
             0.95,
             0.95,
-            f"Measure: {peak_amplitude}\n"
-            f"Dynamic: {(dynamic.max - dynamic.min) / NM:g}",
+            f"Measure: {peak_amplitude}\nDynamic: {(dynamic.max - dynamic.min) / NM:g}",
             alpha=0.5,
             transform=ax.transAxes,
             ha="right",
@@ -537,7 +536,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         store_frequency_range = Range(0.0, 1.0 / config.deltat)
         if (
             selector.frequency_range
-            and selector.frequency_range.max > store_frequency_range.max
+            and selector.frequency_range.end > store_frequency_range.max
         ):
             raise ValueError(
                 f"Selector frequency range {selector.frequency_range} "
@@ -577,8 +576,8 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         """
         store = self.get_store()
         return Range(
-            min=store.config.distance_min,
-            max=min(store.config.distance_max, self.max_distance),
+            start=store.config.distance_min,
+            end=min(store.config.distance_max, self.max_distance),
         )
 
     def get_lock(self, source_depth: float, reference_magnitude: float) -> asyncio.Lock:
@@ -608,7 +607,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         config = store.config
         if not isinstance(config, gf.ConfigTypeA):
             raise EnvironmentError("GF store is not of type ConfigTypeA.")
-        if 1.0 / config.deltat < self.frequency_range.max:
+        if 1.0 / config.deltat < self.frequency_range.end:
             raise ValueError(
                 f"Pyrocko GF store frequency {1.0 / config.deltat} too low."
             )
@@ -752,10 +751,10 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
                         transfer_function=BruneResponse(duration=source.duration)
                     )
                     if self.frequency_range:
-                        if self.frequency_range.min > 0.0:
-                            tr.highpass(4, self.frequency_range.min, demean=False)
-                        if self.frequency_range.max < 1.0 / tr.deltat:
-                            tr.lowpass(4, self.frequency_range.max, demean=False)
+                        if self.frequency_range.start > 0.0:
+                            tr.highpass(4, self.frequency_range.start, demean=False)
+                        if self.frequency_range.end < 1.0 / tr.deltat:
+                            tr.lowpass(4, self.frequency_range.end, demean=False)
 
                 for nsl, grp_traces in itertools.groupby(
                     traces, key=lambda tr: tr.nslc_id[:3]
