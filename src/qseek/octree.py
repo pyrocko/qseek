@@ -420,17 +420,17 @@ class Octree(BaseModel, Iterator[Node]):
             tuple[float, float, float]: EW, NS and depth extent of the octree in meters.
         """
         return (
-            self.east_bounds.max - self.east_bounds.min,
-            self.north_bounds.max - self.north_bounds.min,
-            self.depth_bounds.max - self.depth_bounds.min,
+            self.east_bounds.end - self.east_bounds.start,
+            self.north_bounds.end - self.north_bounds.start,
+            self.depth_bounds.end - self.depth_bounds.start,
         )
 
     def create_root_nodes(self, length: float) -> list[Node]:
         ln = length
         ext_east, ext_north, ext_depth = self.extent()
-        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.min
-        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds.min
-        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds.min
+        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.start
+        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds.start
+        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds.start
 
         return [
             Node(east=east, north=north, depth=depth, size=ln, tree=self, level=0)
@@ -806,9 +806,9 @@ class Octree(BaseModel, Iterator[Node]):
                 north_shift=reference.north_shift + north,
                 depth=reference.depth + depth,
             )
-            for east in (self.east_bounds.min, self.east_bounds.max)
-            for north in (self.north_bounds.min, self.north_bounds.max)
-            for depth in (self.depth_bounds.min, self.depth_bounds.max)
+            for east in (self.east_bounds.start, self.east_bounds.end)
+            for north in (self.north_bounds.start, self.north_bounds.end)
+            for depth in (self.depth_bounds.start, self.depth_bounds.end)
         ]
 
     def __hash__(self) -> int:

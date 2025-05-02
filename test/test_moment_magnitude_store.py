@@ -176,8 +176,8 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
         extent=[
             0,
             store.max_distance,
-            store.source_depth_range.max,
-            store.source_depth_range.min,
+            store.source_depth_range.end,
+            store.source_depth_range.start,
         ],
         aspect="auto",
     )
