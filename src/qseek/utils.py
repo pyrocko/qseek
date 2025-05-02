@@ -200,8 +200,8 @@ NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
 
 
 class _Range(NamedTuple):
-    min: float
-    max: float
+    start: float
+    end: float
 
     def inside(self, value: float) -> bool:
         """Check if a value is inside the range.
@@ -212,7 +212,15 @@ class _Range(NamedTuple):
         Returns:
             bool: True if the value is inside the range, False otherwise.
         """
-        return self.min <= value <= self.max
+        return self.start <= value <= self.end
+
+    def width(self) -> float:
+        """Calculate the width of the range.
+
+        Returns:
+            float: The width of the range.
+        """
+        return self.end - self.start
 
     @classmethod
     def from_list(cls, array: np.ndarray | list[float]) -> _Range:
@@ -229,7 +237,7 @@ class _Range(NamedTuple):
 
 
 def _range_validator(v: _Range) -> _Range:
-    if v.min > v.max:
+    if v.start > v.end:
         raise ValueError(f"Bad range {v}, must be (min, max)")
     return v
 

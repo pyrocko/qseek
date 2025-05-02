@@ -322,6 +322,8 @@ class EventReceivers(BaseModel):
         Returns:
             int: The number of picks for the given phase.
         """
+        if not self.receivers:
+            return 0
         return sum(receiver.n_picks(phase) for receiver in self.receivers)
 
     def get_num_phase_picks(self) -> dict[str, int]:
@@ -948,7 +950,6 @@ class EventDetection(Location):
             "azimuthal_coverage": self.get_azimuthal_coverage(),
             "n_stations": self.n_stations,
             "n_picks": self.n_picks,
-            **self.receivers.get_num_phase_picks(),
         }
         if self.uncertainty:
             csv_line.update(
