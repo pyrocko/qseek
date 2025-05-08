@@ -401,7 +401,9 @@ class CakeTracer(RayTracer):
         octree.reset()
 
         distances = surface_distances(octree.leaf_nodes, stations)
-        source_depths = np.asarray(octree.depth_bounds) - octree.location.elevation
+        source_depths = (
+            np.asarray(octree.depth_bounds) - octree.location.effective_elevation
+        )
         receiver_depths = np.array([sta.effective_depth for sta in stations])
 
         distance_bounds = (distances.min(), distances.max())
