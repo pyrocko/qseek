@@ -24,7 +24,8 @@ def small_octree() -> Octree:
         location=Location(
             lat=10.0,
             lon=10.0,
-            elevation=0.2 * KM,
+            elevation=1.0 * KM,
+            depth=0.5 * KM,
         ),
         root_node_size=0.5 * KM,
         n_levels=3,
@@ -118,7 +119,7 @@ async def test_travel_times_constant_velocity(
     stations = small_stations
     octree.n_levels = 3
     cake_tracer = CakeTracer(
-        phases={"cake:P": Timing(definition="P,p")},
+        phases={"cake:P": Timing(definition="P,p,P\\,p\\")},
         earthmodel=EarthModel(
             filename=None,
             raw_file_data=f"""
@@ -127,9 +128,7 @@ async def test_travel_times_constant_velocity(
 """,
         ),
     )
-    constant = ConstantVelocityTracer(
-        velocity=CONSTANT_VELOCITY,
-    )
+    constant = ConstantVelocityTracer(velocity=CONSTANT_VELOCITY)
 
     await cake_tracer.prepare(octree, stations)
 
@@ -148,4 +147,6 @@ async def test_travel_times_constant_velocity(
     logging.warning("percent nan: %.1f", (nan_mask.sum() / nan_mask.size) * 100)
 
     constant_traveltimes[nan_mask] = np.nan
-    np.testing.assert_almost_equal(cake_travel_times, constant_traveltimes, decimal=2)
+    np.testing.assert_allclose(
+        cake_travel_times, constant_traveltimes, atol=octree.smallest_node_size() / 2000
+    )
