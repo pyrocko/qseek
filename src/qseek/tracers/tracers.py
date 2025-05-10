@@ -9,6 +9,7 @@ from pydantic import Field, RootModel
 from qseek.tracers import (
     cake,  # noqa: F401
     constant_velocity,  # noqa: F401
+    fast_marching,  # noqa: F401
 )
 from qseek.tracers.base import RayTracer
 
