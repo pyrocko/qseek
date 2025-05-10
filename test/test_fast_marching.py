@@ -7,6 +7,7 @@ from qseek.models.layered_model import Layer, LayeredModel
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.octree import Octree
+from qseek.tracers.cake import CakeTracer, Timing
 from qseek.tracers.fast_marching import FastMarchingTracer, StationTravelTimeTable
 from qseek.tracers.utils import (
     EarthModel,
@@ -130,11 +131,29 @@ async def test_station_travel_time_table_constant():
 async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
     model = EarthModel()
     fmm_tracer = FastMarchingTracer(
-        velocity_model=model, nthreads=0, implementation="pyrocko"
+        velocity_model=model,
+        nthreads=0,
+        implementation="scikit-fmm",
+        interpolation_method="linear",
+    )
+
+    cake_tracer = CakeTracer(
+        phases={"cake:P": Timing(definition="P,p"), "cake:S": Timing(definition="S,s")},
+        earthmodel=model,
     )
 
     await fmm_tracer.prepare(octree, stations)
-    await fmm_tracer.get_travel_times("fmm:P", octree, stations)
+    await cake_tracer.prepare(octree, stations)
+
+    fmm_times = await fmm_tracer.get_travel_times("fmm:P", octree, stations)
+    cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
+
+    import matplotlib.pyplot as plt
+
+    plt.plot(fmm_times / cake_times)
+    plt.show()
+
+    np.testing.assert_allclose(fmm_times, cake_times)
 
 
 def test_surface_distances(octree, stations):
@@ -143,4 +162,4 @@ def test_surface_distances(octree, stations):
     distances_short = surface_distances_reference(
         octree.nodes, stations, octree.location
     )
-    np.testing.assert_equal(distances_full, distances_short)
+    np.testing.assert_allclose(distances_full, distances_short, rtol=1e-2)

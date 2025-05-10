@@ -21,7 +21,7 @@ from qseek.models.station import Station, Stations
 from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import RayTracer
-from qseek.tracers.utils import EarthModel, surface_distances_reference
+from qseek.tracers.utils import EarthModel, surface_distances
 from qseek.utils import Range, alog_call, datetime_now, get_cpu_count
 
 if TYPE_CHECKING:
@@ -187,6 +187,8 @@ class StationTravelTimeTable(BaseModel):
 
 
 class FastMarchingTracer(RayTracer):
+    """Fast marching tracer for layered 1D velocity models."""
+
     tracer: Literal["FastMarching"] = "FastMarching"
 
     velocity_model: EarthModel = Field(
@@ -195,7 +197,7 @@ class FastMarchingTracer(RayTracer):
     )
 
     interpolation_method: InterpolationMethod = Field(
-        default="nearest",
+        default="linear",
         description="Interpolation method for travel times in the volume."
         " Choose from `nearest`, `linear` or `cubic`.",
     )
@@ -211,7 +213,10 @@ class FastMarchingTracer(RayTracer):
         " first-order FMM for now.",
     )
 
-    _phases: tuple[Phase, ...] = PrivateAttr(("fmm:P", "fmm:S"))
+    phases: tuple[Phase, ...] = Field(
+        default=("fmm:P", "fmm:S"),
+        description="Phases to calculate.",
+    )
     _travel_time_tables: dict[tuple[str, Phase], StationTravelTimeTable] = PrivateAttr(
         {}
     )
@@ -233,7 +238,7 @@ class FastMarchingTracer(RayTracer):
         return self._travel_time_tables[key]
 
     def get_available_phases(self) -> tuple[str, ...]:
-        return self._phases
+        return self.phases
 
     async def prepare(
         self,
@@ -251,7 +256,7 @@ class FastMarchingTracer(RayTracer):
         await self._calculate_travel_times()
 
         nodes = octree.leaf_nodes
-        for phase in self._phases:
+        for phase in self.phases:
             logger.info(
                 "warming up traveltime LUT %s for %d stations and %d nodes",
                 phase,
@@ -311,7 +316,7 @@ class FastMarchingTracer(RayTracer):
         eikonal_work = [
             worker_station_travel_time(station, phase)
             for station in self._cached_stations
-            for phase in self._phases
+            for phase in self.phases
         ]
         tasks = [asyncio.create_task(work) for work in eikonal_work]
         start_time = time.time()
@@ -322,9 +327,10 @@ class FastMarchingTracer(RayTracer):
         travel_times = []
         n_nodes = len(nodes)
 
-        surface_offsets = surface_distances_reference(
-            nodes, self._cached_stations, self._octree.location
-        ).T
+        # surface_offsets = surface_distances_reference(
+        #     nodes, self._cached_stations, self._octree.location
+        # ).T
+        surface_offsets = surface_distances(nodes, self._cached_stations).T
         node_depths = (
             np.array([n.depth for n in nodes]) + self._octree.location.effective_depth
         )
@@ -369,14 +375,14 @@ class FastMarchingTracer(RayTracer):
             nodes: Nodes to get traveltime for.
             stations: Stations to calculate travel times to.
         """
-        if phase not in self._phases:
+        if phase not in self.phases:
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
         station_indices = np.fromiter(
             (self._cached_station_indices[sta.nsl.pretty] for sta in stations),
             dtype=int,
         )
-        stations_traveltimes = []
+        station_travel_times = []
         fill_nodes = []
         node_lut = self._node_lut
 
@@ -386,10 +392,15 @@ class FastMarchingTracer(RayTracer):
             except KeyError:
                 fill_nodes.append(node)
                 continue
-            stations_traveltimes.append(node_traveltimes)
+            station_travel_times.append(node_traveltimes)
 
         if fill_nodes:
             await self.fill_lut(fill_nodes, phase)
+            logger.debug(
+                "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
+                node_lut.fill_level() * 100,
+                node_lut.hit_rate() * 100,
+            )
             return await self.get_travel_times(phase, nodes, stations)
 
-        return np.array(stations_traveltimes).T
+        return np.asarray(station_travel_times).astype(float, copy=False)
