@@ -268,7 +268,7 @@ class Velest(Exporter):
         lat, lon = velest_location(event)
         write_out = (
             f"{event.time:%y%m%d %H%M %S.%f}"[:-4]
-            + f" {lat} {lon} {event.depth/1000:7.2f}  {mag:5.2f}\n"
+            + f" {lat} {lon} {event.depth / 1000:7.2f}  {mag:5.2f}\n"
         )
         count_p = 0
         count_s = 0

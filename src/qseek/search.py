@@ -69,7 +69,7 @@ SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
 
 class SearchStats(Stats):
     project_name: str = "qseek"
-    batch_time: datetime = datetime.min
+    batch_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     batch_count: int = 0
     batch_count_total: int = 0
     processed_time: timedelta = timedelta(seconds=0.0)
@@ -760,7 +760,7 @@ class SearchTraces:
         time_span = (self.end_time + window_padding) - (
             self.start_time - window_padding
         )
-        return int(round(time_span.total_seconds() * parent.semblance_sampling_rate))
+        return round(time_span.total_seconds() * parent.semblance_sampling_rate)
 
     @alog_call
     async def add_semblance(
@@ -890,9 +890,7 @@ class SearchTraces:
 
         images = await self.get_images(sampling_rate=float(sampling_rate))
 
-        padding_samples = int(
-            round(parent._window_padding.total_seconds() * sampling_rate)
-        )
+        padding_samples = round(parent._window_padding.total_seconds() * sampling_rate)
 
         if not semblance:
             semblance = Semblance(
