@@ -331,9 +331,11 @@ class Node:
         if not self._hash:
             self._hash = sha1(
                 struct.pack(
-                    "dddddd",
+                    "dddddddd",
                     self.tree.location.lat,
                     self.tree.location.lon,
+                    self.tree.location.elevation,
+                    self.tree.location.depth,
                     self.east,
                     self.north,
                     self.depth,
