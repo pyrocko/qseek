@@ -75,19 +75,18 @@ class WaveformBatch:
 
     def clean_traces(self) -> None:
         """Remove empty or bad traces."""
-        good_nsl = set()
+        good_nslc = set()
         for tr in self.traces.copy():
             if not tr.ydata.size or not np.all(np.isfinite(tr.ydata)):
                 logger.warning("skipping empty or bad trace: %s", ".".join(tr.nslc_id))
                 self.traces.remove(tr)
                 continue
 
-            if tr.nslc_id in good_nsl:
+            if tr.nslc_id in good_nslc:
                 logger.warning("removing duplicate trace: %s", ".".join(tr.nslc_id))
                 self.traces.remove(tr)
                 continue
-
-            good_nsl.add(tr.nslc_id)
+            good_nslc.add(tr.nslc_id)
 
 
 class WaveformProvider(BaseModel):
