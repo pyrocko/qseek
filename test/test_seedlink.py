@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import timedelta
 
-from qseek.utils import datetime_now
+from qseek.utils import NSL, datetime_now
 from qseek.waveforms.seedlink.client import SeedLinkClient, StationSelection
 from qseek.waveforms.seedlink.seedlink import SeedLink
 
@@ -14,14 +14,14 @@ async def seedlink_client():
         host="geofon.gfz-potsdam.de",
         port=18000,
         station_selection=[
-            StationSelection(network="1D", station="SYRAU", location="", channel="HH?"),
-            StationSelection(network="1D", station="WBERG", location="", channel="HH?"),
-            StationSelection(network="WB", station="KOC", location="", channel="HH?"),
-            StationSelection(network="WB", station="KRC", location="", channel="HH?"),
-            StationSelection(network="WB", station="LBC", location="", channel="HH?"),
-            StationSelection(network="WB", station="SKC", location="", channel="HH?"),
-            StationSelection(network="WB", station="STC", location="", channel="HH?"),
-            StationSelection(network="WB", station="VAC", location="", channel="HH?"),
+            StationSelection(nsl=NSL("1D", "SYRAU", ""), channel="HH?"),
+            StationSelection(nsl=NSL("1D", "WBERG", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "KOC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "KRC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "LBC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "SKC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "STC", ""), channel="HH?"),
+            StationSelection(nsl=NSL("WB", "VAC", ""), channel="HH?"),
         ],
     )
     # print(await client.get_available_stations())
@@ -94,4 +94,5 @@ async def seedlink():
         assert batch.traces
 
 
-asyncio.run(seedlink())
+if __name__ == "__main__":
+    asyncio.run(seedlink())
