@@ -122,8 +122,8 @@ async def test_travel_times_constant_velocity(
         earthmodel=EarthModel(
             filename=None,
             raw_file_data=f"""
- -2.0   {CONSTANT_VELOCITY/KM:.1f}    2.0     2.7
- 12.0   {CONSTANT_VELOCITY/KM:.1f}    2.0     2.7
+ -2.0   {CONSTANT_VELOCITY / KM:.1f}    2.0     2.7
+ 12.0   {CONSTANT_VELOCITY / KM:.1f}    2.0     2.7
 """,
         ),
     )
