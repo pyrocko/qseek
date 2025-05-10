@@ -36,7 +36,7 @@ class EventMagnitude(BaseModel):
 
     average: float | None = Field(
         default=math.nan,
-        description="The network's magnitude, as median of" " all station magnitudes.",
+        description="The network's magnitude, as median of all station magnitudes.",
     )
     error: float | None = Field(
         default=math.nan,
