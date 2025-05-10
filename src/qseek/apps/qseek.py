@@ -442,7 +442,7 @@ def main() -> None:
             from qseek.features.base import FeatureExtractor
             from qseek.magnitudes.base import EventMagnitudeCalculator
             from qseek.pre_processing.base import BatchPreProcessing
-            from qseek.tracers.base import RayTracer
+            from qseek.tracers.tracers import RayTracer
             from qseek.waveforms.base import WaveformProvider
 
             table = Table(box=box.SIMPLE, header_style=None)
