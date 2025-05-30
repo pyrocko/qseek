@@ -409,7 +409,7 @@ class CakeTracer(RayTracer):
         distance_bounds = (distances.min(), distances.max())
         source_depth_bounds = (source_depths.min(), source_depths.max())
 
-        receiver_depth_padding = np.ptp(receiver_depths) * 0.01
+        receiver_depth_padding = np.ptp(receiver_depths) * 0.01  # 10% margin
         receiver_depths_bounds = (
             receiver_depths.min() - receiver_depth_padding,
             receiver_depths.max() + receiver_depth_padding,
@@ -418,8 +418,8 @@ class CakeTracer(RayTracer):
         receiver_vmin = np.array(
             [self.get_min_velocity_at_depth(sta.effective_depth) for sta in stations]
         )
-        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 2.0)
-        spatial_tolerance = octree.smallest_node_size() / 2
+        time_tolerance = octree.smallest_node_size() / (receiver_vmin.min() * 4)
+        spatial_tolerance = octree.smallest_node_size()
 
         traveltime_tree_args = {
             "earthmodel": self.earthmodel,

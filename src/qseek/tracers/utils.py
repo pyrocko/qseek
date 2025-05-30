@@ -4,7 +4,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Annotated, Literal, Sequence
+from typing import Annotated, Any, Literal, Sequence
 
 import numpy as np
 from pydantic import (
@@ -14,12 +14,10 @@ from pydantic import (
     FilePath,
     PrivateAttr,
     StringConstraints,
-    model_validator,
 )
 from pyrocko import orthodrome as od
 from pyrocko.cake import LayeredModel, load_model
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
-from typing_extensions import Self
 
 from qseek.models.location import Location
 from qseek.models.station import Stations
@@ -83,8 +81,7 @@ class EarthModel(BaseModel):
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
-    @model_validator(mode="after")
-    def load_model(self) -> Self:
+    def model_post_init(self, context: Any) -> None:
         if self.filename is not None and self.raw_file_data is None:
             logger.info("loading velocity model from %s", self.filename)
             self._raw_file_data = self.filename.read_text()
