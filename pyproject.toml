@@ -118,6 +118,7 @@ convention = "google"
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"

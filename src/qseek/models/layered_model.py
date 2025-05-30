@@ -5,29 +5,44 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
+from pyrocko.cake import Layer as PyrockoLayer
 from scipy.interpolate import interp1d
 
 from qseek.tracers.utils import EarthModel
 
 if TYPE_CHECKING:
     from pyrocko.cake import GradientLayer as PyrockoGradientLayer
-    from pyrocko.cake import Layer as PyrockoLayer
 
 logger = logging.getLogger(__name__)
 
 
 class Layer(BaseModel):
-    top_depth: float = Field()
-    vp: float = Field(ge=0.0)
-    vs: float = Field(ge=0.0)
+    top_depth: float = Field(
+        description="Top depth of the layer in m.",
+    )
+    vp: float = Field(
+        ge=0.0,
+        description="P wave velocity in m/s",
+    )
+    vs: float = Field(
+        ge=0.0,
+        description="S wave velocity in m/s",
+    )
 
-    gradient_vp: float = Field(default=0.0)
-    gradient_vs: float = Field(default=0.0)
+    gradient_vp: float = Field(
+        default=0.0,
+        description="Velocity gradient in m/s/m.",
+    )
+    gradient_vs: float = Field(
+        default=0.0,
+        description="Velocity gradient in m/s/m.",
+    )
 
-    def interpolate(self, depth: float) -> tuple[float, float]:
-        vp = self.vp + self.gradient_vp * (depth - self.top_depth)
-        vs = self.vs + self.gradient_vs * (depth - self.top_depth)
-        return vp, vs
+    def _interpolate_vp(self, depth: float) -> float:
+        return self.vp + self.gradient_vp * (depth - self.top_depth)
+
+    def _interpolate_vs(self, depth: float) -> float:
+        return self.vs + self.gradient_vs * (depth - self.top_depth)
 
     @property
     def vpvs(self) -> float:
@@ -91,13 +106,56 @@ class LayeredModel(BaseModel):
             fill_value="extrapolate",  # type: ignore
         )
 
-    def vp_interpolator(self, depth: float | np.ndarray) -> np.ndarray:
+    def vp_interpolator_mid(self, depth: float | np.ndarray) -> np.ndarray:
         """Get the Vp value at a given depth."""
         return self._interpolator_vp(depth)
 
-    def vs_interpolator(self, depth: float | np.ndarray) -> float | np.ndarray:
+    def vs_interpolator_mid(self, depth: float | np.ndarray) -> float | np.ndarray:
         """Get the Vs value at a given depth."""
         return self._interpolator_vs(depth)
+
+    def _get_layer(self, depth: float) -> Layer:
+        depth_distance = np.asarray([layer.top_depth for layer in self.layers]) - depth
+        positive_distances = np.where(depth_distance < 0)
+        return self.layers[np.argmax(positive_distances)]
+
+    def vp_interpolator(self, depth: float | np.ndarray) -> np.ndarray:
+        """Get the Vp value at a given depth."""
+        depth = np.asarray(depth)
+        velocities = np.empty_like(depth)
+        for idx, d in enumerate(depth):
+            layer = self._get_layer(d)
+            velocities[idx] = layer._interpolate_vp(d)
+        return velocities
+
+    def vs_interpolator(self, depth: float | np.ndarray) -> np.ndarray:
+        """Get the Vp value at a given depth."""
+        depth = np.asarray(depth)
+        velocities = np.empty_like(depth)
+        for idx, d in enumerate(depth):
+            layer = self._get_layer(d)
+            velocities[idx] = layer._interpolate_vs(d)
+        return velocities
+
+    def plot(self, depth_range: tuple[float, float], samples: int = 100):
+        import matplotlib.pyplot as plt
+
+        fig = plt.figure()
+        ax = fig.gca()
+
+        depths = np.linspace(*depth_range, samples)
+
+        vp = self.vp_interpolator(depths)
+        vs = self.vs_interpolator(depths)
+
+        ax.plot(vp, depths, label="Vp")
+        ax.plot(self.vp_interpolator_mid(depths), depths, label="Vs", alpha=0.4)
+        ax.plot(vs, depths, label="Vs")
+        ax.plot(self.vs_interpolator_mid(depths), depths, label="Vs", alpha=0.4)
+        ax.invert_yaxis()
+        ax.legend()
+        ax.grid(alpha=0.3)
+        plt.show()
 
     @classmethod
     def from_earth_model(cls, earth_model: EarthModel) -> LayeredModel:

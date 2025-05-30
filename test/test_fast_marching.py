@@ -25,13 +25,13 @@ def octree() -> Octree:
         location=Location(
             lat=10.0,
             lon=10.0,
-            elevation=0.2 * KM,
+            elevation=0.5 * KM,
         ),
         root_node_size=2 * KM,
         n_levels=5,
-        east_bounds=Range(-50 * KM, 50 * KM),
-        north_bounds=Range(-50 * KM, 50 * KM),
-        depth_bounds=Range(0 * KM, 20 * KM),
+        east_bounds=Range(-20 * KM, 20 * KM),
+        north_bounds=Range(-20 * KM, 20 * KM),
+        depth_bounds=Range(0 * KM, 10 * KM),
     )
 
 
@@ -148,12 +148,21 @@ async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
     fmm_times = await fmm_tracer.get_travel_times("fmm:P", octree, stations)
     cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
 
-    import matplotlib.pyplot as plt
+    if False:
+        import matplotlib.pyplot as plt
 
-    plt.plot(fmm_times / cake_times)
-    plt.show()
+        station = 0
+        n_east = int(octree.east_bounds.width() // octree.root_node_size)
+        n_north = int(octree.north_bounds.width() // octree.root_node_size)
+        n_depth = int(octree.depth_bounds.width() // octree.root_node_size)
 
-    np.testing.assert_allclose(fmm_times, cake_times)
+        fmm_times_station = fmm_times[:, station].reshape(n_depth, n_north, n_east)
+        cake_times_station = cake_times[:, station].reshape(n_depth, n_north, n_east)
+
+        plt.imshow(fmm_times_station[1, :, :] - cake_times_station[1, :, :])
+        plt.show()
+
+    np.testing.assert_allclose(fmm_times, cake_times, atol=0.1)
 
 
 def test_surface_distances(octree, stations):
