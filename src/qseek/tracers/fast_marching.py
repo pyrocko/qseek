@@ -5,7 +5,7 @@ import functools
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
@@ -20,8 +20,8 @@ from qseek.models.layered_model import LayeredModel
 from qseek.models.station import Station, Stations
 from qseek.octree import Node
 from qseek.stats import get_progress
-from qseek.tracers.base import RayTracer
-from qseek.tracers.utils import EarthModel, surface_distances
+from qseek.tracers.base import ModelledArrival, RayTracer
+from qseek.tracers.utils import EarthModel, surface_distances_reference
 from qseek.utils import Range, alog_call, datetime_now, get_cpu_count
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from qseek.octree import Octree
 
 logger = logging.getLogger(__name__)
-Phase = Literal["fmm:P", "fmm:S"]
+Phase = Literal["fm:P", "fm:S"]
 
 InterpolationMethod = Literal["nearest", "linear", "cubic"]
 FMMImplementation = Literal["pyrocko", "scikit-fmm"]
@@ -60,7 +60,7 @@ class StationTravelTimeTable(BaseModel):
     @classmethod
     def check_depth_range(cls, depth_range: Range) -> Range:
         if depth_range.start > 0.0:
-            raise ValueError("depth range start must be <= 0.0")
+            raise ValueError("depth range start must be >= 0.0")
         return depth_range
 
     def model_post_init(self, __context: Any) -> None:
@@ -79,9 +79,9 @@ class StationTravelTimeTable(BaseModel):
         )
 
     def _get_velocity_grid(self) -> np.ndarray:
-        if self.phase == "fmm:P":
+        if self.phase == "fm:P":
             velocities = self.earth_model.vp_interpolator
-        elif self.phase == "fmm:S":
+        elif self.phase == "fm:S":
             velocities = self.earth_model.vs_interpolator
         else:
             raise ValueError(f"unknown phase {self.phase}")
@@ -214,7 +214,7 @@ class FastMarchingTracer(RayTracer):
     )
 
     phases: tuple[Phase, ...] = Field(
-        default=("fmm:P", "fmm:S"),
+        default=("fm:P", "fm:S"),
         description="Phases to calculate.",
     )
     _travel_time_tables: dict[tuple[str, Phase], StationTravelTimeTable] = PrivateAttr(
@@ -227,13 +227,13 @@ class FastMarchingTracer(RayTracer):
     _node_lut: ArrayLRUCache[tuple[bytes, Phase]] = PrivateAttr()
 
     def get_travel_time_table(
-        self, station: Station, phase: Phase
+        self, location: Location, phase: Phase
     ) -> StationTravelTimeTable:
         """Get the travel time table for a given station and phase."""
-        key = (station.nsl.pretty, phase)
+        key = (location.location_hash(), phase)
         if key not in self._travel_time_tables:
             raise ValueError(
-                f"travel time table {phase} for {station.nsl.pretty} not found"
+                f"travel time table for {location} and phase {phase} not found"
             )
         return self._travel_time_tables[key]
 
@@ -267,11 +267,10 @@ class FastMarchingTracer(RayTracer):
 
     def add_travel_time_table(self, table: StationTravelTimeTable) -> None:
         """Add a travel time slice to the tracer."""
-        key = (table.station.nsl.pretty, table.phase)
+        key = (table.station.location_hash(), table.phase)
         if key in self._travel_time_tables:
             raise ValueError(
-                f"travel time table {table.phase} for "
-                f"{table.station.nsl.pretty} already exists"
+                f"travel time table {table.phase} for {table.station} already exists"
             )
         self._travel_time_tables[key] = table
 
@@ -290,18 +289,18 @@ class FastMarchingTracer(RayTracer):
             surface_distances = np.array(
                 [station.surface_distance_to(corner) for corner in octree_corners]
             )
-            depth_offsets = (
-                np.array([corner.effective_depth for corner in octree_corners])
-                - station.effective_depth
+            octree_depth_range = (
+                np.array(octree.depth_bounds) - octree.location.effective_elevation
             )
+            depth_margin = octree.depth_bounds.width() * 0.01  # 1% margin
 
             volume = StationTravelTimeTable(
                 station=station,
                 phase=phase,
-                distance_max=surface_distances.max(),
+                distance_max=surface_distances.max() * 1.01,  # 1% margin
                 depth_range=Range(
-                    min(0.0, depth_offsets.min()),
-                    depth_offsets.max(),
+                    min(octree_depth_range[0], 0.0) - depth_margin,
+                    octree_depth_range[1] + station.effective_elevation + depth_margin,
                 ),
                 grid_spacing=octree.smallest_node_size(),
                 earth_model=layered_model,
@@ -327,10 +326,9 @@ class FastMarchingTracer(RayTracer):
         travel_times = []
         n_nodes = len(nodes)
 
-        # surface_offsets = surface_distances_reference(
-        #     nodes, self._cached_stations, self._octree.location
-        # ).T
-        surface_offsets = surface_distances(nodes, self._cached_stations).T
+        surface_offsets = surface_distances_reference(
+            nodes, self._cached_stations, self._octree.location
+        ).T
         node_depths = (
             np.array([n.depth for n in nodes]) + self._octree.location.effective_depth
         )
@@ -345,7 +343,7 @@ class FastMarchingTracer(RayTracer):
                 travel_times.append(
                     await table.get_travel_times(
                         surface_offsets=surface_offsets[idx],
-                        depth_offsets=node_depths + station.effective_depth,
+                        depth_offsets=node_depths - station.effective_depth,
                         method=self.interpolation_method,
                     )
                 )
@@ -358,8 +356,19 @@ class FastMarchingTracer(RayTracer):
             node_lut[node.hash(), phase] = station_travel_times.astype(np.float32)
 
     def get_travel_time_location(
-        self, phase: str, source: Location, receiver: Location
-    ): ...
+        self,
+        phase: str,
+        source: Location,
+        receiver: Location,
+    ):
+        travel_time_table = self.get_travel_time_table(receiver, phase)
+        source_distance = receiver.surface_distance_to(source)
+        source_depth = source.effective_depth - receiver.effective_depth
+        return travel_time_table.get_travel_time(
+            source_distance,
+            source_depth,
+            method=self.interpolation_method,
+        )
 
     @alog_call
     async def get_travel_times(
@@ -404,3 +413,29 @@ class FastMarchingTracer(RayTracer):
             return await self.get_travel_times(phase, nodes, stations)
 
         return np.asarray(station_travel_times).astype(float, copy=False)
+
+    def get_arrivals(
+        self,
+        phase: str,
+        event_time: datetime,
+        source: Location,
+        receivers: Sequence[Location],
+    ) -> list[ModelledArrival | None]:
+        traveltimes = self.get_travel_times_locations(
+            phase,
+            source=source,
+            receivers=receivers,
+        )
+        arrivals = []
+        for traveltime, _receiver in zip(traveltimes, receivers, strict=True):
+            if traveltime is None:
+                arrivals.append(None)
+                continue
+
+            arrivaltime = event_time + timedelta(seconds=traveltime)
+            arrival = ModelledArrival(
+                time=arrivaltime,
+                phase=phase,
+            )
+            arrivals.append(arrival)
+        return arrivals

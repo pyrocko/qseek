@@ -36,12 +36,13 @@ dependencies = [
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
-    "lru-dict @ git+https://github.com/miili/lru-dict@feature/lru-subclassing",
+    "lru-dict @ git+https://github.com/amitdev/lru-dict",
     "rich>=13.4",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
     "psutil>=5.9",
     "aiofiles>=23.0",
+    "scikit-fmm >= 2025.1"
 ]
 
 classifiers = [
@@ -118,6 +119,7 @@ convention = "google"
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"

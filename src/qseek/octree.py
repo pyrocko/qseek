@@ -326,9 +326,10 @@ class Node:
             yield self
 
     def hash(self) -> bytes:
-        if not self.tree:
-            raise AttributeError("parent octree not set")
         if not self._hash:
+            if not self.tree:
+                raise AttributeError("parent octree not set")
+
             self._hash = sha1(
                 struct.pack(
                     "dddddddd",

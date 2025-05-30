@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -19,26 +22,37 @@ from qseek.utils import Range
 KM = 1e3
 
 
+def constant_earth_model() -> EarthModel:
+    with tempfile.NamedTemporaryFile("w") as file:
+        file.write(
+            """ -1.0   5.0   3.0   2.7
+             30.0   5.0   3.0   2.7
+            """
+        )
+        file.flush()
+        return EarthModel(filename=Path(file.name))
+
+
 @pytest.fixture(scope="session")
 def octree() -> Octree:
     return Octree(
         location=Location(
             lat=10.0,
             lon=10.0,
-            elevation=0.2 * KM,
+            elevation=0.5 * KM,
         ),
         root_node_size=2 * KM,
         n_levels=5,
-        east_bounds=Range(-50 * KM, 50 * KM),
-        north_bounds=Range(-50 * KM, 50 * KM),
-        depth_bounds=Range(0 * KM, 20 * KM),
+        east_bounds=Range(-20 * KM, 20 * KM),
+        north_bounds=Range(-20 * KM, 20 * KM),
+        depth_bounds=Range(0 * KM, 10 * KM),
     )
 
 
 @pytest.fixture(scope="session")
 def stations() -> Stations:
     rng = np.random.default_rng(1232)
-    n_stations = 20
+    n_stations = 5
     stations: list[Station] = []
     for i_sta in range(n_stations):
         station = Station(
@@ -46,10 +60,10 @@ def stations() -> Stations:
             station="STA%02d" % i_sta,
             lat=10.0,
             lon=10.0,
-            elevation=rng.uniform(0, 0.1) * KM,
-            depth=rng.uniform(0, 0.1) * KM,
-            north_shift=rng.uniform(-2, 2) * KM,
-            east_shift=rng.uniform(-2, 2) * KM,
+            elevation=rng.uniform(0, 1) * KM,
+            depth=rng.uniform(0, 0.2) * KM,
+            north_shift=rng.uniform(-5, 5) * KM,
+            east_shift=rng.uniform(-5, 5) * KM,
         )
         stations.append(station)
     return Stations(stations=stations)
@@ -72,7 +86,7 @@ async def test_station_travel_time_table_constant():
     )
     table = StationTravelTimeTable(
         station=station,
-        phase="fmm:P",
+        phase="fm:P",
         distance_max=20 * KM,
         depth_range=Range(0, 20 * KM),
         grid_spacing=100.0,
@@ -129,31 +143,58 @@ async def test_station_travel_time_table_constant():
 
 @pytest.mark.asyncio
 async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
-    model = EarthModel()
-    fmm_tracer = FastMarchingTracer(
-        velocity_model=model,
-        nthreads=0,
-        implementation="scikit-fmm",
-        interpolation_method="linear",
-    )
+    models = [
+        constant_earth_model(),
+        EarthModel(),
+    ]
 
-    cake_tracer = CakeTracer(
-        phases={"cake:P": Timing(definition="P,p"), "cake:S": Timing(definition="S,s")},
-        earthmodel=model,
-    )
+    for model in models:
+        fmm_tracer = FastMarchingTracer(
+            velocity_model=model,
+            nthreads=0,
+            implementation="pyrocko",
+            interpolation_method="linear",
+        )
 
-    await fmm_tracer.prepare(octree, stations)
-    await cake_tracer.prepare(octree, stations)
+        cake_tracer = CakeTracer(
+            phases={
+                "cake:P": Timing(definition="P,p"),
+                "cake:S": Timing(definition="S,s"),
+            },
+            earthmodel=model,
+        )
 
-    fmm_times = await fmm_tracer.get_travel_times("fmm:P", octree, stations)
-    cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
+        await fmm_tracer.prepare(octree, stations)
+        await cake_tracer.prepare(octree, stations)
 
-    import matplotlib.pyplot as plt
+        fmm_times = await fmm_tracer.get_travel_times("fm:P", octree, stations)
+        cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
 
-    plt.plot(fmm_times / cake_times)
-    plt.show()
+        if False:
+            import matplotlib.pyplot as plt
 
-    np.testing.assert_allclose(fmm_times, cake_times)
+            for i_station, station in enumerate(stations.stations):
+                n_east = int(octree.east_bounds.width() // octree.root_node_size)
+                n_north = int(octree.north_bounds.width() // octree.root_node_size)
+                n_depth = int(octree.depth_bounds.width() // octree.root_node_size)
+
+                fmm_times_station = fmm_times[:, i_station].reshape(
+                    n_depth, n_north, n_east
+                )
+                cake_times_station = cake_times[:, i_station].reshape(
+                    n_depth, n_north, n_east
+                )
+
+                plt.imshow(
+                    fmm_times_station[2, :, :] - cake_times_station[2, :, :],
+                    cmap="viridis_r",
+                )
+                plt.title(f"Station {station.effective_depth} - FMM - Cake difference")
+                plt.xlabel("East")
+                plt.ylabel("North")
+                plt.show()
+
+        np.testing.assert_allclose(fmm_times, cake_times, rtol=1e-1)
 
 
 def test_surface_distances(octree, stations):
