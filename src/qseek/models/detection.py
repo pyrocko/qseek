@@ -351,6 +351,7 @@ class EventReceivers(BaseModel):
         phase: PhaseDescription | None = None,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
+        want_incomplete: bool = True,
     ) -> list[Trace]:
         """Retrieves and restitutes waveforms for a given squirrel.
 
@@ -365,6 +366,8 @@ class EventReceivers(BaseModel):
             receivers (list[Receiver] | None, optional): The receivers to retrieve
                 waveforms for. If None, all receivers are retrieved. Defaults to None.
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
+            want_incomplete (bool, optional): Whether to return incomplete traces.
+                Defaults to True.
 
         Returns:
             list[Trace]: The restituted waveforms.
@@ -418,6 +421,7 @@ class EventReceivers(BaseModel):
         filter_clipped: bool = False,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
+        want_incomplete: bool = True,
     ) -> list[Trace]:
         """Retrieves and restitutes waveforms for a given squirrel.
 
@@ -446,6 +450,8 @@ class EventReceivers(BaseModel):
             filter_clipped (bool, optional): Whether to filter clipped traces.
                 Defaults to False.
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
+            want_incomplete (bool, optional): Whether to return incomplete traces.
+                Defaults to True.
 
         Returns:
             list[Trace]: The restituted waveforms.
@@ -457,6 +463,7 @@ class EventReceivers(BaseModel):
             seconds_before=seconds_before + seconds_taper,
             receivers=receivers,
             channels=channels,
+            want_incomplete=want_incomplete,
         )
         traces = filter_clipped_traces(traces) if filter_clipped else traces
         if not traces:

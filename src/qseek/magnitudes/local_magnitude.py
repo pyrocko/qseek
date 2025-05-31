@@ -173,6 +173,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             phase=None,
             cut_off_taper=False,
             filter_clipped=True,
+            want_incomplete=False,
         )
         if not traces:
             logger.warning("No restituted traces found for event %s", event.time)
