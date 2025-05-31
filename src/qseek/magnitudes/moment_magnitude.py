@@ -361,6 +361,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 demean=True,
                 cut_off_taper=False,
                 filter_clipped=True,
+                want_incomplete=False,
             )
             if not traces:
                 continue
