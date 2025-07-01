@@ -7,7 +7,7 @@ from algorithm.functional import vectorize, parallelize
 from memory.unsafe_pointer import UnsafePointer
 from memory import memset
 from sys.intrinsics import masked_store, prefetch, PrefetchOptions
-from sys import num_physical_cores
+from sys import num_logical_cores
 
 from layout import (
     LayoutTensor,
@@ -18,16 +18,14 @@ from layout import (
     UNKNOWN_VALUE,
 )
 
-alias n_cores = num_physical_cores()
 
-
-@value
-struct Node[dtype: DType]:
+@fieldwise_init
+struct Node[dtype: DType](Copyable & Movable):
     var shifts: UnsafePointer[Int32]
     var weights: UnsafePointer[Scalar[dtype]]
 
-@value
-struct NodeWithStack[dtype: DType]:
+@fieldwise_init
+struct NodeWithStack[dtype: DType](Copyable & Movable):
     var shifts: UnsafePointer[Int32]
     var weights: UnsafePointer[Scalar[dtype]]
     var stack: UnsafePointer[Scalar[dtype]]
@@ -39,8 +37,8 @@ struct NodeWithStack[dtype: DType]:
 
 
 
-@value
-struct Trace[dtype: DType]:
+@fieldwise_init
+struct Trace[dtype: DType](Copyable & Movable):
     var data: UnsafePointer[Scalar[dtype]]
     var size: Int
     var offset: Int
@@ -58,21 +56,10 @@ struct Trace[dtype: DType]:
         self.offset = offset
 
 
-fn get_shift_ranges[
-    dtype: DType
-](nodes: List[Node[dtype]], traces: List[Trace[dtype]]) -> (Int32, Int32):
-    min_idx = Int32.MAX
-    max_idx = Int32.MIN
-
-    for i_node in range(len(nodes)):
-        node = nodes[i_node]
-        for i_trace in range(len(traces)):
-            idx_begin = traces[i_trace].offset + node.shifts[i_trace]
-            idx_end = idx_begin + traces[i_trace].size
-            min_idx = min(min_idx, idx_begin)
-            max_idx = max(idx_end, max_idx)
-
-    return (Int32(min_idx), Int32(max_idx))
+fn get_thread_count(n_threads: Int) -> Int:
+    if n_threads <= 0:
+        return num_logical_cores()
+    return n_threads
 
 
 fn get_dtype_char[dtype: DType]() raises -> String:
@@ -100,12 +87,12 @@ fn check_array_dtype[dtype: DType](numpy_array: PythonObject) raises:
 fn PyInit_parstack() -> PythonObject:
     try:
         var m = PythonModuleBuilder("stack_traces")
-        m.def_function[stack_traces_wrapper[reduce_max=False]](
+        m.def_function[stack_wrapper](
             "stack_traces",
             docstring="",
         )
-        m.def_function[stack_traces_wrapper[reduce_max=True]](
-            "stack_traces_reduce_max",
+        m.def_function[stack_and_reduce_wrapper](
+            "stack_and_reduce",
             docstring="",
         )
         return m.finalize()
@@ -114,49 +101,82 @@ fn PyInit_parstack() -> PythonObject:
             String("error creating Python Mojo module:", e)
         )
 
-
-
-fn stack_traces_wrapper[reduce_max: Bool](
-    traces: PythonObject,
-    offsets: PythonObject,
-    shifts: PythonObject,
-    weights: PythonObject,
-    result: PythonObject,
-    n_threads: PythonObject = n_cores,
-    ) raises -> PythonObject:
-    np = Python.import_module("numpy")
-
-    n_traces = len(traces)
-    if n_traces == 0:
-        raise "Input traces must have positive dimensions"
-
-    trace = traces[0]
-
-    if trace.dtype == np.float16:
-        stack_func = stack_traces[DType.float16, reduce_max]
-    elif trace.dtype == np.float32:
-        stack_func = stack_traces[DType.float32, reduce_max]
-    elif trace.dtype == np.float64:
-        stack_func = stack_traces[DType.float64, reduce_max]
-    else:
-        raise "Unsupported dtype: " + String(trace.dtype)
-    return stack_func(
-        traces, offsets, shifts, weights, result, n_threads,
-    )
-
-
-
-fn stack_traces[
-    dtype: DType,
-    reduce_max: Bool = False,
-](
+fn stack_wrapper(
     traces: PythonObject,
     offsets: PythonObject,
     shifts: PythonObject,
     weights: PythonObject,
     result: PythonObject,
     n_threads: PythonObject,
-) raises -> PythonObject:
+    ) raises -> PythonObject:
+    # np = Python.import_module("numpy")
+
+    # n_traces = len(traces)
+    # if n_traces == 0:
+    #     raise "Input traces must have positive dimensions"
+    # trace = traces[0]
+
+    # if trace.dtype == np.float16:
+    #     prepare_func = prepare[DType.float16]
+    # elif trace.dtype == np.float32:
+    #     prepare_func = prepare[DType.float32]
+    # elif trace.dtype == np.float64:
+    #     prepare_func = prepare[DType.float64]
+    # else:
+    #     raise "Unsupported dtype: " + String(trace.dtype)
+
+    traces_list, nodes_list, min_shift, max_shift = prepare[DType.float32](
+        traces=traces,
+        offsets=offsets,
+        shifts=shifts,
+        weights=weights,
+    )
+
+    return stack_traces(
+        traces_list, nodes_list, min_shift, max_shift, result, get_thread_count(Int(n_threads)),
+    )
+
+fn stack_and_reduce_wrapper(
+    traces: PythonObject,
+    offsets: PythonObject,
+    shifts: PythonObject,
+    weights: PythonObject,
+    n_threads: PythonObject,
+    ) raises -> PythonObject:
+    # np = Python.import_module("numpy")
+
+    # n_traces = len(traces)
+    # if n_traces == 0:
+    #     raise "Input traces must have positive dimensions"
+    # trace = traces[0]
+
+    # if trace.dtype == np.float16:
+    #     prepare_func = prepare[DType.float16]
+    # elif trace.dtype == np.float32:
+    #     prepare_func = prepare[DType.float32]
+    # elif trace.dtype == np.float64:
+    #     prepare_func = prepare[DType.float64]
+    # else:
+    #     raise "Unsupported dtype: " + String(trace.dtype)
+
+    traces_list, nodes_list, min_shift, max_shift = prepare[DType.float32](
+        traces=traces,
+        offsets=offsets,
+        shifts=shifts,
+        weights=weights,
+    )
+
+    return stack_and_reduce(
+        traces_list, nodes_list, min_shift, max_shift, get_thread_count(Int(n_threads)),
+    )
+
+
+fn prepare[dtype: DType](
+    traces: PythonObject,
+    offsets: PythonObject,
+    shifts: PythonObject,
+    weights: PythonObject,
+) raises -> Tuple[List[Trace[dtype]], List[Node[dtype]], Int32, Int32]:
     np = Python.import_module("numpy")
 
     n_traces = len(traces)
@@ -182,8 +202,8 @@ fn stack_traces[
     shifts_data = shifts.ctypes.data.unsafe_get_as_pointer[DType.int32]()
     weights_data = weights.ctypes.data.unsafe_get_as_pointer[dtype]()
 
-    traces_list = List[Trace[dtype]]()
-    node_list = List[Node[dtype]]()
+    traces_list = List[Trace[dtype]](capacity=n_traces)
+    node_list = List[Node[dtype]](capacity=n_nodes)
 
     for i_trace in range(n_traces):
         traces_list.append(
@@ -201,23 +221,23 @@ fn stack_traces[
             )
         )
 
-    min_shift, max_shift = get_shift_ranges(node_list, traces_list)
+    min_shift = Int32.MAX
+    max_shift = Int32.MIN
+    for i_node in range(n_nodes):
+        node = node_list[i_node]
+        for i_trace in range(len(traces)):
+            idx_begin = traces_list[i_trace].offset + node.shifts[i_trace]
+            idx_end = idx_begin + traces_list[i_trace].size
+            min_shift = min(min_shift, idx_begin)
+            max_shift = max(idx_end, max_shift)
 
-    if reduce_max:
-        return stack_trace_with_reduce[dtype](
-            traces=traces_list,
-            nodes=node_list,
-            min_shift=min_shift,
-            max_shift=max_shift,
-        )
-    return stack_traces[dtype](
-        traces=traces_list,
-        nodes=node_list,
-        min_shift=min_shift,
-        max_shift=max_shift,
-        result_arr=result,
-        n_threads=Int(n_threads),
+    return (
+        traces_list,
+        node_list,
+        min_shift,
+        max_shift,
     )
+
 
 
 fn stack_traces[dtype: DType](
@@ -228,6 +248,7 @@ fn stack_traces[dtype: DType](
     result_arr: PythonObject,
     n_threads: Int = 16,
 ) raises -> PythonObject:
+    cpython = CPython()
     np = Python.import_module("numpy")
 
     result_length = max_shift - min_shift
@@ -246,7 +267,7 @@ fn stack_traces[dtype: DType](
         result = result_arr
 
     result_data = result.ctypes.data.unsafe_get_as_pointer[dtype]()
-    node_list = List[NodeWithStack[dtype]]()
+    node_list = List[NodeWithStack[dtype]](capacity=n_nodes)
     for i_node in range(n_nodes):
         node_list.append(
             NodeWithStack[dtype](
@@ -255,7 +276,6 @@ fn stack_traces[dtype: DType](
             )
         )
 
-    # for i_node in range(n_nodes):
     @parameter
     fn stack_node(i_node: Int):
         node = node_list[i_node]
@@ -281,72 +301,96 @@ fn stack_traces[dtype: DType](
             stack_nsamples = min(result_length - base_idx, trace.size)
             vectorize[stack, simdwidthof[dtype]()](Int(stack_nsamples))
 
+    state = cpython.PyGILState_Ensure()
     parallelize[stack_node](n_nodes, n_threads)
+    cpython.PyGILState_Release(state)
 
     return Python.tuple(result, min_shift)
 
 
-fn stack_trace_with_reduce[dtype: DType](
+fn stack_and_reduce[dtype: DType](
     traces: List[Trace[dtype]],
     nodes: List[Node[dtype]],
     min_shift: Int32,
     max_shift: Int32,
+    n_threads: Int = 16,
 ) raises -> PythonObject:
+    cpython = CPython()
     np = Python.import_module("numpy")
     result_length = max_shift - min_shift
     n_nodes = len(nodes)
     n_traces = len(traces)
 
-    result = np.full(
+    node_max = np.full(
         result_length, np.finfo(np.float32).min, dtype=get_dtype_char[dtype](),
     )
-    node_indices = np.zeros(
-        result_length, dtype=np.intp
-    )
-    result_data = result.ctypes.data.unsafe_get_as_pointer[dtype]()
-    node_indices_data = node_indices.ctypes.data.unsafe_get_as_pointer[DType.uint64]()
-    node_stack = UnsafePointer[Scalar[dtype]].alloc(Int(result_length))
+    node_argmax = np.zeros(result_length, dtype=np.intp)
+    node_max_data = node_max.ctypes.data.unsafe_get_as_pointer[dtype]()
+    node_argmax_data = node_argmax.ctypes.data.unsafe_get_as_pointer[DType.uint64]()
 
-    for i_node in range(n_nodes):
-        node = nodes[i_node]
-        # prefetch[PrefetchOptions().high_locality()](node.result)
-        memset(node_stack, 0, Int(result_length))
+    @parameter
+    fn stack_tile(i_thread: Int):
+        tile_start_idx = i_thread * result_length // n_threads
+        tile_end_idx = (i_thread + 1) * result_length // n_threads
+        tile_size = Int(tile_end_idx - tile_start_idx)
 
-        for i_trace in range(n_traces):
-            weight = node.weights[i_trace]
-            if weight == 0.0:
-                continue
-            trace = traces[i_trace]
-            trace_shift = trace.offset + node.shifts[i_trace]
-            base_idx = trace_shift - min_shift
+        tile_node_stack = UnsafePointer[Scalar[dtype]].alloc(tile_size)
+
+        for i_node in range(n_nodes):
+            node = nodes[i_node]
+            # prefetch[PrefetchOptions().high_locality()](node.node_max)
+            memset(tile_node_stack, 0, tile_size)
+
+            for i_trace in range(n_traces):
+                weight = node.weights[i_trace]
+                if weight == 0.0:
+                    continue
+                trace = traces[i_trace]
+                trace_shift = trace.offset + node.shifts[i_trace]
+
+                base_idx = trace_shift - min_shift
+                tile_base_idx = max(0, base_idx - tile_start_idx)
+
+                trace_start_idx = max(0, tile_start_idx - base_idx)
+                trace_end_idx = max(0, tile_end_idx - base_idx)
+
+                trace_start_idx = min(trace_start_idx, trace.size)
+                trace_end_idx = min(trace_end_idx, trace.size)
+
+                n_samples = trace_end_idx - trace_start_idx
+
+                @parameter
+                fn stack[width: Int](i_sample: Int):
+                    i_res = tile_base_idx + i_sample
+
+                    trace_samples = trace.data.load[width=width](trace_start_idx + i_sample)
+                    stacked_samples = tile_node_stack.load[width=width](i_res)
+
+                    stacked_samples += trace_samples * weight
+                    tile_node_stack.store(i_res, stacked_samples)
+
+                vectorize[stack, simdwidthof[dtype]()](Int(n_samples))
 
             @parameter
-            fn stack[width: Int](i_sample: Int):
-                i_res = base_idx + i_sample
-                trace_samples = trace.data.load[width=width](i_sample)
-                stacked_samples = node_stack.load[width=width](i_res)
+            fn reduce_max[width: Int](idx: Int):
+                tile_idx = tile_start_idx + idx
+                node_vec = tile_node_stack.load[width=width](idx)
+                max_old_vec = node_max_data.load[width=width](tile_idx)
 
-                stacked_samples += trace_samples * weight
-                node_stack.store(i_res, stacked_samples)
+                max_new_vec = max(node_vec, max_old_vec)
+                update_mask = max_old_vec != max_new_vec
 
-            stack_nsamples = min(result_length - base_idx, trace.size)
-            vectorize[stack, simdwidthof[dtype]()](Int(stack_nsamples))
+                node_max_data.store(tile_idx, max_new_vec)
+                masked_store(
+                    SIMD[DType.uint64, width](i_node),
+                    node_argmax_data + tile_idx,
+                    mask=update_mask,
+                )
 
-        @parameter
-        fn reduce_max[width: Int](idx: Int):
-            max_old_vec = result_data.load[width=width](idx)
-            node_vec = node_stack.load[width=width](idx)
+            vectorize[reduce_max, simdwidthof[dtype]()](tile_size)
 
-            max_new_vec = max(node_vec, max_old_vec)
-            update_mask = max_old_vec != max_new_vec
+    state = cpython.PyGILState_Ensure()
+    parallelize[stack_tile](n_threads, n_threads)
+    cpython.PyGILState_Release(state)
 
-            result_data.store(idx, max_new_vec)
-            new_indices = masked_store(
-                SIMD[DType.uint64, width](i_node),
-                node_indices_data + idx,
-                mask=update_mask,
-            )
-
-        vectorize[reduce_max, simdwidthof[dtype]()](Int(result_length))
-
-    return Python.tuple(result, node_indices, min_shift)
+    return Python.tuple(node_max, node_argmax, min_shift)
