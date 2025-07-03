@@ -19,10 +19,34 @@ from layout import (
 )
 
 
+@export
+fn PyInit_parstack() -> PythonObject:
+    try:
+        var m = PythonModuleBuilder("stack_traces")
+        m.def_function[stack_wrapper](
+            "stack_traces",
+            docstring="",
+        )
+        m.def_function[stack_and_reduce_wrapper](
+            "stack_and_reduce",
+            docstring="",
+        )
+        m.def_function[stack_snapshot_wrapper](
+            "stack_snapshot",
+            docstring="",
+        )
+        return m.finalize()
+    except e:
+        return abort[PythonObject](
+            String("error creating Python Mojo module:", e)
+        )
+
+
 @fieldwise_init
 struct Node[dtype: DType](Copyable & Movable):
     var shifts: UnsafePointer[Int32]
     var weights: UnsafePointer[Scalar[dtype]]
+
 
 @fieldwise_init
 struct NodeWithStack[dtype: DType](Copyable & Movable):
@@ -36,7 +60,6 @@ struct NodeWithStack[dtype: DType](Copyable & Movable):
         self.stack = stack
 
 
-
 @fieldwise_init
 struct Trace[dtype: DType](Copyable & Movable):
     var data: UnsafePointer[Scalar[dtype]]
@@ -44,7 +67,7 @@ struct Trace[dtype: DType](Copyable & Movable):
     var offset: Int
 
     fn __init__(out self, array: PythonObject, offset: Int) raises:
-        if array.ndim != 1:
+        if Int(array.ndim) != 1:
             raise "Each trace must be a 1D array"
         try:
             check_array_dtype[dtype](array)
@@ -56,13 +79,16 @@ struct Trace[dtype: DType](Copyable & Movable):
         self.offset = offset
 
 
+@always_inline
 fn get_thread_count(n_threads: Int) -> Int:
     if n_threads <= 0:
         return num_logical_cores()
     return n_threads
 
 
+@always_inline
 fn get_dtype_char[dtype: DType]() raises -> String:
+    @parameter
     if dtype is DType.float16:
         return "e"
     elif dtype is DType.float32:
@@ -75,31 +101,13 @@ fn get_dtype_char[dtype: DType]() raises -> String:
         raise "Unsupported dtype"
 
 
+@always_inline
 fn check_array_dtype[dtype: DType](numpy_array: PythonObject) raises:
     @parameter
-    char = get_dtype_char[dtype]()
-    if numpy_array.dtype.char != char:
-        raise "Input array must be of type " + char
+    dtype_char = get_dtype_char[dtype]()
+    if String(numpy_array.dtype.char) != dtype_char:
+        raise "Input array must be of type " + String(dtype_char)
 
-
-
-@export
-fn PyInit_parstack() -> PythonObject:
-    try:
-        var m = PythonModuleBuilder("stack_traces")
-        m.def_function[stack_wrapper](
-            "stack_traces",
-            docstring="",
-        )
-        m.def_function[stack_and_reduce_wrapper](
-            "stack_and_reduce",
-            docstring="",
-        )
-        return m.finalize()
-    except e:
-        return abort[PythonObject](
-            String("error creating Python Mojo module:", e)
-        )
 
 fn stack_wrapper(
     traces: PythonObject,
@@ -133,7 +141,11 @@ fn stack_wrapper(
     )
 
     return stack_traces(
-        traces_list, nodes_list, min_shift, max_shift, result, get_thread_count(Int(n_threads)),
+        traces_list,
+        nodes_list,
+        min_shift,max_shift,
+        result,
+        get_thread_count(Int(n_threads)),
     )
 
 fn stack_and_reduce_wrapper(
@@ -143,22 +155,6 @@ fn stack_and_reduce_wrapper(
     weights: PythonObject,
     n_threads: PythonObject,
     ) raises -> PythonObject:
-    # np = Python.import_module("numpy")
-
-    # n_traces = len(traces)
-    # if n_traces == 0:
-    #     raise "Input traces must have positive dimensions"
-    # trace = traces[0]
-
-    # if trace.dtype == np.float16:
-    #     prepare_func = prepare[DType.float16]
-    # elif trace.dtype == np.float32:
-    #     prepare_func = prepare[DType.float32]
-    # elif trace.dtype == np.float64:
-    #     prepare_func = prepare[DType.float64]
-    # else:
-    #     raise "Unsupported dtype: " + String(trace.dtype)
-
     traces_list, nodes_list, min_shift, max_shift = prepare[DType.float32](
         traces=traces,
         offsets=offsets,
@@ -167,7 +163,32 @@ fn stack_and_reduce_wrapper(
     )
 
     return stack_and_reduce(
-        traces_list, nodes_list, min_shift, max_shift, get_thread_count(Int(n_threads)),
+        traces_list,
+        nodes_list,
+        min_shift,
+        max_shift,
+        get_thread_count(Int(n_threads)),
+    )
+
+fn stack_snapshot_wrapper(
+    traces: PythonObject,
+    offsets: PythonObject,
+    shifts: PythonObject,
+    weights: PythonObject,
+    index: PythonObject,
+) raises -> PythonObject:
+    traces_list, nodes_list, min_shift, max_shift = prepare[DType.float32](
+        traces=traces,
+        offsets=offsets,
+        shifts=shifts,
+        weights=weights,
+    )
+    return stack_snapshot(
+        traces_list,
+        nodes_list,
+        min_shift,
+        max_shift,
+        Int(index),
     )
 
 
@@ -225,7 +246,7 @@ fn prepare[dtype: DType](
     max_shift = Int32.MIN
     for i_node in range(n_nodes):
         node = node_list[i_node]
-        for i_trace in range(len(traces)):
+        for i_trace in range(n_traces):
             idx_begin = traces_list[i_trace].offset + node.shifts[i_trace]
             idx_end = idx_begin + traces_list[i_trace].size
             min_shift = min(min_shift, idx_begin)
@@ -345,6 +366,7 @@ fn stack_and_reduce[dtype: DType](
                 weight = node.weights[i_trace]
                 if weight == 0.0:
                     continue
+
                 trace = traces[i_trace]
                 trace_shift = trace.offset + node.shifts[i_trace]
 
@@ -389,8 +411,63 @@ fn stack_and_reduce[dtype: DType](
 
             vectorize[reduce_max, simdwidthof[dtype]()](tile_size)
 
+        tile_node_stack.free()
+
     state = cpython.PyGILState_Ensure()
     parallelize[stack_tile](n_threads, n_threads)
     cpython.PyGILState_Release(state)
 
     return Python.tuple(node_max, node_argmax, min_shift)
+
+
+fn stack_snapshot[dtype: DType](
+    traces: List[Trace[dtype]],
+    nodes: List[Node[dtype]],
+    min_shift: Int32,
+    max_shift: Int32,
+    index: Int32,
+) raises -> PythonObject:
+    cpython = CPython()
+    np = Python.import_module("numpy")
+
+    result_length = max_shift - min_shift
+    if index >= result_length or index < 0:
+        raise "Snapshot index out of bounds: " + String(index)
+
+    n_nodes = len(nodes)
+    n_traces = len(traces)
+
+    result = np.zeros(shape=n_nodes, dtype=get_dtype_char[dtype]())
+    result_data = result.ctypes.data.unsafe_get_as_pointer[dtype]()
+
+    state = cpython.PyGILState_Ensure()
+    for i_node in range(n_nodes):
+        node = nodes[i_node]
+
+        @parameter
+        fn stack_traces[width: Int](i_trace: Int):
+            trace_samples = SIMD[dtype, width](0)
+            trace_weights = SIMD[dtype, width](0)
+
+            @parameter
+            for idx_vector in range(width):
+                trace_idx = i_trace + idx_vector
+
+                weight = node.weights[trace_idx]
+                trace = traces[trace_idx]
+                trace_shift = trace.offset + node.shifts[trace_idx]
+                base_idx = trace_shift - min_shift
+                trace_sample_idx = index - base_idx
+
+                if trace_sample_idx > 0 or trace_sample_idx < trace.size:
+                    trace_samples[idx_vector] = trace.data[trace_sample_idx]
+                    trace_weights[idx_vector] = node.weights[trace_idx]
+
+
+            result_data[i_node] += (trace_samples * trace_weights).reduce_add()
+
+        vectorize[stack_traces, simdwidthof[dtype]()](Int(n_traces))
+
+    cpython.PyGILState_Release(state)
+
+    return result
