@@ -282,7 +282,7 @@ fn stack_traces[dtype: DType](
             shape=Python.tuple(n_nodes, result_length), dtype=get_dtype_char[dtype](),
         )
     else:
-        if result_arr.shape is not Python.tuple(n_nodes, result_length):
+        if result_arr.shape != Python.tuple(n_nodes, result_length):
             raise "Result array must have shape (n_nodes, length_out)"
         check_array_dtype[dtype](result_arr)
         result = result_arr

@@ -249,6 +249,7 @@ static PyObject *stack_traces(PyObject *self, PyObject *args,
       float weight = node.weights[i_trace];
       if (weight == 0.0f)
         continue;
+
       Trace trace = traces_list[i_trace];
       int32_t trace_shift = trace.offset + node.shifts[i_trace];
       int32_t base_idx = trace_shift - min_shift;

@@ -1,3 +1,5 @@
+from itertools import product
+
 import numpy as np
 import pytest
 from pyrocko import parstack as pyrocko_parstack
@@ -10,7 +12,8 @@ try:
 except ImportError:
     stack_mojo = None
 
-N_THREADS_TEST = [1, 2, 4, 8]
+N_THREADS_TEST = [1, 4, 8]
+ROUNDS = [5]
 
 
 def get_data(n_nodes: int = 12 * 12 * 10, n_samples: int = 30_000, n_traces: int = 100):
@@ -96,51 +99,80 @@ def test_stack_and_reduce(data, n_threads: int):
 
 
 @pytest.mark.benchmark(group="parstack")
-@pytest.mark.parametrize("n_threads", N_THREADS_TEST)
-def test_stack_qseek(benchmark, data, n_threads: int):
+@pytest.mark.parametrize("n_threads, rounds", list(product(N_THREADS_TEST, ROUNDS)))
+def test_stack_simple_qseek(benchmark, data, n_threads: int, rounds: int):
     traces, offsets, shifts, weights = data
 
-    benchmark(
-        stack.stack_traces,
-        traces,
-        offsets,
-        shifts,
-        weights,
-        result=None,
-        result_samples=20_000,
-        n_threads=n_threads,
-    )
+    @benchmark
+    def run() -> None:
+        res = None
+        for _ in range(rounds):
+            res, _ = stack.stack_traces(
+                traces,
+                offsets,
+                shifts,
+                weights,
+                result=res,
+                n_threads=n_threads,
+            )
+        array_tools.argmax_masked(
+            res,
+            n_threads=n_threads,
+        )
+
+    assert run is None
 
 
 @pytest.mark.benchmark(group="parstack")
-@pytest.mark.parametrize("n_threads", N_THREADS_TEST)
-def test_stack_pyrocko(benchmark, data, n_threads: int):
+@pytest.mark.parametrize("n_threads, rounds", list(product(N_THREADS_TEST, ROUNDS)))
+def test_stack_simple_pyrocko(benchmark, data, n_threads: int, rounds: int):
     traces, offsets, shifts, weights = data
 
-    benchmark(
-        pyrocko_parstack.parstack,
-        traces,
-        offsets,
-        shifts,
-        weights,
-        method=0,
-        nparallel=n_threads,
-    )
+    @benchmark
+    def run() -> None:
+        res = None
+        for _ in range(rounds):
+            res, _ = pyrocko_parstack.parstack(
+                traces,
+                offsets,
+                shifts,
+                weights,
+                method=0,
+                result=res,
+                nparallel=n_threads,
+                dtype=np.float32,
+            )
+        array_tools.argmax_masked(
+            res,
+            n_threads=n_threads,
+        )
+
+    assert run is None
 
 
 @pytest.mark.benchmark(group="parstack")
-@pytest.mark.parametrize("n_threads", N_THREADS_TEST)
-def _test_stack_qseek_mojo(benchmark, data, n_threads: int):
+@pytest.mark.parametrize("n_threads, rounds", list(product(N_THREADS_TEST, ROUNDS)))
+def test_stack_simple_qseek_mojo(benchmark, data, n_threads: int, rounds: int):
     traces, offsets, shifts, weights = data
 
-    benchmark(
-        stack_mojo.stack_traces,
-        traces,
-        offsets,
-        shifts,
-        weights,
-        n_threads=n_threads,
-    )
+    @benchmark
+    def run() -> None:
+        res = None
+        for _ in range(rounds):
+            res, _ = stack_mojo.stack_traces(
+                traces,
+                offsets,
+                shifts,
+                weights,
+                result=res,
+                n_threads=n_threads,
+            )
+        array_tools.argmax_masked(
+            res,
+            n_threads=n_threads,
+        )
+
+    assert run is None
 
 
 @pytest.mark.benchmark(group="parstack_reduce")
