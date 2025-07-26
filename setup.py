@@ -11,5 +11,12 @@ setup(
             extra_compile_args=["-fopenmp", "-O3", "-flto"],
             extra_link_args=["-lgomp"],
         ),
+        Extension(
+            "qseek.ext.stack",
+            sources=["src/qseek/ext/stack.c"],
+            include_dirs=[numpy.get_include()],
+            extra_compile_args=["-fopenmp", "-O3", "-flto", "-march=native"],
+            extra_link_args=["-lgomp"],
+        ),
     ]
 )
