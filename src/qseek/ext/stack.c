@@ -33,8 +33,12 @@ static inline int get_thread_count(int n_threads) {
   return n_threads;
 }
 
-static inline int imax(int a, int b) { return a > b ? a : b; }
-static inline int imin(int a, int b) { return a < b ? a : b; }
+static inline Py_ssize_t imax(Py_ssize_t a, Py_ssize_t b) {
+  return a > b ? a : b;
+}
+static inline Py_ssize_t imin(Py_ssize_t a, Py_ssize_t b) {
+  return a < b ? a : b;
+}
 
 // Function to check NumPy array dtype
 static inline int check_array_dtype(PyArrayObject *arr, int expected_type) {
@@ -187,8 +191,10 @@ static PyObject *stack_traces(PyObject *self, PyObject *args,
   Py_ssize_t n_traces = PyList_Size(traces);
   Py_ssize_t n_nodes = PyArray_SHAPE((PyArrayObject *)shifts)[0];
   Py_ssize_t result_length = max_shift - min_shift;
-  if (result_samples > 0)
+  if (result_samples > 0) {
     result_length = (Py_ssize_t)result_samples;
+    min_shift = 0;
+  }
 
   PyObject *result_arr;
   if (result == Py_None) {
@@ -246,17 +252,16 @@ static PyObject *stack_traces(PyObject *self, PyObject *args,
       Trace trace = traces_list[i_trace];
       int32_t trace_shift = trace.offset + node.shifts[i_trace];
       int32_t base_idx = trace_shift - min_shift;
-      Py_ssize_t stack_nsamples = result_length - base_idx < trace.size
-                                      ? result_length - base_idx
-                                      : trace.size;
+      Py_ssize_t stack_nsamples = imin(result_length - base_idx, trace.size);
 
       Py_ssize_t i;
       __m256 weight_vec = _mm256_set1_ps(weight);
 
-      for (i = 0; i < stack_nsamples - (stack_nsamples % 8); i += 8) {
+      for (i = imax(0, min_shift - trace_shift);
+           i < stack_nsamples - (stack_nsamples % 8); i += 8) {
         Py_ssize_t i_res = base_idx + i;
         __m256 trace_vec = _mm256_loadu_ps(&trace.data[i]);
-        __m256 stack_vec = _mm256_load_ps(&node.stack[i_res]);
+        __m256 stack_vec = _mm256_loadu_ps(&node.stack[i_res]);
         stack_vec = _mm256_fmadd_ps(trace_vec, weight_vec, stack_vec);
         _mm256_storeu_ps(&node.stack[i_res], stack_vec);
       }

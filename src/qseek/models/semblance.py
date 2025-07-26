@@ -7,12 +7,11 @@ from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from pydantic import PrivateAttr, computed_field
-from pyrocko import parstack
 from pyrocko.trace import Trace
 from rich.table import Table
 from scipy import signal
 
-from qseek.ext import array_tools
+from qseek.ext import array_tools, stack
 from qseek.ext.array_tools import fill_zero_bytes
 from qseek.stats import Stats
 from qseek.utils import datetime_now, get_cpu_count, human_readable_bytes
@@ -369,16 +368,14 @@ class Semblance:
 
         start_time = datetime_now()
         _, offset_samples = await asyncio.to_thread(
-            parstack.parstack,
-            arrays=trace_data,
+            stack.stack_traces,
+            traces=trace_data,
             offsets=offsets,
             shifts=shifts,
             weights=weights,
-            lengthout=self.n_samples_unpadded,
             result=self.semblance_unpadded,
-            dtype=self.semblance_unpadded.dtype,
-            method=0,
-            nparallel=threads,
+            result_samples=self.n_samples_unpadded,
+            n_threads=threads,
         )
         self._stats.add_stacking_time(datetime_now() - start_time, self.n_nodes)
         if self._offset_samples and self._offset_samples != offset_samples:

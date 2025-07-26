@@ -107,6 +107,7 @@ def test_stack_qseek(benchmark, data, n_threads: int):
         shifts,
         weights,
         result=None,
+        result_samples=20_000,
         n_threads=n_threads,
     )
 
