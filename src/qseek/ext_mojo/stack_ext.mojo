@@ -54,7 +54,9 @@ struct NodeWithStack[dtype: DType](Copyable & Movable):
     var weights: UnsafePointer[Scalar[dtype]]
     var stack: UnsafePointer[Scalar[dtype]]
 
-    def __init__(out self, node: Node[dtype], stack: UnsafePointer[Scalar[dtype]]):
+    def __init__(
+        out self, node: Node[dtype], stack: UnsafePointer[Scalar[dtype]]
+    ):
         self.shifts = node.shifts
         self.weights = node.weights
         self.stack = stack
@@ -116,7 +118,7 @@ fn stack_wrapper(
     weights: PythonObject,
     result: PythonObject,
     n_threads: PythonObject,
-    ) raises -> PythonObject:
+) raises -> PythonObject:
     # np = Python.import_module("numpy")
 
     # n_traces = len(traces)
@@ -143,10 +145,12 @@ fn stack_wrapper(
     return stack_traces(
         traces_list,
         nodes_list,
-        min_shift,max_shift,
+        min_shift,
+        max_shift,
         result,
         get_thread_count(Int(n_threads)),
     )
+
 
 fn stack_and_reduce_wrapper(
     traces: PythonObject,
@@ -154,7 +158,7 @@ fn stack_and_reduce_wrapper(
     shifts: PythonObject,
     weights: PythonObject,
     n_threads: PythonObject,
-    ) raises -> PythonObject:
+) raises -> PythonObject:
     traces_list, nodes_list, min_shift, max_shift = prepare[DType.float32](
         traces=traces,
         offsets=offsets,
@@ -169,6 +173,7 @@ fn stack_and_reduce_wrapper(
         max_shift,
         get_thread_count(Int(n_threads)),
     )
+
 
 fn stack_snapshot_wrapper(
     traces: PythonObject,
@@ -192,7 +197,9 @@ fn stack_snapshot_wrapper(
     )
 
 
-fn prepare[dtype: DType](
+fn prepare[
+    dtype: DType
+](
     traces: PythonObject,
     offsets: PythonObject,
     shifts: PythonObject,
@@ -260,8 +267,9 @@ fn prepare[dtype: DType](
     )
 
 
-
-fn stack_traces[dtype: DType](
+fn stack_traces[
+    dtype: DType
+](
     traces: List[Trace[dtype]],
     nodes: List[Node[dtype]],
     min_shift: Int32,
@@ -279,7 +287,8 @@ fn stack_traces[dtype: DType](
     result_shape = Python.tuple(n_nodes, result_length)
     if result_arr is None:
         result = np.zeros(
-            shape=Python.tuple(n_nodes, result_length), dtype=get_dtype_char[dtype](),
+            shape=Python.tuple(n_nodes, result_length),
+            dtype=get_dtype_char[dtype](),
         )
     else:
         if result_arr.shape != Python.tuple(n_nodes, result_length):
@@ -329,7 +338,9 @@ fn stack_traces[dtype: DType](
     return Python.tuple(result, min_shift)
 
 
-fn stack_and_reduce[dtype: DType](
+fn stack_and_reduce[
+    dtype: DType
+](
     traces: List[Trace[dtype]],
     nodes: List[Node[dtype]],
     min_shift: Int32,
@@ -343,11 +354,15 @@ fn stack_and_reduce[dtype: DType](
     n_traces = len(traces)
 
     node_max = np.full(
-        result_length, np.finfo(np.float32).min, dtype=get_dtype_char[dtype](),
+        result_length,
+        np.finfo(np.float32).min,
+        dtype=get_dtype_char[dtype](),
     )
     node_argmax = np.zeros(result_length, dtype=np.intp)
     node_max_data = node_max.ctypes.data.unsafe_get_as_pointer[dtype]()
-    node_argmax_data = node_argmax.ctypes.data.unsafe_get_as_pointer[DType.uint64]()
+    node_argmax_data = node_argmax.ctypes.data.unsafe_get_as_pointer[
+        DType.uint64
+    ]()
 
     @parameter
     fn stack_tile(i_thread: Int):
@@ -386,14 +401,15 @@ fn stack_and_reduce[dtype: DType](
                 fn stack[width: Int](i_sample: Int):
                     i_res = tile_base_idx + i_sample
 
-                    trace_samples = trace.data.load[width=width](trace_start_idx + i_sample)
+                    trace_samples = trace.data.load[width=width](
+                        trace_start_idx + i_sample
+                    )
                     stacked_samples = tile_node_stack.load[width=width](i_res)
 
                     stacked_samples += trace_samples * weight
                     tile_node_stack.store(i_res, stacked_samples)
 
                 vectorize[stack, simdwidthof[dtype]()](Int(n_samples))
-
 
             @parameter
             fn reduce_max[width: Int](idx: Int):
@@ -415,6 +431,8 @@ fn stack_and_reduce[dtype: DType](
 
         tile_node_stack.free()
 
+        tile_node_stack.free()
+
     state = cpython.PyGILState_Ensure()
     parallelize[stack_tile](n_threads, n_threads)
     cpython.PyGILState_Release(state)
@@ -422,7 +440,9 @@ fn stack_and_reduce[dtype: DType](
     return Python.tuple(node_max, node_argmax, min_shift)
 
 
-fn stack_snapshot[dtype: DType](
+fn stack_snapshot[
+    dtype: DType
+](
     traces: List[Trace[dtype]],
     nodes: List[Node[dtype]],
     min_shift: Int32,
@@ -464,7 +484,6 @@ fn stack_snapshot[dtype: DType](
                 if 0 <= trace_sample < trace.size:
                     trace_samples[idx_vector] = trace.data[trace_sample]
                     trace_weights[idx_vector] = node.weights[trace_idx]
-
 
             result_data[i_node] += (trace_samples * trace_weights).reduce_add()
 

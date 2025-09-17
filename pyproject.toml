@@ -15,8 +15,8 @@ dynamic = ["version"]
 
 description = "qseek - Data-driven Earthquake Detection"
 readme = "README.md"
-authors = [{ name = "Marius Paul Isken", email = "mi@gfz.de" }]
-maintainers = [{ name = "Marius Paul Isken", email = "mi@gfz.de" }]
+authors = [{ name = "Marius Paul Isken", email = "marius.isken@gfz.de" }]
+maintainers = [{ name = "Marius Paul Isken", email = "marius.isken@gfz.de" }]
 keywords = [
     "seismology",
     "earthquake",
@@ -31,16 +31,16 @@ dependencies = [
     "numpy>=1.26, <2",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
-    "seisbench>=0.8.0",
+    "seisbench>=0.9",
     "pydantic>=2.11.0",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
     "typing-extensions>=4.6",
     "lru-dict @ git+https://github.com/amitdev/lru-dict",
-    "rich>=13.4",
+    "rich>=14.0",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
-    "psutil>=5.9",
+    "psutil>=6.0",
     "aiofiles>=23.0",
     "scikit-fmm >= 2025.1"
 ]
