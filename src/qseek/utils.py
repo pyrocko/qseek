@@ -33,6 +33,7 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ByteSize,
+    PlainSerializer,
     StringConstraints,
 )
 from pyrocko.util import UnavailableDecimation
@@ -119,6 +120,9 @@ class _NSL(NamedTuple):
     def pretty(self) -> str:
         return ".".join(self)
 
+    def _pretty_str(self) -> str:
+        return self.pretty
+
     def match(self, other: NSL) -> bool:
         """Check if the current NSL object matches another NSL object.
 
@@ -196,7 +200,12 @@ class _NSL(NamedTuple):
         return self
 
 
-NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
+NSL = Annotated[
+    _NSL,
+    BeforeValidator(_NSL.parse),
+    AfterValidator(_NSL._check),
+    PlainSerializer(_NSL._pretty_str),
+]
 
 
 class _Range(NamedTuple):
