@@ -1,7 +1,7 @@
 from python import PythonObject, Python
 from python.bindings import PythonModuleBuilder
 from python.python import CPython
-from sys.info import simdwidthof
+from sys.info import simd_width_of
 from os import abort
 from algorithm.functional import vectorize, parallelize
 from memory.unsafe_pointer import UnsafePointer
@@ -141,7 +141,6 @@ fn stack_wrapper(
         shifts=shifts,
         weights=weights,
     )
-
     return stack_traces(
         traces_list,
         nodes_list,
@@ -329,7 +328,7 @@ fn stack_traces[
                 node.stack.store(i_res, stacked_samples)
 
             stack_nsamples = min(result_length - base_idx, trace.size)
-            vectorize[stack, simdwidthof[dtype]()](Int(stack_nsamples))
+            vectorize[stack, simd_width_of[dtype]()](Int(stack_nsamples))
 
     state = cpython.PyGILState_Ensure()
     parallelize[stack_node](n_nodes, n_threads)
@@ -409,7 +408,7 @@ fn stack_and_reduce[
                     stacked_samples += trace_samples * weight
                     tile_node_stack.store(i_res, stacked_samples)
 
-                vectorize[stack, simdwidthof[dtype]()](Int(n_samples))
+                vectorize[stack, simd_width_of[dtype]()](Int(n_samples))
 
             @parameter
             fn reduce_max[width: Int](idx: Int):
@@ -418,7 +417,7 @@ fn stack_and_reduce[
                 max_old_vec = node_max_data.load[width=width](tile_idx)
 
                 max_new_vec = max(node_vec, max_old_vec)
-                update_mask = max_old_vec != max_new_vec
+                update_mask = max_old_vec.ne(max_new_vec)
 
                 node_max_data.store(tile_idx, max_new_vec)
                 masked_store(
@@ -427,9 +426,7 @@ fn stack_and_reduce[
                     mask=update_mask,
                 )
 
-            vectorize[reduce_max, simdwidthof[dtype]()](tile_size)
-
-        tile_node_stack.free()
+            vectorize[reduce_max, simd_width_of[dtype]()](tile_size)
 
         tile_node_stack.free()
 
@@ -487,7 +484,7 @@ fn stack_snapshot[
 
             result_data[i_node] += (trace_samples * trace_weights).reduce_add()
 
-        vectorize[stack_traces, simdwidthof[dtype]()](Int(n_traces))
+        vectorize[stack_traces, simd_width_of[dtype]()](Int(n_traces))
 
     cpython.PyGILState_Release(state)
 
