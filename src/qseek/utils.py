@@ -534,7 +534,10 @@ def filter_clipped_traces(
         if tr.ydata is None:
             continue
         if tr.ydata.dtype not in (int, np.int32, np.int64):
-            raise TypeError(f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}")
+            raise TypeError(
+                f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}."
+                "Can only detect signal clipping on integer traces."
+            )
 
         max_val = np.abs(tr.ydata).max()
         for bits in max_bits:
