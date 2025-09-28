@@ -2,11 +2,34 @@ import asyncio
 import logging
 from datetime import timedelta
 
-from qseek.utils import NSL, datetime_now
+import pytest
+
+from qseek.utils import _NSL, datetime_now
 from qseek.waveforms.seedlink.client import SeedLinkClient, StationSelection
 from qseek.waveforms.seedlink.seedlink import SeedLink
 
 logging.basicConfig(level=logging.DEBUG)
+
+
+def get_seedlink_client():
+    return SeedLink(
+        clients=[
+            SeedLinkClient(
+                host="geofon.gfz.de",
+                port=18000,
+                station_selection=[
+                    StationSelection(nsl=_NSL("1D", "SYRAU"), channel="HH?"),
+                    StationSelection(nsl=_NSL("1D", "WBERG"), channel="HH?"),
+                    StationSelection(nsl=_NSL("WB", "KOC"), channel="HH?"),
+                    StationSelection(nsl=_NSL("WB", "KRC"), channel="HH?"),
+                    StationSelection(nsl=_NSL("WB", "LBC"), channel="HH?"),
+                    StationSelection(nsl=_NSL("WB", "SKC"), channel="HH?"),
+                    StationSelection(nsl=_NSL("WB", "STC"), channel="HH?"),
+                    StationSelection(nsl=_NSL("WB", "VAC"), channel="HH?"),
+                ],
+            )
+        ]
+    )
 
 
 async def seedlink_client():
@@ -14,14 +37,14 @@ async def seedlink_client():
         host="geofon.gfz-potsdam.de",
         port=18000,
         station_selection=[
-            StationSelection(nsl=NSL("1D", "SYRAU", ""), channel="HH?"),
-            StationSelection(nsl=NSL("1D", "WBERG", ""), channel="HH?"),
-            StationSelection(nsl=NSL("WB", "KOC", ""), channel="HH?"),
-            StationSelection(nsl=NSL("WB", "KRC", ""), channel="HH?"),
-            StationSelection(nsl=NSL("WB", "LBC", ""), channel="HH?"),
-            StationSelection(nsl=NSL("WB", "SKC", ""), channel="HH?"),
-            StationSelection(nsl=NSL("WB", "STC", ""), channel="HH?"),
-            StationSelection(nsl=NSL("WB", "VAC", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("1D", "SYRAU", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("1D", "WBERG", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("WB", "KOC", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("WB", "KRC", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("WB", "LBC", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("WB", "SKC", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("WB", "STC", ""), channel="HH?"),
+            StationSelection(nsl=_NSL("WB", "VAC", ""), channel="HH?"),
         ],
     )
     # print(await client.get_available_stations())
@@ -47,42 +70,10 @@ async def seedlink_client():
         assert traces
 
 
-async def seedlink():
-    seedlink = SeedLink(
-        clients=[
-            SeedLinkClient(
-                host="geofon.gfz-potsdam.de",
-                port=18000,
-                station_selection=[
-                    StationSelection(
-                        network="1D", station="SYRAU", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="1D", station="WBERG", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="WB", station="KOC", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="WB", station="KRC", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="WB", station="LBC", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="WB", station="SKC", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="WB", station="STC", location="", channel="HH?"
-                    ),
-                    StationSelection(
-                        network="WB", station="VAC", location="", channel="HH?"
-                    ),
-                ],
-            )
-        ]
-    )
-    # print(await client.get_available_stations())
+@pytest.mark.asyncio
+async def test_seedlink():
+    seedlink = get_seedlink_client()
+    i_batch = 0
 
     async for batch in seedlink.iter_batches(
         window_increment=timedelta(seconds=5),
@@ -92,7 +83,30 @@ async def seedlink():
         min_stations=1,
     ):
         assert batch.traces
+        # print(f"batch {i_batch} with {len(batch.traces)} traces")
+        i_batch += 1
+        if i_batch >= 3:
+            break
+
+
+@pytest.mark.asyncio
+async def test_seedlink_past():
+    seedlink = get_seedlink_client()
+    i_batch = 0
+
+    async for batch in seedlink.iter_batches(
+        window_increment=timedelta(seconds=5),
+        window_padding=timedelta(seconds=5),
+        start_time=datetime_now() - timedelta(days=2),
+        min_length=timedelta(seconds=5),
+        min_stations=1,
+    ):
+        assert batch.traces
+        # print(f"batch {i_batch} with {len(batch.traces)} traces {batch.start_time}")
+        i_batch += 1
+        if i_batch >= 3:
+            break
 
 
 if __name__ == "__main__":
-    asyncio.run(seedlink())
+    asyncio.run(test_seedlink_past())
