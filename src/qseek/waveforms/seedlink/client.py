@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__file__)
 
+HOUR = 3600.0
+DAY = 24 * HOUR
 RECORD_LENGTH = 512
 
 
@@ -111,7 +113,7 @@ class SeedLinkStream:
         self._last_data = datetime.min.replace(tzinfo=timezone.utc)
         self._data_received = asyncio.Event()
 
-    def add_trace(self, trace: Trace, max_length_seconds: float = 600.0) -> None:
+    def add_trace(self, trace: Trace, max_length_seconds: float = DAY) -> None:
         """Add a trace to the stream.
 
         Args:
@@ -119,6 +121,9 @@ class SeedLinkStream:
             max_length_seconds (float, optional): Maximum length of the trace in seconds.
                 Defaults to 600.0.
         """
+        # The day doesn't make sense for historical data when continuing
+        # Maybe don't crop traces here but keep partial ones and crop when requested?
+        # Or have a max buffer size and drop old data?
         pretty_nslc = ".".join(trace.nslc_id)
         if self._trace is None:
             logger.info("receiving new stream %s", pretty_nslc)
@@ -225,7 +230,7 @@ class SeedLinkStream:
                 )
             except asyncio.TimeoutError as exc:
                 logger.warning(
-                    "no data from %s with timeout %s s, stream has %.1f s delay",
+                    "no data from %s within timeout %s s, stream has %.1f s delay",
                     nslc_pretty,
                     timeout,
                     self.delay.total_seconds(),
@@ -245,10 +250,8 @@ class SeedLinkStream:
                 inplace=False,
             )
         except NoData as exc:
-            logger.warning("no data in the given time window for %s", nslc_pretty)
-            raise ValueError(
-                f"{nslc_pretty} No data available in window {start_time} - {end_time}"
-            ) from exc
+            logger.debug("no data in the given time window for %s", nslc_pretty)
+            raise ValueError(f"{nslc_pretty} has no data for {start_time}") from exc
         return cropped_trace
 
 
@@ -439,8 +442,7 @@ class SeedLinkClient(BaseModel):
             # some SeedLink servers do not support the -tw option and stop delivering
             # data
             logger.info("starting stream at %s", start_time)
-            start_time_str = as_seedlink_time(start_time)
-            slinktool_args.extend(["-tw", f"{start_time_str}:"])
+            slinktool_args.extend(["-tw", f"{as_seedlink_time(start_time)}:"])
 
         logger.debug("calling: slinktool %s", " ".join(slinktool_args))
         proc = await asyncio.subprocess.create_subprocess_exec(
@@ -483,7 +485,7 @@ class SeedLinkClient(BaseModel):
 
                 trace: Trace = traces[0]
                 logger.debug(
-                    "received stream %s.%s.%s.%s from %s",
+                    "received %s.%s.%s.%s from %s",
                     *trace.nslc_id,
                     self._slink_host,
                 )

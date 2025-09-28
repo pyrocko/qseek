@@ -114,7 +114,7 @@ class BackgroundTasks:
 class _NSL(NamedTuple):
     network: str
     station: str
-    location: str
+    location: str = ""
 
     @property
     def pretty(self) -> str:
