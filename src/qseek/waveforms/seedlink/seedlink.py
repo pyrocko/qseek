@@ -178,6 +178,12 @@ class SeedLink(WaveformProvider):
             if sum(len(client.streams) for client in self.clients) > 0:
                 break
 
+        while True:
+            if not any(client.is_backfilliung() for client in self.clients):
+                break
+            logger.info("stations still backfilling, waiting...")
+            await asyncio.sleep(1.0)
+
         i_batch = 0
         start_time = start_time or datetime_now()
         logger.info("starting waveform streaming at %s", start_time)

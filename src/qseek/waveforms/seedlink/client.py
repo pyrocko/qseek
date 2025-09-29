@@ -108,6 +108,8 @@ class SeedLinkStream:
 
     _data_received: asyncio.Event
 
+    _fill_rate: float = 0.0
+
     def __init__(self) -> None:
         self._trace = None
         self._last_data = datetime.min.replace(tzinfo=timezone.utc)
@@ -133,6 +135,7 @@ class SeedLinkStream:
         if len(merged_traces) != 1:
             logger.warning("gap in stream %s", pretty_nslc)
         # Only take the latest trace
+        # TODO: better take all traces
         new_trace = merged_traces[-1]
 
         if new_trace.tmax - new_trace.tmin > max_length_seconds:
@@ -147,6 +150,10 @@ class SeedLinkStream:
                 logger.warning("failed to chop trace %s", pretty_nslc)
                 return
         self._trace = new_trace
+
+        since_last_data = datetime_now() - self._last_data
+        self._fill_rate = (trace.tmax - trace.tmin) / since_last_data.total_seconds()
+
         self._last_data = _as_datetime(trace.tmax)
 
         self._data_received.set()
@@ -184,6 +191,16 @@ class SeedLinkStream:
     def delay(self) -> timedelta:
         """Get the delay of the stream."""
         return datetime_now() - self.end_time
+
+    @property
+    def size_bytes(self) -> int:
+        """Get the size of the trace in bytes."""
+        if not self._trace:
+            return 0
+        return self._trace.ydata.nbytes
+
+    def is_backfilling(self) -> bool:
+        return self._fill_rate > 2.0
 
     def is_online(self, timeout: float = 60.0) -> bool:
         """Check if the stream is online in the seconds.
@@ -498,6 +515,9 @@ class SeedLinkClient(BaseModel):
         finally:
             proc.terminate()
             self._stats.connected_at = None
+
+    def is_backfilliung(self) -> bool:
+        return any(sta.is_backfilling() for sta in self.streams)
 
     def start_streams(self, start_time: datetime | None = None) -> None:
         if self._task is not None:
