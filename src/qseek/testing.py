@@ -20,7 +20,7 @@ from qseek.utils import Range, datetime_now
 
 DATA_DIR = Path(__file__).parent / "data"
 
-DATA_URL = "https://data.pyrocko.org/testing/lassie-v2/"
+DATA_URL = "https://data.pyrocko.org/testing/qseek/"
 DATA_FILES = {
     "FORGE_3D_5_large.P.mod.hdr",
     "FORGE_3D_5_large.P.mod.buf",
@@ -103,7 +103,6 @@ def octree() -> Octree:
         east_bounds=Range(-10 * KM, 10 * KM),
         north_bounds=Range(-10 * KM, 10 * KM),
         depth_bounds=Range(0 * KM, 10 * KM),
-        absorbing_boundary=1 * KM,
     )
 
 

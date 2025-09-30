@@ -18,6 +18,7 @@ from pydantic import (
 from pyrocko import orthodrome as od
 from pyrocko.cake import LayeredModel, load_model
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
+from typing_extensions import Self
 
 from qseek.models.location import Location
 from qseek.models.station import Stations
@@ -81,7 +82,11 @@ class EarthModel(BaseModel):
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
-    def model_post_init(self, context: Any) -> None:
+    def model_post_init(self, context: Any) -> Self:
+        if self.filename == DEFAULT_VELOCITY_MODEL_FILE:
+            logger.warning(
+                "Using default velocity model - Consider specifying a custom model!"
+            )
         if self.filename is not None and self.raw_file_data is None:
             logger.info("loading velocity model from %s", self.filename)
             self._raw_file_data = self.filename.read_text()
