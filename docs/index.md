@@ -29,11 +29,11 @@ Seismic swarm activity in Iceland, Reykjanes Peninsula during a 2020 unrest. 30k
   * [x] Ground motion attributes
 * [x] Automatic extraction of modelled and picked travel times
 * [x] Calculation and application of station corrections / station delay times
-* [ ] Real-time analytics on streaming data (e.g. SeedLink)
+* [x] Real-time analytics on streaming data (e.g. SeedLink)
 
 [Get Started!](getting_started.md){ .md-button }
 
-## Build with
+## Supported by
 
 [![GFZ](https://www.gfz.de/fileadmin/gfz/medien_kommunikation/Infothek/Mediathek/Bilder/GFZ/GFZ_Logo/GFZ-Wortbildmarke-DE-Helmholtzdunkelblau_RGB.svg){ width="240" padding-right="100" }](https://gfz.de)
 [![SeisBench](https://seisbench.readthedocs.io/en/stable/_images/seisbench_logo_subtitle_outlined.svg){ width="200" padding-right="100" }](https://github.com/seisbench/seisbench)

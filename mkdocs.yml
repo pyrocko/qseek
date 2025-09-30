@@ -1,5 +1,5 @@
-site_name: Qseek - Earthquake Detection and Localization
-site_description: The friendly earthquake detector
+site_name: Qseek - Earthqake Detection and Localization
+site_description: Lightning-fast earthquake detection and localization for large-data.
 site_author: Marius Paul Isken
 
 repo_url: https://github.com/pyrocko/qseek
@@ -113,7 +113,7 @@ nav:
       - Metadata: components/station_metadata.md
       - Waveforms: components/waveform_data.md
       - Ray Tracers: components/ray_tracer.md
-      - Image Functions: components/image_function.md
+      - Phase Arrivals: components/image_function.md
       - Magnitudes: components/magnitudes.md
       - Station Corrections: components/station_corrections.md
       - EQ Feature Extraction: components/feature_extraction.md
