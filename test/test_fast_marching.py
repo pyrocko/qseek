@@ -70,7 +70,7 @@ def stations() -> Stations:
 
 
 @pytest.mark.asyncio
-async def test_station_travel_time_table_constant():
+async def test_station_travel_time_table_constant(plot: bool):
     model = LayeredModel(
         layers=[
             Layer(top_depth=0, vp=5.0 * KM, vs=3.0 * KM),
@@ -120,18 +120,23 @@ async def test_station_travel_time_table_constant():
         atol=1e-2,
     )
 
-    if False:
+    if plot:
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots()
+        data = table._travel_times - analytical_vp_tt
+        data_max = np.max(np.abs(data))
         ax.imshow(
-            table._travel_times - analytical_vp_tt,
+            data,
             extent=(
                 0.0,
                 table.distance_max,
                 table.depth_range.start,
                 table.depth_range.end,
             ),
+            cmap="seismic",
+            vmin=-data_max,
+            vmax=data_max,
             aspect="equal",
             origin="lower",
         )
@@ -142,7 +147,11 @@ async def test_station_travel_time_table_constant():
 
 
 @pytest.mark.asyncio
-async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
+async def test_travel_time_module(
+    octree: Octree,
+    stations: Stations,
+    plot: bool,
+) -> None:
     models = [
         constant_earth_model(),
         EarthModel(),
@@ -152,7 +161,7 @@ async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
         fmm_tracer = FastMarchingTracer(
             velocity_model=model,
             nthreads=0,
-            implementation="pyrocko",
+            implementation="scikit-fmm",
             interpolation_method="linear",
         )
 
@@ -170,7 +179,7 @@ async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
         fmm_times = await fmm_tracer.get_travel_times("fm:P", octree, stations)
         cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
 
-        if False:
+        if plot:
             import matplotlib.pyplot as plt
 
             for i_station, station in enumerate(stations.stations):
@@ -185,11 +194,20 @@ async def test_travel_time_module(octree: Octree, stations: Stations) -> None:
                     n_depth, n_north, n_east
                 )
 
-                plt.imshow(
+                data = fmm_times_station[2, :, :] - cake_times_station[2, :, :]
+                data_max = np.max(np.abs(data))
+
+                cmap = plt.imshow(
                     fmm_times_station[2, :, :] - cake_times_station[2, :, :],
-                    cmap="viridis_r",
+                    cmap="seismic",
+                    vmin=-data_max,
+                    vmax=data_max,
                 )
-                plt.title(f"Station {station.effective_depth} - FMM - Cake difference")
+                plt.colorbar(cmap, label="Time difference (s)")
+                plt.title(
+                    f"Station {round(station.effective_depth)} m - "
+                    "[FMM - Cake difference]"
+                )
                 plt.xlabel("East")
                 plt.ylabel("North")
                 plt.show()

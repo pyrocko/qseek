@@ -466,6 +466,14 @@ class Octree(BaseModel, Iterator[Node]):
         """Volume of the octree in cubic meters."""
         return reduce(mul, self.extent())
 
+    @property
+    def effective_depth_bounds(self) -> Range:
+        """Effective depth bounds of the octree in meters."""
+        return Range(
+            self.location.effective_depth + self.depth_bounds.start,
+            self.location.effective_depth + self.depth_bounds.end,
+        )
+
     @cached_property
     def leaf_nodes(self) -> list[Node]:
         """Get all leaf nodes of the octree.

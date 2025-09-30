@@ -252,6 +252,15 @@ class FastMarchingTracer(RayTracer):
         self._cached_station_indices = {
             station.nsl.pretty: idx for idx, station in enumerate(stations)
         }
+
+        if rundir:
+            save_plots = rundir / "fmm-models"
+            save_plots.mkdir(exist_ok=True, parents=True)
+            LayeredModel.from_earth_model(self.velocity_model).plot(
+                depth_range=octree.effective_depth_bounds,
+                export=save_plots / "layered_model.png",
+            )
+
         self._node_lut = ArrayLRUCache(name="fast-marching", short_name="FM")
         await self._calculate_travel_times()
 
