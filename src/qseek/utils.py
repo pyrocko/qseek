@@ -691,12 +691,19 @@ class ChannelSelectors:
     NorthEast = ChannelSelector("NE", number_channels=2)
 
 
+def _dedent(text: str) -> str:
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        lines[i] = line.lstrip()
+    return "\n".join(lines)
+
+
 def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     """Takes model and dumps markdown for documentation."""
 
     def generate_submodel(model: BaseModel) -> list[str]:
         lines = []
-        for name, field in model.model_fields.items():
+        for name, field in model.__class__.model_fields.items():
             if field.description is None:
                 continue
             lines += [
@@ -708,9 +715,9 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     model_name = model.__class__.__name__
     lines = [f"### {model_name} Module"]
     if model.__class__.__doc__ is not None:
-        lines += [f"{model.__class__.__doc__}\n"]
+        lines += [f"{_dedent(model.__class__.__doc__)}\n"]
     lines += [f'=== "Config {model_name}"']
-    for name, field in model.model_fields.items():
+    for name, field in model.__class__.model_fields.items():
         annotation = ""
 
         if field.annotation in (int, float, bool, dict, str):

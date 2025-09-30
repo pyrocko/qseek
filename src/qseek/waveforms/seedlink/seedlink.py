@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -32,6 +33,19 @@ SDS_TEMPLATE = (
     "/%(network)s.%(station)s.%(location)s.%(channel)s.D"
     ".%(tmin_year)s.%(julianday)s"
 )
+
+
+def slinktool_available() -> bool:
+    """Check if slinktool is available."""
+    try:
+        subprocess.check_call(
+            ["slinktool", "-h"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
 
 
 async def save_traces_sds(
@@ -105,7 +119,7 @@ class SeedLinkStats(Stats):
 
 
 class SeedLink(WaveformProvider):
-    """Waveform provider for SeedLink real-time streams."""
+    """Waveform provider to connect to SeedLink real-time streams."""
 
     provider: Literal["SeedLink"] = "SeedLink"
     timeout: timedelta = Field(

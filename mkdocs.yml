@@ -1,6 +1,6 @@
-site_name: Qseek - Earthquake Detection and Localization
-site_description: The friendly earthquake detector
-site_author: Marius Paul Isken
+site_name: "Earthqake Detection and Localization"
+site_description: Lightning-fast earthquake detection and localization for large-data.
+site_author: Marius Isken
 
 repo_url: https://github.com/pyrocko/qseek
 repo_name: pyrocko/qeek
@@ -10,30 +10,30 @@ theme:
   name: material
   custom_dir: docs/theme
   palette:
-  # Palette toggle for automatic mode
-  - media: "(prefers-color-scheme)"
-    toggle:
-      icon: material/brightness-auto
-      name: Switch to light mode
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
 
-  # Palette toggle for light mode
-  - media: "(prefers-color-scheme: light)"
-    scheme: default
-    primary: black
-    toggle:
-      icon: material/brightness-7
-      name: Switch to dark mode
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
 
-  # Palette toggle for dark mode
-  - media: "(prefers-color-scheme: dark)"
-    scheme: slate
-    primary: blue grey
-    toggle:
-      icon: material/brightness-4
-      name: Switch to system preference
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
   icon:
     repo: fontawesome/brands/git-alt
-  logo: images/logo.webp
+  logo: images/logo-white.webp
   features:
     - navigation.tabs
     - search.suggest
@@ -46,6 +46,7 @@ markdown_extensions:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
+  - pymdownx.blocks.caption
   - pymdownx.snippets
   - pymdownx.tilde
   - pymdownx.superfences:
@@ -69,8 +70,7 @@ markdown_extensions:
 
 extra_javascript:
   - javascripts/mathjax.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 watch:
   - src/qseek
@@ -83,9 +83,10 @@ plugins:
       handlers:
         python:
           paths: [src]
-          import:
-          - https://docs.python.org/3/objects.inv
-          - https://docs.pydantic.dev/latest/objects.inv
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://docs.pydantic.dev/latest/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
           options:
             extensions:
               - griffe_pydantic:
@@ -100,20 +101,26 @@ plugins:
             signature_crossrefs: true
             summary: true
 
-
 nav:
   - Home:
-    - Welcome: index.md
-    - Quick Start 🚀: getting_started.md
-    - Visualising Detections: visualizing_results.md
-    - Benchmark: benchmark.md
+      - Welcome: index.md
+      - Quick Start 🚀: getting_started.md
+      - Visualising Detections: visualizing_results.md
+      - Benchmark: benchmark.md
+  - Configuration:
+      - The Search: components/configuration.md
+      - Search Volume: components/octree.md
+      - Metadata: components/station_metadata.md
+      - Waveforms: components/waveform_data.md
+      - Ray Tracers: components/ray_tracer.md
+      - Phase Arrivals: components/image_function.md
+      - Magnitudes: components/magnitudes.md
+      - Station Corrections: components/station_corrections.md
+      - General Configuration: components/general.md
   - Reference:
-    - The Search: components/configuration.md
-    - Station Metadata: components/station_metadata.md
-    - Waveform Data: components/waveform_data.md
-    - Octree: components/octree.md
-    - Ray Tracer: components/ray_tracer.md
-    - Image Function: components/image_function.md
-    - Station Corrections: components/station_corrections.md
-    - EQ Feature Extraction: components/feature_extraction.md
-    - General Configuration: components/general.md
+      - API Overview: api/overview.md
+      - Models: api/models.md
+      - Stations: api/stations.md
+      - Octree: api/octree.md
+      - Ray Tracer: api/ray_tracer.md
+      - Utils: api/utils.md
