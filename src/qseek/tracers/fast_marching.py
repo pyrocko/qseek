@@ -192,7 +192,7 @@ class FastMarchingTracer(RayTracer):
     tracer: Literal["FastMarching"] = "FastMarching"
 
     velocity_model: EarthModel = Field(
-        default=EarthModel(),
+        default_factory=EarthModel,
         description="Velocity model for the ray tracer.",
     )
 
@@ -254,11 +254,11 @@ class FastMarchingTracer(RayTracer):
         }
 
         if rundir:
-            save_plots = rundir / "fmm-models"
-            save_plots.mkdir(exist_ok=True, parents=True)
+            export_dir = rundir / "velocity-model"
+            export_dir.mkdir(exist_ok=True, parents=True)
             LayeredModel.from_earth_model(self.velocity_model).plot(
                 depth_range=octree.effective_depth_bounds,
-                export=save_plots / "layered_model.png",
+                export=export_dir / "layered_model.png",
             )
 
         self._node_lut = ArrayLRUCache(name="fast-marching", short_name="FM")

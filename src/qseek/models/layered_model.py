@@ -74,7 +74,10 @@ class Layer(BaseModel):
 
 
 class LayeredModel(BaseModel):
-    layers: list[Layer] = Field(min_length=1)
+    layers: list[Layer] = Field(
+        min_length=1,
+        description="List of velocity layers.",
+    )
 
     @property
     def n_layers(self) -> int:
@@ -84,7 +87,7 @@ class LayeredModel(BaseModel):
         self.layers = sorted(self.layers, key=lambda x: x.top_depth)
 
     def _get_layer(self, depth: float) -> Layer:
-        idx = self._get_layer_index(np.asarray([depth]))[0]
+        idx = int(self._get_layer_index(np.asarray([depth]))[0])
         return self.layers[idx]
 
     def _get_layer_index(self, depths: np.ndarray) -> np.ndarray:
