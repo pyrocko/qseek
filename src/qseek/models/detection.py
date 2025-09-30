@@ -106,6 +106,9 @@ class ReceiverCache:
             start_idx (int, optional): The detection index to start the search from.
                 Defaults to 0.
 
+        Raises:
+            KeyError: If the UID is not found in the lines.
+
         Returns:
             tuple[int, str]: A tuple containing the index and value of the found UID.
         """
@@ -711,8 +714,6 @@ class EventDetection(Location):
                         f.write(f"{self.receivers.model_dump_json()}\n")
                     )
 
-            self._receivers = None  # Free memory
-
         if not update:
             self.export_csv_line(
                 rundir / "csv" / "detections.csv",
@@ -729,6 +730,8 @@ class EventDetection(Location):
                     rundir / "pyrocko_detections_jittered.list",
                     jitter_location=jitter_location,
                 )
+
+        self._receivers = None  # Free memory
 
     def export_csv_line(self, file: Path, jitter_location: float = 0.0) -> None:
         """Save the detection as a CSV line.
