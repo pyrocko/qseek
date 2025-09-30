@@ -15,8 +15,6 @@ import nest_asyncio
 if TYPE_CHECKING:
     from qseek.models.detection import EventDetection
 
-nest_asyncio.apply()
-
 logger = logging.getLogger(__name__)
 
 
@@ -117,6 +115,16 @@ snuffler.add_argument(
     help="show stacked semblance trace",
 )
 
+explore = subparsers.add_parser(
+    "explore",
+    help="start the web UI to explore the results of a search",
+    description="Start the web UI to explore the results of an existing run",
+)
+explore.add_argument(
+    "basepath",
+    type=Path,
+    help="Root path of runs, the UI will show all runs in this directory",
+)
 
 features_extract = subparsers.add_parser(
     "feature-extraction",
@@ -151,17 +159,6 @@ modules.add_argument(
     nargs="?",
     type=str,
     help="Name of the module to print JSON config for.",
-)
-
-serve = subparsers.add_parser(
-    "serve",
-    help="start webserver and serve results from an existing run",
-    description="Start a webserver and serve detections and results from a run",
-)
-serve.add_argument(
-    "rundir",
-    type=Path,
-    help="rundir to serve",
 )
 
 
@@ -255,6 +252,7 @@ def main() -> None:
             console.print_json(config.model_dump_json(by_alias=False, indent=2))
 
         case "search":
+            nest_asyncio.apply()
             from qseek.search import Search
             from qseek.server import WebServer
 
@@ -273,6 +271,7 @@ def main() -> None:
             asyncio.run(run(), debug=loop_debug)
 
         case "continue":
+            nest_asyncio.apply()
             from qseek.search import Search
             from qseek.server import WebServer
 
@@ -374,6 +373,11 @@ def main() -> None:
                 )
 
             asyncio.run(worker(), debug=loop_debug)
+
+        case "explore":
+            from qseek.ui.main import start_ui
+
+            start_ui(args.basepath, reload=False)
 
         case "serve":
             from qseek.search import Search
@@ -518,5 +522,5 @@ def main() -> None:
             parser.error(f"unknown command: {args.command}")
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "__mp_main__"}:
     main()
