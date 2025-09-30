@@ -696,7 +696,7 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
 
     def generate_submodel(model: BaseModel) -> list[str]:
         lines = []
-        for name, field in model.model_fields.items():
+        for name, field in model.__class__.model_fields.items():
             if field.description is None:
                 continue
             lines += [
@@ -710,7 +710,7 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     if model.__class__.__doc__ is not None:
         lines += [f"{model.__class__.__doc__}\n"]
     lines += [f'=== "Config {model_name}"']
-    for name, field in model.model_fields.items():
+    for name, field in model.__class__.model_fields.items():
         annotation = ""
 
         if field.annotation in (int, float, bool, dict, str):
