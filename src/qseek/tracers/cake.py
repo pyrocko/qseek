@@ -351,7 +351,10 @@ class TravelTimeTree(BaseModel):
 
 
 class CakeTracer(RayTracer):
-    """Travel time ray tracer for 1D layered velocity models."""
+    """Travel time calculation for 1D layered velocity models.
+
+    Calculation is based on Pyrocko Cake ray tracer.
+    """
 
     tracer: Literal["CakeTracer"] = "CakeTracer"
     phases: dict[PhaseDescription, Timing] = Field(

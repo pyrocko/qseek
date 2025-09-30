@@ -8,6 +8,10 @@ The installation is straight-forward using pip or pipx.
 pip install git+https://github.com/pyrocko/qseek
 ```
 
+```sh title="From GitHub the Development Branch"
+pip install git+https://github.com/pyrocko/qseek@dev
+```
+
 or
 
 ```sh title="Using pipx"
