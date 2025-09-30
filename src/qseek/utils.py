@@ -33,6 +33,7 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ByteSize,
+    PlainSerializer,
     StringConstraints,
 )
 from pyrocko.util import UnavailableDecimation
@@ -113,11 +114,14 @@ class BackgroundTasks:
 class _NSL(NamedTuple):
     network: str
     station: str
-    location: str
+    location: str = ""
 
     @property
     def pretty(self) -> str:
         return ".".join(self)
+
+    def _pretty_str(self) -> str:
+        return self.pretty
 
     def match(self, other: NSL) -> bool:
         """Check if the current NSL object matches another NSL object.
@@ -196,12 +200,17 @@ class _NSL(NamedTuple):
         return self
 
 
-NSL = Annotated[_NSL, BeforeValidator(_NSL.parse), AfterValidator(_NSL._check)]
+NSL = Annotated[
+    _NSL,
+    BeforeValidator(_NSL.parse),
+    AfterValidator(_NSL._check),
+    PlainSerializer(_NSL._pretty_str),
+]
 
 
 class _Range(NamedTuple):
-    min: float
-    max: float
+    start: float
+    end: float
 
     def inside(self, value: float) -> bool:
         """Check if a value is inside the range.
@@ -212,7 +221,15 @@ class _Range(NamedTuple):
         Returns:
             bool: True if the value is inside the range, False otherwise.
         """
-        return self.min <= value <= self.max
+        return self.start <= value <= self.end
+
+    def width(self) -> float:
+        """Calculate the width of the range.
+
+        Returns:
+            float: The width of the range.
+        """
+        return self.end - self.start
 
     @classmethod
     def from_list(cls, array: np.ndarray | list[float]) -> _Range:
@@ -229,7 +246,7 @@ class _Range(NamedTuple):
 
 
 def _range_validator(v: _Range) -> _Range:
-    if v.min > v.max:
+    if v.start > v.end:
         raise ValueError(f"Bad range {v}, must be (min, max)")
     return v
 
@@ -517,7 +534,10 @@ def filter_clipped_traces(
         if tr.ydata is None:
             continue
         if tr.ydata.dtype not in (int, np.int32, np.int64):
-            raise TypeError(f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}")
+            raise TypeError(
+                f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}."
+                "Can only detect signal clipping on integer traces."
+            )
 
         max_val = np.abs(tr.ydata).max()
         for bits in max_bits:
@@ -562,7 +582,7 @@ def load_insights() -> None:
     try:
         import qseek.insights  # noqa: F401
 
-        logger.info("loaded qseek.insights package")
+        logger.debug("loaded qseek.insights package")
     except ImportError:
         logger.debug("package qseek.insights not installed")
 
@@ -676,7 +696,7 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
 
     def generate_submodel(model: BaseModel) -> list[str]:
         lines = []
-        for name, field in model.model_fields.items():
+        for name, field in model.__class__.model_fields.items():
             if field.description is None:
                 continue
             lines += [
@@ -690,7 +710,7 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     if model.__class__.__doc__ is not None:
         lines += [f"{model.__class__.__doc__}\n"]
     lines += [f'=== "Config {model_name}"']
-    for name, field in model.model_fields.items():
+    for name, field in model.__class__.model_fields.items():
         annotation = ""
 
         if field.annotation in (int, float, bool, dict, str):

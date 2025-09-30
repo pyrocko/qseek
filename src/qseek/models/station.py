@@ -21,7 +21,6 @@ from pyrocko.model import dump_stations_yaml, load_stations
 from qseek.utils import _NSL, NSL
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
     from qseek.octree import Octree
@@ -174,22 +173,19 @@ class Stations(BaseModel):
         if self.n_stations == 0:
             raise ValueError("no stations available, all stations blacklisted")
 
-    def weed_from_squirrel_waveforms(self, squirrel: Squirrel) -> None:
+    def weed_from_nsls(self, nsls: set[NSL]) -> None:
         """Remove stations without waveforms from squirrel instances.
 
         Args:
-            squirrel (Squirrel): Squirrel instance
+            nsls (list[NSL]): List of NSL codes to keep.
         """
-        available_squirrel_codes = squirrel.get_codes(kind="waveform")
-        available_squirrel_nsls = {
-            ".".join(code[0:3]) for code in available_squirrel_codes
-        }
+        available_nsls = {nsl.pretty for nsl in nsls}
 
         n_removed_stations = 0
         for sta in self.stations.copy():
-            if sta.nsl.pretty not in available_squirrel_nsls:
+            if sta.nsl.pretty not in available_nsls:
                 logger.warning(
-                    "removing station %s: no waveforms available in Squirrel",
+                    "removing station %s: no waveforms available",
                     sta.nsl.pretty,
                 )
                 self.stations.remove(sta)

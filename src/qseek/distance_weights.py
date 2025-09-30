@@ -22,19 +22,21 @@ logger = logging.getLogger(__name__)
 
 class DistanceWeights(BaseModel):
     shape: Literal["exponential", "gaussian"] = Field(
-        default="gaussian",
-        description="Shape of the decay function.",
+        default="exponential",
+        description="Shape of the decay function. 'gaussian' or 'exponential'."
+        " Default is 'exponential'.",
     )
     exponent: float = Field(
-        default=0.5,
-        description="Exponent of the spatial decay function. Default is 0.5.",
+        default=2,
+        description="Exponent of the spatial decay function. For 'gaussian' decay an"
+        " exponent of 0.5 is recommended. Default is 2.",
         ge=0.0,
     )
     radius_meters: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Cutoff distance for the spatial decay function in meters."
-        " Default is 8000. 'mean_interstation' uses the mean interstation distance"
-        " for the radius.",
+        " 'mean_interstation' uses the mean interstation distance for the radius."
+        " Default is 'mean_interstation'.",
     )
     waterlevel: float = Field(
         default=0.0,

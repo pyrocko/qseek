@@ -23,7 +23,7 @@ from typing_extensions import Self
 
 from qseek.models.station import Stations
 from qseek.stats import Stats
-from qseek.utils import QUEUE_SIZE, datetime_now, human_readable_bytes, to_datetime
+from qseek.utils import NSL, QUEUE_SIZE, datetime_now, human_readable_bytes, to_datetime
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
@@ -41,10 +41,10 @@ class SquirrelPrefetcher:
     _fetched_batches: int
     _task: asyncio.Task[None]
 
-    def __init__(self, iterator: Iterator[Batch]) -> None:
+    def __init__(self, iterator: Iterator[Batch], queue_size: int = QUEUE_SIZE) -> None:
         self.iterator = iterator
-        self.queue = asyncio.Queue(maxsize=QUEUE_SIZE)
-        self._load_queue = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self.queue = asyncio.Queue(maxsize=queue_size)
+        self._load_queue = asyncio.Queue(maxsize=queue_size)
         self._fetched_batches = 0
 
         self._task = asyncio.create_task(self.prefetch_worker())
@@ -151,6 +151,10 @@ class PyrockoSquirrel(WaveformProvider):
         "check every ten minutes. If a `timedelta` is provided it will check every "
         "specified time. Default is False.",
     )
+    queue_size: int = Field(
+        default=16,
+        description="Size of the internal queue for prefetching waveform batches.",
+    )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
     _stations: Stations = PrivateAttr(None)
@@ -230,7 +234,9 @@ class PyrockoSquirrel(WaveformProvider):
         logger.info("preparing squirrel waveform provider")
         self._stations = stations
         squirrel = self.get_squirrel()
-        stations.weed_from_squirrel_waveforms(squirrel)
+        available_codes = squirrel.get_codes(kind="waveform")
+        available_nsls = {NSL(*code[0:3]) for code in available_codes}
+        stations.weed_from_nsls(available_nsls)
 
     async def iter_batches(
         self,
@@ -277,7 +283,7 @@ class PyrockoSquirrel(WaveformProvider):
                 codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
                 channel_priorities=self.channel_selector,
             )
-            prefetcher = SquirrelPrefetcher(iterator)
+            prefetcher = SquirrelPrefetcher(iterator, queue_size=self.queue_size)
             stats.set_queue(prefetcher.queue)
             return prefetcher
 
