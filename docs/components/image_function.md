@@ -1,6 +1,6 @@
-# Image Function
+# Phase Arrival Image Function
 
-For image functions this version of Qseek relies heavily on machine learning pickers delivered by [SeisBench](https://github.com/seisbench/seisbench).
+For image functions this version of Qseek relies heavily on machine learning phase-arrival pickers delivered by [SeisBench](https://github.com/seisbench/seisbench).
 
 ## SeisBench Image Function
 

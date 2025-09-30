@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__file__)
 
+HOUR = 3600.0
+DAY = 24 * HOUR
 RECORD_LENGTH = 512
 
 
@@ -106,12 +108,14 @@ class SeedLinkStream:
 
     _data_received: asyncio.Event
 
+    _fill_rate: float = 0.0
+
     def __init__(self) -> None:
         self._trace = None
         self._last_data = datetime.min.replace(tzinfo=timezone.utc)
         self._data_received = asyncio.Event()
 
-    def add_trace(self, trace: Trace, max_length_seconds: float = 600.0) -> None:
+    def add_trace(self, trace: Trace, max_length_seconds: float = DAY) -> None:
         """Add a trace to the stream.
 
         Args:
@@ -119,6 +123,9 @@ class SeedLinkStream:
             max_length_seconds (float, optional): Maximum length of the trace in seconds.
                 Defaults to 600.0.
         """
+        # The day doesn't make sense for historical data when continuing
+        # Maybe don't crop traces here but keep partial ones and crop when requested?
+        # Or have a max buffer size and drop old data?
         pretty_nslc = ".".join(trace.nslc_id)
         if self._trace is None:
             logger.info("receiving new stream %s", pretty_nslc)
@@ -128,6 +135,7 @@ class SeedLinkStream:
         if len(merged_traces) != 1:
             logger.warning("gap in stream %s", pretty_nslc)
         # Only take the latest trace
+        # TODO: better take all traces
         new_trace = merged_traces[-1]
 
         if new_trace.tmax - new_trace.tmin > max_length_seconds:
@@ -142,6 +150,10 @@ class SeedLinkStream:
                 logger.warning("failed to chop trace %s", pretty_nslc)
                 return
         self._trace = new_trace
+
+        since_last_data = datetime_now() - self._last_data
+        self._fill_rate = (trace.tmax - trace.tmin) / since_last_data.total_seconds()
+
         self._last_data = _as_datetime(trace.tmax)
 
         self._data_received.set()
@@ -179,6 +191,16 @@ class SeedLinkStream:
     def delay(self) -> timedelta:
         """Get the delay of the stream."""
         return datetime_now() - self.end_time
+
+    @property
+    def size_bytes(self) -> int:
+        """Get the size of the trace in bytes."""
+        if not self._trace:
+            return 0
+        return self._trace.ydata.nbytes
+
+    def is_backfilling(self) -> bool:
+        return self._fill_rate > 2.0
 
     def is_online(self, timeout: float = 60.0) -> bool:
         """Check if the stream is online in the seconds.
@@ -225,7 +247,7 @@ class SeedLinkStream:
                 )
             except asyncio.TimeoutError as exc:
                 logger.warning(
-                    "no data from %s with timeout %s s, stream has %.1f s delay",
+                    "no data from %s within timeout %s s, stream has %.1f s delay",
                     nslc_pretty,
                     timeout,
                     self.delay.total_seconds(),
@@ -245,10 +267,8 @@ class SeedLinkStream:
                 inplace=False,
             )
         except NoData as exc:
-            logger.warning("no data in the given time window for %s", nslc_pretty)
-            raise ValueError(
-                f"{nslc_pretty} No data available in window {start_time} - {end_time}"
-            ) from exc
+            logger.debug("no data in the given time window for %s", nslc_pretty)
+            raise ValueError(f"{nslc_pretty} has no data for {start_time}") from exc
         return cropped_trace
 
 
@@ -439,8 +459,7 @@ class SeedLinkClient(BaseModel):
             # some SeedLink servers do not support the -tw option and stop delivering
             # data
             logger.info("starting stream at %s", start_time)
-            start_time_str = as_seedlink_time(start_time)
-            slinktool_args.extend(["-tw", f"{start_time_str}:"])
+            slinktool_args.extend(["-tw", f"{as_seedlink_time(start_time)}:"])
 
         logger.debug("calling: slinktool %s", " ".join(slinktool_args))
         proc = await asyncio.subprocess.create_subprocess_exec(
@@ -483,7 +502,7 @@ class SeedLinkClient(BaseModel):
 
                 trace: Trace = traces[0]
                 logger.debug(
-                    "received stream %s.%s.%s.%s from %s",
+                    "received %s.%s.%s.%s from %s",
                     *trace.nslc_id,
                     self._slink_host,
                 )
@@ -496,6 +515,9 @@ class SeedLinkClient(BaseModel):
         finally:
             proc.terminate()
             self._stats.connected_at = None
+
+    def is_backfilliung(self) -> bool:
+        return any(sta.is_backfilling() for sta in self.streams)
 
     def start_streams(self, start_time: datetime | None = None) -> None:
         if self._task is not None:

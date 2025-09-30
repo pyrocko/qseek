@@ -202,8 +202,8 @@ class SeisBench(ImageFunction):
         description="Method to stack the overlaping blocks internally. "
         "Choose from `avg` and `max`.",
     )
-    rescale_input: PositiveFloat = Field(
-        default=1.0,
+    sampling_rate: PositiveFloat = Field(
+        default=100.0,
         description="Upscale input by factor. "
         "This augments the input data from e.g. 100 Hz to 50 Hz (factor: `2`). Can be"
         " useful for high-frequency microseismic events.",
@@ -224,6 +224,7 @@ class SeisBench(ImageFunction):
     )
 
     _seisbench_model: WaveformModel | None = PrivateAttr(None)
+    _rescale_input: PositiveFloat = PrivateAttr(1.0)
 
     @property
     def seisbench_model(self) -> WaveformModel:
@@ -264,6 +265,9 @@ class SeisBench(ImageFunction):
                     "failed to use CUDA for SeisBench model, using CPU.",
                     exc_info=exc,
                 )
+        self._rescale_input = self.sampling_rate / self._seisbench_model.sampling_rate
+        logger.debug("rescaling SeisBench input by factor %.2f", self._rescale_input)
+
         self._seisbench_model.eval()
         try:
             logger.info("compiling SeisBench model...")
@@ -286,19 +290,19 @@ class SeisBench(ImageFunction):
             return self.seisbench_model._annotate_args["blinding"][1]
 
     def get_blinding(self, sampling_rate: float) -> timedelta:
-        scaled_blinding_samples = max(self.get_blinding_samples()) / self.rescale_input
+        scaled_blinding_samples = max(self.get_blinding_samples()) / self._rescale_input
         return timedelta(seconds=scaled_blinding_samples / sampling_rate)
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
         # The 0.2 seconds is the default value from SeisBench training
-        return 0.2 / self.rescale_input
+        return 0.2 / self._rescale_input
 
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        if self.rescale_input != 1.0:
-            scale = self.rescale_input
+        if self._rescale_input != 1.0:
+            scale = self._rescale_input
             for tr in stream:
                 tr.stats.sampling_rate /= scale
 
@@ -310,13 +314,15 @@ class SeisBench(ImageFunction):
             copy=False,
         )
 
-        if self.rescale_input != 1.0:
-            scale = self.rescale_input
+        if self._rescale_input != 1.0:
+            scale = self._rescale_input
             for tr in annotations:
                 tr.stats.sampling_rate *= scale
                 blinding_samples = max(self.get_blinding_samples())
                 # 100 Hz is the native sampling rate of PhaseNet
-                blinding_seconds = (blinding_samples / 100.0) * (1.0 - 1 / scale)
+                blinding_seconds = (
+                    blinding_samples / self._seisbench_model.sampling_rate
+                ) * (1.0 - 1 / scale)
                 tr.stats.starttime -= blinding_seconds
 
         annotated_traces: list[Trace] = [

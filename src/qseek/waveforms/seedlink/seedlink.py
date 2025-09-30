@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -32,6 +33,19 @@ SDS_TEMPLATE = (
     "/%(network)s.%(station)s.%(location)s.%(channel)s.D"
     ".%(tmin_year)s.%(julianday)s"
 )
+
+
+def slinktool_available() -> bool:
+    """Check if slinktool is available."""
+    try:
+        subprocess.check_call(
+            ["slinktool", "-h"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
 
 
 async def save_traces_sds(
@@ -168,6 +182,8 @@ class SeedLink(WaveformProvider):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> AsyncIterator[WaveformBatch]:
+        loop = asyncio.get_event_loop()
+
         for client in self.clients:
             client.start_streams(start_time - window_padding if start_time else None)
         logger.info("waiting for first SeedLink traces")
@@ -175,13 +191,21 @@ class SeedLink(WaveformProvider):
             await asyncio.sleep(1.0)
             if sum(len(client.streams) for client in self.clients) > 0:
                 break
-        start_time = start_time or datetime_now()
-        i_batch = 0
-        loop = asyncio.get_event_loop()
 
         while True:
-            start_time_padded = start_time - window_padding
+            if not any(client.is_backfilliung() for client in self.clients):
+                break
+            logger.info("stations still backfilling, waiting...")
+            await asyncio.sleep(1.0)
+
+        i_batch = 0
+        start_time = start_time or datetime_now()
+        logger.info("starting waveform streaming at %s", start_time)
+
+        while True:
             end_time = start_time + window_increment
+
+            start_time_padded = start_time - window_padding
             end_time_padded = end_time + window_padding
 
             wait_time = end_time_padded - datetime_now()
@@ -189,9 +213,9 @@ class SeedLink(WaveformProvider):
                 logger.info("next batch %s", end_time_padded)
                 await asyncio.sleep(wait_time.total_seconds())
             else:
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.1)
 
-            logger.info("awaiting waveforms until %s", end_time_padded)
+            logger.info("waiting for waveforms up to %s", end_time_padded)
             try:
                 seedlink_traces = await asyncio.gather(
                     *(
@@ -214,7 +238,7 @@ class SeedLink(WaveformProvider):
 
             batch_traces = [tr for tr in seedlink_traces if isinstance(tr, Trace)]
             if not batch_traces:
-                logger.warning("no data received")
+                logger.warning("no data received for %s", start_time)
                 try:
                     available_start_time = self.get_stream_start_time() + window_padding
                 except RuntimeError:
@@ -222,6 +246,7 @@ class SeedLink(WaveformProvider):
                     start_time += window_increment
                     continue
 
+                # This is problematic
                 logger.info("skipping to first available data %s", available_start_time)
                 start_time = available_start_time
                 continue

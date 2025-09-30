@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
@@ -51,8 +52,8 @@ class Layer(BaseModel):
         """Create a Layer from a pyrocko.cake.Layer."""
         if isinstance(layer, PyrockoGradientLayer):
             thickness = layer.zbot - layer.ztop
-            gradient_vp = (layer.mtop.vp - layer.mbot.vp) / thickness
-            gradient_vs = (layer.mtop.vs - layer.mbot.vs) / thickness
+            gradient_vp = (layer.mbot.vp - layer.mtop.vp) / thickness
+            gradient_vs = (layer.mbot.vs - layer.mtop.vs) / thickness
             return cls(
                 top_depth=layer.ztop,
                 vp=layer.mtop.vp,
@@ -73,13 +74,20 @@ class Layer(BaseModel):
 
 
 class LayeredModel(BaseModel):
-    layers: list[Layer] = Field(min_length=1)
+    layers: list[Layer] = Field(
+        min_length=1,
+        description="List of velocity layers.",
+    )
+
+    @property
+    def n_layers(self) -> int:
+        return len(self.layers)
 
     def model_post_init(self, context: Any) -> None:
         self.layers = sorted(self.layers, key=lambda x: x.top_depth)
 
     def _get_layer(self, depth: float) -> Layer:
-        idx = self._get_layer_index(np.asarray([depth]))[0]
+        idx = int(self._get_layer_index(np.asarray([depth]))[0])
         return self.layers[idx]
 
     def _get_layer_index(self, depths: np.ndarray) -> np.ndarray:
@@ -89,7 +97,7 @@ class LayeredModel(BaseModel):
             depths,
             side="right",
         )
-        return np.clip(indices, 0, len(self.layers) - 1)
+        return np.clip(indices - 1, 0, self.n_layers)
 
     def _interpolator(
         self, depths: np.ndarray, func: Callable[[Layer, np.ndarray], np.ndarray]
@@ -139,7 +147,12 @@ class LayeredModel(BaseModel):
             depths, lambda layer, depths: layer._interpolate_vs(depths)
         )
 
-    def plot(self, depth_range: tuple[float, float], samples: int = 100) -> None:
+    def plot(
+        self,
+        depth_range: tuple[float, float],
+        samples: int = 100,
+        export: Path | None = None,
+    ) -> None:
         import matplotlib.pyplot as plt
 
         fig = plt.figure()
@@ -160,7 +173,17 @@ class LayeredModel(BaseModel):
         ax.invert_yaxis()
         ax.legend()
         ax.grid(alpha=0.3)
-        plt.show()
+
+        ax.xaxis.set_major_formatter(lambda x, _: f"{x / 1e3:.1f}")
+        ax.yaxis.set_major_formatter(lambda x, _: f"{x / 1e3:.1f}")
+        ax.set_xlabel("Velocity (km/s)")
+        ax.set_ylabel("Depth (km)")
+
+        if export is not None:
+            fig.savefig(export, dpi=300)
+            plt.close()
+        else:
+            plt.show()
 
     @classmethod
     def from_earth_model(cls, earth_model: EarthModel) -> LayeredModel:

@@ -42,7 +42,7 @@ dependencies = [
     "pyevtk>=1.6",
     "psutil>=6.0",
     "aiofiles>=23.0",
-    "scikit-fmm >= 2025.1"
+    "scikit-fmm >= 2025.1",
 ]
 
 classifiers = [
@@ -61,9 +61,9 @@ classifiers = [
 [project.optional-dependencies]
 docs = [
     "mkdocs-material>=9.6",
-    "mkdocstrings[python]>=0.25",
-    "griffe-pydantic>=1.1.0",
-    "markdown-exec>=1.9",
+    "mkdocstrings[python]>=0.30",
+    "griffe-pydantic>=1.1",
+    "markdown-exec>=1.11",
 ]
 completion = ["argcomplete>=3.2"]
 

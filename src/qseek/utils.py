@@ -114,7 +114,7 @@ class BackgroundTasks:
 class _NSL(NamedTuple):
     network: str
     station: str
-    location: str
+    location: str = ""
 
     @property
     def pretty(self) -> str:
@@ -534,7 +534,10 @@ def filter_clipped_traces(
         if tr.ydata is None:
             continue
         if tr.ydata.dtype not in (int, np.int32, np.int64):
-            raise TypeError(f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}")
+            raise TypeError(
+                f"trace {tr.nslc_id} has invalid dtype {tr.ydata.dtype}."
+                "Can only detect signal clipping on integer traces."
+            )
 
         max_val = np.abs(tr.ydata).max()
         for bits in max_bits:
@@ -693,7 +696,7 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
 
     def generate_submodel(model: BaseModel) -> list[str]:
         lines = []
-        for name, field in model.model_fields.items():
+        for name, field in model.__class__.model_fields.items():
             if field.description is None:
                 continue
             lines += [
@@ -707,7 +710,7 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     if model.__class__.__doc__ is not None:
         lines += [f"{model.__class__.__doc__}\n"]
     lines += [f'=== "Config {model_name}"']
-    for name, field in model.model_fields.items():
+    for name, field in model.__class__.model_fields.items():
         annotation = ""
 
         if field.annotation in (int, float, bool, dict, str):
