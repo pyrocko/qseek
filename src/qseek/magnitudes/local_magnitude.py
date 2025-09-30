@@ -41,7 +41,7 @@ class LocalMagnitude(EventMagnitude):
 
     model: ModelName = Field(
         default="iaspei-southern-california",
-        description="The estimator to use for calculating the local magnitude.",
+        description="The attenuation model to use for calculating the local magnitude.",
     )
     station_magnitudes: list[StationLocalMagnitude] = []
 
@@ -137,7 +137,8 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
 
     model: ModelName = Field(
         default="iaspei-southern-california",
-        description="The estimator to use for calculating the local magnitude.",
+        description="The amplitude attenuation model to "
+        "use for calculating the local magnitude.",
     )
 
     export_mseed: Path | None = Field(
@@ -173,6 +174,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             phase=None,
             cut_off_taper=False,
             filter_clipped=True,
+            want_incomplete=False,
         )
         if not traces:
             logger.warning("No restituted traces found for event %s", event.time)

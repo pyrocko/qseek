@@ -6,7 +6,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Deque, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Deque, Literal, Sequence
 
 import numpy as np
 import psutil
@@ -24,7 +24,7 @@ from pydantic import (
 from scipy import stats
 
 from qseek.cache_lru import CACHES
-from qseek.corrections.corrections import StationCorrectionType
+from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
@@ -69,7 +69,7 @@ SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
 
 class SearchStats(Stats):
     project_name: str = "qseek"
-    batch_time: datetime = datetime.min
+    batch_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     batch_count: int = 0
     batch_count_total: int = 0
     processed_time: timedelta = timedelta(seconds=0.0)
@@ -96,7 +96,7 @@ class SearchStats(Stats):
     @computed_field
     @property
     def time_remaining(self) -> timedelta:
-        if not self.batch_count:
+        if not self.batch_count or not self.batch_count_total:
             return timedelta()
 
         remaining_batches = self.batch_count_total - self.batch_count
@@ -243,39 +243,42 @@ class Search(BaseModel):
         description="Data provider for waveform data.",
     )
     pre_processing: PreProcessing = Field(
-        default=PreProcessing(root=[Downsample(), Bandpass()]),
+        default_factory=lambda: PreProcessing(root=[Downsample(), Bandpass()]),
         description="Pre-processing steps for waveform data.",
     )
 
     octree: Octree = Field(
-        default=Octree(),
+        default_factory=Octree,
         description="Octree volume for the search.",
     )
 
     image_functions: ImageFunctions = Field(
-        default=ImageFunctions(),
+        default_factory=ImageFunctions,
         description="Image functions for waveform processing and "
         "phase on-set detection.",
     )
     ray_tracers: RayTracers = Field(
-        default=RayTracers(root=[tracer() for tracer in RayTracer.get_subclasses()]),
+        default_factory=lambda: RayTracers(
+            root=[tracer() for tracer in RayTracer.get_subclasses()]
+        ),
         description="List of ray tracers for travel time calculation.",
     )
     distance_weights: DistanceWeights | None = Field(
-        default=DistanceWeights(),
+        default_factory=DistanceWeights,
         validation_alias=AliasChoices("spatial_weights", "distance_weights"),
         description="Spatial weights for distance weighting.",
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
-        description="Apply station corrections extracted from a previous run.",
+        description="Apply station corrections extracted from a previous run or a path"
+        " to a directory with station correction files.",
     )
     magnitudes: list[EventMagnitudeCalculatorType] = Field(
-        default=[],
+        default_factory=list,
         description="Magnitude calculators to use.",
     )
     features: list[FeatureExtractorType] = Field(
-        default=[],
+        default_factory=list,
         description="Event features to extract.",
     )
 
@@ -381,6 +384,16 @@ class Search(BaseModel):
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("station_corrections", mode="before")
+    @classmethod
+    def load_path(cls, v: Any) -> StationCorrectionType:
+        if isinstance(v, str):
+            path = Path(v)
+            if not path.is_dir():
+                raise ValueError(f"station_corrections path {path} is not a directory")
+            return corrections_from_path(path)
+        return v
 
     @field_validator("n_threads_parstack", "n_threads_argmax")
     @classmethod
@@ -526,9 +539,6 @@ class Search(BaseModel):
             None
         """
         logger.info("preparing search components")
-        asyncio.get_running_loop().set_exception_handler(
-            lambda loop, context: logger.error(context)
-        )
         self.stations.prepare(self.octree)
         self.data_provider.prepare(self.stations)
         await self.pre_processing.prepare()
@@ -750,7 +760,7 @@ class SearchTraces:
         time_span = (self.end_time + window_padding) - (
             self.start_time - window_padding
         )
-        return int(round(time_span.total_seconds() * parent.semblance_sampling_rate))
+        return round(time_span.total_seconds() * parent.semblance_sampling_rate)
 
     @alog_call
     async def add_semblance(
@@ -880,9 +890,7 @@ class SearchTraces:
 
         images = await self.get_images(sampling_rate=float(sampling_rate))
 
-        padding_samples = int(
-            round(parent._window_padding.total_seconds() * sampling_rate)
-        )
+        padding_samples = round(parent._window_padding.total_seconds() * sampling_rate)
 
         if not semblance:
             semblance = Semblance(

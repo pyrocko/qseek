@@ -326,14 +326,17 @@ class Node:
             yield self
 
     def hash(self) -> bytes:
-        if not self.tree:
-            raise AttributeError("parent octree not set")
         if not self._hash:
+            if not self.tree:
+                raise AttributeError("parent octree not set")
+
             self._hash = sha1(
                 struct.pack(
-                    "dddddd",
+                    "dddddddd",
                     self.tree.location.lat,
                     self.tree.location.lon,
+                    self.tree.location.elevation,
+                    self.tree.location.depth,
                     self.east,
                     self.north,
                     self.depth,
@@ -420,17 +423,17 @@ class Octree(BaseModel, Iterator[Node]):
             tuple[float, float, float]: EW, NS and depth extent of the octree in meters.
         """
         return (
-            self.east_bounds.max - self.east_bounds.min,
-            self.north_bounds.max - self.north_bounds.min,
-            self.depth_bounds.max - self.depth_bounds.min,
+            self.east_bounds.end - self.east_bounds.start,
+            self.north_bounds.end - self.north_bounds.start,
+            self.depth_bounds.end - self.depth_bounds.start,
         )
 
     def create_root_nodes(self, length: float) -> list[Node]:
         ln = length
         ext_east, ext_north, ext_depth = self.extent()
-        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.min
-        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds.min
-        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds.min
+        east_nodes = np.arange(ext_east // ln) * ln + ln / 2 + self.east_bounds.start
+        north_nodes = np.arange(ext_north // ln) * ln + ln / 2 + self.north_bounds.start
+        depth_nodes = np.arange(ext_depth // ln) * ln + ln / 2 + self.depth_bounds.start
 
         return [
             Node(east=east, north=north, depth=depth, size=ln, tree=self, level=0)
@@ -462,6 +465,14 @@ class Octree(BaseModel, Iterator[Node]):
     def volume(self) -> float:
         """Volume of the octree in cubic meters."""
         return reduce(mul, self.extent())
+
+    @property
+    def effective_depth_bounds(self) -> Range:
+        """Effective depth bounds of the octree in meters."""
+        return Range(
+            self.location.effective_depth + self.depth_bounds.start,
+            self.location.effective_depth + self.depth_bounds.end,
+        )
 
     @cached_property
     def leaf_nodes(self) -> list[Node]:
@@ -660,6 +671,21 @@ class Octree(BaseModel, Iterator[Node]):
         """
         return [node for node in self if node.level <= level]
 
+    def get_node_size(self, level: int = 0) -> float:
+        """Get the size of a node at a specific level.
+
+        Args:
+            level (int): Level to get node size from.
+
+        Returns:
+            float: Size of the node.
+        """
+        if level < 0 or level >= self.n_levels:
+            raise ValueError(
+                f"invalid level {level}, expected level <= {self.n_levels}"
+            )
+        return self.root_node_size / (2**level)
+
     def smallest_node_size(self) -> float:
         """Returns the smallest possible node size.
 
@@ -791,9 +817,9 @@ class Octree(BaseModel, Iterator[Node]):
                 north_shift=reference.north_shift + north,
                 depth=reference.depth + depth,
             )
-            for east in (self.east_bounds.min, self.east_bounds.max)
-            for north in (self.north_bounds.min, self.north_bounds.max)
-            for depth in (self.depth_bounds.min, self.depth_bounds.max)
+            for east in (self.east_bounds.start, self.east_bounds.end)
+            for north in (self.north_bounds.start, self.north_bounds.end)
+            for depth in (self.depth_bounds.start, self.depth_bounds.end)
         ]
 
     def __hash__(self) -> int:
@@ -801,8 +827,24 @@ class Octree(BaseModel, Iterator[Node]):
             (
                 self.root_node_size,
                 self.n_levels,
+                self.location,
                 self.east_bounds,
                 self.north_bounds,
                 self.depth_bounds,
             )
         )
+
+    def hash(self) -> str:
+        sha = sha1()
+        sha.update(
+            struct.pack(
+                "dddddddi",
+                self.root_node_size,
+                *self.east_bounds,
+                *self.north_bounds,
+                *self.depth_bounds,
+                self.n_levels,
+            )
+        )
+        sha.update(self.location.location_hash().encode())
+        return sha.hexdigest()

@@ -242,6 +242,7 @@ def main() -> None:
 
     match args.command:
         case "config":
+            logging.disable(logging.CRITICAL)
             from qseek.search import Search
 
             config = Search()
@@ -428,19 +429,20 @@ def main() -> None:
                     exporter.__name__ for exporter in Exporter.get_subclasses()
                 )
                 parser.error(
-                    f"unknown exporter: {args.format}"
-                    f"choose fom: {available_exporters}"
+                    f"unknown exporter: {args.format}choose fom: {available_exporters}"
                 )
 
         case "modules":
             from rich import box
             from rich.table import Table
 
+            import qseek.pre_processing.module
+            import qseek.waveforms.providers  # noqa: F401
             from qseek.corrections.base import TravelTimeCorrections
             from qseek.features.base import FeatureExtractor
             from qseek.magnitudes.base import EventMagnitudeCalculator
             from qseek.pre_processing.base import BatchPreProcessing
-            from qseek.tracers.base import RayTracer
+            from qseek.tracers.tracers import RayTracer
             from qseek.waveforms.base import WaveformProvider
 
             table = Table(box=box.SIMPLE, header_style=None)
@@ -481,8 +483,7 @@ def main() -> None:
             console.print(table)
             console.print("Insight module are marked by 🚀\n")
             console.print(
-                "Use [bold]qseek modules <module_name>[/bold] "
-                "to print the JSON schema"
+                "Use [bold]qseek modules <module_name>[/bold] to print the JSON schema"
             )
 
         case "dump-schemas":

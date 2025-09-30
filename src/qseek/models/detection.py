@@ -106,6 +106,9 @@ class ReceiverCache:
             start_idx (int, optional): The detection index to start the search from.
                 Defaults to 0.
 
+        Raises:
+            KeyError: If the UID is not found in the lines.
+
         Returns:
             tuple[int, str]: A tuple containing the index and value of the found UID.
         """
@@ -243,7 +246,9 @@ class Receiver(Station):
     def n_picks(self, phase: PhaseDescription | None = None) -> int:
         """Number of observations for all phases."""
         if phase:
-            return int(self.phase_arrivals[phase].observed is not None)
+            if phase in self.phase_arrivals:
+                return int(self.phase_arrivals[phase].observed is not None)
+            return 0
         return sum(
             arrival.observed is not None for arrival in self.phase_arrivals.values()
         )
@@ -320,7 +325,26 @@ class EventReceivers(BaseModel):
         Returns:
             int: The number of picks for the given phase.
         """
+        if not self.receivers:
+            return 0
         return sum(receiver.n_picks(phase) for receiver in self.receivers)
+
+    def get_num_phase_picks(self) -> dict[str, int]:
+        """Get the number of picks for each phase.
+
+        Returns:
+            dict[str, int]: A dictionary with phase names as keys and the number of
+                picks as values.
+        """
+        phases = set()
+        for receiver in self.receivers:
+            phases.update(receiver.phase_arrivals.keys())
+        return {
+            f"n_picks:{phase}": sum(
+                receiver.n_picks(phase) for receiver in self.receivers
+            )
+            for phase in phases
+        }
 
     async def get_waveforms(
         self,
@@ -330,6 +354,7 @@ class EventReceivers(BaseModel):
         phase: PhaseDescription | None = None,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
+        want_incomplete: bool = True,
     ) -> list[Trace]:
         """Retrieves and restitutes waveforms for a given squirrel.
 
@@ -344,6 +369,8 @@ class EventReceivers(BaseModel):
             receivers (list[Receiver] | None, optional): The receivers to retrieve
                 waveforms for. If None, all receivers are retrieved. Defaults to None.
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
+            want_incomplete (bool, optional): Whether to return incomplete traces.
+                Defaults to True.
 
         Returns:
             list[Trace]: The restituted waveforms.
@@ -397,6 +424,7 @@ class EventReceivers(BaseModel):
         filter_clipped: bool = False,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
+        want_incomplete: bool = True,
     ) -> list[Trace]:
         """Retrieves and restitutes waveforms for a given squirrel.
 
@@ -425,6 +453,8 @@ class EventReceivers(BaseModel):
             filter_clipped (bool, optional): Whether to filter clipped traces.
                 Defaults to False.
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
+            want_incomplete (bool, optional): Whether to return incomplete traces.
+                Defaults to True.
 
         Returns:
             list[Trace]: The restituted waveforms.
@@ -436,6 +466,7 @@ class EventReceivers(BaseModel):
             seconds_before=seconds_before + seconds_taper,
             receivers=receivers,
             channels=channels,
+            want_incomplete=want_incomplete,
         )
         traces = filter_clipped_traces(traces) if filter_clipped else traces
         if not traces:
@@ -683,8 +714,6 @@ class EventDetection(Location):
                         f.write(f"{self.receivers.model_dump_json()}\n")
                     )
 
-            self._receivers = None  # Free memory
-
         if not update:
             self.export_csv_line(
                 rundir / "csv" / "detections.csv",
@@ -701,6 +730,8 @@ class EventDetection(Location):
                     rundir / "pyrocko_detections_jittered.list",
                     jitter_location=jitter_location,
                 )
+
+        self._receivers = None  # Free memory
 
     def export_csv_line(self, file: Path, jitter_location: float = 0.0) -> None:
         """Save the detection as a CSV line.
