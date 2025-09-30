@@ -1,6 +1,6 @@
-site_name: Qseek - Earthqake Detection and Localization
+site_name: "Earthqake Detection and Localization"
 site_description: Lightning-fast earthquake detection and localization for large-data.
-site_author: Marius Paul Isken
+site_author: Marius Isken
 
 repo_url: https://github.com/pyrocko/qseek
 repo_name: pyrocko/qeek
@@ -19,7 +19,7 @@ theme:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: black
+      primary: blue grey
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -33,7 +33,7 @@ theme:
         name: Switch to system preference
   icon:
     repo: fontawesome/brands/git-alt
-  logo: images/logo.webp
+  logo: images/logo.png
   features:
     - navigation.tabs
     - search.suggest
