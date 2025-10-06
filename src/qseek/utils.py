@@ -208,6 +208,13 @@ NSL = Annotated[
 ]
 
 
+class NSLC(NamedTuple):
+    network: str
+    station: str
+    location: str
+    channel: str
+
+
 class _Range(NamedTuple):
     start: float
     end: float

@@ -6,11 +6,11 @@ import argparse
 import asyncio
 import logging
 import shutil
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import nest_asyncio
-from pkg_resources import get_distribution
 
 if TYPE_CHECKING:
     from qseek.models.detection import EventDetection
@@ -35,7 +35,7 @@ parser.add_argument(
 parser.add_argument(
     "--version",
     action="version",
-    version=get_distribution("qseek").version,
+    version=version("qseek"),
     help="show version and exit",
 )
 

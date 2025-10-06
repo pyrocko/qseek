@@ -69,6 +69,7 @@ completion = ["argcomplete>=3.2"]
 
 [project.scripts]
 qseek = "qseek.apps.qseek:main"
+qseek-inversion = "qseek_inversion.app.qseek_inversion:main"
 
 [tool.setuptools.packages.find]
 where = ["src/"]

@@ -738,6 +738,23 @@ class Search(BaseModel):
 
 class SearchTraces:
     _images: dict[float | None, WaveformImages]
+    window_padding: timedelta
+    semblance_sampling_rate: float
+    station_corrections: StationCorrectionType | None
+    distance_weights: DistanceWeights | None
+
+    start_time: datetime
+    end_time: datetime
+    power_mean: float
+
+    min_stations: int
+    n_threads_parstack: int
+    n_threads_argmax: int
+    pick_confidence_threshold: float
+    detection_threshold: float | Literal["MAD"]
+    ignore_boundary: Literal[False, "with_surface", "without_surface"]
+    ignore_boundary_width: float | Literal["root_node_size"]
+    node_interpolation: bool
 
     def __init__(
         self,
