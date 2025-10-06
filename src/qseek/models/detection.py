@@ -355,6 +355,7 @@ class EventReceivers(BaseModel):
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
         want_incomplete: bool = True,
+        crop_receivers: bool = True,
     ) -> list[Trace]:
         """Retrieves and restitutes waveforms for a given squirrel.
 
@@ -371,6 +372,8 @@ class EventReceivers(BaseModel):
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
             want_incomplete (bool, optional): Whether to return incomplete traces.
                 Defaults to True.
+            crop_receivers (bool, optional): Whether to crop traces to receiver's
+                phase arrival window. Defaults to True.
 
         Returns:
             list[Trace]: The restituted waveforms.
@@ -397,16 +400,20 @@ class EventReceivers(BaseModel):
                 tmax=tmax,
                 snap=(math.ceil, math.floor),
                 accessor_id=accessor_id,
-                want_incomplete=True,
+                want_incomplete=want_incomplete,
                 channel_priorities=channels,
             )
         squirrel.advance_accessor(accessor_id, cache_id="waveform")
 
-        for tr in traces:
-            # Crop to receiver's phase arrival window
-            receiver = self.get_receiver(tr.nslc_id[:3])
-            tmin, tmax = receiver.get_arrivals_time_window(phase)
-            tr.chop(tmin.timestamp() - seconds_before, tmax.timestamp() + seconds_after)
+        if crop_receivers:
+            for tr in traces:
+                # Crop to receiver's phase arrival window
+                receiver = self.get_receiver(tr.nslc_id[:3])
+                tmin, tmax = receiver.get_arrivals_time_window(phase)
+                tr.chop(
+                    tmin.timestamp() - seconds_before,
+                    tmax.timestamp() + seconds_after,
+                )
 
         return traces
 
