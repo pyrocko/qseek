@@ -120,8 +120,8 @@ class _NSL(NamedTuple):
     def pretty(self) -> str:
         return ".".join(self)
 
-    def _pretty_str(self) -> str:
-        return self.pretty
+    def pretty_str(self, strip: bool = False) -> str:
+        return self.pretty if not strip else self.pretty.rstrip(".")
 
     def match(self, other: NSL) -> bool:
         """Check if the current NSL object matches another NSL object.
@@ -204,7 +204,7 @@ NSL = Annotated[
     _NSL,
     BeforeValidator(_NSL.parse),
     AfterValidator(_NSL._check),
-    PlainSerializer(_NSL._pretty_str),
+    PlainSerializer(_NSL.pretty_str),
 ]
 
 
