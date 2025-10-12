@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, PrivateAttr, computed_field
 from pyrocko.io import load
 from pyrocko.trace import NoData, Trace, degapper
 
-from qseek.utils import NSL, datetime_now, human_readable_bytes
+from qseek.utils import NSL, NSLC, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
     from rich.table import Table
@@ -95,6 +95,11 @@ class StationSelection(BaseModel):
         max_length=3,
         pattern="[A-Z?]",
     )
+
+    @property
+    def nslc(self) -> NSLC:
+        """Get the NSLC tuple for this station."""
+        return NSLC(*self.nsl, self.channel)
 
     def seedlink_str(self) -> str:
         """Get the SeedLink string for this station."""
@@ -308,13 +313,6 @@ class SeedLinkClientStats(BaseModel):
 
     @computed_field
     @property
-    def online_streams(self) -> int:
-        if not self._seedlink_client:
-            return 0
-        return sum(1 for sta in self._seedlink_client.streams if sta.is_online())
-
-    @computed_field
-    @property
     def total_stations(self) -> int:
         if not self._seedlink_client:
             return 0
@@ -354,6 +352,29 @@ class SeedLinkClientStats(BaseModel):
         self.received_bytes += n_bytes
         self.last_packet = datetime_now()
 
+    def get_station_line(self) -> str:
+        if not self._seedlink_client:
+            return "No SeedLink client"
+
+        def is_online(nsl: NSL) -> bool:
+            if not self._seedlink_client:
+                return False
+            for stream in self._seedlink_client.streams:
+                if stream.nsl == nsl and stream.is_online(self._timeout):
+                    return True
+            return False
+
+        stations = sorted(
+            self._seedlink_client.station_selection,
+            key=lambda s: s.nsl.pretty,
+        )
+        ret = ""
+        for sta in stations:
+            color = "green" if is_online(sta.nsl) else "red"
+            ret += f"[{color}]{sta.nsl.pretty_str(strip=True)}[/{color}] "
+
+        return ret
+
     def add_table_row(self, table: Table) -> None:
         host, port = self.host.split(":")
         sign = "↓" if self.is_running() else "[red bold]x[/red bold]"
@@ -367,6 +388,10 @@ class SeedLinkClientStats(BaseModel):
                 f"{sign} {human_readable_bytes(self.received_bytes)}, "
                 f"{self.online_stations}/{self.total_stations} online, "
                 f"{self.min_delay.total_seconds():.2f} s delay",
+            )
+            table.add_row(
+                "Stations",
+                self.get_station_line(),
             )
         except Exception as exc:
             logger.warning("failed to add table row: %s", exc)
@@ -395,7 +420,7 @@ class SeedLinkClient(BaseModel):
             StationSelection(nsl=NSL("WB", "VAC", ""), channel="HH?"),
         ],
         min_length=1,
-        description="List of stations to request streams from.",
+        description="List of stations to request SeedLink streams from.",
     )
     buffer_length: timedelta = Field(
         default=timedelta(minutes=30),
@@ -428,6 +453,14 @@ class SeedLinkClient(BaseModel):
         return self._stats
 
     def prepare(self, timeout: float = 60.0) -> None:
+        nslcs = []
+        for sta in self.station_selection.copy():
+            if sta.nslc in nslcs:
+                logger.warning("duplicate station selection %s, removing", sta.nslc)
+                self.station_selection.remove(sta)
+                continue
+            nslcs.append(sta.nslc)
+
         self._stats.set_seedlink_client(self)
         self._stats.set_timeout(timeout)
 
