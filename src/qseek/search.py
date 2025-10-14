@@ -614,11 +614,22 @@ class Search(BaseModel):
             search_block = SearchTraces(
                 parent=self,
                 images=images,
+                ray_tracers=self.ray_tracers,
                 start_time=batch.start_time,
                 end_time=batch.end_time,
+                station_corrections=self.station_corrections,
+                distance_weights=self.distance_weights,
+                ignore_boundary=self.ignore_boundary,
+                ignore_boundary_width=self.ignore_boundary_width,
             )
 
-            detections, semblance_trace = await search_block.search()
+            detections, semblance_trace = await search_block.search(
+                detection_threshold=self.detection_threshold,
+                pick_confidence_threshold=self.pick_confidence_threshold,
+                node_interpolation=self.node_interpolation,
+                n_threads_parstack=self.n_threads_parstack,
+                n_threads_argmax=self.n_threads_argmax,
+            )
 
             await self._catalog.save_semblance_trace(semblance_trace)
             if detections:
@@ -737,38 +748,44 @@ class Search(BaseModel):
 
 
 class SearchTraces:
-    _images: dict[float | None, WaveformImages]
     window_padding: timedelta
     semblance_sampling_rate: float
+
+    images: WaveformImages
+    ray_tracers: RayTracers
     station_corrections: StationCorrectionType | None
     distance_weights: DistanceWeights | None
 
     start_time: datetime
     end_time: datetime
-    power_mean: float
 
-    min_stations: int
-    n_threads_parstack: int
-    n_threads_argmax: int
-    pick_confidence_threshold: float
-    detection_threshold: float | Literal["MAD"]
     ignore_boundary: Literal[False, "with_surface", "without_surface"]
     ignore_boundary_width: float | Literal["root_node_size"]
-    node_interpolation: bool
 
     def __init__(
         self,
         parent: Search,
         images: WaveformImages,
+        ray_tracers: RayTracers,
         start_time: datetime,
         end_time: datetime,
+        ignore_boundary: Literal[False, "with_surface", "without_surface"] = False,
+        ignore_boundary_width: float | Literal["root_node_size"] = "root_node_size",
+        station_corrections: StationCorrectionType | None = None,
+        distance_weights: DistanceWeights | None = None,
     ) -> None:
         self.parent = parent
+
+        self.ray_tracers = ray_tracers
         self.images = images
         self.start_time = start_time
         self.end_time = end_time
 
-        self._images = {}
+        self.ignore_boundary = ignore_boundary
+        self.ignore_boundary_width = ignore_boundary_width
+
+        self.station_corrections = station_corrections
+        self.distance_weights = distance_weights
 
     def _n_samples_semblance(self) -> int:
         """Number of samples to use for semblance calculation, includes padding."""
@@ -787,6 +804,7 @@ class SearchTraces:
         ray_tracer: RayTracer,
         semblance: Semblance,
         nodes: Sequence[Node],
+        n_threads: int = 0,
     ) -> None:
         if image.sampling_rate != semblance.sampling_rate:
             raise ValueError(
@@ -805,8 +823,8 @@ class SearchTraces:
             image.stations,
         )
 
-        if parent.station_corrections:
-            station_delays = await parent.station_corrections.get_delays(
+        if self.station_corrections:
+            station_delays = await self.station_corrections.get_delays(
                 image.stations.get_all_nsl(),
                 image.phase,
                 nodes,
@@ -826,8 +844,8 @@ class SearchTraces:
         weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
         weights[traveltimes_bad] = 0.0
 
-        if parent.distance_weights:
-            weights *= await parent.distance_weights.get_weights(
+        if self.distance_weights:
+            weights *= await self.distance_weights.get_weights(
                 nodes,
                 image.stations,
             )
@@ -854,7 +872,7 @@ class SearchTraces:
             offsets=image.get_offsets(self.start_time - parent._window_padding),
             shifts=expand_array(shifts),
             weights=expand_array(weights),
-            threads=self.parent.n_threads_parstack,
+            threads=n_threads,
         )
 
     async def get_images(self, sampling_rate: float | None = None) -> WaveformImages:
@@ -883,6 +901,11 @@ class SearchTraces:
         octree: Octree | None = None,
         new_nodes: Sequence[Node] | None = None,
         semblance: Semblance | None = None,
+        detection_threshold: float | Literal["MAD"] = "MAD",
+        pick_confidence_threshold: float = 0.3,
+        node_interpolation: bool = True,
+        n_threads_parstack: int = 0,
+        n_threads_argmax: int = 0,
     ) -> tuple[list[EventDetection], Trace]:
         """Searches for events in the given traces.
 
@@ -894,6 +917,17 @@ class SearchTraces:
                 Defaults to None.
             semblance (Semblance | None, optional): The semblance to use for the search.
                 If None, a new instance is created. Defaults to None.
+            detection_threshold (float | Literal["MAD"], optional): The detection
+                threshold for the search. If "MAD", the threshold is set to 10 times
+                the median absolute deviation of the semblance. Defaults to "MAD".
+                picking. Defaults to 0.3.
+            node_interpolation (bool, optional): Whether to interpolate the event
+                location within the octree node. Defaults to True.
+            pick_confidence_threshold (float, optional): The confidence threshold for
+            n_threads_parstack (int, optional): Number of threads for stacking and
+                migration. Defaults to 0.
+            n_threads_argmax (int, optional): Number of threads for argmax.
+                Defaults to 0.
 
         Returns:
             tuple[list[EventDetection], Trace]: The event detections and the
@@ -915,7 +949,6 @@ class SearchTraces:
                 start_time=self.start_time,
                 sampling_rate=sampling_rate,
                 padding_samples=padding_samples,
-                exponent=1.0 / parent.power_mean,
             )
 
         for image in images:
@@ -924,9 +957,10 @@ class SearchTraces:
             await self.add_semblance(
                 octree=octree,
                 image=image,
-                ray_tracer=parent.ray_tracers.get_phase_tracer(image.phase),
+                ray_tracer=self.ray_tracers.get_phase_tracer(image.phase),
                 semblance=semblance,
                 nodes=new_nodes,
+                n_threads=n_threads_parstack,
             )
 
         # Applying the generalized mean to the semblance
@@ -935,24 +969,23 @@ class SearchTraces:
         leaf_node_mask = np.array([node.is_leaf() for node in octree.nodes], dtype=bool)
         semblance.set_leaf_nodes(leaf_node_mask)
 
-        if parent.detection_threshold == "MAD":
-            detection_threshold = stats.median_abs_deviation(
+        if detection_threshold == "MAD":
+            threshold = stats.median_abs_deviation(
                 await semblance.maxima_semblance(
                     trim_padding=False,
-                    nthreads=parent.n_threads_argmax,
+                    nthreads=n_threads_argmax,
                 )
             )
-            detection_threshold *= 10.0
+            threshold *= 10.0
             logger.debug("threshold MAD %g", detection_threshold)
         else:
-            detection_threshold = parent.detection_threshold
+            threshold = detection_threshold
 
-        threshold = detection_threshold ** (1.0 / parent.power_mean)
         detection_idx, detection_semblance = await semblance.find_peaks(
             height=float(threshold),
             prominence=float(threshold),
             distance=round(parent.detection_blinding.total_seconds() * sampling_rate),
-            nthreads=parent.n_threads_argmax,
+            nthreads=n_threads_argmax,
         )
 
         if detection_idx.size == 0:
@@ -972,9 +1005,9 @@ class SearchTraces:
                 logger.error("Hit a non-leaf node!")
                 continue
 
-            if parent.ignore_boundary and source_node.is_inside_border(
-                with_surface=parent.ignore_boundary == "with_surface",
-                border_width=parent.ignore_boundary_width,
+            if self.ignore_boundary and source_node.is_inside_border(
+                with_surface=self.ignore_boundary == "with_surface",
+                border_width=self.ignore_boundary_width,
             ):
                 continue
             refine_nodes.update(source_node)
@@ -1006,6 +1039,11 @@ class SearchTraces:
                 octree,
                 semblance=semblance,
                 new_nodes=new_nodes,
+                detection_threshold=detection_threshold,
+                pick_confidence_threshold=pick_confidence_threshold,
+                node_interpolation=node_interpolation,
+                n_threads_parstack=n_threads_parstack,
+                n_threads_argmax=n_threads_argmax,
             )
 
         detections = []
@@ -1018,13 +1056,13 @@ class SearchTraces:
 
             octree.map_semblance(semblance_event)
             source_node = octree.nodes[node_idx]
-            if parent.ignore_boundary and source_node.is_inside_border(
-                with_surface=parent.ignore_boundary == "with_surface",
-                border_width=parent.ignore_boundary_width,
+            if self.ignore_boundary and source_node.is_inside_border(
+                with_surface=self.ignore_boundary == "with_surface",
+                border_width=self.ignore_boundary_width,
             ):
                 continue
 
-            if parent.node_interpolation:
+            if node_interpolation:
                 source_location = await octree.interpolate_max_semblance(source_node)
             else:
                 source_location = source_node.as_location()
@@ -1039,7 +1077,7 @@ class SearchTraces:
 
             # Attach modelled and picked arrivals to receivers
             for image in await self.get_images(sampling_rate=None):
-                ray_tracer = parent.ray_tracers.get_phase_tracer(image.phase)
+                ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = ray_tracer.get_arrivals(
                     phase=image.phase,
                     event_time=time,
@@ -1047,11 +1085,11 @@ class SearchTraces:
                     receivers=image.stations,
                 )
 
-                if parent.station_corrections:
+                if self.station_corrections:
                     for arrival, nsl in zip(
                         arrivals_model, image.stations.get_all_nsl(), strict=True
                     ):
-                        delay = parent.station_corrections.get_delay(
+                        delay = self.station_corrections.get_delay(
                             nsl, image.phase, node=source_node
                         )
                         if arrival and delay:
@@ -1062,7 +1100,7 @@ class SearchTraces:
                 arrivals_observed = image.search_phase_arrivals(
                     event_time=time,
                     modelled_arrivals=arrival_times,
-                    threshold=parent.pick_confidence_threshold,
+                    threshold=pick_confidence_threshold,
                 )
 
                 phase_detections = [

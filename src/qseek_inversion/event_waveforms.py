@@ -85,7 +85,7 @@ class ConcatenatedTrace:
         )
 
 
-class EventWaveforms(BaseModel):
+class EventWaveformsSelection(BaseModel):
     number_events: PositiveInt = Field(
         default=200,
         description="Number of events to use for inversion."
