@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Iterator, Union
 
+import numpy as np
 from pydantic import Field, RootModel
 
 from qseek.tracers import (
@@ -33,17 +35,19 @@ class RayTracers(RootModel):
         self,
         octree: Octree,
         stations: Stations,
-        phases: tuple[PhaseDescription, ...],
+        phases: tuple[PhaseDescription, ...] | None = None,
         rundir: Path | None = None,
     ) -> None:
         prepared_tracers = []
+        phases = phases or self.get_available_phases()
         for phase in phases:
             tracer = self.get_phase_tracer(phase)
             if tracer in prepared_tracers:
                 continue
-            phases = tracer.get_available_phases()
             logger.info(
-                "preparing ray tracer %s for phase %s", tracer.tracer, ", ".join(phases)
+                "preparing ray tracer %s for phase %s",
+                tracer.tracer,
+                ", ".join(tracer.get_available_phases()),
             )
             await tracer.prepare(octree, stations, rundir)
             prepared_tracers.append(tracer)
@@ -70,12 +74,35 @@ class RayTracers(RootModel):
             f" Available phases: {', '.join(self.get_available_phases())}."
         )
 
-    def __iter__(self) -> Iterator[RayTracer]:
-        yield from self.root
+    async def get_travel_time_span(
+        self,
+        octree: Octree,
+        stations: Stations,
+        phases: tuple[PhaseDescription, ...] | None = None,
+    ) -> tuple[timedelta, timedelta]:
+        """Get the minimum and maximum travel times for the given phases.
 
-    def iter_phase_tracer(
-        self, phases: tuple[PhaseDescription, ...]
-    ) -> Iterator[tuple[PhaseDescription, RayTracer]]:
+        Args:
+            octree (Octree): Octree to use for travel time calculation.
+            stations (Stations): Stations to calculate travel times to.
+            phases (tuple[PhaseDescription, ...] | None, optional): Phases to calculate
+                travel times for. If None, all available phases are used.
+                Defaults to None.
+
+        Returns:
+            tuple[timedelta, timedelta]: _description_
+        """
+        min_traveltime = float("inf")
+        max_traveltime = 0.0
+
+        phases = phases or self.get_available_phases()
         for phase in phases:
             tracer = self.get_phase_tracer(phase)
-            yield (phase, tracer)
+            traveltimes = await tracer.get_travel_times(phase, octree, stations)
+            min_traveltime = min(np.nanmin(traveltimes), min_traveltime)
+            max_traveltime = max(np.nanmax(traveltimes), max_traveltime)
+
+        return (timedelta(seconds=min_traveltime), timedelta(seconds=max_traveltime))
+
+    def __iter__(self) -> Iterator[RayTracer]:
+        yield from self.root

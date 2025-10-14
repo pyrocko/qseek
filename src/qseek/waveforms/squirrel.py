@@ -233,10 +233,11 @@ class PyrockoSquirrel(WaveformProvider):
     def prepare(self, stations: Stations) -> None:
         logger.info("preparing squirrel waveform provider")
         self._stations = stations
+
+    def available_nsls(self) -> set[NSL]:
         squirrel = self.get_squirrel()
         available_codes = squirrel.get_codes(kind="waveform")
-        available_nsls = {NSL(*code[0:3]) for code in available_codes}
-        stations.weed_from_nsls(available_nsls)
+        return {NSL(*code[0:3]) for code in available_codes}
 
     async def iter_batches(
         self,

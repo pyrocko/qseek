@@ -13,7 +13,7 @@ from qseek.octree import Octree
 from qseek.tracers.cake import CakeTracer, Timing
 from qseek.tracers.fast_marching import FastMarchingTracer, StationTravelTimeTable
 from qseek.tracers.utils import (
-    EarthModel,
+    LayeredEarthModel1D,
     surface_distances,
     surface_distances_reference,
 )
@@ -22,7 +22,7 @@ from qseek.utils import Range
 KM = 1e3
 
 
-def constant_earth_model() -> EarthModel:
+def constant_earth_model() -> LayeredEarthModel1D:
     with tempfile.NamedTemporaryFile("w") as file:
         file.write(
             """ -1.0   5.0   3.0   2.7
@@ -30,7 +30,7 @@ def constant_earth_model() -> EarthModel:
             """
         )
         file.flush()
-        return EarthModel(filename=Path(file.name))
+        return LayeredEarthModel1D(filename=Path(file.name))
 
 
 @pytest.fixture(scope="session")
@@ -154,7 +154,7 @@ async def test_travel_time_module(
 ) -> None:
     models = [
         constant_earth_model(),
-        EarthModel(),
+        LayeredEarthModel1D(),
     ]
 
     for model in models:

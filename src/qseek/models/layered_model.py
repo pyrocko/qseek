@@ -8,8 +8,9 @@ import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko.cake import GradientLayer as PyrockoGradientLayer
 from pyrocko.cake import Layer as PyrockoLayer
+from typing_extensions import Self
 
-from qseek.tracers.utils import EarthModel
+from qseek.tracers.utils import LayeredEarthModel1D
 
 logger = logging.getLogger(__name__)
 
@@ -112,12 +113,17 @@ class LayeredModel(BaseModel):
             np.ndarray: Array of Vp values at the given depths.
         """
         layer_indices = self._get_layer_index(depths)
-        velocities = np.empty_like(depths, dtype=float)
+        velocities = np.zeros_like(depths, dtype=float)
+        cum_mask = np.zeros_like(depths, dtype=bool)
 
         for layer_idx in np.unique(layer_indices):
             layer = self.layers[int(layer_idx)]
             mask = layer_indices == layer_idx
+            cum_mask |= mask
             velocities[mask] = func(layer, depths[mask])
+
+        if not np.all(cum_mask):
+            raise ValueError("Some depths are out of the model range.")
 
         return velocities
 
@@ -186,7 +192,7 @@ class LayeredModel(BaseModel):
             plt.show()
 
     @classmethod
-    def from_earth_model(cls, earth_model: EarthModel) -> LayeredModel:
+    def from_earth_model(cls, earth_model: LayeredEarthModel1D) -> Self:
         """Create a LayeredModel from an EarthModel."""
         layers = []
         for layer in earth_model.layered_model.layers():

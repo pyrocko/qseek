@@ -280,10 +280,11 @@ class Node:
         Returns:
             bool: True if the nodes collide.
         """
+        half_size = (self.size + other.size) / 2
         return (
-            abs(self.east - other.east) <= (self.size + other.size) / 2
-            and abs(self.north - other.north) <= (self.size + other.size) / 2
-            and abs(self.depth - other.depth) <= (self.size + other.size) / 2
+            -half_size <= (self.east - other.east) <= half_size
+            and -half_size <= (self.north - other.north) <= half_size
+            and -half_size <= (self.depth - other.depth) <= half_size
         )
 
     def get_neighbours(self, leafs_only: bool = True) -> list[Node]:
@@ -301,7 +302,9 @@ class Node:
 
         nodes = self.tree.leaf_nodes if leafs_only else self.tree.nodes
 
-        return [node for node in nodes if self.is_colliding(node) and node is not self]
+        neighbor_nodes = list(filter(self.is_colliding, nodes))
+        neighbor_nodes.remove(self)
+        return neighbor_nodes
 
     def distance_to(self, other: Node) -> float:
         """Distance to another node.
@@ -317,6 +320,14 @@ class Node:
             + (self.north - other.north) ** 2
             + (self.depth - other.depth) ** 2
         )
+
+    def set_semblance(self, semblance: float) -> None:
+        """Set the semblance value of the node.
+
+        Args:
+            semblance (float): Semblance value to set.
+        """
+        self.semblance = float(semblance)
 
     def __iter__(self) -> Iterator[Node]:
         if self.children:
@@ -379,7 +390,9 @@ class Octree(BaseModel, Iterator[Node]):
 
     _root_nodes: list[Node] = PrivateAttr([])
     _semblance: np.ndarray | None = PrivateAttr(None)
-    _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr({})
+    _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr(
+        default_factory=dict
+    )
     _nodes: list[Node] = PrivateAttr([])
 
     model_config = ConfigDict(ignored_types=(cached_property,))
@@ -587,11 +600,12 @@ class Octree(BaseModel, Iterator[Node]):
             leaf_only (bool, optional): If True, only leaf nodes are mapped.
                 Defaults to True.
         """
+        semblance = semblance.astype(float)
         self._semblance = semblance
         nodes = self.leaf_nodes if leaf_only else self.nodes
 
         for node, node_semblance in zip(nodes, semblance, strict=True):
-            node.semblance = float(node_semblance)
+            node.semblance = node_semblance
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if self._cached_coordinates.get(system) is None:
@@ -758,7 +772,7 @@ class Octree(BaseModel, Iterator[Node]):
             north_shift=reference.north_shift + res.x[1],
             depth=reference.depth + res.x[2],
         )
-        logger.info(
+        logger.debug(
             "interpolated source offset (e-n-d): %.1f, %.1f, %.1f",
             *peak_node.as_location().offset_from(result),
         )

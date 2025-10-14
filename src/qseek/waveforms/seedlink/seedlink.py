@@ -15,7 +15,7 @@ from pyrocko.trace import Trace
 from rich.table import Table
 
 from qseek.stats import Stats
-from qseek.utils import datetime_now
+from qseek.utils import NSL, datetime_now
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 from qseek.waveforms.seedlink.client import (
     SeedLinkClient,
@@ -164,15 +164,15 @@ class SeedLink(WaveformProvider):
         self._squirrel = Squirrel()
         self._squirrel.add(str(self.save_sds_archive), check=False)
 
-        streaming_nsls = {
+        for client in self.clients:
+            client.prepare(timeout=self.timeout.total_seconds())
+
+    def available_nsls(self) -> set[NSL]:
+        return {
             station.nsl
             for client in self.clients
             for station in client.station_selection
         }
-        stations.weed_from_nsls(streaming_nsls)
-
-        for client in self.clients:
-            client.prepare(timeout=self.timeout.total_seconds())
 
     async def iter_batches(
         self,
