@@ -7,6 +7,7 @@ import logging
 from importlib.metadata import version
 
 import nest_asyncio
+import rich
 
 from qseek.utils import setup_rich_logging
 
@@ -48,6 +49,8 @@ subparsers.add_parser(
 
 
 def main() -> None:
+    from qseek_inversion.inversion import InversionLayered1D
+
     args = parser.parse_args()
 
     log_level = logging.INFO - args.verbose * 10
@@ -55,6 +58,7 @@ def main() -> None:
 
     match args.command:
         case "config":
-            ...
+            inversion = InversionLayered1D()
+            rich.print_json(inversion.model_dump_json())
         case _:
             parser.print_help()

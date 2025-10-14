@@ -25,7 +25,7 @@ from pyrocko.gf import meta
 from qseek.cache_lru import ArrayLRUCache
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
-from qseek.tracers.utils import EarthModel, surface_distances
+from qseek.tracers.utils import LayeredEarthModel1D, surface_distances
 from qseek.utils import (
     CACHE_DIR,
     PhaseDescription,
@@ -60,7 +60,7 @@ class Timing(BaseModel):
 
 
 class TravelTimeTree(BaseModel):
-    earthmodel: EarthModel
+    earthmodel: LayeredEarthModel1D
     timing: Timing
 
     distance_bounds: tuple[float, float]
@@ -111,7 +111,7 @@ class TravelTimeTree(BaseModel):
     def is_suited(
         self,
         timing: Timing,
-        earthmodel: EarthModel,
+        earthmodel: LayeredEarthModel1D,
         distance_bounds: tuple[float, float],
         source_depth_bounds: tuple[float, float],
         receiver_depth_bounds: tuple[float, float],
@@ -364,12 +364,14 @@ class CakeTracer(RayTracer):
         },
         description="Dictionary of phases and timings to calculate.",
     )
-    earthmodel: EarthModel = Field(
-        default_factory=EarthModel,
+    earthmodel: LayeredEarthModel1D = Field(
+        default_factory=LayeredEarthModel1D,
         description="Earth model to calculate travel times for.",
     )
 
-    _travel_time_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr({})
+    _travel_time_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr(
+        default_factory=dict
+    )
 
     @property
     def cache_dir(self) -> Path:

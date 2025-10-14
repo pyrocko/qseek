@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
 import numpy as np
@@ -18,7 +19,7 @@ from pyrocko.trace import NoData
 from scipy import signal
 from seisbench import logger as seisbench_logger
 
-from qseek.images.base import ImageFunction, ObservedArrival, WaveformImage
+from qseek.images.base import ImageFunction, ObservedArrival, PhaseName, WaveformImage
 from qseek.utils import alog_call, to_datetime
 
 obspy_compat.plant()
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from seisbench.models import WaveformModel
+
+    from qseek.models.station import Stations
+    from qseek.octree import Octree
 
 
 ModelName = Literal[
@@ -66,7 +70,6 @@ PreTrainedName = Literal[
     "volpick",
 ]
 
-PhaseName = Literal["P", "S"]
 StackMethod = Literal["avg", "max"]
 
 
@@ -213,7 +216,8 @@ class SeisBench(ImageFunction):
             "P": "cake:P",
             "S": "cake:S",
         },
-        description="Phase mapping from SeisBench PhaseNet to Lassie phases.",
+        description="Phase mapping from SeisBench PhaseNet to "
+        "Qseek travel time phases.",
     )
     weights: dict[PhaseName, Annotated[float, Field(strict=True, ge=0.0)]] = Field(
         default={
@@ -223,16 +227,19 @@ class SeisBench(ImageFunction):
         description="Weights for each phase.",
     )
 
-    _seisbench_model: WaveformModel | None = PrivateAttr(None)
+    _seisbench_model: WaveformModel = PrivateAttr()
     _rescale_input: PositiveFloat = PrivateAttr(1.0)
 
     @property
     def seisbench_model(self) -> WaveformModel:
-        if self._seisbench_model is None:
-            self._prepare()
         return self._seisbench_model
 
-    def _prepare(self) -> None:
+    async def prepare(
+        self,
+        stations: Stations,
+        octree: Octree,
+        path: Path | None = None,
+    ) -> None:
         import seisbench.models as sbm
         import torch
 
@@ -332,14 +339,14 @@ class SeisBench(ImageFunction):
         ]
 
         annotation_p = PhaseNetImage(
-            image_function=self,
+            image_function=self.name,
             weight=self.weights["P"],
             phase=self.phase_map["P"],
             detection_half_width=self._detection_half_width(),
             traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
         )
         annotation_s = PhaseNetImage(
-            image_function=self,
+            image_function=self.name,
             weight=self.weights["S"],
             phase=self.phase_map["S"],
             detection_half_width=self._detection_half_width(),

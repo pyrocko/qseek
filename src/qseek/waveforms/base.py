@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
 
     from qseek.models.station import Stations
+    from qseek.utils import NSL
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ class WaveformProvider(BaseModel):
         return tuple(cls.__subclasses__())
 
     def get_squirrel(self) -> Squirrel:
+        raise NotImplementedError
+
+    def available_nsls(self) -> set[NSL]:
         raise NotImplementedError
 
     def prepare(self, stations: Stations) -> None: ...

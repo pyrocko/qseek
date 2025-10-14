@@ -101,12 +101,10 @@ class Semblance:
         start_time: datetime,
         sampling_rate: float,
         padding_samples: int = 0,
-        exponent: float = 1.0,
     ) -> None:
         self.sampling_rate = sampling_rate
         self.padding_samples = padding_samples
         self.n_samples_unpadded = n_samples
-        self.exponent = exponent
         self.semblance_unpadded = np.array([], dtype=np.float32)
 
         self._start_time = start_time
@@ -160,7 +158,8 @@ class Semblance:
                 (n_nodes, n_samples)
             )
             await asyncio.to_thread(
-                fill_zero_bytes, self.semblance_unpadded[old_n_nodes:n_nodes]
+                fill_zero_bytes,
+                self.semblance_unpadded[old_n_nodes:n_nodes],
             )
         else:
             logger.info(
@@ -169,7 +168,7 @@ class Semblance:
             old_semblance = self.semblance_unpadded.ravel()
             next_size = next_array_byte_size(n_values * 4)
             self.semblance_unpadded = np.zeros(next_size, dtype=np.float32)
-            # copy old values
+            # copy values from old array
             if old_semblance.size:
                 self.semblance_unpadded.ravel()[: old_semblance.size] = old_semblance
 
@@ -206,10 +205,7 @@ class Semblance:
         return self.semblance[:, time_idx]
 
     def maximum_node_semblance(self) -> np.ndarray:
-        semblance = self.semblance.max(axis=1)
-        if self.exponent != 1.0:
-            semblance **= self.exponent
-        return semblance
+        return self.semblance.max(axis=1)
 
     async def _calculate_maxima(self, nthreads: int) -> None:
         self._node_max_idx, self._max_semblance = await asyncio.to_thread(
@@ -267,17 +263,6 @@ class Semblance:
                 self.padding_samples : -(self.padding_samples + 1)
             ]
         return self._node_max_idx
-
-    def apply_exponent(self, exponent: float) -> None:
-        """Apply exponent to the maximum semblance.
-
-        Args:
-            exponent (float): Exponent
-        """
-        if exponent == 1.0:
-            return
-        np.power(self.semblance_unpadded, exponent, out=self.semblance_unpadded)
-        self._clear_cache()
 
     async def find_peaks(
         self,
