@@ -327,16 +327,6 @@ class Search(BaseModel):
         "Default is 2 seconds.",
     )
 
-    power_mean: float = Field(
-        default=1.0,
-        ge=1.0,
-        le=2.0,
-        description="Power mean exponent for stacking and combining the image"
-        " functions for stacking. A value of 1.0 is the arithmetic mean, 2.0 is the"
-        " quadratic mean. A higher value will result in sharper detections"
-        " and low values smooth the stacking function.",
-    )
-
     window_length: timedelta = Field(
         default=timedelta(minutes=5),
         description="Window length for processing. Smaller window size will be less RAM"
@@ -610,7 +600,6 @@ class Search(BaseModel):
         ):
             batch_processing_start = datetime_now()
             images.set_stations(self.stations)
-            images.apply_exponent(self.power_mean)
             search_block = SearchTraces(
                 parent=self,
                 images=images,

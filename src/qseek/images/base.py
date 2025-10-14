@@ -136,17 +136,6 @@ class WaveformImage:
             np.int32
         )
 
-    def apply_exponent(self, exponent: float) -> None:
-        """Apply exponent to all traces.
-
-        Args:
-            exponent (float): Exponent to apply.
-        """
-        if exponent == 1.0:
-            return
-        for tr in self.traces:
-            tr.ydata **= exponent
-
     def search_phase_arrival(
         self,
         trace_idx: int,
