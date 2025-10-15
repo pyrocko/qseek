@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
 from typing import (
@@ -25,7 +25,6 @@ from qseek.stats import Stats
 from qseek.utils import QUEUE_SIZE, PhaseDescription, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
-    from pyrocko.trace import Trace
     from rich.table import Table
 
     from qseek.images.base import WaveformImage
@@ -46,7 +45,7 @@ class ImageFunctionsStats(Stats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
 
-    _queue: asyncio.Queue[Tuple[WaveformImages | WaveformBatch] | None] | None = (
+    _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] | None = (
         PrivateAttr(None)
     )
     _position = 40
@@ -54,7 +53,7 @@ class ImageFunctionsStats(Stats):
 
     def set_queue(
         self,
-        queue: asyncio.Queue[Tuple[WaveformImages | WaveformBatch] | None],
+        queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None],
     ) -> None:
         self._queue = queue
 
@@ -97,13 +96,17 @@ class ImageFunctions(RootModel):
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
 
-    async def process_traces(self, traces: list[Trace]) -> WaveformImages:
-        images = []
+    async def process_traces(self, batch: WaveformBatch) -> WaveformImages:
+        images = WaveformImages(
+            start_time=batch.start_time,
+            end_time=batch.end_time,
+        )
         for function in self:
             logger.debug("calculating images from %s", function.name)
-            images.extend(await function.process_traces(traces))
+            for image in await function.process_traces(batch.traces):
+                images.add_image(image)
 
-        return WaveformImages(root=images)
+        return images
 
     async def iter_images(
         self,
@@ -132,7 +135,11 @@ class ImageFunctions(RootModel):
                     continue
 
                 start_time = datetime_now()
-                images = await self.process_traces(batch.traces)
+                try:
+                    images = await self.process_traces(batch)
+                except ValueError as e:
+                    logger.warning("error processing images: %s", e)
+                    continue
                 stats.time_per_batch = datetime_now() - start_time
                 stats.bytes_per_second = (
                     batch.cumulative_bytes / stats.time_per_batch.total_seconds()
@@ -171,17 +178,44 @@ class ImageFunctions(RootModel):
 
 @dataclass
 class WaveformImages:
-    root: list[WaveformImage] = Field([], alias="images")
+    start_time: datetime
+    end_time: datetime
+    _sampling_rate: float = 0.0
+    images: list[WaveformImage] = field(default_factory=list)
 
     @property
     def n_images(self) -> int:
         """Number of image functions."""
-        return len(self.root)
+        return len(self.images)
 
     @property
     def n_stations(self) -> int:
         """Number of stations in the images."""
         return max(0, *(image.stations.n_stations for image in self if image.stations))
+
+    @property
+    def sampling_rate(self) -> float:
+        """Sampling rate of the images."""
+        return self._sampling_rate
+
+    @property
+    def duration(self) -> timedelta:
+        """Duration of the images."""
+        return self.end_time - self.start_time
+
+    def add_image(self, image: WaveformImage) -> None:
+        """Add an image to the collection.
+
+        Args:
+            image (WaveformImage): Image to add.
+        """
+        self._sampling_rate = self._sampling_rate or image.sampling_rate
+        if self._sampling_rate != image.sampling_rate:
+            raise ValueError(
+                f"Image sampling rate {image.sampling_rate} does not match existing "
+                f"sampling rate {self._sampling_rate}"
+            )
+        self.images.append(image)
 
     def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Resample traces in-place.
@@ -193,6 +227,7 @@ class WaveformImages:
         """
         for image in self:
             image.resample(sampling_rate, max_normalize)
+        self._sampling_rate = sampling_rate
 
     def set_stations(self, stations: Stations) -> None:
         """Set the images stations.
@@ -228,4 +263,4 @@ class WaveformImages:
             await image.save_mseed(path)
 
     def __iter__(self) -> Iterator[WaveformImage]:
-        yield from self.root
+        yield from self.images
