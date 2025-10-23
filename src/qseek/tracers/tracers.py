@@ -35,17 +35,19 @@ class RayTracers(RootModel):
         self,
         octree: Octree,
         stations: Stations,
-        phases: tuple[PhaseDescription, ...],
+        phases: tuple[PhaseDescription, ...] | None = None,
         rundir: Path | None = None,
     ) -> None:
         prepared_tracers = []
+        phases = phases or self.get_available_phases()
         for phase in phases:
             tracer = self.get_phase_tracer(phase)
             if tracer in prepared_tracers:
                 continue
-            phases = tracer.get_available_phases()
             logger.info(
-                "preparing ray tracer %s for phase %s", tracer.tracer, ", ".join(phases)
+                "preparing ray tracer %s for phase %s",
+                tracer.tracer,
+                ", ".join(tracer.get_available_phases()),
             )
             await tracer.prepare(octree, stations, rundir)
             prepared_tracers.append(tracer)

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from qseek.images.base import WaveformImage
     from qseek.models.station import Stations
+    from qseek.octree import Octree
     from qseek.waveforms.base import WaveformBatch
 
 
@@ -96,7 +97,16 @@ class ImageFunctions(RootModel):
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
 
-    async def process_traces(self, batch: WaveformBatch) -> WaveformImages:
+    async def prepare(
+        self,
+        station: Stations,
+        octree: Octree,
+        rundir: Path | None = None,
+    ) -> None:
+        for image in self:
+            await image.prepare(station, octree)
+
+    async def get_images(self, batch: WaveformBatch) -> WaveformImages:
         images = WaveformImages(
             start_time=batch.start_time,
             end_time=batch.end_time,
@@ -136,7 +146,7 @@ class ImageFunctions(RootModel):
 
                 start_time = datetime_now()
                 try:
-                    images = await self.process_traces(batch)
+                    images = await self.get_images(batch)
                 except ValueError as e:
                     logger.warning("error processing images: %s", e)
                     continue
@@ -180,8 +190,8 @@ class ImageFunctions(RootModel):
 class WaveformImages:
     start_time: datetime
     end_time: datetime
-    _sampling_rate: float = 0.0
     images: list[WaveformImage] = field(default_factory=list)
+    _sampling_rate: float = 0.0
 
     @property
     def n_images(self) -> int:

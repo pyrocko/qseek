@@ -88,6 +88,11 @@ class PreProcessing(RootModel):
         for process in self.root:
             await process.prepare()
 
+    async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
+        for process in self:
+            batch = await process.process_batch(batch)
+        return batch
+
     async def iter_batches(
         self,
         batch_iterator: AsyncIterator[WaveformBatch],

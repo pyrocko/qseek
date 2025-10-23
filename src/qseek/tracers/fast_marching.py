@@ -21,7 +21,7 @@ from qseek.models.station import Station, Stations
 from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
-from qseek.tracers.utils import EarthModel, surface_distances_reference
+from qseek.tracers.utils import LayeredEarthModel1D, surface_distances_reference
 from qseek.utils import Range, alog_call, datetime_now, get_cpu_count
 
 if TYPE_CHECKING:
@@ -123,8 +123,9 @@ class StationTravelTimeTable(BaseModel):
 
         def eikonal_wrapper(arrival_times: np.ndarray, delta: float) -> np.ndarray:
             logger.debug(
-                "calculating travel time table for %s, grid size %s, spacing %s m"
-                " using %s...",
+                "calculating travel time table %s for %s, grid size %s,"
+                " spacing %s m using %s...",
+                self.phase,
                 self.station.nsl.pretty,
                 arrival_times.shape,
                 self.grid_spacing,
@@ -196,8 +197,8 @@ class FastMarchingTracer(RayTracer):
 
     tracer: Literal["FastMarching"] = "FastMarching"
 
-    velocity_model: EarthModel = Field(
-        default_factory=EarthModel,
+    velocity_model: LayeredEarthModel1D | None = Field(
+        default_factory=LayeredEarthModel1D,
         description="Velocity model for the ray tracer.",
     )
 
@@ -213,7 +214,7 @@ class FastMarchingTracer(RayTracer):
     )
 
     implementation: FMMImplementation = Field(
-        default="scikit-fmm",
+        default="pyrocko",
         description="Implementation of the Fast Marching Method. Pyrocko only supports"
         " first-order FMM for now.",
     )
@@ -223,16 +224,19 @@ class FastMarchingTracer(RayTracer):
         description="Phases to calculate.",
     )
     _travel_time_tables: dict[tuple[str, Phase], StationTravelTimeTable] = PrivateAttr(
-        {}
+        default_factory=dict
     )
 
     _octree: Octree = PrivateAttr()
     _cached_stations: Stations = PrivateAttr()
-    _cached_station_indices: dict[str, int] = PrivateAttr({})
+    _layered_model: LayeredModel | None = PrivateAttr(None)
     _node_lut: ArrayLRUCache[tuple[bytes, Phase]] = PrivateAttr()
+    _cached_station_indices: dict[str, int] = PrivateAttr(default_factory=dict)
 
     def get_travel_time_table(
-        self, location: Location, phase: Phase
+        self,
+        location: Location,
+        phase: Phase,
     ) -> StationTravelTimeTable:
         """Get the travel time table for a given station and phase."""
         key = (location.location_hash(), phase)
@@ -245,6 +249,18 @@ class FastMarchingTracer(RayTracer):
     def get_available_phases(self) -> tuple[str, ...]:
         return self.phases
 
+    def set_layered_model(self, model: LayeredModel) -> None:
+        self._layered_model = model
+
+    def get_layered_model(self) -> LayeredModel:
+        if self._layered_model is None:
+            raise ValueError("layered model is not set")
+        return self._layered_model
+
+    def model_post_init(self, context: Any) -> None:
+        if self.velocity_model is not None:
+            self._layered_model = LayeredModel.from_earth_model(self.velocity_model)
+
     async def prepare(
         self,
         octree: Octree,
@@ -252,6 +268,9 @@ class FastMarchingTracer(RayTracer):
         rundir: Path | None = None,
     ) -> None:
         """Prepare the tracer for a given set of stations."""
+        if self._layered_model is None:
+            raise ValueError("layered model must be set for FastMarchingTracer")
+
         self._cached_stations = stations
         self._octree = octree
         self._cached_station_indices = {
@@ -261,7 +280,7 @@ class FastMarchingTracer(RayTracer):
         if rundir:
             export_dir = rundir / "velocity-model"
             export_dir.mkdir(exist_ok=True, parents=True)
-            LayeredModel.from_earth_model(self.velocity_model).plot(
+            self._layered_model.plot(
                 depth_range=octree.effective_depth_bounds,
                 export=export_dir / "layered_model.png",
             )
@@ -289,13 +308,15 @@ class FastMarchingTracer(RayTracer):
         self._travel_time_tables[key] = table
 
     async def _calculate_travel_times(self) -> None:
+        if self._layered_model is None:
+            raise ValueError("layered model must be set for FastMarchingTracer")
+
         nthreads = self.nthreads if self.nthreads > 0 else get_cpu_count() * 2
         executor = ThreadPoolExecutor(
             max_workers=nthreads,
             thread_name_prefix="qseek-fmm",
         )
 
-        layered_model = LayeredModel.from_earth_model(self.velocity_model)
         octree = self._octree
         octree_corners = octree.get_corners()
 
@@ -317,7 +338,7 @@ class FastMarchingTracer(RayTracer):
                     octree_depth_range[1] + station.effective_elevation + depth_margin,
                 ),
                 grid_spacing=octree.smallest_node_size(),
-                earth_model=layered_model,
+                earth_model=self._layered_model,  # type: ignore
             )
 
             await volume.calculate(
@@ -371,7 +392,7 @@ class FastMarchingTracer(RayTracer):
 
     def get_travel_time_location(
         self,
-        phase: str,
+        phase: Phase,
         source: Location,
         receiver: Location,
     ):
@@ -387,7 +408,7 @@ class FastMarchingTracer(RayTracer):
     @alog_call
     async def get_travel_times(
         self,
-        phase: str,
+        phase: Phase,
         nodes: Sequence[Node],
         stations: Stations,
     ) -> np.ndarray:

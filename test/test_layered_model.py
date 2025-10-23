@@ -1,5 +1,5 @@
 from qseek.models.layered_model import LayeredModel
-from qseek.tracers.utils import EarthModel
+from qseek.tracers.utils import LayeredEarthModel1D
 
 KM = 1e3
 
@@ -16,7 +16,7 @@ mantle
 
 
 def test_layered_model(plot: bool) -> None:
-    earth_model = EarthModel()
+    earth_model = LayeredEarthModel1D()
     layered_model = LayeredModel.from_earth_model(earth_model)
 
     if plot:
@@ -24,7 +24,7 @@ def test_layered_model(plot: bool) -> None:
 
 
 def test_gradient_model(plot: bool) -> None:
-    earth_model = EarthModel(raw_file_data=GRADIENT_MODEL_ND)
+    earth_model = LayeredEarthModel1D(raw_file_data=GRADIENT_MODEL_ND)
     layered_model = LayeredModel.from_earth_model(earth_model)
 
     if plot:

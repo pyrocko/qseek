@@ -140,9 +140,9 @@ class Stations(BaseModel):
             if sta not in self.stations:
                 self.stations.append(sta)
 
-        self.weed_stations()
+        self.sanitize_stations()
 
-    def weed_stations(self) -> None:
+    def sanitize_stations(self) -> None:
         """Remove stations with bad coordinates or duplicates."""
         logger.debug("weeding bad stations")
 
@@ -173,8 +173,8 @@ class Stations(BaseModel):
         if self.n_stations == 0:
             raise ValueError("no stations available, all stations blacklisted")
 
-    def weed_from_nsls(self, nsls: set[NSL]) -> None:
-        """Remove stations without waveforms from squirrel instances.
+    def filter_stations_by_nsl(self, nsls: set[NSL]) -> None:
+        """Remove stations by NSL codes.
 
         Args:
             nsls (list[NSL]): List of NSL codes to keep.
@@ -185,7 +185,7 @@ class Stations(BaseModel):
         for sta in self.stations.copy():
             if sta.nsl.pretty not in available_nsls:
                 logger.warning(
-                    "removing station %s: no waveforms available",
+                    "removing station %s from inventory",
                     sta.nsl.pretty,
                 )
                 self.stations.remove(sta)
@@ -193,7 +193,7 @@ class Stations(BaseModel):
 
         if n_removed_stations:
             logger.warning(
-                "removed %d stations without waveforms from inventory",
+                "removed %d stations from inventory",
                 n_removed_stations,
             )
         if not self.stations:

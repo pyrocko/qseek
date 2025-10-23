@@ -15,7 +15,7 @@ from qseek.models.detection import EventDetection
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.octree import Octree
-from qseek.tracers.cake import EarthModel, Timing, TravelTimeTree
+from qseek.tracers.cake import LayeredEarthModel1D, Timing, TravelTimeTree
 from qseek.utils import Range, datetime_now
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -71,7 +71,7 @@ def plot(pytestconfig) -> bool:
 @pytest.fixture(scope="session")
 def travel_time_tree() -> TravelTimeTree:
     return TravelTimeTree.new(
-        earthmodel=EarthModel(),
+        earthmodel=LayeredEarthModel1D(),
         distance_bounds=(0 * KM, 15 * KM),
         receiver_depth_bounds=(0 * KM, 0 * KM),
         source_depth_bounds=(0 * KM, 10 * KM),

@@ -56,7 +56,7 @@ if not DEFAULT_VELOCITY_MODEL_FILE.exists():
     DEFAULT_VELOCITY_MODEL_FILE.write_text(DEFAULT_VELOCITY_MODEL)
 
 
-class EarthModel(BaseModel):
+class LayeredEarthModel1D(BaseModel):
     filename: FilePath | None = Field(
         default=DEFAULT_VELOCITY_MODEL_FILE,
         description="Path to velocity model.",

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pyrocko.io import save
 
 from qseek.models.station import Stations
@@ -15,6 +15,11 @@ from qseek.utils import SDS_PYROCKO_SCHEME, PhaseDescription, resample
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+
+    from qseek.octree import Octree
+
+
+PhaseName = Literal["P", "S"]
 
 
 @dataclass
@@ -31,6 +36,13 @@ class ImageFunction(BaseModel):
     @property
     def name(self) -> str:
         return self.__class__.__name__
+
+    async def prepare(
+        self,
+        station: Stations,
+        octree: Octree,
+        rundir: Path | None = None,
+    ) -> None: ...
 
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         """Process traces to generate image functions.
@@ -65,12 +77,19 @@ class ImageFunction(BaseModel):
 
 @dataclass
 class WaveformImage:
-    image_function: ImageFunction
+    image_function: str
     phase: PhaseDescription
     weight: float
     traces: list[Trace]
     detection_half_width: float
-    stations: Stations = Field(default_factory=lambda: Stations.model_construct())
+
+    _stations: Stations | None = None
+
+    @property
+    def stations(self) -> Stations:
+        if self._stations is None:
+            raise ValueError("Stations have not been set for this image.")
+        return self._stations
 
     @property
     def sampling_rate(self) -> float:
@@ -89,7 +108,7 @@ class WaveformImage:
 
     def set_stations(self, stations: Stations) -> None:
         """Set stations from the image's available traces."""
-        self.stations = stations.select_from_traces(self.traces)
+        self._stations = stations.select_from_traces(self.traces)
 
     def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Resample traces in-place.
@@ -120,6 +139,8 @@ class WaveformImage:
         Returns:
             list[np.ndarray]: List of numpy arrays.
         """
+        if self._stations is None:
+            raise ValueError("Stations must be set before getting trace data.")
         return [tr.ydata for tr in self.traces if tr.ydata is not None]
 
     def get_offsets(self, reference: datetime) -> np.ndarray:
@@ -131,6 +152,8 @@ class WaveformImage:
         Returns:
             np.ndarray: Integer offset towards the reference for each trace.
         """
+        if self._stations is None:
+            raise ValueError("Stations must be set before getting trace data.")
         trace_tmins = np.fromiter((tr.tmin for tr in self.traces), float)
         return np.round((trace_tmins - reference.timestamp()) / self.delta_t).astype(
             np.int32

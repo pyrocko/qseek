@@ -10,7 +10,7 @@ import pytest
 from qseek.models.location import Location
 from qseek.models.station import Station, Stations
 from qseek.octree import Octree
-from qseek.tracers.cake import CakeTracer, EarthModel, Timing, TravelTimeTree
+from qseek.tracers.cake import CakeTracer, LayeredEarthModel1D, Timing, TravelTimeTree
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.utils import Range
 
@@ -120,7 +120,7 @@ async def test_travel_times_constant_velocity(
     octree.n_levels = 3
     cake_tracer = CakeTracer(
         phases={"cake:P": Timing(definition="P,p,P\\,p\\")},
-        earthmodel=EarthModel(
+        earthmodel=LayeredEarthModel1D(
             filename=None,
             raw_file_data=f"""
  -2.0   {CONSTANT_VELOCITY / KM:.1f}    2.0     2.7

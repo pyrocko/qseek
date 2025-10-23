@@ -63,6 +63,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
+IgnoreBoundary = Literal[False, "with_surface", "without_surface"]
 
 
 class SearchStats(Stats):
@@ -145,7 +146,7 @@ class SearchStats(Stats):
     def cpu_percent(self) -> float:
         return self._process.cpu_percent(interval=None)
 
-    def reset_start_time(self) -> None:
+    def reset_search_begin(self) -> None:
         self._search_start = datetime_now()
 
     def add_processed_batch(
@@ -301,7 +302,7 @@ class Search(BaseModel):
         description="Minimum number of stations required for"
         " detection and localization.",
     )
-    ignore_boundary: Literal[False, "with_surface", "without_surface"] = Field(
+    ignore_boundary: IgnoreBoundary = Field(
         default=False,
         description="Ignore events that are inside the first root node layer of"
         " the octree. If `with_surface`, all events inside the boundaries of the volume"
@@ -467,11 +468,7 @@ class Search(BaseModel):
         shift_range = shift_max - shift_min
         logger.info("travel time shift range %s", shift_range)
 
-        return (
-            shift_range
-            + self.detection_blinding
-            + self.image_functions.get_blinding(self.semblance_sampling_rate)
-        )
+        return shift_range + self.detection_blinding
 
     async def prepare(self) -> None:
         """Prepares the search by initializing necessary components and data.
@@ -490,6 +487,8 @@ class Search(BaseModel):
         """
         logger.info("preparing search components")
         self.stations.prepare(self.octree)
+        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
+
         distances = self.octree.distances_stations(self.stations)
         logger.info(
             "source-station distance range: %.1f - %.1f m",
@@ -498,11 +497,18 @@ class Search(BaseModel):
         )
 
         self.data_provider.prepare(self.stations)
+
         await self.pre_processing.prepare()
         await self.ray_tracers.prepare(
             self.octree,
             self.stations,
             phases=self.image_functions.get_phases(),
+            rundir=self._rundir,
+        )
+
+        await self.image_functions.prepare(
+            self.stations,
+            self.octree,
             rundir=self._rundir,
         )
 
@@ -542,7 +548,10 @@ class Search(BaseModel):
         else:
             logger.info("starting search")
 
-        window_padding = await self.get_window_padding()
+        window_padding = (
+            await self.get_window_padding()
+            + self.image_functions.get_blinding(self.semblance_sampling_rate)
+        )
         logger.info("window padding length is: %s", window_padding)
 
         batches = self.data_provider.iter_batches(
@@ -559,16 +568,19 @@ class Search(BaseModel):
             total_stations=self.stations.n_stations,
             total_networks=self.stations.n_networks,
         )
-        stats.reset_start_time()
+        stats.reset_search_begin()
 
         processing_start = datetime_now()
         console = asyncio.create_task(RuntimeStats.live_view())
 
-        search_octree = SearchOctree(
+        search_octree = OctreeSearch(
             ray_tracers=self.ray_tracers,
             window_padding=window_padding,
             station_corrections=self.station_corrections,
             distance_weights=self.distance_weights,
+            detection_threshold=self.detection_threshold,
+            pick_confidence_threshold=self.pick_confidence_threshold,
+            node_interpolation=self.node_interpolation,
             ignore_boundary=self.ignore_boundary,
             ignore_boundary_width=self.ignore_boundary_width,
         )
@@ -584,9 +596,6 @@ class Search(BaseModel):
             detections, semblance_trace = await search_octree.search(
                 images=images,
                 octree=self.octree.reset(),
-                detection_threshold=self.detection_threshold,
-                pick_confidence_threshold=self.pick_confidence_threshold,
-                node_interpolation=self.node_interpolation,
                 n_threads_parstack=self.n_threads_parstack,
                 n_threads_argmax=self.n_threads_argmax,
             )
@@ -682,6 +691,8 @@ class Search(BaseModel):
         cls,
         filename: Path,
     ) -> Self:
+        if filename.is_dir():
+            filename = filename / "search.json"
         model = super().model_validate_json(filename.read_text())
         # Make relative paths absolute
         filename = Path(filename)
@@ -707,31 +718,72 @@ class Search(BaseModel):
     #     )
 
 
-class SearchOctree:
-    window_padding: timedelta
-    semblance_sampling_rate: float
-
-    ray_tracers: RayTracers
-    station_corrections: StationCorrectionType | None
-    distance_weights: DistanceWeights | None
-
-    window_padding: timedelta
-
-    ignore_boundary: Literal[False, "with_surface", "without_surface"]
-    ignore_boundary_width: float | Literal["root_node_size"]
-
+class OctreeSearch:
     def __init__(
         self,
         ray_tracers: RayTracers,
         window_padding: timedelta,
-        ignore_boundary: Literal[False, "with_surface", "without_surface"] = False,
-        ignore_boundary_width: float | Literal["root_node_size"] = "root_node_size",
         station_corrections: StationCorrectionType | None = None,
         distance_weights: DistanceWeights | None = None,
+        detection_threshold: float | Literal["MAD"] = "MAD",
+        detection_blinding: timedelta = timedelta(seconds=1.0),
+        pick_confidence_threshold: float = 0.3,
+        ignore_boundary: IgnoreBoundary = "with_surface",
+        ignore_boundary_width: float | Literal["root_node_size"] = "root_node_size",
+        node_interpolation: bool = True,
+        attach_arrivals: bool = True,
+        neighbor_search: bool = True,
+        semblance_density_search: bool = True,
     ) -> None:
+        """Initializes the OctreeSearch object.
+
+        Args:
+            ray_tracers (RayTracers): The ray tracers to use for travel time
+                calculations.
+            window_padding (timedelta): The padding time for the search window.
+            station_corrections (StationCorrectionType | None, optional): The
+                station corrections to apply. Defaults to None.
+            distance_weights (DistanceWeights | None, optional): The distance
+                weights to apply. Defaults to None.
+            detection_threshold (float | Literal["MAD"], optional): The detection
+                threshold for the search. If "MAD", the threshold is set to 10 times
+                the median absolute deviation of the semblance. Defaults to "MAD".
+                picking. Defaults to 0.3.
+            detection_blinding (timedelta, optional): The blinding time for the
+                detection. Defaults to 1 second.
+            pick_confidence_threshold (float, optional): The confidence threshold for
+                picking. Defaults to 0.3.
+            ignore_boundary
+                    (Literal[False, "with_surface", "without_surface"], optional):
+                Whether to ignore events at the boundary of the octree.
+                If "with_surface", all events inside the boundaries of the volume are
+                irgnored. If "without_surface", events at the surface are not ignored.
+                Defaults to False.
+            ignore_boundary_width (float | Literal["root_node_size"], optional): The
+                width of the absorbing boundary around the octree volume. If
+                'octree' the width is set to the root node size of the octree.
+                Defaults to "root_node_size".
+            node_interpolation (bool, optional): Whether to interpolate the event
+                location within the octree node. Defaults to True.
+            attach_arrivals (bool, optional): Whether to attach phase arrivals to the
+                detection. Defaults to True.
+            neighbor_search (bool, optional): Whether to search for phase arrivals at
+                neighboring stations. Defaults to True.
+            semblance_density_search (bool, optional): Whether to perform a density
+                based search for the semblance peak. If False, the maximum value is
+                used. Defaults to True.
+        """
         self.ray_tracers = ray_tracers
 
         self.window_padding = window_padding
+
+        self.detection_threshold = detection_threshold
+        self.detection_blinding = detection_blinding
+        self.pick_confidence_threshold = pick_confidence_threshold
+        self.node_interpolation = node_interpolation
+        self.attach_arrivals = attach_arrivals
+        self.neighbor_search = neighbor_search
+        self.semblance_density_search = semblance_density_search
 
         self.ignore_boundary = ignore_boundary
         self.ignore_boundary_width = ignore_boundary_width
@@ -739,11 +791,13 @@ class SearchOctree:
         self.station_corrections = station_corrections
         self.distance_weights = distance_weights
 
+    def set_ray_tracers(self, ray_tracers: RayTracers) -> None:
+        self.ray_tracers = ray_tracers
+
     @alog_call
     async def add_semblance(
         self,
         octree: Octree,
-        ray_tracer: RayTracer,
         image: WaveformImage,
         semblance: Semblance,
         padded_start_time: datetime,
@@ -757,9 +811,9 @@ class SearchOctree:
             )
         if image.weight == 0.0:
             return
+        logger.debug("stacking image %s", image.image_function)
 
-        logger.debug("stacking image %s", image.image_function.name)
-
+        ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
         traveltimes = await ray_tracer.get_travel_times(
             image.phase,
             nodes,
@@ -824,10 +878,6 @@ class SearchOctree:
         octree: Octree,
         new_nodes: Sequence[Node] | None = None,
         semblance: Semblance | None = None,
-        detection_threshold: float | Literal["MAD"] = "MAD",
-        detection_blinding: timedelta = timedelta(seconds=1.0),
-        pick_confidence_threshold: float = 0.3,
-        node_interpolation: bool = True,
         n_threads_parstack: int = 0,
         n_threads_argmax: int = 0,
     ) -> tuple[list[EventDetection], Trace]:
@@ -842,15 +892,6 @@ class SearchOctree:
                 Defaults to None.
             semblance (Semblance | None, optional): The semblance to use for the search.
                 If None, a new instance is created. Defaults to None.
-            detection_threshold (float | Literal["MAD"], optional): The detection
-                threshold for the search. If "MAD", the threshold is set to 10 times
-                the median absolute deviation of the semblance. Defaults to "MAD".
-                picking. Defaults to 0.3.
-            detection_blinding (timedelta, optional): The blinding time for the
-                detection. Defaults to 1 second.
-            node_interpolation (bool, optional): Whether to interpolate the event
-                location within the octree node. Defaults to True.
-            pick_confidence_threshold (float, optional): The confidence threshold for
             n_threads_parstack (int, optional): Number of threads for stacking and
                 migration. Defaults to 0.
             n_threads_argmax (int, optional): Number of threads for argmax.
@@ -862,7 +903,6 @@ class SearchOctree:
         """
         new_nodes = new_nodes or octree.nodes
         sampling_rate = images.sampling_rate
-
         if not semblance:
             sr = sampling_rate
             n_samples = round(images.duration.total_seconds() * sr)
@@ -881,7 +921,6 @@ class SearchOctree:
             await self.add_semblance(
                 octree=octree,
                 image=image,
-                ray_tracer=self.ray_tracers.get_phase_tracer(image.phase),
                 semblance=semblance,
                 padded_start_time=images.start_time - self.window_padding,
                 nodes=new_nodes,
@@ -894,7 +933,7 @@ class SearchOctree:
         leaf_node_mask = np.array([node.is_leaf() for node in octree.nodes], dtype=bool)
         semblance.set_leaf_nodes(leaf_node_mask)
 
-        if detection_threshold == "MAD":
+        if self.detection_threshold == "MAD":
             threshold = stats.median_abs_deviation(
                 await semblance.maxima_semblance(
                     trim_padding=False,
@@ -902,14 +941,14 @@ class SearchOctree:
                 )
             )
             threshold *= 10.0
-            logger.debug("threshold MAD %g", detection_threshold)
+            logger.debug("threshold MAD %g", self.detection_threshold)
         else:
-            threshold = detection_threshold
+            threshold = self.detection_threshold
 
         detection_idx, detection_semblance = await semblance.find_peaks(
             height=float(threshold),
             prominence=float(threshold),
-            distance=round(detection_blinding.total_seconds() * sampling_rate),
+            distance=round(self.detection_blinding.total_seconds() * sampling_rate),
             nthreads=n_threads_argmax,
         )
 
@@ -922,7 +961,6 @@ class SearchOctree:
         refine_nodes: set[Node] = set()
 
         for time_idx in detection_idx:
-            octree.map_semblance(semblance.get_semblance(time_idx))
             node_idx = maxima_node_indices[time_idx]
             source_node = octree.nodes[node_idx]
 
@@ -935,12 +973,22 @@ class SearchOctree:
                 border_width=self.ignore_boundary_width,
             ):
                 continue
-            refine_nodes.update(source_node)
-            refine_nodes.update(source_node.get_neighbours())
+            refine_nodes.add(source_node)
+            # Getting neighbours is slow
+            if self.neighbor_search:
+                refine_nodes.update(source_node.get_neighbours())
 
-            densest_node = max(octree.leaf_nodes, key=lambda n: n.semblance_density())
-            refine_nodes.add(densest_node)
-            refine_nodes.update(densest_node.get_neighbours())
+            # This iteration is also slow
+            if self.semblance_density_search:
+                octree.map_semblance(semblance.get_semblance(time_idx))
+                densest_node = max(
+                    octree.leaf_nodes,
+                    key=lambda n: n.semblance_density(),
+                )
+                if densest_node != source_node:
+                    refine_nodes.add(densest_node)
+                    if self.neighbor_search:
+                        refine_nodes.update(densest_node.get_neighbours())
 
         refine_nodes = {node for node in refine_nodes if node.can_split()}
 
@@ -965,10 +1013,6 @@ class SearchOctree:
                 octree,
                 semblance=semblance,
                 new_nodes=new_nodes,
-                detection_threshold=detection_threshold,
-                detection_blinding=detection_blinding,
-                pick_confidence_threshold=pick_confidence_threshold,
-                node_interpolation=node_interpolation,
                 n_threads_parstack=n_threads_parstack,
                 n_threads_argmax=n_threads_argmax,
             )
@@ -981,7 +1025,6 @@ class SearchOctree:
             semblance_event = semblance.get_semblance(time_idx)
             node_idx = maxima_node_indices[time_idx]
 
-            octree.map_semblance(semblance_event)
             source_node = octree.nodes[node_idx]
             if self.ignore_boundary and source_node.is_inside_border(
                 with_surface=self.ignore_boundary == "with_surface",
@@ -989,7 +1032,8 @@ class SearchOctree:
             ):
                 continue
 
-            if node_interpolation:
+            octree.map_semblance(semblance_event)
+            if self.node_interpolation:
                 source_location = await octree.interpolate_max_semblance(source_node)
             else:
                 source_location = source_node.as_location()
@@ -1004,6 +1048,8 @@ class SearchOctree:
 
             # Attach modelled and picked arrivals to receivers
             for image in images:
+                if not self.attach_arrivals:
+                    break
                 ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
                 arrivals_model = ray_tracer.get_arrivals(
                     phase=image.phase,
@@ -1027,7 +1073,7 @@ class SearchOctree:
                 arrivals_observed = image.search_phase_arrivals(
                     event_time=time,
                     modelled_arrivals=arrival_times,
-                    threshold=pick_confidence_threshold,
+                    threshold=self.pick_confidence_threshold,
                 )
 
                 phase_detections = [

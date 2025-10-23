@@ -158,7 +158,8 @@ class Semblance:
                 (n_nodes, n_samples)
             )
             await asyncio.to_thread(
-                fill_zero_bytes, self.semblance_unpadded[old_n_nodes:n_nodes]
+                fill_zero_bytes,
+                self.semblance_unpadded[old_n_nodes:n_nodes],
             )
         else:
             logger.info(
@@ -167,7 +168,7 @@ class Semblance:
             old_semblance = self.semblance_unpadded.ravel()
             next_size = next_array_byte_size(n_values * 4)
             self.semblance_unpadded = np.zeros(next_size, dtype=np.float32)
-            # copy old values
+            # copy values from old array
             if old_semblance.size:
                 self.semblance_unpadded.ravel()[: old_semblance.size] = old_semblance
 
