@@ -473,11 +473,15 @@ def main() -> None:
 
             for modules in module_classes:
                 table.add_row(f"[bold]{modules.__name__}")
-                for module in modules.get_subclasses():
+                for module in sorted(
+                    modules.get_subclasses(),
+                    key=lambda m: m.__name__,
+                ):
                     name = module.__name__
                     if is_insight(module):
                         name += " 🚀"
-                    table.add_row(f" {name}", module.__doc__, style="dim")
+                    module_doc = module.__doc__ or " "
+                    table.add_row(f" {name}", module_doc.splitlines()[0], style="dim")
                 table.add_section()
 
             console.print(table)

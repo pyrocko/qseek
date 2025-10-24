@@ -46,7 +46,7 @@ class WaveformBatch:
         return timedelta(seconds=seconds)
 
     @property
-    def cumulative_bytes(self) -> int:
+    def nbytes(self) -> int:
         """Cumulative size of the traces in the batch in bytes."""
         return sum(tr.ydata.nbytes for tr in self.traces)
 

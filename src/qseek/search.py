@@ -158,10 +158,10 @@ class SearchStats(Stats):
         self.batch_count = batch.i_batch + 1
         self.batch_count_total = batch.n_batches
         self.batch_time = batch.end_time
-        self.processed_bytes += batch.cumulative_bytes
+        self.processed_bytes += batch.nbytes
         self.processed_time += batch.duration
         self.processing_time += duration
-        self.latest_processing_rate = batch.cumulative_bytes / duration.total_seconds()
+        self.latest_processing_rate = batch.nbytes / duration.total_seconds()
         self.latest_processing_speed = batch.duration / duration.total_seconds()
         self.current_stations = batch.n_stations
         self.current_networks = batch.n_networks
@@ -488,15 +488,15 @@ class Search(BaseModel):
         logger.info("preparing search components")
         self.stations.prepare(self.octree)
 
+        self.data_provider.prepare(self.stations)
+        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
+
         distances = self.octree.distances_stations(self.stations)
         logger.info(
             "source-station distance range: %.1f - %.1f m",
             distances.min(),
             distances.max(),
         )
-
-        self.data_provider.prepare(self.stations)
-        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
 
         await self.pre_processing.prepare()
         await self.ray_tracers.prepare(
