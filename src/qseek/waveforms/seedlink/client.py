@@ -16,6 +16,8 @@ from qseek.utils import NSL, NSLC, datetime_now, human_readable_bytes
 if TYPE_CHECKING:
     from rich.table import Table
 
+    from qseek.models.station import Stations
+
 
 logger = logging.getLogger(__file__)
 
@@ -452,11 +454,18 @@ class SeedLinkClient(BaseModel):
         """Get the stats for this client."""
         return self._stats
 
-    def prepare(self, timeout: float = 60.0) -> None:
+    def prepare(self, inventory_stations: Stations, timeout: float = 60.0) -> None:
         nslcs = []
         for sta in self.station_selection.copy():
             if sta.nslc in nslcs:
                 logger.warning("duplicate station selection %s, removing", sta.nslc)
+                self.station_selection.remove(sta)
+                continue
+            if sta.nsl not in inventory_stations:
+                logger.warning(
+                    "station %s not in inventory, removing from selection",
+                    sta.nsl.pretty_str(strip=True),
+                )
                 self.station_selection.remove(sta)
                 continue
             nslcs.append(sta.nslc)
