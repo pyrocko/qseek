@@ -142,6 +142,12 @@ class Stations(BaseModel):
 
         self.sanitize_stations()
 
+    def __iter__(self) -> Iterator[Station]:
+        return (sta for sta in self.stations if sta.nsl not in self.blacklist)
+
+    def __contains__(self, other: NSL) -> bool:
+        return any(sta.nsl == other for sta in self)
+
     def sanitize_stations(self) -> None:
         """Remove stations with bad coordinates or duplicates."""
         logger.debug("weeding bad stations")
@@ -216,9 +222,6 @@ class Stations(BaseModel):
         if not self.stations:
             raise ValueError("no stations available, add stations to start detection")
 
-    def __iter__(self) -> Iterator[Station]:
-        return (sta for sta in self.stations if sta.nsl not in self.blacklist)
-
     def mean_interstation_distance(self) -> float:
         """Calculate the mean interstation distance.
 
@@ -265,7 +268,7 @@ class Stations(BaseModel):
                 for tr in traces
             ]
         except KeyError as exc:
-            raise ValueError("could not find a station") from exc
+            raise ValueError("could not find station information") from exc
 
         return Stations.model_construct(stations=selected_stations)
 
