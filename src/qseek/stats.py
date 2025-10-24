@@ -23,6 +23,11 @@ _PROGRESS = None
 PROGRESS = Progress()
 
 
+def disable_progress(disable: bool = True) -> None:
+    with get_progress() as progress:
+        progress.disable = disable
+
+
 @contextmanager
 def get_progress() -> Generator[Progress, None, None]:
     if _PROGRESS is None:

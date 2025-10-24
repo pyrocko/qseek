@@ -18,9 +18,14 @@ class LayeredModelInversion(LayeredModel):
         if noise <= 0:
             raise ValueError("Noise must be a positive value.")
         for layer in self.layers:
-            pert = np.random.uniform(noise, noise)
-            layer.vp *= 1 + pert
-            layer.vs *= 1 + pert
+            vpvs = layer.vpvs
+
+            while True:
+                pert = np.random.uniform(-noise, noise)
+                layer.vp += pert
+                if layer.vp > 0:
+                    break
+            layer.vs = layer.vp / vpvs
 
     @classmethod
     def from_layered_model(cls, model: LayeredModel) -> LayeredModelInversion:
