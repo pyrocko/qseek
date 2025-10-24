@@ -488,15 +488,15 @@ class Search(BaseModel):
         logger.info("preparing search components")
         self.stations.prepare(self.octree)
 
+        self.data_provider.prepare(self.stations)
+        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
+
         distances = self.octree.distances_stations(self.stations)
         logger.info(
             "source-station distance range: %.1f - %.1f m",
             distances.min(),
             distances.max(),
         )
-
-        self.data_provider.prepare(self.stations)
-        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
 
         await self.pre_processing.prepare()
         await self.ray_tracers.prepare(
