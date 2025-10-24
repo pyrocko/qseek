@@ -487,7 +487,6 @@ class Search(BaseModel):
         """
         logger.info("preparing search components")
         self.stations.prepare(self.octree)
-        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
 
         distances = self.octree.distances_stations(self.stations)
         logger.info(
@@ -497,6 +496,7 @@ class Search(BaseModel):
         )
 
         self.data_provider.prepare(self.stations)
+        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
 
         await self.pre_processing.prepare()
         await self.ray_tracers.prepare(

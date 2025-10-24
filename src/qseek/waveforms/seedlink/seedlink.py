@@ -165,7 +165,7 @@ class SeedLink(WaveformProvider):
         self._squirrel.add(str(self.save_sds_archive), check=False)
 
         for client in self.clients:
-            client.prepare(timeout=self.timeout.total_seconds())
+            client.prepare(stations, timeout=self.timeout.total_seconds())
 
     def available_nsls(self) -> set[NSL]:
         return {
