@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from obspy import UTCDateTime, read
 from pydantic import (
@@ -18,6 +18,7 @@ from pydantic import (
     Field,
     PositiveInt,
     PrivateAttr,
+    computed_field,
     model_validator,
 )
 from pyrocko import obspy_compat
@@ -25,16 +26,28 @@ from pyrocko.trace import degapper
 from typing_extensions import Self
 
 from qseek.stats import Stats, get_progress
-from qseek.utils import NSL
+from qseek.utils import (
+    NSL,
+    QUEUE_SIZE,
+    datetime_now,
+    human_readable_bytes,
+    setup_rich_logging,
+)
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from rich.table import Table
 
     from qseek.models.station import Stations
 
 
 logger = logging.getLogger(__name__)
+ANY = "[A-Z0-9]"
+NETWORK = f"{ANY}{ANY}"
+STATION = f"{ANY}*"
+CHANNEL = f"{ANY}{ANY}{ANY}.D"
+JDAY = r"[0-9][0-9][0-9]"
 
 
 async def _load_file(
@@ -51,6 +64,7 @@ async def _load_file(
         str(file),
         starttime=UTCDateTime(start_time),
         endtime=UTCDateTime(end_time),
+        nearest_sample=False,
     )
     stream = await loop.run_in_executor(executor, func_call)
     return stream.to_pyrocko_traces()
@@ -60,6 +74,7 @@ async def _load_files(
     files: list[Path],
     start_time: datetime,
     end_time: datetime,
+    want_incomplete: bool = False,
     executor: ThreadPoolExecutor | None = None,
 ) -> list[Trace]:
     try:
@@ -75,11 +90,25 @@ async def _load_files(
         return []
 
     traces = list(chain(*traces))
-    return degapper(sorted(traces, key=lambda tr: tr.full_id))
+    exceptions = [tr for tr in traces if isinstance(tr, Exception)]
+    for exc in exceptions:
+        logger.error("error loading file: %s", exc)
+
+    traces = [tr for tr in traces if not isinstance(tr, Exception)]
+    degapped_traces = degapper(sorted(traces, key=lambda tr: tr.full_id))
+
+    if not want_incomplete:
+        for tr in degapped_traces.copy():
+            start_offset = abs(tr.tmin - start_time.timestamp())
+            end_offset = abs(tr.tmax + tr.deltat - end_time.timestamp())
+            if not (start_offset <= 0.5 * tr.deltat and end_offset <= 0.5 * tr.deltat):
+                degapped_traces.remove(tr)
+
+    return degapped_traces
 
 
-def nsl_from_path(file: str) -> NSL:
-    network, station, location, *_ = file.split(".")
+def _nsl_from_filename(name: str) -> NSL:
+    network, station, location, *_ = name.split(".")
     return NSL(network, station, location)
 
 
@@ -89,10 +118,12 @@ class StationCovarage(NamedTuple):
     file_dates: list[date] = []
 
     def add_file(self, file: Path):
-        *_, network, station, channel, filename = file.parts
+        *_, channel, filename = file.parts
+        # if self.nsl != _nsl_from_filename(filename):
+        #     raise ValueError(f"File {file} does not match station {self.nsl.pretty}")
         *_, year, julian_day = filename.split(".")
-
         file_date = date(int(year), 1, 1) + timedelta(days=int(julian_day) - 1)
+
         self.file_dates.append(file_date)
         self.channels.add(channel.rstrip(".D"))
 
@@ -106,11 +137,45 @@ class StationCovarage(NamedTuple):
 
 
 class SDSArchiveStats(Stats):
-    n_files: int = 0
-    n_bytes: int = 0
+    n_files_scanned: int = 0
+    n_bytes_scanned: int = 0
+    time_per_batch: timedelta = timedelta(seconds=0.0)
+    bytes_per_seconds: float = 0.0
+
+    _queue: asyncio.Queue[WaveformBatch | None] | None = PrivateAttr(None)
+    _position = 20
+    _show_header = False
+
+    def set_queue(self, queue: asyncio.Queue[WaveformBatch | None]) -> None:
+        self._queue = queue
+
+    @computed_field
+    @property
+    def queue_size(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.qsize()
+
+    @computed_field
+    @property
+    def queue_size_max(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.maxsize
+
+    def _populate_table(self, table: Table) -> None:
+        alert = self.queue_size <= 2
+        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
+        table.add_row(
+            "[bold]Waveform loading[/bold]",
+            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
+            f" {human_readable_bytes(self.bytes_per_seconds) + '/s':>10}",
+        )
 
 
 class SDSArchive(WaveformProvider):
+    """SDSArchive waveform provider for reading data from a local SDS archive."""
+
     provider: Literal["SDSArchive"] = "SDSArchive"
 
     archive: DirectoryPath = Field(
@@ -130,13 +195,22 @@ class SDSArchive(WaveformProvider):
         "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
         "E.g. `2024-12-31T00:00:00Z`.",
     )
+
     n_threads: PositiveInt = Field(
-        default=4,
+        default=8,
         description="Number of threads to use for reading data from the SDS archive.",
+    )
+    queue_size: PositiveInt = Field(
+        default=QUEUE_SIZE,
+        description="Maximum number of waveform batches to keep in the internal queue.",
     )
 
     _archive_stations: dict[NSL, StationCovarage] = PrivateAttr(default_factory=dict)
     _station_selection: Stations | None = PrivateAttr(default=None)
+
+    _queue: asyncio.Queue[WaveformBatch | None] = PrivateAttr(
+        default_factory=lambda: asyncio.Queue(maxsize=QUEUE_SIZE)
+    )
     _executor: ThreadPoolExecutor | None = PrivateAttr(default=None)
 
     _stats: SDSArchiveStats = PrivateAttr(default_factory=SDSArchiveStats)
@@ -147,34 +221,63 @@ class SDSArchive(WaveformProvider):
             raise ValueError("start_time must be before end_time")
         return self
 
-    async def scan_archive(self) -> None:
+    def scan_sds_archive(self) -> None:
         logger.info("scanning SDS archive at %s", self.archive)
+
+        if self.start_time:
+            end_year = self.end_time.year if self.end_time else datetime_now().year
+            search_years = range(self.start_time.year, end_year + 1)
+            year_pattern = f"{{{','.join(str(y) for y in search_years)}}}/**"
+        else:
+            year_pattern = "**"
+
+        n_files = 0
+        start = datetime_now()
         with get_progress() as progress:
             status = progress.add_task(
                 f"Scanning SDS archive at [bold]{self.archive}[/bold]"
             )
-            for ifile, file in enumerate(self.archive.glob("**/*.[0-9]*")):
-                nsl = nsl_from_path(file.name)
+            for file in self.archive.glob(
+                f"{year_pattern}/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}"
+            ):
+                nsl = _nsl_from_filename(file.name)
                 if nsl not in self._archive_stations:
                     self._archive_stations[nsl] = StationCovarage(nsl=nsl)
                 station_coverage = self._archive_stations[nsl]
                 station_coverage.add_file(file)
 
-                self._stats.n_files += 1
-                self._stats.n_bytes += file.stat().st_size
+                self._stats.n_files_scanned += 1
+                self._stats.n_bytes_scanned += file.stat().st_size
+                n_files += 1
 
-                if ifile % 250:
-                    progress.update(status, advance=250)
-                    await asyncio.sleep(0.0)
+                progress.update(status, advance=250)
 
             progress.remove_task(status)
 
-    async def prepare(self, stations: Stations):
+        self._archive_stations = {
+            nsl: self._archive_stations[nsl] for nsl in sorted(self._archive_stations)
+        }
+
+        if n_files == 0:
+            raise EnvironmentError(f"No files found in SDS archive at {self.archive}")
+        logger.info(
+            "scanned SDS archive in %s, found %s in %d files",
+            datetime_now() - start,
+            human_readable_bytes(self._stats.n_bytes_scanned),
+            n_files,
+        )
+
+    def prepare(self, stations: Stations):
         obspy_compat.plant()
-        await self.scan_archive()
+
+        self.scan_sds_archive()
 
         archive_start, archive_end = self.available_time_span()
-        logger.info("SDS archive time span: %s to %s", archive_start, archive_end)
+        logger.info(
+            "SDS archive time span: %s to %s",
+            archive_start.date(),
+            archive_end.date(),
+        )
 
         self._station_selection = stations
         self._executor = ThreadPoolExecutor(max_workers=self.n_threads)
@@ -194,7 +297,7 @@ class SDSArchive(WaveformProvider):
     def available_nsls(self) -> set[NSL]:
         return set(self._archive_stations.keys())
 
-    def _get_available_paths(
+    def _get_available_files(
         self,
         nsl: NSL,
         date: date,
@@ -228,47 +331,53 @@ class SDSArchive(WaveformProvider):
         if remove_duplicate_orientations:
             seen_orientations = set()
             for channel in available_files.copy():
-                orientation = channel[-1]
-                if orientation in seen_orientations:
+                cha_orientation = channel[-1]
+                if cha_orientation in seen_orientations:
                     available_files.pop(channel)
-                seen_orientations.add(orientation)
+                seen_orientations.add(cha_orientation)
 
         return list(available_files.values())
 
     def _get_file_paths(self, dates: Iterable[date]) -> list[Path]:
+        if not self._station_selection:
+            raise RuntimeError("Station selection not prepared.")
+
         paths = []
-        for nsl in self._archive_stations:
+        for sta in self._station_selection:
             for _date in dates:
-                available_files = self._get_available_paths(nsl, _date)
-                paths.extend(available_files)
+                paths.extend(self._get_available_files(sta.nsl, _date))
         return paths
 
-    async def iter_batches(
+    async def _fetch_waveform_data(
         self,
         window_increment: timedelta,
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> AsyncIterator[WaveformBatch]:
+    ) -> None:
+        logger.info("starting SDS waveform reader, queue size %d", self.queue_size)
+        stats = self._stats
+
         archive_start, archive_end = self.available_time_span()
-        if start_time is None:
-            start_time = archive_start
+        start_time = start_time or archive_start + window_padding
         end_time = self.end_time or archive_end
 
+        n_batches = int((end_time - start_time) / window_increment)
         i_batch = 0
         while True:
             if start_time >= end_time:
                 break
-            # if i_batch > 10:
-            #     break
+
             batch_start = start_time
-            batch_end = batch_start + window_increment
+            batch_end = min(batch_start + window_increment, end_time)
 
             trace_start = batch_start - window_padding
             trace_end = batch_end + window_padding
+
             dates = {d.date() for d in (trace_start, trace_end)}
 
+            begin_load = datetime_now()
             paths = self._get_file_paths(dates)
             traces = await _load_files(
                 paths,
@@ -282,8 +391,11 @@ class SDSArchive(WaveformProvider):
                 end_time=batch_end,
                 traces=traces,
                 i_batch=i_batch,
+                n_batches=n_batches,
             )
+
             batch.clean_traces()
+            i_batch += 1
             start_time = batch_end
 
             if not batch.is_healthy(min_stations=min_stations):
@@ -296,14 +408,70 @@ class SDSArchive(WaveformProvider):
                 i_batch += 1
                 continue
 
+            if min_length and batch.duration < min_length:
+                logger.info(
+                    "skipping short batch %d: %.1f s",
+                    i_batch,
+                    batch.duration.total_seconds(),
+                )
+                continue
+
+            stats.time_per_batch = datetime_now() - begin_load
+            stats.bytes_per_seconds = (
+                batch.nbytes / stats.time_per_batch.total_seconds()
+            )
+            logger.info(
+                "loaded batch %d/%d at %s",
+                i_batch,
+                n_batches,
+                human_readable_bytes(stats.bytes_per_seconds) + "/s",
+            )
+
+            await self._queue.put(batch)
+
+        await self._queue.put(None)
+        logger.info("waveform data fetcher task completed")
+
+    async def iter_batches(
+        self,
+        window_increment: timedelta,
+        window_padding: timedelta,
+        start_time: datetime | None = None,
+        min_length: timedelta | None = None,
+        min_stations: int = 0,
+    ) -> AsyncGenerator[WaveformBatch]:
+        self._queue = asyncio.Queue(maxsize=self.queue_size)
+        self._stats.set_queue(self._queue)
+
+        worker = asyncio.create_task(
+            self._fetch_waveform_data(
+                window_increment=window_increment,
+                window_padding=window_padding,
+                start_time=start_time,
+                min_length=min_length,
+                min_stations=min_stations,
+            )
+        )
+
+        while True:
+            batch = await self._queue.get()
+            if batch is None:
+                self._queue.task_done()
+                break
             yield batch
+            self._queue.task_done()
+
+        await worker
 
 
 if __name__ == "__main__":
+    from cProfile import Profile
+
     from qseek.models.station import Stations
 
-    logger.setLevel(logging.DEBUG)
+    p = Profile()
 
+    setup_rich_logging(logging.INFO)
     stations = Stations(
         station_xmls=[Path("/home/marius/Development/tmp/qseek/metadata")]
     )
@@ -313,11 +481,14 @@ if __name__ == "__main__":
     async def run():
         await sds.prepare(stations)
 
+        p.enable()
         async for batch in sds.iter_batches(
             window_increment=timedelta(minutes=10),
             window_padding=timedelta(seconds=30),
             min_stations=1,
         ):
-            logger.info("%s", batch)
+            batch.clean_traces()
+        p.disable()
+        p.dump_stats("/tmp/sds.prof")
 
     asyncio.run(run())

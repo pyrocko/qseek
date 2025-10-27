@@ -152,7 +152,7 @@ class ImageFunctions(RootModel):
                     continue
                 stats.time_per_batch = datetime_now() - start_time
                 stats.bytes_per_second = (
-                    batch.cumulative_bytes / stats.time_per_batch.total_seconds()
+                    batch.nbytes / stats.time_per_batch.total_seconds()
                 )
                 self._processed_images += 1
                 await self._queue.put((images, batch))

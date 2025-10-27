@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal
+from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
 
 from pydantic import (
     AwareDatetime,
@@ -50,10 +50,7 @@ class SquirrelPrefetcher:
         self._task = asyncio.create_task(self.prefetch_worker())
 
     async def prefetch_worker(self) -> None:
-        logger.info(
-            "start prefetching waveforms, queue size %d",
-            self.queue.maxsize,
-        )
+        logger.info("start prefetching waveforms, queue size %d", self.queue.maxsize)
 
         async def load_data() -> None | Batch:
             while True:
@@ -73,8 +70,8 @@ class SquirrelPrefetcher:
 
 
 class SquirrelStats(Stats):
-    empty_batches: PositiveInt = 0
-    short_batches: PositiveInt = 0
+    empty_batches: int = 0
+    short_batches: int = 0
     time_per_batch: timedelta = timedelta(seconds=0.0)
     bytes_per_seconds: float = 0.0
 
@@ -152,13 +149,13 @@ class PyrockoSquirrel(WaveformProvider):
         "specified time. Default is False.",
     )
     queue_size: int = Field(
-        default=16,
+        default=QUEUE_SIZE,
         description="Size of the internal queue for prefetching waveform batches.",
     )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
-    _stations: Stations = PrivateAttr(None)
-    _stats: ClassVar[SquirrelStats] = SquirrelStats()
+    _stations: Stations | None = PrivateAttr(None)
+    _stats: SquirrelStats = PrivateAttr(default_factory=SquirrelStats)
 
     @model_validator(mode="after")
     def _validate_model(self) -> Self:
@@ -281,7 +278,7 @@ class PyrockoSquirrel(WaveformProvider):
                 tinc=window_increment.total_seconds(),
                 tpad=window_padding.total_seconds(),
                 want_incomplete=False,
-                codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],
+                codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],  # type: ignore
                 channel_priorities=self.channel_selector,
             )
             prefetcher = SquirrelPrefetcher(iterator, queue_size=self.queue_size)
@@ -325,7 +322,7 @@ class PyrockoSquirrel(WaveformProvider):
 
             stats.time_per_batch = datetime_now() - start
             stats.bytes_per_seconds = (
-                batch.cumulative_bytes / prefetcher.load_time.total_seconds()
+                batch.nbytes / prefetcher.load_time.total_seconds()
             )
 
             if not batch.is_healthy(min_stations=min_stations):
