@@ -226,10 +226,15 @@ class SDSArchive(WaveformProvider):
 
         if self.start_time:
             end_year = self.end_time.year if self.end_time else datetime_now().year
-            search_years = range(self.start_time.year, end_year + 1)
-            year_pattern = f"{{{','.join(str(y) for y in search_years)}}}/**"
+            years = range(self.start_time.year, end_year + 1)
+            sds_iter = chain(
+                *(
+                    self.archive.glob(f"{year}/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
+                    for year in years
+                )
+            )
         else:
-            year_pattern = "**"
+            sds_iter = self.archive.glob(f"**/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
 
         n_files = 0
         start = datetime_now()
@@ -237,9 +242,7 @@ class SDSArchive(WaveformProvider):
             status = progress.add_task(
                 f"Scanning SDS archive at [bold]{self.archive}[/bold]"
             )
-            for file in self.archive.glob(
-                f"{year_pattern}/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}"
-            ):
+            for file in sds_iter:
                 nsl = _nsl_from_filename(file.name)
                 if nsl not in self._archive_stations:
                     self._archive_stations[nsl] = StationCovarage(nsl=nsl)
@@ -379,6 +382,12 @@ class SDSArchive(WaveformProvider):
 
             begin_load = datetime_now()
             paths = self._get_file_paths(dates)
+            if not paths:
+                logger.warning("no waveform files found for %s, skipping", trace_start)
+                i_batch += 1
+                start_time = batch_end
+                continue
+
             traces = await _load_files(
                 paths,
                 start_time=trace_start,
@@ -393,6 +402,10 @@ class SDSArchive(WaveformProvider):
                 i_batch=i_batch,
                 n_batches=n_batches,
             )
+            stats.time_per_batch = datetime_now() - begin_load
+            stats.bytes_per_seconds = (
+                batch.nbytes / stats.time_per_batch.total_seconds()
+            )
 
             batch.clean_traces()
             i_batch += 1
@@ -400,33 +413,27 @@ class SDSArchive(WaveformProvider):
 
             if not batch.is_healthy(min_stations=min_stations):
                 logger.info(
-                    "skipping unhealthy batch %d: %d stations, %d traces",
-                    i_batch,
+                    "skipping unhealthy batch %s: %d stations, %d traces",
+                    start_time,
                     batch.n_stations,
                     len(batch.traces),
                 )
-                i_batch += 1
                 continue
 
             if min_length and batch.duration < min_length:
                 logger.info(
-                    "skipping short batch %d: %.1f s",
-                    i_batch,
+                    "skipping short batch %s: %.1f s",
+                    start_time,
                     batch.duration.total_seconds(),
                 )
                 continue
 
-            stats.time_per_batch = datetime_now() - begin_load
-            stats.bytes_per_seconds = (
-                batch.nbytes / stats.time_per_batch.total_seconds()
-            )
-            logger.info(
-                "loaded batch %d/%d at %s",
+            logger.debug(
+                "loaded waveforms for batch %d/%d at %s",
                 i_batch,
                 n_batches,
                 human_readable_bytes(stats.bytes_per_seconds) + "/s",
             )
-
             await self._queue.put(batch)
 
         await self._queue.put(None)
