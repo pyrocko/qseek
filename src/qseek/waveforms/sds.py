@@ -459,7 +459,7 @@ class SDSArchive(WaveformProvider):
             self._fetch_waveform_data(
                 window_increment=window_increment,
                 window_padding=window_padding,
-                start_time=start_time,
+                start_time=start_time or self.start_time,
                 min_length=min_length,
                 min_stations=min_stations,
             )
