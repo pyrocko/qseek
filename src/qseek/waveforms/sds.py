@@ -11,7 +11,6 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
-from obspy import UTCDateTime, read
 from pydantic import (
     AwareDatetime,
     DirectoryPath,
@@ -22,6 +21,7 @@ from pydantic import (
     model_validator,
 )
 from pyrocko import obspy_compat
+from pyrocko.io.mseed import iload
 from pyrocko.trace import degapper
 from typing_extensions import Self
 
@@ -58,16 +58,21 @@ async def _load_file(
 ) -> list[Trace]:
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
+
+    def load_traces() -> list[Trace]:
+        return list(
+            iload(
+                str(file),
+                tmin=start_time.timestamp(),
+                tmax=end_time.timestamp(),
+            )
+        )
+
     func_call = partial(
         ctx.run,
-        read,
-        str(file),
-        starttime=UTCDateTime(start_time),
-        endtime=UTCDateTime(end_time),
-        nearest_sample=False,
+        load_traces,
     )
-    stream = await loop.run_in_executor(executor, func_call)
-    return stream.to_pyrocko_traces()
+    return await loop.run_in_executor(executor, func_call)
 
 
 async def _load_files(
@@ -197,7 +202,7 @@ class SDSArchive(WaveformProvider):
     )
 
     n_threads: PositiveInt = Field(
-        default=8,
+        default=4,
         description="Number of threads to use for reading data from the SDS archive.",
     )
     queue_size: PositiveInt = Field(
@@ -366,7 +371,7 @@ class SDSArchive(WaveformProvider):
         start_time = start_time or archive_start + window_padding
         end_time = self.end_time or archive_end
 
-        n_batches = int((end_time - start_time) / window_increment)
+        n_batches = int((end_time - start_time) // window_increment)
         i_batch = 0
         while True:
             if start_time >= end_time:
@@ -483,10 +488,13 @@ if __name__ == "__main__":
         station_xmls=[Path("/home/marius/Development/tmp/qseek/metadata")]
     )
 
-    sds = SDSArchive(archive=Path("/home/marius/Development/tmp/qseek/data"))
+    sds = SDSArchive(
+        archive=Path("/home/marius/Development/tmp/qseek/data"),
+        n_threads=4,
+    )
 
     async def run():
-        await sds.prepare(stations)
+        sds.prepare(stations)
 
         p.enable()
         async for batch in sds.iter_batches(
