@@ -19,10 +19,10 @@ Key features are:
   * [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
   * [OBSTransformer (Niksejel and Zahng, 2024)](https://doi.org/10.1093/gji/ggae049)
   * LFEDetect
-* Ray tracers:
-  * Constant velocity
-  * 1D Layered velocity model
+* Travel time calculation:
+  * 1D Layered velocity model (Pyrocko Cake and Fast Marching)
   * 3D fast-marching velocity model (NonLinLoc compatible)
+  * Constant velocity
 * Earthquake magnitudes and other features:
   * Local magnitudes (ML) with different attenuation models
   * Moment Magnitudes (MW) based on modelled attenuation curves ([Dahm et al., 2024](https://doi.org/10.26443/seismica.v3i2.1205))
