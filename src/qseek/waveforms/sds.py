@@ -105,7 +105,7 @@ async def _load_files(
     if not want_incomplete:
         for tr in degapped_traces.copy():
             start_offset = abs(tr.tmin - start_time.timestamp())
-            end_offset = abs(tr.tmax + tr.deltat - end_time.timestamp())
+            end_offset = abs(tr.tmax - end_time.timestamp())
             if not (start_offset <= 0.5 * tr.deltat and end_offset <= 0.5 * tr.deltat):
                 degapped_traces.remove(tr)
 
@@ -245,7 +245,8 @@ class SDSArchive(WaveformProvider):
         start = datetime_now()
         with get_progress() as progress:
             status = progress.add_task(
-                f"Scanning SDS archive at [bold]{self.archive}[/bold]"
+                f"Scanning SDS archive at [bold]{self.archive}[/bold]",
+                total=None,
             )
             for file in sds_iter:
                 nsl = _nsl_from_filename(file.name)
@@ -258,7 +259,8 @@ class SDSArchive(WaveformProvider):
                 self._stats.n_bytes_scanned += file.stat().st_size
                 n_files += 1
 
-                progress.update(status, advance=250)
+                if n_files % 500 == 0:
+                    progress.update(status, advance=500)
 
             progress.remove_task(status)
 
@@ -425,11 +427,12 @@ class SDSArchive(WaveformProvider):
                 )
                 continue
 
-            if min_length and batch.duration < min_length:
+            if min_length and (trace_end - trace_start) < min_length:
                 logger.info(
-                    "skipping short batch %s: %.1f s",
+                    "skipping short batch %s: %.1f s, required %.1f s",
                     start_time,
                     batch.duration.total_seconds(),
+                    min_length.total_seconds(),
                 )
                 continue
 
