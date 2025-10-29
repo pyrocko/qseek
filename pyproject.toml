@@ -65,6 +65,13 @@ docs = [
     "griffe-pydantic>=1.1",
     "markdown-exec>=1.11",
 ]
+dev = [
+    "pre-commit>=4.2.0",
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "pytest-benchmark>=4.0.0",
+    "ruff>=0.11.9",
+]
 completion = ["argcomplete>=3.2"]
 
 [project.scripts]
