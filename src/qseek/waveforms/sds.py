@@ -47,7 +47,7 @@ ANY = "[A-Z0-9]"
 NETWORK = f"{ANY}{ANY}"
 STATION = f"{ANY}*"
 CHANNEL = f"{ANY}{ANY}{ANY}.D"
-JDAY = r"[0-9][0-9][0-9]"
+JDAY = "[0-9]*"
 
 
 async def _load_file(
