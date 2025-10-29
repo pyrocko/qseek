@@ -180,11 +180,21 @@ class StationTravelTimeTable(BaseModel):
         method: InterpolationMethod = "linear",
     ) -> np.ndarray:
         interpolator = self._get_travel_time_interpolator()
-        return await asyncio.to_thread(
-            interpolator,
-            np.asarray([surface_offsets, depth_offsets]).T,
-            method=method,
-        )
+        try:
+            return await asyncio.to_thread(
+                interpolator,
+                np.asarray([surface_offsets, depth_offsets]).T,
+                method=method,
+            )
+        except ValueError as e:
+            raise ValueError(
+                "error interpolating travel times: "
+                f"distances {surface_offsets.min()}-{surface_offsets.max()} m, "
+                f"depths {depth_offsets.min()}-{depth_offsets.max()} m, "
+                f"table distance max {self.distance_max} m, "
+                f"depth range {self.depth_range} "
+                f"for station {self.station.nsl.pretty} and phase {self.phase}"
+            ) from e
 
 
 class FastMarchingTracer(RayTracer):
@@ -285,9 +295,9 @@ class FastMarchingTracer(RayTracer):
                 export=export_dir / "layered_model.png",
             )
 
-        self._node_lut = ArrayLRUCache(name="fast-marching", short_name="FM")
         await self._calculate_travel_times()
 
+        self._node_lut = ArrayLRUCache(name="fast-marching", short_name="FM")
         nodes = octree.leaf_nodes
         for phase in self.phases:
             logger.info(
@@ -334,7 +344,8 @@ class FastMarchingTracer(RayTracer):
                 phase=phase,
                 distance_max=surface_distances.max() * 1.01,  # 1% margin
                 depth_range=Range(
-                    min(octree_depth_range[0], 0.0) - depth_margin,
+                    min(octree_depth_range[0] - station.effective_depth, 0.0)
+                    - depth_margin,
                     octree_depth_range[1] + station.effective_elevation + depth_margin,
                 ),
                 grid_spacing=octree.smallest_node_size(),
