@@ -325,7 +325,7 @@ class SDSArchive(WaveformProvider):
             channel = folder.name.rstrip(".D")
             if self.channel_selector and channel[:2] not in self.channel_selector:
                 continue
-            file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
+            file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
             file = folder / file_name
             if not file.exists():
                 continue
@@ -385,7 +385,7 @@ class SDSArchive(WaveformProvider):
             trace_start = batch_start - window_padding
             trace_end = batch_end + window_padding
 
-            dates = {d.date() for d in (trace_start, trace_end)}
+            dates = {trace_start.date(), trace_end.date()}
 
             begin_load = datetime_now()
             paths = self._get_file_paths(dates)
