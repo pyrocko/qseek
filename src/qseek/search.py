@@ -498,13 +498,13 @@ class Search(BaseModel):
             distances.max(),
         )
 
-        await self.pre_processing.prepare()
         await self.ray_tracers.prepare(
             self.octree,
             self.stations,
             phases=self.image_functions.get_phases(),
             rundir=self._rundir,
         )
+        await self.pre_processing.prepare()
 
         await self.image_functions.prepare(
             self.stations,

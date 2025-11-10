@@ -182,7 +182,7 @@ async def test_travel_time_module(
         if plot:
             import matplotlib.pyplot as plt
 
-            for i_station, station in enumerate(stations.stations):
+            for i_station, station in enumerate(stations):
                 n_east = int(octree.east_bounds.width() // octree.root_node_size)
                 n_north = int(octree.north_bounds.width() // octree.root_node_size)
                 n_depth = int(octree.depth_bounds.width() // octree.root_node_size)
