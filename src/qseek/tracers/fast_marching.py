@@ -384,7 +384,7 @@ class FastMarchingTracer(RayTracer):
                 f"interpolating travel times for {n_nodes} nodes",
                 total=self._cached_stations.n_stations,
             )
-            for idx, station in enumerate(self._cached_stations.stations):
+            for idx, station in enumerate(self._cached_stations):
                 table = self.get_travel_time_table(station, phase)
                 travel_times.append(
                     await table.get_travel_times(
