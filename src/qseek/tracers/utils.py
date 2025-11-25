@@ -135,11 +135,8 @@ class LayeredEarthModel1D(BaseModel):
         import matplotlib.pyplot as plt
 
         fig = plt.figure()
-        ax = fig.add_subplot(111)
-        earthmodel_plot(self.layered_model, axes=ax)
+        earthmodel_plot(self.layered_model, fig=fig)
         fig.savefig(filename, dpi=300)
-        if self.filename:
-            ax.set_title(f"File: {self.filename}")
 
         logger.info("saved earth model plot to %s", filename)
 
