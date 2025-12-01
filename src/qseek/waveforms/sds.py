@@ -60,6 +60,7 @@ async def _load_file(
     ctx = contextvars.copy_context()
 
     def load_traces() -> list[Trace]:
+        # logger.debug("loading file %s", file)
         return list(
             iload(
                 str(file),
@@ -76,14 +77,14 @@ async def _load_file(
 
 
 async def _load_files(
-    files: list[Path],
+    files: Iterable[Path],
     start_time: datetime,
     end_time: datetime,
     want_incomplete: bool = False,
     executor: ThreadPoolExecutor | None = None,
 ) -> list[Trace]:
     try:
-        traces = await asyncio.gather(
+        result = await asyncio.gather(
             *[
                 _load_file(file, start_time, end_time, executor=executor)
                 for file in files
@@ -94,18 +95,21 @@ async def _load_files(
         logger.error("error loading files: %s", e)
         return []
 
-    traces = list(chain(*traces))
-    exceptions = [tr for tr in traces if isinstance(tr, Exception)]
-    for exc in exceptions:
+    for exc in (tr for tr in result if isinstance(tr, Exception)):
         logger.error("error loading file: %s", exc)
 
-    traces = [tr for tr in traces if not isinstance(tr, Exception)]
+    traces = [tr for tr in result if not isinstance(tr, Exception)]
+    traces = list(chain(*traces))
+
+    if not traces:
+        logger.warning("no traces loaded from files")
+
     degapped_traces = degapper(sorted(traces, key=lambda tr: tr.full_id))
 
     if not want_incomplete:
         for tr in degapped_traces.copy():
             start_offset = abs(tr.tmin - start_time.timestamp())
-            end_offset = abs(tr.tmax - end_time.timestamp())
+            end_offset = abs(tr.tmax - end_time.timestamp() + tr.deltat)
             if not (start_offset <= 0.5 * tr.deltat and end_offset <= 0.5 * tr.deltat):
                 degapped_traces.remove(tr)
 
@@ -312,18 +316,19 @@ class SDSArchive(WaveformProvider):
         nsl: NSL,
         date: date,
         remove_duplicate_orientations: bool = True,
-    ) -> list[Path]:
+    ) -> set[Path]:
         julian_day = date.timetuple().tm_yday
         base_path = self.archive / str(date.year) / nsl.network / nsl.station
         if not base_path.exists():
-            return []
+            return set()
 
-        available_files = {}
+        available_files: dict[str, Path] = {}
         for folder in sorted(base_path.iterdir()):
             if not folder.is_dir():
                 continue
             channel = folder.name.rstrip(".D")
-            if self.channel_selector and channel[:2] not in self.channel_selector:
+            channel_type = channel[:2]
+            if self.channel_selector and channel_type not in self.channel_selector:
                 continue
             file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
             file = folder / file_name
@@ -346,16 +351,23 @@ class SDSArchive(WaveformProvider):
                     available_files.pop(channel)
                 seen_orientations.add(cha_orientation)
 
-        return list(available_files.values())
+        return set(available_files.values())
 
-    def _get_file_paths(self, dates: Iterable[date]) -> list[Path]:
+    def _get_file_paths(self, dates: Iterable[date]) -> set[Path]:
         if not self._station_selection:
             raise RuntimeError("Station selection not prepared.")
 
-        paths = []
+        paths: set[Path] = set()
         for sta in self._station_selection:
             for _date in dates:
-                paths.extend(self._get_available_files(sta.nsl, _date))
+                files = self._get_available_files(sta.nsl, _date)
+                paths.update(files)
+
+        logger.debug(
+            "found %d MiniSeed files in SDS archive for %s",
+            len(paths),
+            ", ".join(str(d) for d in dates),
+        )
         return paths
 
     async def _fetch_waveform_data(
@@ -363,6 +375,7 @@ class SDSArchive(WaveformProvider):
         window_increment: timedelta,
         window_padding: timedelta,
         start_time: datetime | None = None,
+        end_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> None:
@@ -371,7 +384,7 @@ class SDSArchive(WaveformProvider):
 
         archive_start, archive_end = self.available_time_span()
         start_time = start_time or archive_start + window_padding
-        end_time = self.end_time or archive_end
+        end_time = end_time or archive_end
 
         n_batches = int((end_time - start_time) // window_increment)
         i_batch = 0
@@ -463,6 +476,7 @@ class SDSArchive(WaveformProvider):
                 window_increment=window_increment,
                 window_padding=window_padding,
                 start_time=start_time or self.start_time,
+                end_time=self.end_time,
                 min_length=min_length,
                 min_stations=min_stations,
             )
@@ -486,19 +500,18 @@ if __name__ == "__main__":
 
     p = Profile()
 
-    setup_rich_logging(logging.INFO)
-    stations = Stations(
-        station_xmls=[Path("/home/marius/Development/tmp/qseek/metadata")]
-    )
+    setup_rich_logging(logging.DEBUG)
+    stations = Stations(station_xmls=[Path("/project/elise-info/sds/ELISE.xml")])
 
     sds = SDSArchive(
-        archive=Path("/home/marius/Development/tmp/qseek/data"),
-        n_threads=4,
+        archive=Path("/project/elise-info/sds/"),
+        n_threads=16,
+        start_time=datetime(2025, 8, 20, tzinfo=timezone.utc),
     )
 
     async def run():
         sds.prepare(stations)
-
+        # return
         p.enable()
         async for batch in sds.iter_batches(
             window_increment=timedelta(minutes=10),
