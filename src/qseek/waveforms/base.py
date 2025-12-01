@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr, StringConstraints
-from pyrocko.trace import Trace
+from pyrocko.trace import Trace, snuffle
 
 from qseek.stats import Stats
 
@@ -88,6 +88,10 @@ class WaveformBatch:
                 self.traces.remove(tr)
                 continue
             good_nslc.add(tr.nslc_id)
+
+    def snuffle(self) -> None:
+        """Shuffle traces in place to avoid ordering effects."""
+        snuffle(self.traces)
 
 
 class WaveformProvider(BaseModel):
