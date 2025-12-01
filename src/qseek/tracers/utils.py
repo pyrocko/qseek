@@ -83,11 +83,11 @@ class LayeredEarthModel1D(BaseModel):
     model_config = ConfigDict(ignored_types=(cached_property,))
 
     def model_post_init(self, context: Any) -> Self:
-        if self.filename == DEFAULT_VELOCITY_MODEL_FILE:
-            logger.warning(
-                "Using default velocity model - Consider specifying a custom model!"
-            )
         if self.filename is not None and self.raw_file_data is None:
+            if self.filename == DEFAULT_VELOCITY_MODEL_FILE:
+                logger.warning(
+                    "Using default velocity model - Consider specifying a custom model!"
+                )
             logger.info("loading velocity model from %s", self.filename)
             self._raw_file_data = self.filename.read_text()
 

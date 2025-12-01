@@ -472,8 +472,11 @@ class CakeTracer(RayTracer):
         for file in self.cache_dir.glob("*.sptree"):
             try:
                 tree = TravelTimeTree.load(file)
-            except ValidationError:
-                logger.warning("deleting invalid cached travel time tree %s", file)
+            except ValidationError as exc:
+                logger.warning(
+                    "deleting invalid cached travel time tree %s", file, exc_info=exc
+                )
+                raise exc
                 file.unlink()
                 continue
             trees.append(tree)
