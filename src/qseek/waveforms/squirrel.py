@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
 
 from pydantic import (
-    AwareDatetime,
     DirectoryPath,
     Field,
     PositiveInt,
@@ -23,7 +22,14 @@ from typing_extensions import Self
 
 from qseek.models.station import Stations
 from qseek.stats import Stats
-from qseek.utils import NSL, QUEUE_SIZE, datetime_now, human_readable_bytes, to_datetime
+from qseek.utils import (
+    NSL,
+    QUEUE_SIZE,
+    DateTime,
+    datetime_now,
+    human_readable_bytes,
+    to_datetime,
+)
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
@@ -124,17 +130,19 @@ class PyrockoSquirrel(WaveformProvider):
         default=[Path("./data")],
         description="List of directories holding the waveform files.",
     )
-    start_time: AwareDatetime | None = Field(
+    start_time: DateTime | None = Field(
         default=None,
-        description="Start time for the search in "
-        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
-        "E.g. `2024-12-30T00:00:00Z`.",
+        description="Start time for the search as in "
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) as a "
+        "date or datetime including timezone. "
+        "E.g. `today`, `yesterday`, `2025-12-24` or `2024-12-30T00:00:00Z`.",
     )
-    end_time: AwareDatetime | None = Field(
+    end_time: DateTime | None = Field(
         default=None,
-        description="End time for the search in "
-        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
-        "E.g. `2024-12-31T00:00:00Z`.",
+        description="Start time for the search as in "
+        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) as a "
+        "date or datetime including timezone. "
+        "E.g. `today`, `yesterday`, `2025-12-24` or `2024-12-30T00:00:00Z`.",
     )
 
     n_threads: PositiveInt = Field(
