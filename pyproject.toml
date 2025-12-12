@@ -2,7 +2,7 @@
 requires = [
     "wheel",
     "setuptools>=61.0.0",
-    "oldest-supported-numpy",
+    "numpy>=2",
     "setuptools_scm[toml]>=6.2",
 ]
 build-backend = "setuptools.build_meta"
@@ -19,7 +19,7 @@ authors = [{ name = "Marius Paul Isken", email = "marius.isken@gfz.de" }]
 maintainers = [{ name = "Marius Paul Isken", email = "marius.isken@gfz.de" }]
 keywords = [
     "seismology",
-    "earthquake",
+    "earthquakes",
     "seismicity",
     "detection",
     "localization",
@@ -28,7 +28,7 @@ keywords = [
 ]
 
 dependencies = [
-    "numpy>=1.26, <2",
+    "numpy>=2.3",
     "scipy>=1.8.0",
     "pyrocko>=2022.06.10",
     "seisbench>=0.9",
