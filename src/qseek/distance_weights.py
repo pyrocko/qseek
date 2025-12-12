@@ -20,6 +20,31 @@ MB = 1024**2
 logger = logging.getLogger(__name__)
 
 
+def weights_gaussian(
+    distances: np.ndarray,
+    radius: float,
+    exponent: float = 2.0,
+    normalize: bool = True,
+) -> np.ndarray:
+    weights = np.exp(-((distances / radius) ** exponent))
+    if normalize:
+        weights /= weights.max()
+    return weights
+
+
+def weights_exponential(
+    distances: np.ndarray,
+    radius: float,
+    exponent: float = 2.0,
+    waterlevel: float = 0.0,
+    normalize: bool = True,
+) -> np.ndarray:
+    weights = (1 - waterlevel) / (1 + (distances / radius) ** exponent) + waterlevel
+    if normalize:
+        weights /= weights.max()
+    return weights
+
+
 class DistanceWeights(BaseModel):
     shape: Literal["exponential", "gaussian"] = Field(
         default="exponential",
@@ -57,26 +82,26 @@ class DistanceWeights(BaseModel):
         node_coords = get_node_coordinates(nodes, system="geographic")
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
         return np.linalg.norm(
-            self._station_coords_ecef - node_coords[:, np.newaxis], axis=2
+            self._station_coords_ecef - node_coords[:, np.newaxis],
+            axis=2,
         )
 
     def calc_weights_gaussian(self, distances: np.ndarray) -> np.ndarray:
-        exp = self.exponent
-        radius = self.radius_meters
-        weights = np.exp(-((distances / radius) ** exp))
-        if self.normalize:
-            weights /= weights.max()
-        return weights
+        return weights_gaussian(
+            distances,
+            radius=self.radius_meters,
+            exponent=self.exponent,
+            normalize=self.normalize,
+        )
 
     def calc_weights(self, distances: np.ndarray) -> np.ndarray:
-        exp = self.exponent
-        radius = self.radius_meters
-        waterlevel = self.waterlevel
-
-        weights = (1 - waterlevel) / (1 + (distances / radius) ** exp) + waterlevel
-        if self.normalize:
-            weights /= weights.max()
-        return weights
+        return weights_exponential(
+            distances,
+            radius=self.radius_meters,
+            exponent=self.exponent,
+            waterlevel=self.waterlevel,
+            normalize=self.normalize,
+        )
 
     def prepare(self, stations: Stations, octree: Octree) -> None:
         logger.info("preparing distance weights")

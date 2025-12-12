@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from pydantic import (
-    AwareDatetime,
     DirectoryPath,
     Field,
     PositiveInt,
@@ -29,6 +28,7 @@ from qseek.stats import Stats, get_progress
 from qseek.utils import (
     NSL,
     QUEUE_SIZE,
+    DateTime,
     datetime_now,
     human_readable_bytes,
     setup_rich_logging,
@@ -192,13 +192,13 @@ class SDSArchive(WaveformProvider):
         description="Path to the root of the SDS archive.",
     )
 
-    start_time: AwareDatetime | None = Field(
+    start_time: DateTime | None = Field(
         default=None,
         description="Start time for the search in "
         "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
         "E.g. `2024-12-30T00:00:00Z`.",
     )
-    end_time: AwareDatetime | None = Field(
+    end_time: DateTime | None = Field(
         default=None,
         description="End time for the search in "
         "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
