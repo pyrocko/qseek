@@ -171,7 +171,8 @@ class StationTravelTimeTable(BaseModel):
         method: InterpolationMethod = "linear",
     ) -> float:
         interpolator = self._get_travel_time_interpolator()
-        return float(interpolator([source_distance, source_depth], method=method))
+        traveltime = interpolator([source_distance, source_depth], method=method)
+        return float(traveltime.squeeze())
 
     async def get_travel_times(
         self,
