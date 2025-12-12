@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from typing import (
@@ -30,11 +31,13 @@ import numpy as np
 import psutil
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     BeforeValidator,
     ByteSize,
     PlainSerializer,
     StringConstraints,
+    WrapValidator,
 )
 from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
@@ -259,6 +262,39 @@ def _range_validator(v: _Range) -> _Range:
 
 
 Range = Annotated[_Range, AfterValidator(_range_validator)]
+
+
+def _parse_date(v, handler) -> datetime:
+    now = datetime.now(tz=timezone.utc)
+    if v == "now":
+        return now
+    if v == "today":
+        return datetime(
+            year=now.year,
+            month=now.month,
+            day=now.day,
+            tzinfo=timezone.utc,
+        )
+    if v == "yesterday":
+        yesterday = now - timedelta(days=1)
+        return datetime(
+            year=yesterday.year,
+            month=yesterday.month,
+            day=yesterday.day,
+            tzinfo=timezone.utc,
+        )
+    with contextlib.suppress(ValueError):
+        iso_date = date.fromisoformat(v)
+        return datetime(
+            year=iso_date.year,
+            month=iso_date.month,
+            day=iso_date.day,
+            tzinfo=timezone.utc,
+        )
+    return handler(v)
+
+
+DateTime = Annotated[AwareDatetime, WrapValidator(_parse_date)]
 
 
 def time_to_path(datetime: datetime) -> str:
