@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
 import numpy as np
 import pyrocko.orthodrome as od
-from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
+from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, PrivateAttr
 
 from qseek.cache_lru import ArrayLRUCache
 from qseek.octree import get_node_coordinates
@@ -45,23 +45,51 @@ def weights_exponential(
     return weights
 
 
+def weights_gaussian_min_stations(
+    distances: np.ndarray,
+    radius: float,
+    exponent: float = 2.0,
+    required_stations: int = 5,
+    waterlevel: float = 0.0,
+) -> np.ndarray:
+    sorted_distances = np.sort(distances, axis=0)
+    required_stations = min(required_stations, distances.shape[1] - 1)
+
+    threshold_distances = (
+        sorted_distances[:, required_stations][:, np.newaxis]
+        if required_stations > 0
+        else 0.0
+    )
+
+    weights = np.exp(-(((distances - threshold_distances) / radius) ** exponent))
+    weights[:, :required_stations] = 1.0
+    if waterlevel > 0.0:
+        weights = (1 - waterlevel) * weights + waterlevel
+    return weights
+
+
 class DistanceWeights(BaseModel):
     shape: Literal["exponential", "gaussian"] = Field(
         default="exponential",
         description="Shape of the decay function. 'gaussian' or 'exponential'."
         " Default is 'exponential'.",
     )
-    exponent: float = Field(
-        default=2,
-        description="Exponent of the spatial decay function. For 'gaussian' decay an"
-        " exponent of 0.5 is recommended. Default is 2.",
-        ge=0.0,
-    )
     radius_meters: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Cutoff distance for the spatial decay function in meters."
         " 'mean_interstation' uses the mean interstation distance for the radius."
         " Default is 'mean_interstation'.",
+    )
+    min_required_stations: PositiveInt = Field(
+        default=4,
+        description="Minimum number of stations to assign full weight in the"
+        " exponential decay function. Default is 5.",
+    )
+    exponent: float = Field(
+        default=2.0,
+        description="Exponent of the spatial decay function. For 'gaussian' decay an"
+        " exponent of 0.5 is recommended. Default is 2.",
+        ge=0.0,
     )
     waterlevel: float = Field(
         default=0.0,
@@ -95,23 +123,21 @@ class DistanceWeights(BaseModel):
         )
 
     def calc_weights(self, distances: np.ndarray) -> np.ndarray:
-        return weights_exponential(
+        return weights_gaussian_min_stations(
             distances,
+            required_stations=self.min_required_stations,
             radius=self.radius_meters,
             exponent=self.exponent,
             waterlevel=self.waterlevel,
-            normalize=self.normalize,
         )
 
     def prepare(self, stations: Stations, octree: Octree) -> None:
         logger.info("preparing distance weights")
 
-        if self.shape == "gaussian":
-            if self.radius_meters == "mean_interstation":
-                logger.warning(
-                    "gaussian distance weighting uses mean interstation"
-                    " distance as radius"
-                )
+        if self.shape == "gaussian" and self.radius_meters != "mean_interstation":
+            logger.warning(
+                "gaussian distance weighting uses mean interstation distance as radius"
+            )
             self.radius_meters = "mean_interstation"
 
         if self.radius_meters == "mean_interstation":
@@ -163,7 +189,6 @@ class DistanceWeights(BaseModel):
                 distances[idx] = node_lut[node.hash()][station_indices]
             except KeyError:
                 fill_nodes.append(node)
-                continue
 
         if fill_nodes:
             self.fill_lut(fill_nodes)
@@ -174,4 +199,4 @@ class DistanceWeights(BaseModel):
             )
             return await self.get_weights(nodes, stations)
 
-        return self.calc_weights_gaussian(distances)
+        return self.calc_weights(distances)
