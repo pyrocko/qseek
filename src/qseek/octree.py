@@ -188,12 +188,12 @@ class Node:
         """
         if self.tree is None:
             raise AttributeError("parent tree not set")
-        border = (
+        _border_width = (
             self.tree.root_node_size
             if border_width == "root_node_size"
             else border_width
         )
-        return self.get_distance_border(with_surface) <= border
+        return self.get_distance_border(with_surface) <= _border_width
 
     def can_split(self) -> bool:
         """Check if the node can be split.

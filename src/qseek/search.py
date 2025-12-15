@@ -172,7 +172,7 @@ class SearchStats(Stats):
 
     def log(self) -> None:
         log_str = (
-            f"{self.batch_count + 1}/{self.batch_count_total or '?'} {self.batch_time}"
+            f"{self.batch_count}/{self.batch_count_total or '?'} {self.batch_time}"
         )
         logger.info(
             "%s%% processed - batch %s in %s",
@@ -782,6 +782,7 @@ class OctreeSearch:
         self.pick_confidence_threshold = pick_confidence_threshold
         self.node_interpolation = node_interpolation
         self.attach_arrivals = attach_arrivals
+
         self.neighbor_search = neighbor_search
         self.semblance_density_search = semblance_density_search
 
@@ -901,7 +902,7 @@ class OctreeSearch:
             tuple[list[EventDetection], Trace]: The event detections and the
                 semblance traces used for the search.
         """
-        new_nodes = new_nodes or octree.nodes
+        nodes = new_nodes or octree.nodes
         sampling_rate = images.sampling_rate
         if not semblance:
             sr = sampling_rate
@@ -923,14 +924,14 @@ class OctreeSearch:
                 image=image,
                 semblance=semblance,
                 padded_start_time=images.start_time - self.window_padding,
-                nodes=new_nodes,
+                nodes=nodes,
                 n_threads=n_threads_parstack,
             )
 
         # Applying the generalized mean to the semblance
         # semblance.normalize(images.cumulative_weight())
 
-        leaf_node_mask = np.array([node.is_leaf() for node in octree.nodes], dtype=bool)
+        leaf_node_mask = np.fromiter((node.is_leaf() for node in octree.nodes), bool)
         semblance.set_leaf_nodes(leaf_node_mask)
 
         if self.detection_threshold == "MAD":
@@ -992,9 +993,10 @@ class OctreeSearch:
 
         refine_nodes = {node for node in refine_nodes if node.can_split()}
 
-        # refine_nodes is empty when all sources fall into smallest octree nodes
-        new_nodes = []
+        # recursivley refine_nodes is empty
+        # if all sources fall into smallest octree nodes
         if refine_nodes:
+            new_nodes = []
             node_size_max = max(node.size for node in refine_nodes)
             new_level = 0
             for node in refine_nodes:
