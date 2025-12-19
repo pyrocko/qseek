@@ -10,13 +10,11 @@ import numpy as np
 from pydantic import BaseModel
 from pyrocko.io import save
 
-from qseek.models.station import Stations
+from qseek.models.station import StationInventory, StationList
 from qseek.utils import SDS_PYROCKO_SCHEME, PhaseDescription, resample
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
-
-    from qseek.octree import Octree
 
 
 PhaseName = Literal["P", "S"]
@@ -37,12 +35,7 @@ class ImageFunction(BaseModel):
     def name(self) -> str:
         return self.__class__.__name__
 
-    async def prepare(
-        self,
-        station: Stations,
-        octree: Octree,
-        rundir: Path | None = None,
-    ) -> None: ...
+    async def prepare(self) -> None: ...
 
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         """Process traces to generate image functions.
@@ -55,7 +48,7 @@ class ImageFunction(BaseModel):
         """
         ...
 
-    def get_blinding(self, sampling_rate: float) -> timedelta:
+    def get_blinding(self) -> timedelta:
         """Blinding duration for the image function. Added to padded waveforms.
 
         Args:
@@ -83,10 +76,10 @@ class WaveformImage:
     traces: list[Trace]
     detection_half_width: float
 
-    _stations: Stations | None = None
+    _stations: StationList | None = None
 
     @property
-    def stations(self) -> Stations:
+    def stations(self) -> StationList:
         if self._stations is None:
             raise ValueError("Stations have not been set for this image.")
         return self._stations
@@ -106,9 +99,9 @@ class WaveformImage:
     def has_traces(self) -> bool:
         return bool(self.traces)
 
-    def set_stations(self, stations: Stations) -> None:
+    def set_stations(self, stations: StationInventory) -> None:
         """Set stations from the image's available traces."""
-        self._stations = stations.select_from_traces(self.traces)
+        self._stations = StationList(stations.select_from_traces(self.traces))
 
     def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
         """Resample traces in-place.

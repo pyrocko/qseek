@@ -28,8 +28,7 @@ if TYPE_CHECKING:
     from rich.table import Table
 
     from qseek.images.base import WaveformImage
-    from qseek.models.station import Stations
-    from qseek.octree import Octree
+    from qseek.models.station import StationInventory
     from qseek.waveforms.base import WaveformBatch
 
 
@@ -97,14 +96,10 @@ class ImageFunctions(RootModel):
         if len(set(phases)) != len(phases):
             raise ValueError("A phase was provided twice")
 
-    async def prepare(
-        self,
-        station: Stations,
-        octree: Octree,
-        rundir: Path | None = None,
-    ) -> None:
+    async def prepare(self) -> None:
+        logger.debug("preparing image functions...")
         for image in self:
-            await image.prepare(station, octree)
+            await image.prepare()
 
     async def get_images(self, batch: WaveformBatch) -> WaveformImages:
         images = WaveformImages(
@@ -179,8 +174,8 @@ class ImageFunctions(RootModel):
         """
         return tuple(chain.from_iterable(image.get_provided_phases() for image in self))
 
-    def get_blinding(self, sampling_rate: float) -> timedelta:
-        return max(image.get_blinding(sampling_rate) for image in self)
+    def get_blinding(self) -> timedelta:
+        return max(image.get_blinding() for image in self)
 
     def __iter__(self) -> Iterator[ImageFunction]:
         return iter(self.root)
@@ -239,7 +234,7 @@ class WaveformImages:
             image.resample(sampling_rate, max_normalize)
         self._sampling_rate = sampling_rate
 
-    def set_stations(self, stations: Stations) -> None:
+    def set_stations(self, stations: StationInventory) -> None:
         """Set the images stations.
 
         Args:
