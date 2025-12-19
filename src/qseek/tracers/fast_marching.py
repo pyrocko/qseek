@@ -17,7 +17,7 @@ from scipy.interpolate import RegularGridInterpolator
 
 from qseek.cache_lru import ArrayLRUCache
 from qseek.models.layered_model import LayeredModel
-from qseek.models.station import Station, Stations
+from qseek.models.station import Station, StationInventory, StationList
 from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
@@ -238,10 +238,9 @@ class FastMarchingTracer(RayTracer):
     )
 
     _octree: Octree = PrivateAttr()
-    _cached_stations: Stations = PrivateAttr()
+    _stations: StationList = PrivateAttr()
     _layered_model: LayeredModel | None = PrivateAttr(None)
     _node_lut: ArrayLRUCache[tuple[bytes, Phase]] = PrivateAttr()
-    _cached_station_indices: dict[str, int] = PrivateAttr(default_factory=dict)
 
     def get_travel_time_table(
         self,
@@ -274,18 +273,16 @@ class FastMarchingTracer(RayTracer):
     async def prepare(
         self,
         octree: Octree,
-        stations: Stations,
+        stations: StationInventory,
         rundir: Path | None = None,
     ) -> None:
         """Prepare the tracer for a given set of stations."""
+        logger.debug("preparing FastMarchingTracer...")
         if self._layered_model is None:
             raise ValueError("layered model must be set for FastMarchingTracer")
 
-        self._cached_stations = stations
+        self._stations = StationList.from_inventory(stations)
         self._octree = octree
-        self._cached_station_indices = {
-            station.nsl.pretty: idx for idx, station in enumerate(stations)
-        }
 
         if rundir:
             export_dir = rundir / "velocity-model"
@@ -360,7 +357,7 @@ class FastMarchingTracer(RayTracer):
 
         eikonal_work = [
             worker_station_travel_time(station, phase)
-            for station in self._cached_stations
+            for station in self._stations
             for phase in self.phases
         ]
         tasks = [asyncio.create_task(work) for work in eikonal_work]
@@ -373,7 +370,7 @@ class FastMarchingTracer(RayTracer):
         n_nodes = len(nodes)
 
         surface_offsets = surface_distances_reference(
-            nodes, self._cached_stations, self._octree.location
+            nodes, self._stations, self._octree.location
         ).T
         node_depths = (
             np.array([n.depth for n in nodes]) + self._octree.location.effective_depth
@@ -382,9 +379,9 @@ class FastMarchingTracer(RayTracer):
         with get_progress() as progress:
             status = progress.add_task(
                 f"interpolating travel times for {n_nodes} nodes",
-                total=self._cached_stations.n_stations,
+                total=self._stations.n_stations,
             )
-            for idx, station in enumerate(self._cached_stations):
+            for idx, station in enumerate(self._stations):
                 table = self.get_travel_time_table(station, phase)
                 travel_times.append(
                     await table.get_travel_times(
@@ -399,7 +396,7 @@ class FastMarchingTracer(RayTracer):
 
         node_lut = self._node_lut
         for node, station_travel_times in zip(nodes, travel_times, strict=True):
-            node_lut[node.hash(), phase] = station_travel_times.astype(np.float32)
+            node_lut[node.hash(), phase] = station_travel_times
 
     def get_travel_time_location(
         self,
@@ -421,7 +418,7 @@ class FastMarchingTracer(RayTracer):
         self,
         phase: Phase,
         nodes: Sequence[Node],
-        stations: Stations,
+        stations: Sequence[Station],
     ) -> np.ndarray:
         """Get travel times for a phase from a source to a set of stations.
 
@@ -434,7 +431,7 @@ class FastMarchingTracer(RayTracer):
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
         station_indices = np.fromiter(
-            (self._cached_station_indices[sta.nsl.pretty] for sta in stations),
+            (self._stations.get_index(sta.nsl) for sta in stations),
             dtype=int,
         )
         station_travel_times = []
@@ -458,7 +455,7 @@ class FastMarchingTracer(RayTracer):
             )
             return await self.get_travel_times(phase, nodes, stations)
 
-        return np.asarray(station_travel_times).astype(float, copy=False)
+        return np.asarray(station_travel_times).astype(np.float32)
 
     def get_arrivals(
         self,

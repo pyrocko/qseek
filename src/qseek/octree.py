@@ -26,13 +26,13 @@ from pydantic import (
 )
 from pyrocko import orthodrome as od
 
-from qseek.models.location import CoordSystem, Location
+from qseek.models.location import CoordSystem, Location, get_coordinates
 from qseek.utils import Range
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ KM = 1e3
 
 
 def get_node_coordinates(
-    nodes: Iterable[Node],
+    nodes: Sequence[Node],
     system: CoordSystem = "geographic",
 ) -> np.ndarray:
     if system == "geographic":
@@ -64,18 +64,21 @@ def get_node_coordinates(
     raise ValueError(f"Unknown coordinate system: {system}")
 
 
-def distances_stations(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
+def distances_stations(
+    nodes: Sequence[Node],
+    locations: Sequence[Location],
+) -> np.ndarray:
     """Returns the 3D distances from all nodes to all stations.
 
     Args:
         nodes (Sequence[Node]): Nodes to calculate distance from.
-        stations (Stations): Stations to calculate distance to.
+        locations (Sequence[Location]): Locations to calculate distance to.
 
     Returns:
-        np.ndarray: Of shape (n-nodes, n-stations).
+        np.ndarray: Of shape (N-nodes, N-locations).
     """
     node_coords = get_node_coordinates(nodes, system="geographic")
-    sta_coords = stations.get_coordinates(system="geographic")
+    sta_coords = get_coordinates(locations, system="geographic")
 
     sta_coords = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
     node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
@@ -360,7 +363,7 @@ class Node:
         return hash(self.hash())
 
 
-class Octree(BaseModel, Iterator[Node]):
+class Octree(BaseModel, Iterator[Node], Sequence[Node]):
     location: Location = Field(
         default=Location(lat=0.0, lon=0.0),
         description="The geographical center of the octree.",
@@ -470,7 +473,7 @@ class Octree(BaseModel, Iterator[Node]):
         """List of nodes in the octree."""
         return self._nodes
 
-    def _add_nodes(self, nodes: Iterable[Node]) -> None:
+    def _add_nodes(self, nodes: Sequence[Node]) -> None:
         self._nodes.extend(nodes)
         self._clear_cache()
 
@@ -501,6 +504,9 @@ class Octree(BaseModel, Iterator[Node]):
 
     def __next__(self) -> Node:
         return next(iter(self.nodes))
+
+    def __len__(self) -> int:
+        return len(self.nodes)
 
     def __getitem__(self, idx: int) -> Node:
         try:
@@ -608,13 +614,13 @@ class Octree(BaseModel, Iterator[Node]):
             node.semblance = node_semblance
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
-        if self._cached_coordinates.get(system) is None:
+        if system not in self._cached_coordinates:
             coords = get_node_coordinates(self.nodes, system=system)
             coords.setflags(write=False)
             self._cached_coordinates[system] = coords
         return self._cached_coordinates[system]
 
-    def distances_stations(self, stations: Stations) -> np.ndarray:
+    def distances_stations(self, stations: StationInventory) -> np.ndarray:
         """Returns the 3D distances from all nodes to all stations.
 
         Args:
@@ -630,7 +636,7 @@ class Octree(BaseModel, Iterator[Node]):
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
         return np.linalg.norm(sta_coords - node_coords[:, np.newaxis], axis=2)
 
-    def distances_stations_surface(self, stations: Stations) -> np.ndarray:
+    def distances_stations_surface(self, stations: StationInventory) -> np.ndarray:
         """Returns the surface distance from all nodes to all stations.
 
         Args:

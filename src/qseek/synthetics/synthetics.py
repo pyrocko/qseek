@@ -12,7 +12,7 @@ from pyrocko.model.event import Event, dump_events
 from pyrocko.trace import Trace
 
 from qseek.models.location import Location
-from qseek.models.station import Station, Stations
+from qseek.models.station import Station, StationInventory
 from qseek.tracers.base import RayTracer
 from qseek.utils import NSL, PhaseDescription
 
@@ -173,7 +173,7 @@ class SyntheticEventCatalog(BaseModel):
     def add_event(
         self,
         event: SyntheticEvent,
-        stations: Stations,
+        stations: StationInventory,
         ray_tracer: RayTracer,
     ) -> SyntheticEvent:
         """Add a synthetic event and compute arrivals at stations.
@@ -382,9 +382,9 @@ class SyntheticEventCatalog(BaseModel):
         end_time = max(arr for arr in last_arrivals if arr is not None)
         return start_time, end_time
 
-    def get_stations(self) -> Stations:
+    def get_stations(self) -> StationInventory:
         stations = {}
         for event in self.events:
             for receiver in event.get_receivers():
                 stations[receiver.nsl] = receiver.as_station()
-        return Stations.model_construct(stations=list(stations.values()))
+        return StationInventory.model_construct(stations=list(stations.values()))

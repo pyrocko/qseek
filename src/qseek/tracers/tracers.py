@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Iterator, Union
+from typing import TYPE_CHECKING, Annotated, Iterator, Sequence, Union
 
 import numpy as np
 from pydantic import Field, RootModel
@@ -16,8 +16,8 @@ from qseek.tracers import (
 from qseek.tracers.base import RayTracer
 
 if TYPE_CHECKING:
-    from qseek.models.station import Stations
-    from qseek.octree import Octree
+    from qseek.models.station import Station, StationInventory
+    from qseek.octree import Node, Octree
     from qseek.utils import PhaseDescription
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class RayTracers(RootModel):
     async def prepare(
         self,
         octree: Octree,
-        stations: Stations,
+        stations: StationInventory,
         phases: tuple[PhaseDescription, ...] | None = None,
         rundir: Path | None = None,
     ) -> None:
@@ -76,21 +76,21 @@ class RayTracers(RootModel):
 
     async def get_travel_time_span(
         self,
-        octree: Octree,
-        stations: Stations,
-        phases: tuple[PhaseDescription, ...] | None = None,
+        nodes: Sequence[Node],
+        stations: Sequence[Station],
+        phases: tuple[PhaseDescription, ...] = (),
     ) -> tuple[timedelta, timedelta]:
         """Get the minimum and maximum travel times for the given phases.
 
         Args:
-            octree (Octree): Octree to use for travel time calculation.
+            nodes (Sequence[Node]): Nodes to get traveltime for.
             stations (Stations): Stations to calculate travel times to.
-            phases (tuple[PhaseDescription, ...] | None, optional): Phases to calculate
-                travel times for. If None, all available phases are used.
-                Defaults to None.
+            phases (tuple[PhaseDescription, ...], optional): Phases to calculate
+                travel times for. If empty, all available phases are used.
+                Defaults to ().
 
         Returns:
-            tuple[timedelta, timedelta]: _description_
+            tuple[timedelta, timedelta]: Minimum and maximum travel times.
         """
         min_traveltime = float("inf")
         max_traveltime = 0.0
@@ -98,11 +98,14 @@ class RayTracers(RootModel):
         phases = phases or self.get_available_phases()
         for phase in phases:
             tracer = self.get_phase_tracer(phase)
-            traveltimes = await tracer.get_travel_times(phase, octree, stations)
+            traveltimes = await tracer.get_travel_times(phase, nodes, stations)
             min_traveltime = min(np.nanmin(traveltimes), min_traveltime)
             max_traveltime = max(np.nanmax(traveltimes), max_traveltime)
 
-        return (timedelta(seconds=min_traveltime), timedelta(seconds=max_traveltime))
+        return (
+            timedelta(seconds=float(min_traveltime)),
+            timedelta(seconds=float(max_traveltime)),
+        )
 
     def __iter__(self) -> Iterator[RayTracer]:
         yield from self.root

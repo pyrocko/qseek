@@ -28,7 +28,7 @@ from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.magnitudes import EventMagnitudeCalculatorType
-from qseek.models import Stations
+from qseek.models import StationInventory
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
@@ -65,6 +65,8 @@ logger = logging.getLogger(__name__)
 SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
 IgnoreBoundary = Literal[False, "with_surface", "without_surface"]
 
+KM = 1e3
+
 
 class SearchStats(Stats):
     project_name: str = "qseek"
@@ -74,8 +76,8 @@ class SearchStats(Stats):
     processed_time: timedelta = timedelta(seconds=0.0)
     processed_bytes: int = 0
     processing_time: timedelta = timedelta(seconds=0.0)
-    latest_processing_rate: float = 0.0
-    latest_processing_speed: timedelta = timedelta(seconds=0.0)
+    current_processing_rate: float = 0.0
+    current_processing_speed: timedelta = timedelta(seconds=0.0)
 
     current_stations: int = 0
     total_stations: int = 0
@@ -161,8 +163,8 @@ class SearchStats(Stats):
         self.processed_bytes += batch.nbytes
         self.processed_time += batch.duration
         self.processing_time += duration
-        self.latest_processing_rate = batch.nbytes / duration.total_seconds()
-        self.latest_processing_speed = batch.duration / duration.total_seconds()
+        self.current_processing_rate = batch.nbytes / duration.total_seconds()
+        self.current_processing_speed = batch.duration / duration.total_seconds()
         self.current_stations = batch.n_stations
         self.current_networks = batch.n_networks
 
@@ -181,7 +183,7 @@ class SearchStats(Stats):
             self._batch_processing_times[-1],
         )
         logger.info(
-            "processing rate %s/s", human_readable_bytes(self.latest_processing_rate)
+            "processing rate %s/s", human_readable_bytes(self.current_processing_rate)
         )
 
     def _populate_table(self, table: Table) -> None:
@@ -233,8 +235,8 @@ class SearchProgress(BaseModel):
 
 class Search(BaseModel):
     project_dir: Path = Path(".")
-    stations: Stations = Field(
-        default=Stations(),
+    stations: StationInventory = Field(
+        default=StationInventory(),
         description="Station inventory from StationXML or Pyrocko Station YAML.",
     )
     data_provider: WaveformProviderType = Field(
@@ -455,20 +457,28 @@ class Search(BaseModel):
         progress_file.write_text(self._progress.model_dump_json())
 
     async def get_window_padding(self) -> timedelta:
-        """Initialise boundaries."""
-        # Grid/receiver distances
+        """Get window padding length based on maximum travel time shifts.
 
+        This is a calculation based on the maximum travel time shifts from the ray
+        tracers, the image function blinding, and the detection blinding.
+
+
+        Returns:
+            timedelta: Window padding length.
+        """
         # TODO: minimum shift is calculated on the coarse octree grid, which is
         # not necessarily the same as the fine grid used for semblance calculation
         shift_min, shift_max = await self.ray_tracers.get_travel_time_span(
             self.octree,
-            self.stations,
+            list(self.stations),
             self.image_functions.get_phases(),
         )
         shift_range = shift_max - shift_min
-        logger.info("travel time shift range %s", shift_range)
+        logger.info("maximum travel time shift %s", shift_max)
 
-        return shift_range + self.detection_blinding
+        return (
+            shift_range + self.image_functions.get_blinding() + self.detection_blinding
+        )
 
     async def prepare(self) -> None:
         """Prepares the search by initializing necessary components and data.
@@ -486,16 +496,16 @@ class Search(BaseModel):
             None
         """
         logger.info("preparing search components")
-        self.stations.prepare(self.octree)
+        self.stations.prepare(self.octree.location)
 
         self.data_provider.prepare(self.stations)
-        self.stations.filter_stations_by_nsl(self.data_provider.available_nsls())
+        self.stations.filter_stations(self.data_provider.available_nsls())
 
         distances = self.octree.distances_stations(self.stations)
         logger.info(
-            "source-station distance range: %.1f - %.1f m",
-            distances.min(),
-            distances.max(),
+            "source-station distance range: %.1f - %.1f km",
+            distances.min() / KM,
+            distances.max() / KM,
         )
 
         await self.ray_tracers.prepare(
@@ -505,12 +515,7 @@ class Search(BaseModel):
             rundir=self._rundir,
         )
         await self.pre_processing.prepare()
-
-        await self.image_functions.prepare(
-            self.stations,
-            self.octree,
-            rundir=self._rundir,
-        )
+        await self.image_functions.prepare()
 
         if self.distance_weights:
             self.distance_weights.prepare(
@@ -548,10 +553,7 @@ class Search(BaseModel):
         else:
             logger.info("starting search")
 
-        window_padding = (
-            await self.get_window_padding()
-            + self.image_functions.get_blinding(self.semblance_sampling_rate)
-        )
+        window_padding = await self.get_window_padding()
         logger.info("window padding length is: %s", window_padding)
 
         batches = self.data_provider.iter_batches(
@@ -816,16 +818,16 @@ class OctreeSearch:
 
         ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
         traveltimes = await ray_tracer.get_travel_times(
-            image.phase,
-            nodes,
-            image.stations,
+            nodes=nodes,
+            stations=image.stations,
+            phase=image.phase,
         )
 
         if self.station_corrections:
             station_delays = await self.station_corrections.get_delays(
-                image.stations.get_all_nsl(),
-                image.phase,
-                nodes,
+                image.stations.get_nsls(),
+                nodes=nodes,
+                phase=image.phase,
             )
             traveltimes += station_delays
 
@@ -844,8 +846,8 @@ class OctreeSearch:
 
         if self.distance_weights:
             weights *= await self.distance_weights.get_weights(
-                nodes,
-                image.stations,
+                nodes=nodes,
+                stations=image.stations,
             )
 
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -856,13 +858,13 @@ class OctreeSearch:
 
         def expand_array(array: np.ndarray) -> np.ndarray:
             """Fill arrays with zeros to pad the matrix."""
-            array_n_nodes = array.shape[0]
-            if array_n_nodes == octree.n_nodes:
+            n_nodes = array.shape[0]
+            if n_nodes == octree.n_nodes:
                 return array
 
             n_stations = image.stations.n_stations
             filled = np.zeros((octree.n_nodes, n_stations), dtype=array.dtype)
-            filled[-array_n_nodes:] = array
+            filled[-n_nodes:] = array
             return filled
 
         await semblance.add_semblance(
@@ -877,7 +879,7 @@ class OctreeSearch:
         self,
         images: WaveformImages,
         octree: Octree,
-        new_nodes: Sequence[Node] | None = None,
+        new_nodes: Sequence[Node] = (),
         semblance: Semblance | None = None,
         n_threads_parstack: int = 0,
         n_threads_argmax: int = 0,
@@ -889,8 +891,8 @@ class OctreeSearch:
             octree (Octree | None, optional): The octree to use for the search.
                 Defaults to None.
             new_nodes (Sequence[Node] | None, optional): The new nodes to use for the
-                search. If none all nodes from the provided octree are taken.
-                Defaults to None.
+                search. If not provided, the nodes from the octree are used.
+                Defaults to an empty sequence.
             semblance (Semblance | None, optional): The semblance to use for the search.
                 If None, a new instance is created. Defaults to None.
             n_threads_parstack (int, optional): Number of threads for stacking and
@@ -1062,7 +1064,7 @@ class OctreeSearch:
 
                 if self.station_corrections:
                     for arrival, nsl in zip(
-                        arrivals_model, image.stations.get_all_nsl(), strict=True
+                        arrivals_model, image.stations.get_nsls(), strict=True
                     ):
                         delay = self.station_corrections.get_delay(
                             nsl, image.phase, node=source_node

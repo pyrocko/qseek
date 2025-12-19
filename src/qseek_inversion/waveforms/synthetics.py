@@ -19,7 +19,7 @@ from qseek_inversion.waveforms.base import WaveformSelection
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
 
 
 class SyntheticEvents(WaveformSelection):
@@ -71,7 +71,7 @@ class SyntheticEvents(WaveformSelection):
         octree = search.octree
 
         search.stations.sanitize_stations()
-        search.stations.filter_stations_by_nsl(search.data_provider.available_nsls())
+        search.stations.filter_stations(search.data_provider.available_nsls())
         self.stations = search.stations
 
         await self.ray_tracer.prepare(search.octree, search.stations)
@@ -127,7 +127,7 @@ class SyntheticEvents(WaveformSelection):
             phase=phase, start_time=start_time, end_time=end_time
         )
 
-    def get_stations(self) -> Stations:
+    def get_stations(self) -> StationInventory:
         return self.stations
 
     async def get_images(self, window_padding: timedelta) -> list[WaveformImages]:

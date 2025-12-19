@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
 
 import numpy as np
 from pydantic import (
@@ -23,7 +23,6 @@ from qseek.utils import _NSL, NSL
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
-    from qseek.octree import Octree
 
 from qseek.models.location import CoordSystem, Location
 
@@ -90,7 +89,7 @@ class Station(Location):
         return hash((super().__hash__(), self.nsl))
 
 
-class Stations(BaseModel):
+class StationInventory(BaseModel):
     pyrocko_station_yamls: list[FilePath] = Field(
         default=[],
         description="List of [Pyrocko station YAML]"
@@ -179,17 +178,17 @@ class Stations(BaseModel):
         if self.n_stations == 0:
             raise ValueError("no stations available, all stations blacklisted")
 
-    def filter_stations_by_nsl(self, nsls: set[NSL]) -> None:
-        """Remove stations by NSL codes.
+    def filter_stations(self, nsls: Iterable[NSL]) -> None:
+        """Filter stations by NSL codes.
+
+        All stations not in the provided NSL codes are removed from the inventory.
 
         Args:
             nsls (list[NSL]): List of NSL codes to keep.
         """
-        available_nsls = {nsl.pretty for nsl in nsls}
-
         n_removed_stations = 0
         for sta in self.stations.copy():
-            if sta.nsl.pretty not in available_nsls:
+            if sta.nsl not in nsls:
                 logger.warning(
                     "removing station %s from inventory",
                     sta.nsl.pretty,
@@ -205,12 +204,21 @@ class Stations(BaseModel):
         if not self.stations:
             raise ValueError("no stations available, add waveforms to start detection")
 
-    def prepare(self, octree: Octree) -> None:
+    def prepare(self, location: Location) -> None:
+        """Prepare the station inventory.
+
+        Args:
+            location (Location): Location to calculate distances from.
+
+        Raises:
+            ValueError: If no stations are available after preparation.
+        """
         logger.info("preparing station inventory")
 
         if self.max_distance is not None:
             for sta in self.stations.copy():
-                distance = octree.location.distance_to(sta)
+                distance = location.distance_to(sta)
+
                 if distance > self.max_distance:
                     logger.warning(
                         "removing station %s: distance to octree is %g m",
@@ -246,11 +254,11 @@ class Stations(BaseModel):
         """Number of stations."""
         return len({sta.network for sta in self})
 
-    def get_all_nsl(self) -> list[NSL]:
+    def get_nsls(self) -> tuple[NSL, ...]:
         """Get all NSL codes from all stations."""
-        return [sta.nsl for sta in self]
+        return tuple(sta.nsl for sta in self)
 
-    def select_from_traces(self, traces: Iterable[Trace]) -> Stations:
+    def select_from_traces(self, traces: Sequence[Trace]) -> list[Station]:
         """Select stations by NSL code.
 
         Stations are not unique and are ordered by the input traces.
@@ -270,7 +278,7 @@ class Stations(BaseModel):
         except KeyError as exc:
             raise ValueError("could not find station information") from exc
 
-        return Stations.model_construct(stations=selected_stations)
+        return selected_stations
 
     def get_centroid(self) -> Location:
         """Get centroid location from all stations.
@@ -335,3 +343,45 @@ class Stations(BaseModel):
 
     def __hash__(self) -> int:
         return hash(sta for sta in self)
+
+
+class StationList(Sequence[Station]):
+    """A frozen station list."""
+
+    stations: list[Station]
+    _indices: dict[str, int]
+
+    def __init__(self, stations: Sequence[Station]) -> None:
+        self.stations = list(stations)
+        self._indices = {sta.nsl.pretty: idx for idx, sta in enumerate(stations)}
+
+    def __iter__(self) -> Iterator[Station]:
+        yield from self.stations
+
+    def __getitem__(self, index: int) -> Station:
+        return self.stations[index]
+
+    def __len__(self) -> int:
+        return len(self.stations)
+
+    def get_nsls(self) -> tuple[NSL, ...]:
+        return tuple(sta.nsl for sta in self.stations)
+
+    def get_index(self, nsl: NSL) -> int:
+        """Get the index of a station by its NSL code.
+
+        Args:
+            nsl (NSL): NSL code of the station.
+
+        Returns:
+            int: Index of the station.
+        """
+        return self._indices[nsl.pretty]
+
+    @classmethod
+    def from_inventory(cls, inventory: StationInventory) -> StationList:
+        return cls(stations=list(inventory))
+
+    @property
+    def n_stations(self) -> int:
+        return len(self.stations)
