@@ -23,6 +23,7 @@ from pyrocko.cake import PhaseDef, m2d
 from pyrocko.gf import meta
 
 from qseek.cache_lru import ArrayLRUCache
+from qseek.models.station import StationList
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
 from qseek.tracers.utils import LayeredEarthModel1D, surface_distances
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from qseek.models.location import Location
-    from qseek.models.station import Stations
+    from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree
 
 logger = logging.getLogger(__name__)
@@ -74,8 +75,7 @@ class TravelTimeTree(BaseModel):
     _sptree: spit.SPTree | None = PrivateAttr(None)
     _file: Path | None = PrivateAttr(None)
 
-    _cached_stations: Stations = PrivateAttr()
-    _cached_station_indices: dict[str, int] = PrivateAttr({})
+    _stations: StationList = PrivateAttr()
     _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
 
     def calculate_tree(self) -> spit.SPTree:
@@ -216,26 +216,27 @@ class TravelTimeTree(BaseModel):
                 )
         return self._sptree
 
-    async def init_lut(self, nodes: Sequence[Node], stations: Stations) -> None:
+    async def init_lut(
+        self,
+        nodes: Sequence[Node],
+        stations: Sequence[Station],
+    ) -> None:
         self._node_lut = ArrayLRUCache(
             f"cake-ttt-{self.timing.id}",
             short_name=self.timing.id,
         )
-        self._cached_stations = stations
-        self._cached_station_indices = {
-            sta.nsl.pretty: idx for idx, sta in enumerate(stations)
-        }
+        self._stations = StationList(stations)
         logger.info(
             "warming up traveltime LUT %s for %d stations and %d nodes",
             self.timing.definition,
-            stations.n_stations,
+            self._stations.n_stations,
             len(nodes),
         )
         await self.fill_lut(nodes)
 
     async def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling traveltimes LUT for %d nodes", len(nodes))
-        stations = self._cached_stations
+        stations = self._stations
 
         traveltimes = await self._interpolate_travel_times(
             surface_distances(nodes, stations),
@@ -247,23 +248,14 @@ class TravelTimeTree(BaseModel):
         for node, times in zip(nodes, traveltimes, strict=True):
             if np.all(np.isnan(times)):
                 logger.warning("no traveltimes for node %s", node)
-            node_lut[node.hash()] = times.astype(np.float32)
+            node_lut[node.hash()] = times
 
     async def get_travel_times(
         self,
         nodes: Sequence[Node],
-        stations: Stations,
+        stations: Sequence[Station],
     ) -> np.ndarray:
-        try:
-            station_indices = np.fromiter(
-                (self._cached_station_indices[sta.nsl.pretty] for sta in stations),
-                dtype=int,
-            )
-        except KeyError as exc:
-            raise ValueError(
-                "stations not found in cached stations, "
-                "was the LUT initialized with `TravelTimeTree.init_lut`?"
-            ) from exc
+        station_indices = self._stations.get_indices(stations)
 
         stations_travel_times = []
         fill_nodes = []
@@ -290,7 +282,7 @@ class TravelTimeTree(BaseModel):
     async def interpolate_travel_times(
         self,
         octree: Octree,
-        stations: Stations,
+        stations: Sequence[Station],
     ) -> np.ndarray:
         receiver_distances = surface_distances(octree.nodes, stations)
         receiver_depths = np.array([sta.effective_depth for sta in stations])
@@ -372,6 +364,7 @@ class CakeTracer(RayTracer):
     _travel_time_trees: dict[PhaseDescription, TravelTimeTree] = PrivateAttr(
         default_factory=dict
     )
+    _stations: StationList = PrivateAttr()
 
     @property
     def cache_dir(self) -> Path:
@@ -399,13 +392,14 @@ class CakeTracer(RayTracer):
     async def prepare(
         self,
         octree: Octree,
-        stations: Stations,
+        stations: StationInventory,
         rundir: Path | None = None,
     ) -> None:
         cached_trees = self._load_cached_trees()
         octree.reset()
+        self._stations = StationList.from_inventory(stations)
 
-        distances = surface_distances(octree.leaf_nodes, stations)
+        distances = surface_distances(octree.leaf_nodes, self._stations)
         source_depths = (
             np.asarray(octree.depth_bounds) - octree.location.effective_elevation
         )
@@ -453,7 +447,7 @@ class CakeTracer(RayTracer):
                 tree = TravelTimeTree.new(timing=timing, **traveltime_tree_args)
                 tree.save(self.cache_dir)
 
-            await tree.init_lut(octree.leaf_nodes, stations)
+            await tree.init_lut(octree.leaf_nodes, self._stations)
             self._travel_time_trees[phase_descr] = tree
 
         if rundir:
@@ -500,7 +494,7 @@ class CakeTracer(RayTracer):
         self,
         phase: str,
         nodes: Sequence[Node],
-        stations: Stations,
+        stations: Sequence[Station],
     ) -> np.ndarray:
         try:
             return await self._get_sptree_model(phase).get_travel_times(

@@ -44,6 +44,7 @@ class ArrayLRUCache(LRU, Generic[_KT]):
     size_bytes: int
     name: str
     short_name: str
+    dtype: np.dtype
 
     _all_caches_bytes: int = 0
 
@@ -52,12 +53,15 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         name: str,
         short_name: str = "",
         size_bytes: int = SIZE_MB,
+        dtype: np.dtype = np.float32,
     ) -> None:
         super().__init__(size=1, callback=self._remove_callback)
         self.size_bytes = 0
         self._max_size_bytes = size_bytes
         self.name = name
-        self.short_name = short_name or name
+        self.short_name = short_name or "".join(w[0] for w in name.split("-")).upper()
+        self.dtype = dtype
+
         CACHES.add(self)
 
     def set_name(self, name: str) -> None:
@@ -79,6 +83,7 @@ class ArrayLRUCache(LRU, Generic[_KT]):
     def __setitem__(self, key, value: np.ndarray) -> None:
         self.size_bytes += value.nbytes
         self._all_caches_bytes += value.nbytes
+        value = value.astype(self.dtype)
         value.setflags(write=False)
 
         if self.size_bytes < self._max_size_bytes:

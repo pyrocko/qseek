@@ -1,2 +1,2 @@
 from .location import Location  # noqa
-from .station import Station, Stations  # noqa
+from .station import Station, StationInventory  # noqa

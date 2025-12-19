@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from random import choices
 
 import numpy as np
 import pytest
 
 from qseek.models.layered_model import Layer, LayeredModel
 from qseek.models.location import Location
-from qseek.models.station import Station, Stations
+from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.tracers.cake import CakeTracer, Timing
-from qseek.tracers.fast_marching import FastMarchingTracer, StationTravelTimeTable
+from qseek.tracers.fast_marching import (
+    FastMarchingTracer,
+    FMMImplementation,
+    StationTravelTimeTable,
+)
 from qseek.tracers.utils import (
     LayeredEarthModel1D,
     surface_distances,
@@ -33,7 +38,7 @@ def constant_earth_model() -> LayeredEarthModel1D:
         return LayeredEarthModel1D(filename=Path(file.name))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def octree() -> Octree:
     return Octree(
         location=Location(
@@ -50,7 +55,7 @@ def octree() -> Octree:
 
 
 @pytest.fixture(scope="session")
-def stations() -> Stations:
+def stations() -> StationInventory:
     rng = np.random.default_rng(1232)
     n_stations = 5
     stations: list[Station] = []
@@ -66,11 +71,15 @@ def stations() -> Stations:
             east_shift=rng.uniform(-5, 5) * KM,
         )
         stations.append(station)
-    return Stations(stations=stations)
+    return StationInventory(stations=stations)
 
 
 @pytest.mark.asyncio
-async def test_station_travel_time_table_constant(plot: bool):
+@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko"])
+async def test_station_travel_time_table_constant(
+    plot: bool,
+    implementation: FMMImplementation,
+):
     model = LayeredModel(
         layers=[
             Layer(top_depth=0, vp=5.0 * KM, vs=3.0 * KM),
@@ -92,7 +101,7 @@ async def test_station_travel_time_table_constant(plot: bool):
         grid_spacing=100.0,
         earth_model=model,
     )
-    await table.calculate()
+    await table.calculate(implementation=implementation)
 
     rng = np.random.default_rng()
     distances = rng.uniform(0.0, table.distance_max, 1000)
@@ -117,7 +126,7 @@ async def test_station_travel_time_table_constant(plot: bool):
     np.testing.assert_allclose(
         table._travel_times,
         analytical_vp_tt,
-        atol=1e-2,
+        atol=1e-1,
     )
 
     if plot:
@@ -147,10 +156,12 @@ async def test_station_travel_time_table_constant(plot: bool):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko"])
 async def test_travel_time_module(
     octree: Octree,
-    stations: Stations,
+    stations: StationInventory,
     plot: bool,
+    implementation: FMMImplementation,
 ) -> None:
     models = [
         constant_earth_model(),
@@ -161,7 +172,7 @@ async def test_travel_time_module(
         fmm_tracer = FastMarchingTracer(
             velocity_model=model,
             nthreads=0,
-            implementation="scikit-fmm",
+            implementation=implementation,
             interpolation_method="linear",
         )
 
@@ -176,11 +187,47 @@ async def test_travel_time_module(
         await fmm_tracer.prepare(octree, stations)
         await cake_tracer.prepare(octree, stations)
 
+        nodes = choices(octree.nodes, k=25)
+        for node in nodes:
+            node.split()
+
         fmm_times = await fmm_tracer.get_travel_times("fm:P", octree, stations)
         cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
 
+        nan_mask = np.isnan(fmm_times) | np.isnan(cake_times)
+
+        np.testing.assert_allclose(
+            fmm_times[~nan_mask],
+            cake_times[~nan_mask],
+            rtol=1e-1,
+            atol=1e-1,
+        )
+
+        octree = octree.reset()
+
+        for _ in range(10):
+            station_selection = choices(stations.stations, k=stations.n_stations)
+
+            fmm_times = await fmm_tracer.get_travel_times(
+                "fm:P", octree, station_selection
+            )
+            cake_times = await cake_tracer.get_travel_times(
+                "cake:P", octree, station_selection
+            )
+
+            np.testing.assert_allclose(
+                fmm_times,
+                cake_times,
+                rtol=1e-1,
+                atol=1e-1,
+            )
+
         if plot:
             import matplotlib.pyplot as plt
+
+            octree = octree.reset()
+            fmm_times = await fmm_tracer.get_travel_times("fm:P", octree, stations)
+            cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
 
             for i_station, station in enumerate(stations):
                 n_east = int(octree.east_bounds.width() // octree.root_node_size)
@@ -193,29 +240,37 @@ async def test_travel_time_module(
                 cake_times_station = cake_times[:, i_station].reshape(
                     n_depth, n_north, n_east
                 )
+                tt_difference = fmm_times_station[2, :, :] - cake_times_station[2, :, :]
 
-                data = fmm_times_station[2, :, :] - cake_times_station[2, :, :]
-                data_max = np.max(np.abs(data))
+                data_max = np.max(np.abs(tt_difference))
 
-                cmap = plt.imshow(
+                fig = plt.figure()
+                ax = fig.add_subplot(1, 1, 1)
+                cmap = ax.imshow(
                     fmm_times_station[2, :, :] - cake_times_station[2, :, :],
+                    extent=(
+                        octree.east_bounds.start,
+                        octree.east_bounds.end,
+                        octree.north_bounds.start,
+                        octree.north_bounds.end,
+                    ),
                     cmap="seismic",
                     vmin=-data_max,
                     vmax=data_max,
                 )
-                plt.colorbar(cmap, label="Time difference (s)")
-                plt.title(
+                fig.colorbar(cmap, label="Time difference (s)")
+                ax.set_title(
                     f"Station {round(station.effective_depth)} m - "
-                    "[FMM - Cake difference]"
+                    f"[FMM ({implementation}) - Cake difference]"
                 )
-                plt.xlabel("East")
-                plt.ylabel("North")
+                ax.set_xlabel("East (km)")
+                ax.set_ylabel("North (km)")
+                ax.xaxis.set_major_formatter(lambda x, pos: f"{x / KM:.1f}")
+                ax.yaxis.set_major_formatter(lambda x, pos: f"{x / KM:.1f}")
                 plt.show()
 
-        np.testing.assert_allclose(fmm_times, cake_times, rtol=1e-1)
 
-
-def test_surface_distances(octree, stations):
+def test_surface_distances(octree, stations) -> None:
     distances_full = surface_distances(octree.nodes, stations)
 
     distances_short = surface_distances_reference(

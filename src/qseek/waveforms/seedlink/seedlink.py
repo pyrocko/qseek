@@ -24,7 +24,7 @@ from qseek.waveforms.seedlink.client import (
 )
 
 if TYPE_CHECKING:
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class SeedLink(WaveformProvider):
         """Get the SeedLink streams."""
         return [stream for client in self.clients for stream in client.streams]
 
-    def prepare(self, stations: Stations) -> None:
+    def prepare(self, stations: StationInventory) -> None:
         logger.info("preparing SeedLink streaming")
         self._stats.set_seedlink(self)
         self.save_sds_archive.mkdir(parents=True, exist_ok=True)

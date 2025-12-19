@@ -12,7 +12,7 @@ from qseek.models.location import Location
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from qseek.models.station import Stations
+    from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree
 
 _LocationType = TypeVar("_LocationType", bound=Location)
@@ -39,7 +39,7 @@ class RayTracer(BaseModel):
     async def prepare(
         self,
         octree: Octree,
-        stations: Stations,
+        stations: StationInventory,
         rundir: Path | None = None,
     ): ...
 
@@ -67,7 +67,7 @@ class RayTracer(BaseModel):
         self,
         phase: str,
         nodes: Sequence[Node],
-        stations: Stations,
+        stations: Sequence[Station],
     ) -> np.ndarray:
         """Get travel times for a phase from a source to a set of stations.
 
@@ -86,6 +86,6 @@ class RayTracer(BaseModel):
         phase: str,
         event_time: datetime,
         source: Location,
-        receivers: Sequence[_LocationType],
+        receivers: Sequence[Location],
     ) -> list[ModelledArrival | None]:
         raise NotImplementedError

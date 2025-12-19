@@ -13,7 +13,7 @@ from rich.progress import Progress
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection
 from qseek.models.location import Location
-from qseek.models.station import Station, Stations
+from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.tracers.cake import LayeredEarthModel1D, Timing, TravelTimeTree
 from qseek.utils import Range, datetime_now
@@ -107,7 +107,7 @@ def octree() -> Octree:
 
 
 @pytest.fixture(scope="session")
-def stations() -> Stations:
+def stations() -> StationInventory:
     n_stations = 20
     stations: list[Station] = []
     for i_sta in range(n_stations):
@@ -122,11 +122,11 @@ def stations() -> Stations:
             east_shift=random.uniform(-10, 10) * KM,
         )
         stations.append(station)
-    return Stations(stations=stations)
+    return StationInventory(stations=stations)
 
 
 @pytest.fixture(scope="session")
-def fixed_stations() -> Stations:
+def fixed_stations() -> StationInventory:
     n_stations = 20
     rng = np.random.RandomState(0)
     stations: list[Station] = []
@@ -141,7 +141,7 @@ def fixed_stations() -> Stations:
             east_shift=rng.uniform(-10, 10) * KM,
         )
         stations.append(station)
-    return Stations(stations=stations)
+    return StationInventory(stations=stations)
 
 
 @pytest.fixture(scope="session")

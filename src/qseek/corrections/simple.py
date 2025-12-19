@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Literal
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 
@@ -29,7 +29,7 @@ class SimpleCorrections(TravelTimeCorrections):
 
     async def get_delays(
         self,
-        station_nsls: Iterable[NSL],
+        station_nsls: Sequence[NSL],
         phase: PhaseDescription,
         octree: Octree,
     ) -> np.ndarray:

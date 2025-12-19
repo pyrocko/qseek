@@ -20,7 +20,7 @@ from pydantic import (
 from pyrocko.squirrel import Squirrel
 from typing_extensions import Self
 
-from qseek.models.station import Stations
+from qseek.models.station import StationInventory
 from qseek.stats import Stats
 from qseek.utils import (
     NSL,
@@ -162,7 +162,7 @@ class PyrockoSquirrel(WaveformProvider):
     )
 
     _squirrel: Squirrel | None = PrivateAttr(None)
-    _stations: Stations | None = PrivateAttr(None)
+    _stations: StationInventory | None = PrivateAttr(None)
     _stats: SquirrelStats = PrivateAttr(default_factory=SquirrelStats)
 
     @model_validator(mode="after")
@@ -235,7 +235,7 @@ class PyrockoSquirrel(WaveformProvider):
                 paths.append(str(path.expanduser()))
         squirrel.add(paths, check=False)
 
-    def prepare(self, stations: Stations) -> None:
+    def prepare(self, stations: StationInventory) -> None:
         logger.info("preparing squirrel waveform provider")
         self._stations = stations
 
@@ -286,7 +286,7 @@ class PyrockoSquirrel(WaveformProvider):
                 tinc=window_increment.total_seconds(),
                 tpad=window_padding.total_seconds(),
                 want_incomplete=False,
-                codes=[(*nsl, "*") for nsl in self._stations.get_all_nsl()],  # type: ignore
+                codes=[(*nsl, "*") for nsl in self._stations.get_nsls()],  # type: ignore
                 channel_priorities=self.channel_selector,
             )
             prefetcher = SquirrelPrefetcher(iterator, queue_size=self.queue_size)

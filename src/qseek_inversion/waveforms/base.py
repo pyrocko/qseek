@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
-from qseek.models.station import Stations
+from qseek.models.station import StationInventory
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 class WaveformSelection(BaseModel):
     waveforms: Literal["WaveformSelection"]
 
-    stations: Stations = Field(
-        default_factory=Stations.model_construct,
+    stations: StationInventory = Field(
+        default_factory=StationInventory.model_construct,
         description="Stations to use for waveform selection.",
     )
 
