@@ -20,8 +20,8 @@ from pyrocko.cake import LayeredModel, load_model
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
 from typing_extensions import Self
 
-from qseek.models.location import Location
-from qseek.models.station import Stations
+from qseek.models.location import Location, get_coordinates
+from qseek.models.station import StationInventory
 from qseek.octree import Node, get_node_coordinates
 from qseek.utils import CACHE_DIR
 
@@ -148,30 +148,33 @@ class LayeredEarthModel1D(BaseModel):
         return sha1(model_serialised.getvalue()).hexdigest()
 
 
-def surface_distances(nodes: Sequence[Node], stations: Stations) -> np.ndarray:
+def surface_distances(
+    nodes: Sequence[Node], locations: Sequence[Location]
+) -> np.ndarray:
     """Returns the surface distance from all nodes to all stations.
 
     Args:
         nodes (Sequence[Node]): Nodes to calculate distance from.
-        stations (Stations): Stations to calculate distance to.
+        locations (Sequence[Location]): Locations to calculate distance to.
 
     Returns:
-        np.ndarray: Distances in shape (n-nodes, n-stations).
+        np.ndarray: Distances in shape (N-nodes, N-locations).
     """
     node_coords = get_node_coordinates(nodes, system="geographic")
     n_nodes = node_coords.shape[0]
+    n_stations = len(locations)
 
-    node_coords = np.repeat(node_coords, stations.n_stations, axis=0)
-    sta_coords = np.vstack(n_nodes * [stations.get_coordinates(system="geographic")])
+    node_coords = np.repeat(node_coords, n_stations, axis=0)
+    sta_coords = np.vstack(n_nodes * [get_coordinates(locations, system="geographic")])
 
     return od.distance_accurate50m_numpy(
         node_coords[:, 0], node_coords[:, 1], sta_coords[:, 0], sta_coords[:, 1]
-    ).reshape(-1, stations.n_stations)
+    ).reshape(-1, n_stations)
 
 
 def surface_distances_reference(
     nodes: Sequence[Node],
-    stations: Stations,
+    stations: StationInventory,
     reference: Location,
 ) -> np.ndarray:
     """Returns the surface distance from all nodes to all stations.

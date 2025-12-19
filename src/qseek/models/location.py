@@ -3,14 +3,16 @@ from __future__ import annotations
 import hashlib
 import math
 import struct
-from typing import TYPE_CHECKING, Iterable, Literal, TypeVar
+from typing import TYPE_CHECKING, Iterable, Literal, Sequence, TypeVar
 
+import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 from pyrocko import orthodrome as od
 from typing_extensions import Self
 
 if TYPE_CHECKING:
     from pathlib import Path
+
 
 CoordSystem = Literal["cartesian", "geographic", "raw"]
 
@@ -45,7 +47,7 @@ class Location(BaseModel):
         description="Depth in meters, **positive is down**.",
     )
 
-    _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
+    _cached_lat_lon: tuple[float, float] = PrivateAttr(())
     _cached_origin: Location | None = PrivateAttr(None)
 
     @property
@@ -59,7 +61,7 @@ class Location(BaseModel):
     @property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
-        if self._cached_lat_lon is None:
+        if not self._cached_lat_lon:
             if self.north_shift == 0.0 and self.east_shift == 0.0:
                 self._cached_lat_lon = self.lat, self.lon
             else:
@@ -278,3 +280,26 @@ def locations_to_csv(locations: Iterable[Location], filename: Path) -> Path:
 
 
 LocationType = TypeVar("LocationType", bound=Location)
+
+
+def get_coordinates(
+    locations: Sequence[Location],
+    system: CoordSystem = "geographic",
+) -> np.ndarray:
+    """Get geographic coordinates of locations in the specified coordinate system.
+
+    Args:
+        locations (Sequence[Location]): Locations to convert.
+        system (CoordSystem, optional): Coordinate System. Defaults to "geographic".
+
+    Raises:
+        NotImplementedError: If the coordinate system is not implemented.
+
+    Returns:
+        np.ndarray: Array of shape (N, 3) with coordinates (lat, lon, elevation).
+    """
+    if system != "geographic":
+        raise NotImplementedError("only geographic coordinates are implemented.")
+    return np.array(
+        [(*sta.effective_lat_lon, sta.effective_elevation) for sta in locations]
+    )

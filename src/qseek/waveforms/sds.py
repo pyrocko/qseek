@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from rich.table import Table
 
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
 
 
 logger = logging.getLogger(__name__)
@@ -215,7 +215,7 @@ class SDSArchive(WaveformProvider):
     )
 
     _archive_stations: dict[NSL, StationCovarage] = PrivateAttr(default_factory=dict)
-    _station_selection: Stations | None = PrivateAttr(default=None)
+    _station_selection: StationInventory | None = PrivateAttr(default=None)
 
     _queue: asyncio.Queue[WaveformBatch | None] = PrivateAttr(
         default_factory=lambda: asyncio.Queue(maxsize=QUEUE_SIZE)
@@ -281,7 +281,7 @@ class SDSArchive(WaveformProvider):
             n_files,
         )
 
-    def prepare(self, stations: Stations):
+    def prepare(self, stations: StationInventory):
         obspy_compat.plant()
 
         self.scan_sds_archive()
@@ -496,12 +496,14 @@ class SDSArchive(WaveformProvider):
 if __name__ == "__main__":
     from cProfile import Profile
 
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
 
     p = Profile()
 
     setup_rich_logging(logging.DEBUG)
-    stations = Stations(station_xmls=[Path("/project/elise-info/sds/ELISE.xml")])
+    stations = StationInventory(
+        station_xmls=[Path("/project/elise-info/sds/ELISE.xml")]
+    )
 
     sds = SDSArchive(
         archive=Path("/project/elise-info/sds/"),

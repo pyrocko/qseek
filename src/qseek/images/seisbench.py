@@ -256,8 +256,10 @@ class SeisBench(ImageFunction):
 
         if isinstance(self.pretrained, Path):
             # SeisBench uses an incomplete filename for loading from file
+            logger.info("loading local SeisBench model from %s", self.pretrained)
             self._seisbench_model = model.load(self.pretrained.with_suffix(""))
         else:
+            logger.info("loading pre-trained SeisBench model %s...", self.pretrained)
             self._seisbench_model = model.from_pretrained(self.pretrained)
         if self.torch_use_cuda:
             try:

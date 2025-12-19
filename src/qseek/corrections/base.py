@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     import numpy as np
 
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
     from qseek.octree import Node, Octree
     from qseek.utils import NSL, PhaseDescription
 
@@ -52,7 +52,7 @@ class TravelTimeCorrections(BaseModel):
 
     async def get_delays(
         self,
-        station_nsls: Iterable[NSL],
+        station_nsls: Sequence[NSL],
         phase: PhaseDescription,
         nodes: Sequence[Node],
     ) -> np.ndarray:
@@ -70,7 +70,7 @@ class TravelTimeCorrections(BaseModel):
 
     async def prepare(
         self,
-        stations: Stations,
+        stations: StationInventory,
         octree: Octree,
         phases: Iterable[PhaseDescription],
         rundir: Path,

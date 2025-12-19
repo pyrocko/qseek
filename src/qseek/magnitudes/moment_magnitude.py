@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from qseek.models.detection import EventDetection, Receiver
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
     from qseek.octree import Octree
     from qseek.waveforms.base import WaveformProvider
 
@@ -301,7 +301,7 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
 
     _stores: list[PeakAmplitudesStore] = PrivateAttr()
 
-    async def prepare(self, octree: Octree, stations: Stations) -> None:
+    async def prepare(self, octree: Octree, stations: StationInventory) -> None:
         logger.info("Preparing peak amplitude stores...")
 
         engine = gf.LocalEngine(store_superdirs=self.gf_store_dirs)

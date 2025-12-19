@@ -15,7 +15,7 @@ from qseek.stats import Stats
 if TYPE_CHECKING:
     from pyrocko.squirrel import Squirrel
 
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
     from qseek.utils import NSL
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class WaveformProvider(BaseModel):
     def available_nsls(self) -> set[NSL]:
         raise NotImplementedError
 
-    def prepare(self, stations: Stations) -> None: ...
+    def prepare(self, stations: StationInventory) -> None: ...
 
     async def iter_batches(
         self,

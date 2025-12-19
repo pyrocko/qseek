@@ -12,7 +12,7 @@ from qseek.utils import NSL
 
 if TYPE_CHECKING:
     from qseek.models.detection import EventDetection, Receiver
-    from qseek.models.station import Stations
+    from qseek.models.station import StationInventory
     from qseek.octree import Octree
     from qseek.waveforms.providers import WaveformProvider
 
@@ -113,7 +113,7 @@ class EventMagnitudeCalculator(BaseModel):
     async def prepare(
         self,
         octree: Octree,
-        stations: Stations,
+        stations: StationInventory,
     ) -> None:
         """Prepare the magnitudes calculation by initializing necessary data structures.
 

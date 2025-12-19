@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Iterable, Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 import pyrocko.orthodrome as od
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, PrivateAttr
 
 from qseek.cache_lru import ArrayLRUCache
+from qseek.models.location import get_coordinates
+from qseek.models.station import StationList
 from qseek.octree import get_node_coordinates
 from qseek.utils import alog_call
 
 if TYPE_CHECKING:
-    from qseek.models.station import Station, Stations
+    from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree
 
 
@@ -69,11 +71,6 @@ def weights_gaussian_min_stations(
 
 
 class DistanceWeights(BaseModel):
-    shape: Literal["exponential", "gaussian"] = Field(
-        default="exponential",
-        description="Shape of the decay function. 'gaussian' or 'exponential'."
-        " Default is 'exponential'.",
-    )
     radius_meters: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Cutoff distance for the spatial decay function in meters."
@@ -83,7 +80,7 @@ class DistanceWeights(BaseModel):
     min_required_stations: PositiveInt = Field(
         default=4,
         description="Minimum number of stations to assign full weight in the"
-        " exponential decay function. Default is 5.",
+        " exponential decay function. Default is 4.",
     )
     exponent: float = Field(
         default=2.0,
@@ -103,10 +100,10 @@ class DistanceWeights(BaseModel):
     )
 
     _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
-    _cached_stations_indices: dict[str, int] = PrivateAttr()
+    _stations: StationList = PrivateAttr()
     _station_coords_ecef: np.ndarray = PrivateAttr()
 
-    def get_distances(self, nodes: Iterable[Node]) -> np.ndarray:
+    def get_distances(self, nodes: Sequence[Node]) -> np.ndarray:
         node_coords = get_node_coordinates(nodes, system="geographic")
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T), dtype=np.float32).T
 
@@ -115,31 +112,8 @@ class DistanceWeights(BaseModel):
             axis=2,
         )
 
-    def calc_weights_gaussian(self, distances: np.ndarray) -> np.ndarray:
-        return weights_gaussian(
-            distances,
-            radius=self.radius_meters,
-            exponent=self.exponent,
-            normalize=self.normalize,
-        )
-
-    def calc_weights(self, distances: np.ndarray) -> np.ndarray:
-        return weights_gaussian_min_stations(
-            distances,
-            required_stations=self.min_required_stations,
-            radius=self.radius_meters,
-            exponent=self.exponent,
-            waterlevel=self.waterlevel,
-        )
-
-    def prepare(self, stations: Stations, octree: Octree) -> None:
+    def prepare(self, stations: StationInventory, octree: Octree) -> None:
         logger.info("preparing distance weights")
-
-        if self.shape == "gaussian" and self.radius_meters != "mean_interstation":
-            logger.warning(
-                "gaussian distance weighting uses mean interstation distance as radius"
-            )
-            self.radius_meters = "mean_interstation"
 
         if self.radius_meters == "mean_interstation":
             self.radius_meters = stations.mean_interstation_distance()
@@ -148,6 +122,7 @@ class DistanceWeights(BaseModel):
                 self.radius_meters,
             )
 
+        self._stations = StationList.from_inventory(stations)
         self._node_lut = ArrayLRUCache(name="distance_weights", short_name="DW")
 
         sta_coords = get_coordinates(self._stations)
@@ -163,7 +138,7 @@ class DistanceWeights(BaseModel):
         distances = self.get_distances(nodes)
         node_lut = self._node_lut
         for node, sta_distances in zip(nodes, distances, strict=True):
-            node_lut[node.hash()] = sta_distances.astype(np.float32)
+            node_lut[node.hash()] = sta_distances
 
     def get_node_weights(self, node: Node, stations: list[Station]) -> np.ndarray:
         try:
@@ -171,18 +146,26 @@ class DistanceWeights(BaseModel):
         except KeyError:
             self.fill_lut([node])
             return self.get_node_weights(node, stations)
-        return self.calc_weights(distances)
+
+        return weights_gaussian_min_stations(
+            distances,
+            required_stations=self.min_required_stations,
+            radius=self.radius_meters,
+            exponent=self.exponent,
+            waterlevel=self.waterlevel,
+        )
 
     @alog_call
     async def get_weights(
-        self, nodes: Sequence[Node], stations: Stations
+        self,
+        nodes: Sequence[Node],
+        stations: Sequence[Station],
     ) -> np.ndarray:
         n_nodes = len(nodes)
-        station_indices = np.fromiter(
-            (self._cached_stations_indices[sta.nsl.pretty] for sta in stations),
-            dtype=int,
-        )
-        distances = np.zeros(shape=(n_nodes, stations.n_stations), dtype=np.float32)
+        n_stations = len(stations)
+        station_indices = self._stations.get_indices(stations)
+
+        distances = np.zeros(shape=(n_nodes, n_stations), dtype=np.float32)
 
         fill_nodes = []
         node_lut = self._node_lut
@@ -201,4 +184,10 @@ class DistanceWeights(BaseModel):
             )
             return await self.get_weights(nodes, stations)
 
-        return self.calc_weights(distances)
+        return weights_gaussian_min_stations(
+            distances,
+            required_stations=self.min_required_stations,
+            radius=self.radius_meters,
+            exponent=self.exponent,
+            waterlevel=self.waterlevel,
+        )

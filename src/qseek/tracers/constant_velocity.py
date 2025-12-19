@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import numpy as np
 
     from qseek.models.location import Location
-    from qseek.models.station import Stations
+    from qseek.models.station import Station
     from qseek.octree import Node
 
 
@@ -50,10 +50,9 @@ class ConstantVelocityTracer(RayTracer):
         self,
         phase: str,
         nodes: Sequence[Node],
-        stations: Stations,
+        stations: Sequence[Station],
     ) -> np.ndarray:
         self._check_phase(phase)
-
         distances = distances_stations(nodes, stations)
         return distances / self.velocity
 

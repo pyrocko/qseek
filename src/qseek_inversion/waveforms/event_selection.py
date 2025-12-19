@@ -159,7 +159,7 @@ class EventWaveformsSelection(WaveformSelection):
         self._squirrel = search.data_provider.get_squirrel()
 
         search.stations.sanitize_stations()
-        search.stations.filter_stations_by_nsl(search.data_provider.available_nsls())
+        search.stations.filter_stations(search.data_provider.available_nsls())
         self.stations = search.stations
 
         events_sorted = sorted(

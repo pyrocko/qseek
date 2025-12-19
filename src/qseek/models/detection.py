@@ -9,7 +9,7 @@ from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
@@ -34,7 +34,7 @@ from qseek.images.base import ObservedArrival
 from qseek.magnitudes import EventMagnitudeType
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.location import Location
-from qseek.models.station import Station, Stations
+from qseek.models.station import Station
 from qseek.tracers.base import ModelledArrival
 from qseek.utils import (
     NSL,
@@ -536,7 +536,7 @@ class EventReceivers(BaseModel):
 
     def add(
         self,
-        stations: Stations,
+        stations: Sequence[Station],
         phase_arrivals: list[PhaseDetection | None],
     ) -> None:
         """Add receivers to the receiver set.

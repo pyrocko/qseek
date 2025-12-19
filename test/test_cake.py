@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from qseek.models.location import Location
-from qseek.models.station import Station, Stations
+from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.tracers.cake import CakeTracer, LayeredEarthModel1D, Timing, TravelTimeTree
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
@@ -36,7 +36,7 @@ def small_octree() -> Octree:
 
 
 @pytest.fixture(scope="session")
-def small_stations() -> Stations:
+def small_stations() -> StationInventory:
     rng = np.random.default_rng(1232)
     n_stations = 20
     stations: list[Station] = []
@@ -52,7 +52,7 @@ def small_stations() -> Stations:
             east_shift=rng.uniform(-2, 2) * KM,
         )
         stations.append(station)
-    return Stations(stations=stations)
+    return StationInventory(stations=stations)
 
 
 def test_sptree_model(travel_time_tree: TravelTimeTree):
@@ -87,7 +87,7 @@ def test_sptree_model(travel_time_tree: TravelTimeTree):
 async def test_lut(
     travel_time_tree: TravelTimeTree,
     octree: Octree,
-    stations: Stations,
+    stations: StationInventory,
 ) -> None:
     model = travel_time_tree
     await model.init_lut(octree.nodes, stations)
@@ -113,7 +113,7 @@ async def test_lut(
 @pytest.mark.asyncio
 async def test_travel_times_constant_velocity(
     small_octree: Octree,
-    small_stations: Stations,
+    small_stations: StationInventory,
 ):
     octree = small_octree
     stations = small_stations
