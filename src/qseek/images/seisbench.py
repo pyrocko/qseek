@@ -4,12 +4,13 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal, get_args
 
 import numpy as np
 from obspy import Stream
 from pydantic import (
     Field,
+    FilePath,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
@@ -30,9 +31,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from seisbench.models import WaveformModel
-
-    from qseek.models.station import Stations
-    from qseek.octree import Octree
 
 
 ModelName = Literal[
@@ -173,12 +171,12 @@ class SeisBench(ImageFunction):
         "models are `PhaseNet`, `EQTransformer`, `GPD`, `OBSTransformer`, `LFEDetect`.",
     )
 
-    pretrained: PreTrainedName = Field(
+    pretrained: PreTrainedName | FilePath = Field(
         default="original",
         description="SeisBench pre-trained model to use. "
-        "Choose from `ethz`, `geofon`, `instance`, `iquique`, `lendb`, `neic`, `obs`,"
-        " `original`, `scedc`, `stead`."
-        " For more details see SeisBench documentation",
+        "Choose from the available pre-trained models or provide a path to a "
+        "custom model .json file. For more details see SeisBench documentation.\n"
+        "Available models are:" + ", ".join(sorted(get_args(PreTrainedName))),
     )
     window_overlap_samples: int = Field(
         default=1500,
@@ -234,12 +232,9 @@ class SeisBench(ImageFunction):
     def seisbench_model(self) -> WaveformModel:
         return self._seisbench_model
 
-    async def prepare(
-        self,
-        stations: Stations,
-        octree: Octree,
-        path: Path | None = None,
-    ) -> None:
+    async def prepare(self) -> None:
+        logger.info("preparing SeisBench image function...")
+
         import seisbench.models as sbm
         import torch
 
@@ -259,7 +254,11 @@ class SeisBench(ImageFunction):
             case _:
                 raise ValueError(f"Model `{self.model}` not available.")
 
-        self._seisbench_model = model.from_pretrained(self.pretrained)
+        if isinstance(self.pretrained, Path):
+            # SeisBench uses an incomplete filename for loading from file
+            self._seisbench_model = model.load(self.pretrained.with_suffix(""))
+        else:
+            self._seisbench_model = model.from_pretrained(self.pretrained)
         if self.torch_use_cuda:
             try:
                 if isinstance(self.torch_use_cuda, bool):
@@ -296,9 +295,9 @@ class SeisBench(ImageFunction):
         except KeyError:
             return self.seisbench_model._annotate_args["blinding"][1]
 
-    def get_blinding(self, sampling_rate: float) -> timedelta:
+    def get_blinding(self) -> timedelta:
         scaled_blinding_samples = max(self.get_blinding_samples()) / self._rescale_input
-        return timedelta(seconds=scaled_blinding_samples / sampling_rate)
+        return timedelta(seconds=scaled_blinding_samples / self.sampling_rate)
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
