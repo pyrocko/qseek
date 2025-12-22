@@ -442,7 +442,7 @@ class Search(BaseModel):
         path = rundir / "search.json"
 
         logger.debug("writing search config to %s", path)
-        path.write_text(self.model_dump_json(indent=2, exclude_unset=True))
+        path.write_text(self.model_dump_json(indent=2))
 
         logger.debug("writing stations")
         self.stations.export_pyrocko_stations(rundir / "pyrocko_stations.yaml")
@@ -503,7 +503,7 @@ class Search(BaseModel):
 
         distances = self.octree.distances_stations(self.stations)
         logger.info(
-            "source-station distance range: %.1f - %.1f km",
+            "source-station distance range: %.2f - %.2f km",
             distances.min() / KM,
             distances.max() / KM,
         )

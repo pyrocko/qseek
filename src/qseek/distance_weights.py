@@ -71,11 +71,6 @@ def weights_gaussian_min_stations(
 
 
 class DistanceWeights(BaseModel):
-    shape: Literal["exponential", "gaussian"] = Field(
-        default="exponential",
-        description="Shape of the decay function. 'gaussian' or 'exponential'."
-        " Default is 'exponential'.",
-    )
     radius_meters: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Cutoff distance for the spatial decay function in meters."
@@ -85,7 +80,7 @@ class DistanceWeights(BaseModel):
     min_required_stations: PositiveInt = Field(
         default=4,
         description="Minimum number of stations to assign full weight in the"
-        " exponential decay function. Default is 5.",
+        " exponential decay function. Default is 4.",
     )
     exponent: float = Field(
         default=2.0,
@@ -118,12 +113,6 @@ class DistanceWeights(BaseModel):
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
         logger.info("preparing distance weights")
-
-        if self.shape == "gaussian" and self.radius_meters != "mean_interstation":
-            logger.warning(
-                "gaussian distance weighting uses mean interstation distance as radius"
-            )
-            self.radius_meters = "mean_interstation"
 
         if self.radius_meters == "mean_interstation":
             self.radius_meters = stations.mean_interstation_distance()

@@ -283,7 +283,7 @@ def _parse_date(v, handler) -> datetime:
             day=yesterday.day,
             tzinfo=timezone.utc,
         )
-    with contextlib.suppress(ValueError):
+    with contextlib.suppress(ValueError, TypeError):
         iso_date = date.fromisoformat(v)
         return datetime(
             year=iso_date.year,
