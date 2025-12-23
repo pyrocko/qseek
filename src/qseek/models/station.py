@@ -348,24 +348,24 @@ class StationInventory(BaseModel):
 class StationList(Sequence[Station]):
     """A frozen station list."""
 
-    stations: list[Station]
+    _stations: list[Station]
     _indices: dict[str, int]
 
     def __init__(self, stations: Sequence[Station]) -> None:
-        self.stations = list(stations)
+        self._stations = list(stations)
         self._indices = {sta.nsl.pretty: idx for idx, sta in enumerate(stations)}
 
     def __iter__(self) -> Iterator[Station]:
-        yield from self.stations
+        yield from self._stations
 
     def __getitem__(self, index: int) -> Station:
-        return self.stations[index]
+        return self._stations[index]
 
     def __len__(self) -> int:
-        return len(self.stations)
+        return len(self._stations)
 
     def get_nsls(self) -> tuple[NSL, ...]:
-        return tuple(sta.nsl for sta in self.stations)
+        return tuple(sta.nsl for sta in self._stations)
 
     def get_index(self, nsl: NSL) -> int:
         """Get the index of a station by its NSL code.
@@ -378,10 +378,38 @@ class StationList(Sequence[Station]):
         """
         return self._indices[nsl.pretty]
 
+    def get_indices(self, nsls: Sequence[Station]) -> np.ndarray:
+        """Get the indices of stations by their NSL codes.
+
+        Args:
+            nsls (Iterable[NSL]): Iterable of NSL codes of the stations.
+
+        Returns:
+            np.ndarray: Indices of the stations.
+        """
+        try:
+            return np.fromiter((self._indices[nsl.pretty] for nsl in nsls), dtype=int)
+        except KeyError as exc:
+            raise ValueError("could not find station information") from exc
+
+    def get_indices_by_nsl(self, nsls: Sequence[NSL]) -> np.ndarray:
+        """Get the indices of stations by their NSL codes.
+
+        Args:
+            nsls (Iterable[NSL]): Iterable of NSL codes of the stations.
+
+        Returns:
+            np.ndarray: Indices of the stations.
+        """
+        try:
+            return np.fromiter((self._indices[nsl.pretty] for nsl in nsls), dtype=int)
+        except KeyError as exc:
+            raise ValueError("could not find station information") from exc
+
     @classmethod
     def from_inventory(cls, inventory: StationInventory) -> StationList:
         return cls(stations=list(inventory))
 
     @property
     def n_stations(self) -> int:
-        return len(self.stations)
+        return len(self._stations)

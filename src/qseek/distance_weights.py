@@ -158,11 +158,9 @@ class DistanceWeights(BaseModel):
         stations: Sequence[Station],
     ) -> np.ndarray:
         n_nodes = len(nodes)
-        station_indices = np.fromiter(
-            (self._stations.get_index(sta.nsl) for sta in stations),
-            dtype=int,
-        )
         n_stations = len(stations)
+        station_indices = self._stations.get_indices(stations)
+
         distances = np.zeros(shape=(n_nodes, n_stations), dtype=np.float32)
 
         fill_nodes = []

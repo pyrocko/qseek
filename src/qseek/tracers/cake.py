@@ -255,16 +255,7 @@ class TravelTimeTree(BaseModel):
         nodes: Sequence[Node],
         stations: Sequence[Station],
     ) -> np.ndarray:
-        try:
-            station_indices = np.fromiter(
-                (self._stations.get_index(sta.nsl) for sta in stations),
-                dtype=int,
-            )
-        except KeyError as exc:
-            raise ValueError(
-                "stations not found in cached stations, "
-                "was the LUT initialized with `TravelTimeTree.init_lut`?"
-            ) from exc
+        station_indices = self._stations.get_indices(stations)
 
         stations_travel_times = []
         fill_nodes = []

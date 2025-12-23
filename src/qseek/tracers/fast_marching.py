@@ -430,10 +430,8 @@ class FastMarchingTracer(RayTracer):
         if phase not in self.phases:
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
-        station_indices = np.fromiter(
-            (self._stations.get_index(sta.nsl) for sta in stations),
-            dtype=int,
-        )
+        station_indices = self._stations.get_indices(stations)
+
         station_travel_times = []
         fill_nodes = []
         node_lut = self._node_lut
