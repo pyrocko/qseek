@@ -54,17 +54,18 @@ def weights_gaussian_min_stations(
     required_stations: int = 5,
     waterlevel: float = 0.0,
 ) -> np.ndarray:
-    sorted_distances = np.sort(distances, axis=0)
     required_stations = min(required_stations, distances.shape[1] - 1)
+    sorted_distances = np.sort(distances, axis=1)
 
-    threshold_distances = (
-        sorted_distances[:, required_stations][:, np.newaxis]
+    threshold_distance = (
+        sorted_distances[:, required_stations]
         if required_stations > 0
-        else 0.0
+        else np.zeros((distances.shape[0]))
     )
+    threshold_distance = threshold_distance[:, np.newaxis]
 
-    weights = np.exp(-(((distances - threshold_distances) / radius) ** exponent))
-    weights[:, :required_stations] = 1.0
+    weights = np.exp(-(((distances - threshold_distance) / radius) ** exponent))
+    weights = np.where(distances <= threshold_distance, 1.0, weights)
     if waterlevel > 0.0:
         weights = (1 - waterlevel) * weights + waterlevel
     return weights

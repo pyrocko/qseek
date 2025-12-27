@@ -378,17 +378,19 @@ class StationList(Sequence[Station]):
         """
         return self._indices[nsl.pretty]
 
-    def get_indices(self, nsls: Sequence[Station]) -> np.ndarray:
+    def get_indices(self, stations: Sequence[Station]) -> np.ndarray:
         """Get the indices of stations by their NSL codes.
 
         Args:
-            nsls (Iterable[NSL]): Iterable of NSL codes of the stations.
+            stations (Iterable[Station]): Iterable of stations.
 
         Returns:
             np.ndarray: Indices of the stations.
         """
         try:
-            return np.fromiter((self._indices[nsl.pretty] for nsl in nsls), dtype=int)
+            return np.fromiter(
+                (self._indices[sta.nsl.pretty] for sta in stations), dtype=int
+            )
         except KeyError as exc:
             raise ValueError("could not find station information") from exc
 
