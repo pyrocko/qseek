@@ -53,18 +53,15 @@ def weights_gaussian_min_stations(
     required_stations: int = 4,
     waterlevel: float = 0.0,
 ) -> np.ndarray:
-    required_stations = min(required_stations, distances.shape[1] - 1)
-    sorted_distances = np.sort(distances, axis=1)
+    if required_stations < 1:
+        raise ValueError("required_stations must be at least 1")
 
-    threshold_distance = (
-        sorted_distances[:, required_stations]
-        if required_stations > 0
-        else np.zeros((distances.shape[0]))
-    )
-    threshold_distance = threshold_distance[:, np.newaxis]
+    required_stations = min(required_stations, distances.shape[1])
+    sorted_distances = np.sort(distances, axis=1)
+    threshold_distance = sorted_distances[:, required_stations - 1, np.newaxis]
 
     weights = np.exp(-(((distances - threshold_distance) / radius) ** exponent))
-    weights = np.where(distances <= threshold_distance, 1.0, weights)
+    weights[distances <= threshold_distance] = 1.0
     if waterlevel > 0.0:
         weights = (1 - waterlevel) * weights + waterlevel
     return weights
@@ -161,21 +158,21 @@ class DistanceWeights(BaseModel):
         nodes: Sequence[Node],
         stations: Sequence[Station],
     ) -> np.ndarray:
-        n_nodes = len(nodes)
-        n_stations = len(stations)
+        node_lut = self._node_lut
         station_indices = self._stations.get_indices(stations)
 
-        distances = np.zeros(shape=(n_nodes, n_stations), dtype=np.float32)
+        try:
+            distances = [node_lut[node.hash()][station_indices] for node in nodes]
+            return weights_gaussian_min_stations(
+                np.array(distances),
+                required_stations=self.min_required_stations,
+                radius=self.radius_meters,
+                exponent=self.exponent,
+                waterlevel=self.waterlevel,
+            )
+        except KeyError:
+            fill_nodes = [node for node in nodes if node.hash() not in node_lut]
 
-        fill_nodes = []
-        node_lut = self._node_lut
-        for idx, node in enumerate(nodes):
-            try:
-                distances[idx] = node_lut[node.hash()][station_indices]
-            except KeyError:
-                fill_nodes.append(node)
-
-        if fill_nodes:
             self.fill_lut(fill_nodes)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
@@ -183,11 +180,3 @@ class DistanceWeights(BaseModel):
                 node_lut.hit_rate() * 100,
             )
             return await self.get_weights(nodes, stations)
-
-        return weights_gaussian_min_stations(
-            distances,
-            required_stations=self.min_required_stations,
-            radius=self.radius_meters,
-            exponent=self.exponent,
-            waterlevel=self.waterlevel,
-        )
