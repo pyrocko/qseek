@@ -431,21 +431,14 @@ class FastMarchingTracer(RayTracer):
         if phase not in self.phases:
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
+        node_lut = self._node_lut
         station_indices = self._stations.get_indices(stations)
 
-        station_travel_times = []
-        fill_nodes = []
-        node_lut = self._node_lut
-
-        for node in nodes:
-            try:
-                node_traveltimes = node_lut[node.hash(), phase][station_indices]
-            except KeyError:
-                fill_nodes.append(node)
-                continue
-            station_travel_times.append(node_traveltimes)
-
-        if fill_nodes:
+        try:
+            travel_times = [node_lut[nd.hash(), phase][station_indices] for nd in nodes]
+            return np.array(travel_times)
+        except KeyError:
+            fill_nodes = [nd for nd in nodes if (nd.hash(), phase) not in node_lut]
             await self.fill_lut(fill_nodes, phase)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
@@ -453,8 +446,6 @@ class FastMarchingTracer(RayTracer):
                 node_lut.hit_rate() * 100,
             )
             return await self.get_travel_times(phase, nodes, stations)
-
-        return np.asarray(station_travel_times).astype(np.float32)
 
     def get_arrivals(
         self,

@@ -255,20 +255,14 @@ class TravelTimeTree(BaseModel):
         nodes: Sequence[Node],
         stations: Sequence[Station],
     ) -> np.ndarray:
+        node_lut = self._node_lut
         station_indices = self._stations.get_indices(stations)
 
-        stations_travel_times = []
-        fill_nodes = []
-        node_lut = self._node_lut
-        for node in nodes:
-            try:
-                node_travel_times = node_lut[node.hash()][station_indices]
-            except KeyError:
-                fill_nodes.append(node)
-                continue
-            stations_travel_times.append(node_travel_times)
-
-        if fill_nodes:
+        try:
+            travel_times = [node_lut[node.hash()][station_indices] for node in nodes]
+            return np.array(travel_times)
+        except KeyError:
+            fill_nodes = [node for node in nodes if node.hash() not in node_lut]
             await self.fill_lut(fill_nodes)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
@@ -276,8 +270,6 @@ class TravelTimeTree(BaseModel):
                 node_lut.hit_rate() * 100,
             )
             return await self.get_travel_times(nodes, stations)
-
-        return np.asarray(stations_travel_times).astype(float, copy=False)
 
     async def interpolate_travel_times(
         self,
