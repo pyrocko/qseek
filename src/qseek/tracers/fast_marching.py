@@ -397,7 +397,7 @@ class FastMarchingTracer(RayTracer):
 
         node_lut = self._node_lut
         for node, station_travel_times in zip(nodes, travel_times, strict=True):
-            node_lut[node.hash(), phase] = station_travel_times
+            node_lut[node.hash, phase] = station_travel_times
 
     def get_travel_time_location(
         self,
@@ -435,10 +435,10 @@ class FastMarchingTracer(RayTracer):
         station_indices = self._stations.get_indices(stations)
 
         try:
-            travel_times = [node_lut[nd.hash(), phase][station_indices] for nd in nodes]
+            travel_times = [node_lut[nd.hash, phase][station_indices] for nd in nodes]
             return np.array(travel_times)
         except KeyError:
-            fill_nodes = [nd for nd in nodes if (nd.hash(), phase) not in node_lut]
+            fill_nodes = [nd for nd in nodes if (nd.hash, phase) not in node_lut]
             await self.fill_lut(fill_nodes, phase)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
