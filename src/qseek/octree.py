@@ -5,7 +5,7 @@ import contextlib
 import logging
 import struct
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
@@ -95,15 +95,32 @@ class Node:
     depth: float
     size: float
     level: int
-    semblance: float = 0.0
 
-    tree: Octree | None = None
+    tree: Octree
+
+    semblance: float = 0.0
     parent: Node | None = None
     children: tuple[Node, ...] = ()
 
-    _hash: bytes | None = None
+    hash: bytes = field(init=False, default=b"")
+
     _children_cached: tuple[Node, ...] = ()
     _location: Location | None = None
+
+    def __post_init__(self):
+        self.hash = sha1(
+            struct.pack(
+                "dddddddd",
+                self.tree.location.lat,
+                self.tree.location.lon,
+                self.tree.location.elevation,
+                self.tree.location.depth,
+                self.east,
+                self.north,
+                self.depth,
+                self.size,
+            )
+        ).digest()
 
     def split(self) -> tuple[Node, ...]:
         """Split the node into 8 children."""
@@ -339,28 +356,8 @@ class Node:
         else:
             yield self
 
-    def hash(self) -> bytes:
-        if not self._hash:
-            if not self.tree:
-                raise AttributeError("parent octree not set")
-
-            self._hash = sha1(
-                struct.pack(
-                    "dddddddd",
-                    self.tree.location.lat,
-                    self.tree.location.lon,
-                    self.tree.location.elevation,
-                    self.tree.location.depth,
-                    self.east,
-                    self.north,
-                    self.depth,
-                    self.size,
-                )
-            ).digest()
-        return self._hash
-
     def __hash__(self) -> int:
-        return hash(self.hash())
+        return hash(self.hash)
 
 
 class Octree(BaseModel, Iterator[Node], Sequence[Node]):

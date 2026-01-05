@@ -132,11 +132,11 @@ class DistanceWeights(BaseModel):
         distances = self.get_distances(nodes)
         node_lut = self._node_lut
         for node, sta_distances in zip(nodes, distances, strict=True):
-            node_lut[node.hash()] = sta_distances
+            node_lut[node.hash] = sta_distances
 
     def get_node_weights(self, node: Node, stations: list[Station]) -> np.ndarray:
         try:
-            distances = self._node_lut[node.hash()]
+            distances = self._node_lut[node.hash]
         except KeyError:
             self.fill_lut([node])
             return self.get_node_weights(node, stations)
@@ -159,7 +159,7 @@ class DistanceWeights(BaseModel):
         station_indices = self._stations.get_indices(stations)
 
         try:
-            distances = [node_lut[node.hash()][station_indices] for node in nodes]
+            distances = [node_lut[node.hash][station_indices] for node in nodes]
             return weights_gaussian_min_stations(
                 np.array(distances),
                 required_stations=self.min_required_stations,
@@ -168,7 +168,7 @@ class DistanceWeights(BaseModel):
                 waterlevel=self.waterlevel,
             )
         except KeyError:
-            fill_nodes = [node for node in nodes if node.hash() not in node_lut]
+            fill_nodes = [node for node in nodes if node.hash not in node_lut]
 
             self.fill_lut(fill_nodes)
             logger.debug(

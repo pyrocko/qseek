@@ -248,7 +248,7 @@ class TravelTimeTree(BaseModel):
         for node, times in zip(nodes, traveltimes, strict=True):
             if np.all(np.isnan(times)):
                 logger.warning("no traveltimes for node %s", node)
-            node_lut[node.hash()] = times
+            node_lut[node.hash] = times
 
     async def get_travel_times(
         self,
@@ -259,10 +259,10 @@ class TravelTimeTree(BaseModel):
         station_indices = self._stations.get_indices(stations)
 
         try:
-            travel_times = [node_lut[node.hash()][station_indices] for node in nodes]
+            travel_times = [node_lut[node.hash][station_indices] for node in nodes]
             return np.array(travel_times)
         except KeyError:
-            fill_nodes = [node for node in nodes if node.hash() not in node_lut]
+            fill_nodes = [node for node in nodes if node.hash not in node_lut]
             await self.fill_lut(fill_nodes)
             logger.debug(
                 "node LUT cache fill level %.1f%%, cache hit rate %.1f%%",
