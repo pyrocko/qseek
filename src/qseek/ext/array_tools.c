@@ -10,54 +10,15 @@ static inline npy_intp min_intp(npy_intp a, npy_intp b) {
   return a < b ? a : b;
 }
 
-static PyObject *fill_zero_bytes(PyObject *module, PyObject *args,
-                                 PyObject *kwds) {
-  PyObject *array;
-  int n_threads = 8;
-  int thread_num;
-  npy_intp n_bytes, start, size;
-
-  static char *kwlist[] = {"array", "n_threads", NULL};
-
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|i", kwlist, &array,
-                                   &n_threads))
-    return NULL;
-
-  if (!PyArray_Check(array)) {
-    PyErr_SetString(PyExc_ValueError, "object is not a NumPy array");
-    return NULL;
-  }
-  if (n_threads < 0) {
-    PyErr_SetString(PyExc_ValueError, "n_threads must be greater than 0");
-    return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS;
-  n_bytes = PyArray_NBYTES((PyArrayObject *)array);
-#pragma omp parallel num_threads(n_threads) private(thread_num, n_threads,     \
-                                                        start, size)
-  {
-    n_threads = omp_get_num_threads();
-    thread_num = omp_get_thread_num();
-    start = (thread_num * n_bytes) / n_threads;
-    size = ((thread_num + 1) * n_bytes) / n_threads - start;
-
-    memset(PyArray_DATA((PyArrayObject *)array) + start, 0, size);
-  }
-  Py_END_ALLOW_THREADS;
-  Py_RETURN_NONE;
-}
-
 static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
   PyObject *obj, *result_max_idx, *result_max_values;
   PyObject *node_mask = Py_None;
   PyArrayObject *data_arr, *node_mask_arr;
 
-  npy_intp *shape, shapeout[1], *result_max_idx_data, ix, i_node, n_nodes,
-      i_sample, n_samples, start_sample, end_sample;
+  npy_intp *shape, shapeout[1], *result_max_idx_data, i_node, n_nodes, i_sample,
+      n_samples, start_sample, end_sample;
   float *result_max_values_data, value, *data_arr_data;
-
-  int thread_num, n_threads = 8;
+  int n_threads = 8;
 
   static char *kwlist[] = {"array", "mask", "n_threads", NULL};
 
@@ -121,14 +82,17 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
 
   Py_BEGIN_ALLOW_THREADS;
 #pragma omp parallel num_threads(n_threads) private(                           \
-        thread_num, start_sample, end_sample, i_node, n_threads, i_sample,     \
-            value)
+        start_sample, end_sample, i_node, i_sample, value)
   {
-    n_threads = omp_get_num_threads();
-    thread_num = omp_get_thread_num();
+    int num_threads = omp_get_num_threads();
+    int thread_id = omp_get_thread_num();
 
-    start_sample = (thread_num * n_samples) / n_threads;
-    end_sample = ((thread_num + 1) * n_samples) / n_threads;
+    int chunk_size = n_samples / num_threads;
+    int remainder = n_samples % num_threads;
+
+    start_sample = thread_id * chunk_size +
+                   (thread_id < remainder ? thread_id : remainder);
+    end_sample = start_sample + chunk_size + (thread_id < remainder ? 1 : 0);
 
     for (i_node = 0; i_node < n_nodes; i_node++) {
       if (node_mask != Py_None &&
@@ -151,8 +115,6 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
 }
 
 static PyMethodDef methods[] = {
-    {"fill_zero_bytes", (PyCFunction)(void (*)(void))fill_zero_bytes,
-     METH_VARARGS | METH_KEYWORDS, "Fill a numpy array with zero bytes."},
     {"argmax_masked", (PyCFunction)(void (*)(void))argmax,
      METH_VARARGS | METH_KEYWORDS,
      "Find the argmax of a 2D numpy array on axis 0."},
