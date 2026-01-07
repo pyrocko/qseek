@@ -128,7 +128,7 @@ class SeedLink(WaveformProvider):
     )
 
     clients: list[SeedLinkClient] = Field(
-        default=[SeedLinkClient()],
+        default_factory=lambda: [SeedLinkClient()],
         min_length=1,
         description="List of SeedLink clients to connect to. "
         "If multiple clients are given, they will be used in parallel.",
