@@ -132,7 +132,7 @@ async def test_station_travel_time_table_constant(
     if plot:
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
         data = table._travel_times - analytical_vp_tt
         data_max = np.max(np.abs(data))
         ax.imshow(

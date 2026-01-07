@@ -43,7 +43,7 @@ def octree_to_rectangles(
 
     rectangles = []
     for node in coords:
-        east, north, size, semblance = node
+        east, north, size, _ = node
         half_size = size / 2
         rect = Rectangle(
             xy=(east - half_size, north - half_size),

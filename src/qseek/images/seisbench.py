@@ -118,7 +118,7 @@ class PhaseNetImage(WaveformImage):
         if False:
             import matplotlib.pyplot as plt
 
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
             time = search_trace.get_xdata()
             std = np.std(search_trace.get_ydata())
 

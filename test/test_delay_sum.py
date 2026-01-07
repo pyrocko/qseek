@@ -49,7 +49,7 @@ def test_delay_sum_result_length(
 
     res = None
     for _ in range(rounds):
-        res, offset = delay_sum.delay_sum(
+        res, _ = delay_sum.delay_sum(
             traces,
             offsets,
             shifts,
@@ -65,7 +65,7 @@ def test_delay_sum_result_length(
 
     res = None
     for _ in range(rounds):
-        res, offset = pyrocko_parstack.parstack(
+        res, _ = pyrocko_parstack.parstack(
             traces,
             offsets,
             shifts,
