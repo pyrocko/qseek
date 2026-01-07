@@ -25,6 +25,7 @@ from qseek.stats import Stats
 from qseek.utils import QUEUE_SIZE, PhaseDescription, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
+    from pyrocko.trace import Trace
     from rich.table import Table
 
     from qseek.images.base import WaveformImage
@@ -247,14 +248,17 @@ class WaveformImages:
         """Get the cumulative weight of all images."""
         return sum(image.weight for image in self)
 
+    def get_traces(self) -> list[Trace]:
+        traces = []
+        for img in self:
+            traces += img.traces
+        return traces
+
     def snuffle(self) -> None:
         """Open Pyrocko Snuffler on the image traces."""
         from pyrocko.trace import snuffle
 
-        traces = []
-        for img in self:
-            traces += img.traces
-        snuffle(traces)
+        snuffle(self.get_traces())
 
     async def save_mseed(self, path: Path) -> None:
         """Save images to disk.
