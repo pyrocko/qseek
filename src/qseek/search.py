@@ -32,16 +32,17 @@ from qseek.models import StationInventory
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
-from qseek.models.semblance import Semblance
+from qseek.models.station import Station
 from qseek.octree import Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
+from qseek.reduce import DelaySumReduce
 from qseek.signals import Signal
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
     BackgroundTasks,
-    alog_call,
+    PhaseDescription,
     datetime_now,
     get_cpu_count,
     get_total_memory,
@@ -56,7 +57,6 @@ if TYPE_CHECKING:
     from rich.table import Table
     from typing_extensions import Self
 
-    from qseek.images.base import WaveformImage
     from qseek.octree import Node
 
 
@@ -195,6 +195,11 @@ class SearchStats(Stats):
             f"[bold]{self.project_name}[/bold]",
         )
         table.add_row(
+            "Current Stations",
+            f"{self.current_stations}/{self.total_stations}"
+            f" ({self.current_networks}/{self.total_networks} networks)",
+        )
+        table.add_row(
             "Progress ",
             f"[bold]{self.processed_percent:.1f}%[/bold]"
             f" ([bold]{self.batch_count}[/bold]/{self.batch_count_total or '?'},"
@@ -206,14 +211,9 @@ class SearchStats(Stats):
             f"finish at {datetime.now() + self.time_remaining:%c}",  # noqa: DTZ005
         )
         table.add_row(
-            "Current Stations",
-            f"{self.current_stations}/{self.total_stations}"
-            f" ({self.current_networks}/{self.total_networks} networks)",
-        )
-        table.add_row(
             "Processing rate",
-            f"{human_readable_bytes(self.processing_rate)}/s"
-            f" ({tts(self.processing_speed)} tr/s)",
+            f"[bold]{human_readable_bytes(self.processing_rate)}/s[/bold]"
+            f" ({tts(self.processing_speed)} m/s)",
         )
         table.add_row(
             "Resources",
@@ -334,17 +334,11 @@ class Search(BaseModel):
         " consuming. Default is 5 minutes.",
     )
 
-    n_threads_parstack: int | Literal["auto"] = Field(
+    n_threads: int | Literal["auto"] = Field(
         default="auto",
         description="Number of threads for stacking and migration. "
         "`'auto'` will use the maximum number of cores and leaves resources "
         "for I/O and other work. `0` uses all available cores.",
-    )
-    n_threads_argmax: int | Literal["auto"] = Field(
-        default="auto",
-        description="Number of threads for argmax. `'auto'` will use the "
-        "maximum number of cores and leaves resources for I/O and other work. "
-        "`0` uses all available cores.",
     )
 
     save_images: bool = Field(
@@ -380,9 +374,9 @@ class Search(BaseModel):
             return corrections_from_path(path)
         return v
 
-    @field_validator("n_threads_parstack", "n_threads_argmax")
+    @field_validator("n_threads")
     @classmethod
-    def check_nthreads_compute(cls, n_threads: int | Literal["auto"]) -> int:
+    def _compute_threads(cls, n_threads: int | Literal["auto"]) -> int:
         # We limit the number of threads to the number of available cores and leave some
         # cores for other processes.
         cpu_count = get_cpu_count()
@@ -518,10 +512,7 @@ class Search(BaseModel):
         await self.image_functions.prepare()
 
         if self.distance_weights:
-            self.distance_weights.prepare(
-                self.stations,
-                self.octree,
-            )
+            self.distance_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -598,8 +589,7 @@ class Search(BaseModel):
             detections, semblance_trace = await search_octree.search(
                 images=images,
                 octree=self.octree.reset(),
-                n_threads_parstack=self.n_threads_parstack,
-                n_threads_argmax=self.n_threads_argmax,
+                n_threads=self.n_threads,
             )
 
             await self._catalog.save_semblance_trace(semblance_trace)
@@ -780,7 +770,7 @@ class OctreeSearch:
         self.window_padding = window_padding
 
         self.detection_threshold = detection_threshold
-        self.detection_blinding = detection_blinding
+        self.blinding = detection_blinding
         self.pick_confidence_threshold = pick_confidence_threshold
         self.node_interpolation = node_interpolation
         self.attach_arrivals = attach_arrivals
@@ -797,92 +787,63 @@ class OctreeSearch:
     def set_ray_tracers(self, ray_tracers: RayTracers) -> None:
         self.ray_tracers = ray_tracers
 
-    @alog_call
-    async def add_semblance(
+    async def get_traveltimes(
         self,
-        octree: Octree,
-        image: WaveformImage,
-        semblance: Semblance,
-        padded_start_time: datetime,
+        stations: Sequence[Station],
         nodes: Sequence[Node],
-        n_threads: int = 0,
-    ) -> None:
-        if image.sampling_rate != semblance.sampling_rate:
-            raise ValueError(
-                f"image sampling rate {image.sampling_rate} does not match "
-                f"semblance sampling rate {semblance.sampling_rate}"
-            )
-        if image.weight == 0.0:
-            return
-        logger.debug("stacking image %s", image.image_function)
-
-        ray_tracer = self.ray_tracers.get_phase_tracer(image.phase)
+        phase: PhaseDescription,
+    ) -> np.ndarray:
+        ray_tracer = self.ray_tracers.get_phase_tracer(phase)
         traveltimes = await ray_tracer.get_travel_times(
             nodes=nodes,
-            stations=image.stations,
-            phase=image.phase,
+            stations=stations,
+            phase=phase,
         )
 
         if self.station_corrections:
             station_delays = await self.station_corrections.get_delays(
-                image.stations.get_nsls(),
+                [sta.nsl for sta in stations],
                 nodes=nodes,
-                phase=image.phase,
+                phase=phase,
             )
             traveltimes += station_delays
 
-        traveltimes_bad = np.isnan(traveltimes)
-        traveltimes[traveltimes_bad] = 0.0
-        # station_contribution = (~traveltimes_bad).sum(axis=1, dtype=np.float32)
+        return traveltimes
 
-        shifts = np.round(-traveltimes / image.delta_t).astype(np.int32)
-        # weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
-        # Normalize by number of station contribution
-        # with np.errstate(divide="ignore", invalid="ignore"):
-        #     weights /= station_contribution[:, np.newaxis]
-
-        weights = np.full_like(shifts, fill_value=image.weight, dtype=np.float32)
-        weights[traveltimes_bad] = 0.0
+    async def get_weights(
+        self,
+        stations: Sequence[Station],
+        nodes: Sequence[Node],
+        normalize_weights: bool = True,
+        apply_waterlevel: float = 1e-3,
+    ) -> np.ndarray:
+        n_nodes = len(nodes)
+        n_stations = len(stations)
 
         if self.distance_weights:
-            weights *= await self.distance_weights.get_weights(
+            weights = await self.distance_weights.get_weights(
                 nodes=nodes,
-                stations=image.stations,
+                stations=stations,
             )
+        else:
+            weights = np.ones(shape=(n_nodes, n_stations), dtype=np.float32)
 
-        with np.errstate(divide="ignore", invalid="ignore"):
-            weights /= weights.sum(axis=1, keepdims=True)
+        if normalize_weights:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                weights /= weights.sum(axis=1, keepdims=True)
 
-        # applying waterlevel
-        weights[weights < 1e-3] = 0.0
+        if apply_waterlevel:
+            weights[weights < apply_waterlevel] = 0.0
 
-        def expand_array(array: np.ndarray) -> np.ndarray:
-            """Fill arrays with zeros to pad the matrix."""
-            n_nodes = array.shape[0]
-            if n_nodes == octree.n_nodes:
-                return array
-
-            n_stations = image.stations.n_stations
-            filled = np.zeros((octree.n_nodes, n_stations), dtype=array.dtype)
-            filled[-n_nodes:] = array
-            return filled
-
-        await semblance.add_semblance(
-            trace_data=image.get_trace_data(),
-            offsets=image.get_offsets(padded_start_time),
-            shifts=expand_array(shifts),
-            weights=expand_array(weights),
-            threads=n_threads,
-        )
+        return weights
 
     async def search(
         self,
         images: WaveformImages,
         octree: Octree,
-        new_nodes: Sequence[Node] = (),
-        semblance: Semblance | None = None,
-        n_threads_parstack: int = 0,
-        n_threads_argmax: int = 0,
+        split_nodes: list[Node] | None = None,
+        stack: DelaySumReduce | None = None,
+        n_threads: int = 0,
     ) -> tuple[list[EventDetection], Trace]:
         """Searches for events in the given traces.
 
@@ -890,81 +851,87 @@ class OctreeSearch:
             images (WaveformImages): The waveform images to use for the search.
             octree (Octree | None, optional): The octree to use for the search.
                 Defaults to None.
-            new_nodes (Sequence[Node] | None, optional): The new nodes to use for the
-                search. If not provided, the nodes from the octree are used.
-                Defaults to an empty sequence.
-            semblance (Semblance | None, optional): The semblance to use for the search.
+            split_nodes (list[Node] | None, optional): The nodes to split for this
+                iteration. Defaults to None.
+            stack (DelaySumReduce | None, optional): The stack to use for the search.
                 If None, a new instance is created. Defaults to None.
-            n_threads_parstack (int, optional): Number of threads for stacking and
-                migration. Defaults to 0.
-            n_threads_argmax (int, optional): Number of threads for argmax.
-                Defaults to 0.
+            n_threads (int, optional): Number of threads for delay and sum.
+                Defaults to 0
 
         Returns:
             tuple[list[EventDetection], Trace]: The event detections and the
                 semblance traces used for the search.
         """
-        nodes = new_nodes or octree.nodes
-        sampling_rate = images.sampling_rate
-        if not semblance:
-            sr = sampling_rate
-            n_samples = round(images.duration.total_seconds() * sr)
-            n_samples_padding = round(self.window_padding.total_seconds() * sr)
-
-            semblance = Semblance(
-                n_samples=n_samples + 2 * n_samples_padding,
+        if not stack:
+            stack = DelaySumReduce(
+                traces=images.get_traces(),
                 start_time=images.start_time,
-                sampling_rate=sampling_rate,
-                padding_samples=n_samples_padding,
+                end_time=images.end_time,
+                padding=self.window_padding,
             )
 
+        if split_nodes:
+            new_nodes = []
+            for node in split_nodes:
+                new_nodes.extend(node.split())
+
+            logger.info(
+                "refining octree: split %d nodes to level %d (min size: %.1f m)",
+                len(split_nodes),
+                max(node.level for node in new_nodes + split_nodes),
+                min(node.size for node in new_nodes + split_nodes),
+            )
+            stack.remove_nodes(split_nodes)
+        else:
+            new_nodes = octree.nodes
+
+        weights = []
+        traveltimes = []
         for image in images:
-            if not image.has_traces():
-                continue
-            await self.add_semblance(
-                octree=octree,
-                image=image,
-                semblance=semblance,
-                padded_start_time=images.start_time - self.window_padding,
-                nodes=nodes,
-                n_threads=n_threads_parstack,
+            image_traveltimes = await self.get_traveltimes(
+                image.stations,
+                nodes=new_nodes,
+                phase=image.phase,
             )
+            image_weights = await self.get_weights(
+                stations=image.stations,
+                nodes=new_nodes,
+            )
+            image_weights *= image.weight
 
-        # Applying the generalized mean to the semblance
-        # semblance.normalize(images.cumulative_weight())
+            traveltimes.append(image_traveltimes)
+            weights.append(image_weights)
 
-        leaf_node_mask = np.fromiter((node.is_leaf() for node in octree.nodes), bool)
-        semblance.set_leaf_nodes(leaf_node_mask)
+        stack.add_nodes(
+            nodes=new_nodes,
+            traveltimes=np.hstack(traveltimes),
+            weights=np.hstack(weights),
+        )
+        await stack.stack(n_threads=n_threads)
 
         if self.detection_threshold == "MAD":
-            threshold = stats.median_abs_deviation(
-                await semblance.maxima_semblance(
-                    trim_padding=False,
-                    nthreads=n_threads_argmax,
-                )
-            )
-            threshold *= 10.0
+            stack_max, _ = stack.get_stack(trim_padding=True)
+            threshold = stats.median_abs_deviation(stack_max) * 10
             logger.debug("threshold MAD %g", self.detection_threshold)
         else:
             threshold = self.detection_threshold
 
-        detection_idx, detection_semblance = await semblance.find_peaks(
+        detection_idx, detection_semblance = await stack.find_peaks(
             height=float(threshold),
             prominence=float(threshold),
-            distance=round(self.detection_blinding.total_seconds() * sampling_rate),
-            nthreads=n_threads_argmax,
+            distance=round(self.blinding.total_seconds() * images.sampling_rate),
         )
 
         if detection_idx.size == 0:
-            return [], await semblance.get_trace()
+            return [], await stack.get_trace()
 
         # Split Octree nodes above a semblance threshold. Once octree for all detections
         # in frame
-        maxima_node_indices = await semblance.maxima_node_idx()
-        refine_nodes: set[Node] = set()
+        node_candidates: set[Node] = set()
+        _, stack_node_idx = stack.get_stack()
 
         for time_idx in detection_idx:
-            node_idx = maxima_node_indices[time_idx]
+            node_idx = stack_node_idx[time_idx]
             source_node = octree.nodes[node_idx]
 
             if not source_node.is_leaf():
@@ -975,59 +942,47 @@ class OctreeSearch:
                 with_surface=self.ignore_boundary == "with_surface",
                 border_width=self.ignore_boundary_width,
             ):
+                logger.info("ignoring detection within boundary")
                 continue
-            refine_nodes.add(source_node)
+            node_candidates.add(source_node)
             # Getting neighbours is slow
             if self.neighbor_search:
-                refine_nodes.update(source_node.get_neighbours())
+                node_candidates.update(source_node.get_neighbours())
 
             # This iteration is also slow
             if self.semblance_density_search:
-                octree.map_semblance(semblance.get_semblance(time_idx))
+                snapshot = await stack.get_snapshot(time_idx)
+                octree.map_semblance(snapshot)
+
                 densest_node = max(
                     octree.leaf_nodes,
                     key=lambda n: n.semblance_density(),
                 )
                 if densest_node != source_node:
-                    refine_nodes.add(densest_node)
+                    node_candidates.add(densest_node)
                     if self.neighbor_search:
-                        refine_nodes.update(densest_node.get_neighbours())
+                        node_candidates.update(densest_node.get_neighbours())
 
-        refine_nodes = {node for node in refine_nodes if node.can_split()}
+        node_candidates = {node for node in node_candidates if node.can_split()}
 
-        # recursivley refine_nodes is empty
-        # if all sources fall into smallest octree nodes
-        if refine_nodes:
-            new_nodes = []
-            node_size_max = max(node.size for node in refine_nodes)
-            new_level = 0
-            for node in refine_nodes:
-                new_nodes.extend(node.split())
-                new_level = max(new_level, node.level + 1)
-            logger.info(
-                "detected %d energy burst%s - refined %d nodes, level %d (%.1f m)",
-                detection_idx.size,
-                "s" if detection_idx.size > 1 else "",
-                len(refine_nodes),
-                new_level,
-                node_size_max,
-            )
+        # recursively refine nodes until all sources fall into the smallest nodes
+        if node_candidates:
+            logger.debug("detected %d event", detection_idx.size)
             return await self.search(
                 images,
                 octree,
-                semblance=semblance,
-                new_nodes=new_nodes,
-                n_threads_parstack=n_threads_parstack,
-                n_threads_argmax=n_threads_argmax,
+                stack=stack,
+                split_nodes=list(node_candidates),
+                n_threads=n_threads,
             )
 
         detections = []
+        logger.info("detected %d events", len(detection_idx))
         for time_idx, semblance_detection in zip(
             detection_idx, detection_semblance, strict=True
         ):
-            time = semblance.get_time_from_index(time_idx)
-            semblance_event = semblance.get_semblance(time_idx)
-            node_idx = maxima_node_indices[time_idx]
+            time = stack.get_time_from_sample(time_idx)
+            node_idx = stack_node_idx[time_idx]
 
             source_node = octree.nodes[node_idx]
             if self.ignore_boundary and source_node.is_inside_border(
@@ -1036,6 +991,7 @@ class OctreeSearch:
             ):
                 continue
 
+            semblance_event = await stack.get_snapshot(time_idx)
             octree.map_semblance(semblance_event)
             if self.node_interpolation:
                 source_location = await octree.interpolate_max_semblance(source_node)
@@ -1107,4 +1063,4 @@ class OctreeSearch:
 
             detections.append(detection)
 
-        return detections, await semblance.get_trace()
+        return detections, await stack.get_trace()
