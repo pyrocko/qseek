@@ -427,6 +427,10 @@ class FastMarchingTracer(RayTracer):
             phase: Phase name.
             nodes: Nodes to get traveltime for.
             stations: Stations to calculate travel times to.
+
+        Returns:
+            np.ndarray: Array of shape (n_nodes, n_stations) with travel times in
+                seconds.
         """
         if phase not in self.phases:
             raise ValueError(f"phase {phase} is not supported by this tracer")

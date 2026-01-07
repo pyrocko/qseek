@@ -166,14 +166,13 @@ class EventCatalog(BaseModel):
 
         self.events.append(detection)
         logger.info(
-            "%s event detection %d %s: %.5f°, %.5f°, depth %.1f m, "
-            "border distance %.1f m, semblance %.3f, magnitude %.2f",
+            "%s event detection %d %s at %.4f°, %.4f°, %.0f m, "
+            "semblance %.3f, magnitude %.2f",
             Symbols.Target,
             self.n_events,
-            detection.time,
+            str(detection.time)[:22],
             *detection.effective_lat_lon,
             detection.depth,
-            detection.distance_border,
             detection.semblance,
             detection.magnitude.average if detection.magnitude else 0.0,
         )
