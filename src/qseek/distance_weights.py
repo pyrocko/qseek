@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree
 
-MB = 1024**2
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ def weights_gaussian_min_stations(
     distances: np.ndarray,
     radius: float,
     exponent: float = 2.0,
-    required_stations: int = 5,
+    required_stations: int = 4,
     waterlevel: float = 0.0,
 ) -> np.ndarray:
     if required_stations < 1:
@@ -103,7 +102,8 @@ class DistanceWeights(BaseModel):
 
     def get_distances(self, nodes: Sequence[Node]) -> np.ndarray:
         node_coords = get_node_coordinates(nodes, system="geographic")
-        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T)).T
+        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T), dtype=np.float32).T
+
         return np.linalg.norm(
             self._station_coords_ecef - node_coords[:, np.newaxis],
             axis=2,
@@ -123,12 +123,15 @@ class DistanceWeights(BaseModel):
         self._node_lut = ArrayLRUCache(name="distance_weights", short_name="DW")
 
         sta_coords = get_coordinates(self._stations)
-        self._station_coords_ecef = np.array(od.geodetic_to_ecef(*sta_coords.T)).T
+        self._station_coords_ecef = np.array(
+            od.geodetic_to_ecef(*sta_coords.T), dtype=np.float32
+        ).T
 
         self.fill_lut(nodes=octree.nodes)
 
     def fill_lut(self, nodes: Sequence[Node]) -> None:
         logger.debug("filling distance weight LUT for %d nodes", len(nodes))
+
         distances = self.get_distances(nodes)
         node_lut = self._node_lut
         for node, sta_distances in zip(nodes, distances, strict=True):
