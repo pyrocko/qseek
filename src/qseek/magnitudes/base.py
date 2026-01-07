@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko.trace import Trace
-from typing_extensions import Self
 
 from qseek.utils import NSL
 

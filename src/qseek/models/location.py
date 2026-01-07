@@ -3,12 +3,11 @@ from __future__ import annotations
 import hashlib
 import math
 import struct
-from typing import TYPE_CHECKING, Iterable, Literal, Sequence, TypeVar
+from typing import TYPE_CHECKING, Iterable, Literal, Self, Sequence, TypeVar
 
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 from pyrocko import orthodrome as od
-from typing_extensions import Self
 
 if TYPE_CHECKING:
     from pathlib import Path

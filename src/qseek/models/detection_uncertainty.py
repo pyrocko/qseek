@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 from pydantic import BaseModel, Field, computed_field
-from typing_extensions import Self
 
 if TYPE_CHECKING:
     from qseek.octree import Node, Octree

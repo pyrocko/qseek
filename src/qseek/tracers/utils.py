@@ -4,7 +4,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Annotated, Any, Literal, Sequence
+from typing import Annotated, Any, Literal, Self, Sequence
 
 import numpy as np
 from pydantic import (
@@ -18,7 +18,6 @@ from pydantic import (
 from pyrocko import orthodrome as od
 from pyrocko.cake import LayeredModel, load_model
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
-from typing_extensions import Self
 
 from qseek.models.location import Location, get_coordinates
 from qseek.models.station import StationInventory

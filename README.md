@@ -3,9 +3,9 @@
 *Data-driven Earthquake Detection*
 
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Pre-commit and Tests](https://github.com/pyrocko/qseek/actions/workflows/tests.yaml/badge.svg)](https://github.com/pyrocko/qseek/actions/workflows/tests.yaml)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org/)
+[![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![prek](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge-v0.json)](https://github.com/j178/prek)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org/)
 [![PyPI - Version](https://img.shields.io/pypi/v/qseek)](https://pypi.org/project/qseek/)
 [![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/qseek/)
 <!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
@@ -80,10 +80,10 @@ cd qseek
 uv pip install -e .
 ```
 
-The project utilizes pre-commit for clean commits, install the hooks via:
+The project utilizes prek for clean commits, install the hooks via:
 
 ```sh
-pre-commit install
+prek install
 ```
 
 ## Citation

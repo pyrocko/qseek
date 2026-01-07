@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko.cake import GradientLayer as PyrockoGradientLayer
 from pyrocko.cake import Layer as PyrockoLayer
-from typing_extensions import Self
 
 from qseek.tracers.utils import LayeredEarthModel1D
 

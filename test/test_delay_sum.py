@@ -10,7 +10,7 @@ from pytest import fixture
 
 from qseek.ext import array_tools, delay_sum
 
-N_THREADS_TEST = [1, 4, 8]
+N_THREADS_TEST = [1, 2, 4]  # GHA Runners have 4 cores
 ROUNDS = 4
 Implementation = Literal["pyrocko", "qseek"]
 

@@ -4,14 +4,13 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator, Literal
+from typing import TYPE_CHECKING, Any, Generator, Literal, TypeVar
 
 import numpy as np
 from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 from pyrocko.io import save
 from pyrocko.trace import Trace
 from scipy import signal
-from typing_extensions import TypeVar
 
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.pre_processing.module import PreProcessing

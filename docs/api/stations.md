@@ -2,4 +2,6 @@
 
 ::: qseek.models.station.Station
 
-::: qseek.models.station.Stations
+::: qseek.models.station.StationInventory
+
+::: qseek.models.station.StationList

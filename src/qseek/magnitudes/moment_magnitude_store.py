@@ -14,6 +14,7 @@ from typing import (
     ClassVar,
     Literal,
     NamedTuple,
+    Self,
     Type,
     get_args,
 )
@@ -33,7 +34,6 @@ from pydantic import (
 from pyrocko import gf
 from pyrocko.guts import Float
 from pyrocko.trace import FrequencyResponse
-from typing_extensions import Self
 
 from qseek.stats import get_progress
 from qseek.utils import (

@@ -1,16 +1,16 @@
 [build-system]
 requires = [
     "wheel",
-    "setuptools>=61.0.0",
+    "setuptools>=80",
     "numpy>=2",
-    "setuptools_scm[toml]>=6.2",
+    "setuptools_scm[toml]>=8",
     "simde-py==0.8.4rc1",
 ]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "qseek"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.12"
 license = { text = "GPLv3" }
 dynamic = ["version"]
 
@@ -25,23 +25,23 @@ keywords = [
     "detection",
     "localization",
     "stacking-migration",
+    "delay and sum",
     "beamforming",
 ]
 
 dependencies = [
     "numpy>=2.3",
-    "scipy>=1.8.0",
-    "pyrocko>=2022.06.10",
+    "scipy>=1.16",
+    "pyrocko>=2024.12",
     "seisbench>=0.9",
-    "pydantic>=2.11.0",
+    "pydantic>=2.12",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
-    "typing-extensions>=4.6",
     "lru-dict @ git+https://github.com/amitdev/lru-dict",
     "rich>=14.0",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
-    "psutil>=6.0",
+    "psutil>=7.0",
     "aiofiles>=23.0",
     "scikit-fmm >= 2025.1",
 ]
@@ -62,16 +62,17 @@ classifiers = [
 [project.optional-dependencies]
 docs = [
     "mkdocs-material>=9.6",
-    "mkdocstrings[python]>=0.30",
+    "mkdocstrings[python]>=1.0",
     "griffe-pydantic>=1.1",
-    "markdown-exec>=1.11",
+    "markdown-exec>=1.12",
 ]
 dev = [
-    "pre-commit>=4.2.0",
+    "prek>=0.2.25",
     "pytest>=8.3.5",
-    "pytest-asyncio>=0.26.0",
-    "pytest-benchmark>=4.0.0",
-    "ruff>=0.11.9",
+    "pytest-asyncio>=1.3",
+    "pytest-benchmark>=5.0",
+    "pytest-cov>=7.0",
+    "ruff>=0.14",
 ]
 completion = ["argcomplete>=3.2"]
 
@@ -104,6 +105,7 @@ extend-select = [
     'RUF',
     'T20',
     'D',
+    'NPY201',
 ]
 
 ignore = [

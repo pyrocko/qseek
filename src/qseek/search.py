@@ -5,7 +5,7 @@ import logging
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Deque, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Deque, Literal, Self, Sequence
 
 import numpy as np
 import psutil
@@ -55,7 +55,6 @@ from qseek.waveforms.providers import PyrockoSquirrel, WaveformProviderType
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from rich.table import Table
-    from typing_extensions import Self
 
     from qseek.octree import Node
 

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from hashlib import sha1
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Annotated, Literal, Sequence
+from typing import TYPE_CHECKING, Annotated, Literal, Self, Sequence
 
 import numpy as np
 from pydantic import (
@@ -35,8 +35,6 @@ from qseek.utils import (
 )
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
-
     from qseek.models.location import Location
     from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree

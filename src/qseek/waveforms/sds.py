@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 from pydantic import (
     DirectoryPath,
@@ -22,7 +22,6 @@ from pydantic import (
 from pyrocko import obspy_compat
 from pyrocko.io.mseed import iload
 from pyrocko.trace import degapper
-from typing_extensions import Self
 
 from qseek.stats import Stats, get_progress
 from qseek.utils import (

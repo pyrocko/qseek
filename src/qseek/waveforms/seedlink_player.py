@@ -5,12 +5,11 @@ import logging
 from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from pydantic import AwareDatetime, BaseModel, DirectoryPath, Field
 from pyrocko.io.mseed import get_bytes
 from pyrocko.squirrel import Squirrel
-from typing_extensions import Self
 
 if TYPE_CHECKING:
     from pyrocko.squirrel.base import Batch
