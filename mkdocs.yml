@@ -113,7 +113,8 @@ nav:
       - Metadata: components/station_metadata.md
       - Waveforms: components/waveform_data.md
       - Ray Tracers: components/ray_tracer.md
-      - Phase Arrivals: components/image_function.md
+      - Phase Annotation: components/image_function.md
+      - Distance Weighting: components/distance_weighting.md
       - Magnitudes: components/magnitudes.md
       - Station Corrections: components/station_corrections.md
       - General Configuration: components/general.md

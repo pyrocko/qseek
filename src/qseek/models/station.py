@@ -41,9 +41,21 @@ class Blacklist(set[NSL]):
 
 
 class Station(Location):
-    network: str = Field(..., max_length=2)
-    station: str = Field(..., max_length=5)
-    location: str = Field(default="", max_length=2)
+    network: str = Field(
+        ...,
+        description="Seismic network code",
+        max_length=2,
+    )
+    station: str = Field(
+        ...,
+        description="Station code",
+        max_length=5,
+    )
+    location: str = Field(
+        default="",
+        description="Location code",
+        max_length=2,
+    )
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:
