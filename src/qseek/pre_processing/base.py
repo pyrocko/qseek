@@ -37,7 +37,7 @@ class BatchPreProcessing(BaseModel):
         """Returns a tuple of all the subclasses of BasePreProcessing."""
         return tuple(cls.__subclasses__())
 
-    def select_traces(self, batch: WaveformBatch) -> list[Trace]:
+    def filter_traces(self, batch: WaveformBatch) -> list[Trace]:
         """Selects traces from the given list based on the stations specified.
 
         Args:
@@ -49,6 +49,7 @@ class BatchPreProcessing(BaseModel):
         """
         if not self.stations:
             return batch.traces
+
         traces: list[Trace] = []
         for trace in batch.traces:
             for station in self.stations:

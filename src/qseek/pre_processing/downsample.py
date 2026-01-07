@@ -56,7 +56,7 @@ def downsample(
         data = data[:, n // 2 :: n_decimate].copy()
 
     for trace, trace_data in zip(traces, data, strict=True):
-        trace.ydata = trace_data
+        trace.set_ydata(trace_data)
         trace.tmax = trace.tmin + (trace_data.size - 1) * delta_t
         trace.deltat = delta_t
     return traces
@@ -66,6 +66,7 @@ class Downsample(BatchPreProcessing):
     """Downsample the traces to a new sampling frequency."""
 
     process: Literal["downsample"] = "downsample"
+
     sampling_frequency: PositiveFloat = Field(
         default=100.0,
         description="The new sampling frequency in Hz.",
@@ -75,13 +76,14 @@ class Downsample(BatchPreProcessing):
         desired_delta_t = 1.0 / self.sampling_frequency
 
         def worker() -> None:
-            traces = self.select_traces(batch)
+            traces = self.filter_traces(batch)
             trace_groups = []
             for (delta_t, _), trace_group in group_traces(traces):
                 if desired_delta_t <= delta_t:
                     logger.debug(
                         "The sampling rate of the traces is "
-                        "smaller or equal to the desired rate."
+                        "smaller or equal to the desired sampling rate of %s Hz.",
+                        1.0 / desired_delta_t,
                     )
                     continue
                 trace_groups.append(list(trace_group))
