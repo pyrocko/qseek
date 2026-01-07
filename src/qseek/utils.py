@@ -252,7 +252,7 @@ class _Range(NamedTuple):
         Returns:
         - _Range: The created Range object.
         """
-        return cls(min=np.min(array), max=np.max(array))
+        return cls(start=np.min(array), end=np.max(array))
 
 
 def _range_validator(v: _Range) -> _Range:

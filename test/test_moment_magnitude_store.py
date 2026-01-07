@@ -81,6 +81,10 @@ async def test_peak_amplitude_estimation(engine: gf.LocalEngine) -> None:
 
 @pytest.mark.plot
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not has_store("reykjanes_qseis"),
+    reason="reykjanes_qseis not available",
+)
 async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
     store_id = "reykjanes_qseis"
     peak_amplitudes = PeakAmplitudesBase(
