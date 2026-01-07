@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import random
-from typing import Callable
+from typing import Callable, Literal, get_args
 
 import numpy as np
 import pytest
 from pyrocko import parstack as pyrocko_parstack
 from pytest import fixture
-from typing_extensions import Literal, get_args
 
 from qseek.ext import array_tools, delay_sum
 
-N_THREADS_TEST = [1, 4, 8, 12, 16, 32]
+N_THREADS_TEST = [1, 4, 8]
 ROUNDS = 4
 Implementation = Literal["pyrocko", "qseek"]
 

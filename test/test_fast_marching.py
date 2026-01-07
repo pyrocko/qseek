@@ -9,7 +9,7 @@ import pytest
 
 from qseek.models.layered_model import Layer, LayeredModel
 from qseek.models.location import Location
-from qseek.models.station import Station, StationInventory
+from qseek.models.station import Station, StationInventory, StationList
 from qseek.octree import Octree
 from qseek.tracers.cake import CakeTracer, Timing
 from qseek.tracers.fast_marching import (
@@ -163,6 +163,7 @@ async def test_travel_time_module(
     plot: bool,
     implementation: FMMImplementation,
 ) -> None:
+    station_list = StationList.from_inventory(stations)
     models = [
         constant_earth_model(),
         LayeredEarthModel1D(),
@@ -191,8 +192,8 @@ async def test_travel_time_module(
         for node in nodes:
             node.split()
 
-        fmm_times = await fmm_tracer.get_travel_times("fm:P", octree, stations)
-        cake_times = await cake_tracer.get_travel_times("cake:P", octree, stations)
+        fmm_times = await fmm_tracer.get_travel_times("fm:P", octree, station_list)
+        cake_times = await cake_tracer.get_travel_times("cake:P", octree, station_list)
 
         nan_mask = np.isnan(fmm_times) | np.isnan(cake_times)
 
@@ -271,7 +272,8 @@ async def test_travel_time_module(
 
 
 def test_surface_distances(octree, stations) -> None:
-    distances_full = surface_distances(octree.nodes, stations)
+    station_list = StationList.from_inventory(stations)
+    distances_full = surface_distances(octree.nodes, station_list)
 
     distances_short = surface_distances_reference(
         octree.nodes, stations, octree.location

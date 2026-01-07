@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from qseek.models.location import Location
-from qseek.models.station import Station, StationInventory
+from qseek.models.station import Station, StationInventory, StationList
 from qseek.octree import Octree
 from qseek.tracers.cake import CakeTracer, LayeredEarthModel1D, Timing, TravelTimeTree
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
@@ -90,21 +90,21 @@ async def test_lut(
     stations: StationInventory,
 ) -> None:
     model = travel_time_tree
-    await model.init_lut(octree.nodes, stations)
+    station_list = StationList.from_inventory(stations)
+    await model.init_lut(octree.nodes, station_list)
 
-    traveltimes_tree = await model.interpolate_travel_times(octree, stations)
-    traveltimes_lut = await model.get_travel_times(octree.nodes, stations)
+    traveltimes_tree = await model.interpolate_travel_times(octree, station_list)
+    traveltimes_lut = await model.get_travel_times(octree.nodes, station_list)
     np.testing.assert_equal(traveltimes_tree, traveltimes_lut)
 
     # Test refilling the LUT
     model._node_lut.clear()
-    traveltimes_tree = await model.interpolate_travel_times(octree, stations)
-    traveltimes_lut = await model.get_travel_times(octree.nodes, stations)
+    traveltimes_tree = await model.interpolate_travel_times(octree, station_list)
+    traveltimes_lut = await model.get_travel_times(octree.nodes, station_list)
     np.testing.assert_equal(traveltimes_tree, traveltimes_lut)
     assert len(model._node_lut) > 0, "did not refill lut"
 
-    stations_selection = stations.model_copy()
-    stations_selection.stations = stations_selection.stations[:5]
+    stations_selection = StationList(stations=station_list._stations[:5])
     traveltimes_tree = await model.interpolate_travel_times(octree, stations_selection)
     traveltimes_lut = await model.get_travel_times(octree.nodes, stations_selection)
     np.testing.assert_equal(traveltimes_tree, traveltimes_lut)
