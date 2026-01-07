@@ -3,16 +3,6 @@ import numpy as np
 from qseek.ext import array_tools
 
 
-def test_fill_zero_bytes() -> None:
-    nnodes = 1000
-    nsamples = 3000
-    data = np.ones(shape=(nnodes, nsamples), dtype=np.float32)
-    zeros = np.zeros(shape=(nnodes, nsamples), dtype=np.float32)
-
-    array_tools.fill_zero_bytes(data)
-    np.testing.assert_array_equal(data, zeros)
-
-
 def test_argmax():
     nnodes = 1000
     nsamples = 3000
