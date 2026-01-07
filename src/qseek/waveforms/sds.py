@@ -329,10 +329,14 @@ class SDSArchive(WaveformProvider):
             channel_type = channel[:2]
             if self.channel_selector and channel_type not in self.channel_selector:
                 continue
-            file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
+            file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
             file = folder / file_name
             if not file.exists():
-                continue
+                # This is a fallback for non-zero padded julian days
+                file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
+                file = folder / file_name
+                if not file.exists():
+                    continue
             available_files[channel] = file
 
         if self.channel_selector:
@@ -405,6 +409,7 @@ class SDSArchive(WaveformProvider):
                 logger.warning("no waveform files found for %s, skipping", trace_start)
                 i_batch += 1
                 start_time = batch_end
+                await asyncio.sleep(0.0)
                 continue
 
             traces = await _load_files(
