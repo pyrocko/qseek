@@ -4,6 +4,7 @@ requires = [
     "setuptools>=61.0.0",
     "numpy>=2",
     "setuptools_scm[toml]>=6.2",
+    "simde-py==0.8.4rc1",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -83,11 +84,9 @@ where = ["src/"]
 include = ["qseek"]
 
 [project.urls]
-Home = "https://pyrocko.github.io/qseek/"
+Documentation = "https://pyrocko.github.io/qseek/"
 GitHub = "https://github.com/pyrocko/qseek"
 Issues = "https://github.com/pyrocko/qseek/issues"
-
-[tool.setuptools_scm]
 
 [tool.ruff.lint]
 extend-select = [
