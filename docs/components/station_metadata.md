@@ -11,7 +11,7 @@ If local magnitudes M~L~ are extracted, response information as StationXML is re
 
 ```python exec='on'
 from qseek.utils import generate_docs
-from qseek.models.station import Stations
+from qseek.models.station import StationInventory
 
-print(generate_docs(Stations()))
+print(generate_docs(StationInventory()))
 ```

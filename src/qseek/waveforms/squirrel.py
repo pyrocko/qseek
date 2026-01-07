@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal
+from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal, Self
 
 from pydantic import (
     DirectoryPath,
@@ -18,7 +18,6 @@ from pydantic import (
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
-from typing_extensions import Self
 
 from qseek.models.station import StationInventory
 from qseek.stats import Stats

@@ -10,7 +10,16 @@ from functools import cached_property, reduce
 from hashlib import sha1
 from operator import mul
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    Literal,
+    Self,
+    Sequence,
+)
 
 import numpy as np
 import scipy.interpolate
@@ -30,8 +39,6 @@ from qseek.models.location import CoordSystem, Location, get_coordinates
 from qseek.utils import Range
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
-
     from qseek.models.station import StationInventory
 
 logger = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from random import uniform
-from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Self, Sequence
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
@@ -27,7 +27,6 @@ from pydantic import (
 )
 from pyrocko.gui import marker
 from pyrocko.model import Event
-from typing_extensions import Self
 
 from qseek.features import EventFeaturesType
 from qseek.images.base import ObservedArrival
@@ -877,7 +876,7 @@ class EventDetection(Location):
         """Number of phase picks in the detection."""
         return self.receivers.n_picks()
 
-    def get_receiver_azimuths(self, observed_only: bool = True):
+    def get_receiver_azimuths(self, observed_only: bool = True) -> dict[str, float]:
         """Get receiver azimuths.
 
         Args:

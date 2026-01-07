@@ -4,12 +4,11 @@ import asyncio
 import itertools
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
 from pydantic import Field, PositiveFloat, PrivateAttr, model_validator
 from pyrocko import io
-from typing_extensions import Self
 
 from qseek.magnitudes.base import (
     EventMagnitude,
