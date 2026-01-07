@@ -81,8 +81,8 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
   data_arr_data = (float *)PyArray_DATA(data_arr);
 
   Py_BEGIN_ALLOW_THREADS;
-#pragma omp parallel num_threads(n_threads) private(                           \
-        start_sample, end_sample, i_node, i_sample, value)
+#pragma omp parallel num_threads(n_threads)                                    \
+    private(start_sample, end_sample, i_node, i_sample, value)
   {
     int num_threads = omp_get_num_threads();
     int thread_id = omp_get_thread_num();
