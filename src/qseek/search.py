@@ -173,7 +173,8 @@ class SearchStats(Stats):
 
     def log(self) -> None:
         log_str = (
-            f"{self.batch_count + 1}/{self.batch_count_total or '?'} {self.batch_time}"
+            f"{self.batch_count + 1}/{self.batch_count_total or '?'} "
+            f"{str(self.batch_time)[:22]}"
         )
         logger.info(
             "%s%% processed - batch %s in %s",

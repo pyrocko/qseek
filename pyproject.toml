@@ -3,7 +3,7 @@ requires = [
     "wheel",
     "setuptools>=80",
     "numpy>=2",
-    "setuptools_scm[toml]>=8",
+    "setuptools_scm>=8",
     "simde-py==0.8.4rc1",
 ]
 build-backend = "setuptools.build_meta"
@@ -32,8 +32,8 @@ keywords = [
 dependencies = [
     "numpy>=2.3",
     "scipy>=1.16",
-    "pyrocko>=2024.12",
-    "seisbench>=0.9",
+    "pyrocko>=2025.12",
+    "seisbench>=0.10",
     "pydantic>=2.12",
     "aiohttp>=3.8",
     "aiohttp_cors>=0.7.0",
@@ -133,6 +133,8 @@ addopts = "--cov=qseek --cov-report html"
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"
+
+[tool.setuptools_scm]
 
 [dependency-groups]
 dev = [
