@@ -76,6 +76,10 @@ class Bandpass(BatchPreProcessing):
         default=True,
         description="If True, demean the trace before filtering.",
     )
+    zero_phase: bool = Field(
+        default=True,
+        description="If True, apply zero-phase filtering.",
+    )
 
     @field_validator("bandpass")
     @classmethod
@@ -88,7 +92,7 @@ class Bandpass(BatchPreProcessing):
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         def worker() -> None:
-            traces = self.select_traces(batch)
+            traces = self.filter_traces(batch)
             for (deltat, _), trace_group in group_traces(traces):
                 sampling_rate = 1.0 / deltat
                 if self.bandpass.end >= sampling_rate / 2:
@@ -104,7 +108,12 @@ class Bandpass(BatchPreProcessing):
                     btype="bandpass",
                     fs=1.0 / deltat,
                 )
-                _sos_filter(list(trace_group), sos, demean=self.demean, zero_phase=True)
+                _sos_filter(
+                    list(trace_group),
+                    sos,
+                    demean=self.demean,
+                    zero_phase=self.zero_phase,
+                )
 
         await asyncio.to_thread(worker)
         return batch
@@ -130,7 +139,7 @@ class Highpass(BatchPreProcessing):
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         def worker() -> None:
-            traces = self.select_traces(batch)
+            traces = self.filter_traces(batch)
             for (deltat, _), trace_group in group_traces(traces):
                 sampling_rate = 1.0 / deltat
                 if self.frequency >= sampling_rate / 2:
@@ -172,7 +181,7 @@ class Lowpass(BatchPreProcessing):
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         def worker() -> None:
-            traces = self.select_traces(batch)
+            traces = self.filter_traces(batch)
             for (deltat, _), trace_group in group_traces(traces):
                 sampling_rate = 1.0 / deltat
                 if self.frequency >= sampling_rate / 2:
