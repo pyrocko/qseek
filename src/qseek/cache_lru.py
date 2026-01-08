@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Generic, Hashable, NamedTuple, TypeVar
 from weakref import WeakSet
 
 import numpy as np
 from lru import LRU
 from pydantic import BaseModel, ByteSize
+
+logger = logging.getLogger(__name__)
 
 _KT = TypeVar("_KT", bound=Hashable)
 _T = TypeVar("_T", bound="ArrayLRUCache")
@@ -86,15 +89,28 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         value = value.astype(self.dtype)
         value.setflags(write=False)
 
-        if self.size_bytes < self._max_size_bytes:
-            self.set_size(len(self) + 1)
+        if len(self) == 0:
+            self._init_size(value)
+
         super().__setitem__(key, value)
 
     def _remove_callback(self, key, value) -> None:
         self.size_bytes -= value.nbytes
         self._all_caches_bytes -= value.nbytes
-        if self.size_bytes > self._max_size_bytes:
-            self.set_size(len(self) - 1)
+
+    def _init_size(self, value: np.ndarray) -> None:
+        """Initialize the size of the cache based on the size in bytes.
+
+        We assume that all entries have the same size as the first entry added.
+        """
+        n_entries = self._max_size_bytes // value.nbytes
+        logger.debug(
+            "%s cache: setting LUT size to %d entries and %d bytes",
+            self.name,
+            n_entries,
+            self.size_bytes,
+        )
+        self.set_size(max(n_entries, 1))
 
     def fill_level(self) -> float:
         """Return the fill level of the LUT as a float between 0.0 and 1.0."""
