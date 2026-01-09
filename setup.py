@@ -10,6 +10,14 @@ def is_macos() -> bool:
     return platform.system() == "Darwin"
 
 
+def is_x86_64() -> bool:
+    return platform.machine() == "x86_64"
+
+
+def is_arm64() -> bool:
+    return platform.machine() == "arm64"
+
+
 link_args = ["-lomp"] if is_macos() else ["-lgomp"]
 extra_compile_args = ["-Xpreprocessor"] if is_macos() else []
 
@@ -19,7 +27,12 @@ setup(
             "qseek.ext.array_tools",
             sources=["src/qseek/ext/array_tools.c"],
             include_dirs=[numpy.get_include()],
-            extra_compile_args=[*extra_compile_args, "-fopenmp", "-O3", "-flto"],
+            extra_compile_args=[
+                *extra_compile_args,
+                "-fopenmp",
+                "-O3",
+                "-flto",
+            ],
             extra_link_args=link_args,
         ),
         Extension(
@@ -31,7 +44,8 @@ setup(
                 "-fopenmp",
                 "-O3",
                 "-flto",
-                "-march=native",
+                "-mavx2" if is_x86_64() else "",
+                "-mfma" if is_x86_64() else "",
             ],
             extra_link_args=link_args,
         ),

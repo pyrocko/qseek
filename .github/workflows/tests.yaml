@@ -19,11 +19,11 @@ jobs:
     needs: prek
     strategy:
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version:
           - "3.12"
           - "3.13"
           - "3.14"
-        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
       UV_PYTHON: ${{ matrix.python-version }}
@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-      - name: Install only on macos
+      - name: Install libomp on macOS
         if: runner.os == 'macOS'
         run: |
           brew install libomp
