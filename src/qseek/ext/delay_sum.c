@@ -38,12 +38,8 @@ static inline int get_thread_count(int n_threads) {
   return n_threads;
 }
 
-static inline Py_ssize_t imax(Py_ssize_t a, Py_ssize_t b) {
-  return a > b ? a : b;
-}
-static inline Py_ssize_t imin(Py_ssize_t a, Py_ssize_t b) {
-  return a < b ? a : b;
-}
+static inline npy_intp imax(npy_intp a, npy_intp b) { return a > b ? a : b; }
+static inline npy_intp imin(npy_intp a, npy_intp b) { return a < b ? a : b; }
 
 // Function to check NumPy array dtype
 static inline int check_array_dtype(PyArrayObject *arr, int expected_type) {
@@ -432,7 +428,11 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
                       "Failed to allocate memory for arrays");
       return NULL;
     }
-    PyArray_FILLWBYTE((PyArrayObject *)node_stack_max, (int)-NPY_INFINITYF);
+    float *stack_max_data =
+        (float *)PyArray_DATA((PyArrayObject *)node_stack_max);
+    for (npy_intp i = 0; i < stack_size; i++) {
+      stack_max_data[i] = -NPY_INFINITYF;
+    }
   }
 
   float *stack_max_data =
@@ -447,23 +447,25 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
     int num_threads = omp_get_num_threads();
     int thread_id = omp_get_thread_num();
 
-    int chunk_size = stack_size / num_threads;
-    int remainder = stack_size % num_threads;
+    npy_intp chunk_size = stack_size / num_threads;
+    npy_intp remainder = stack_size % num_threads;
 
-    npy_intp tile_start_idx = thread_id * chunk_size +
-                              (thread_id < remainder ? thread_id : remainder);
+    npy_intp tile_start_idx =
+        thread_id * chunk_size + imin(thread_id, remainder);
     npy_intp tile_end_idx =
         tile_start_idx + chunk_size + (thread_id < remainder ? 1 : 0);
     npy_intp tile_size = tile_end_idx - tile_start_idx;
 
-    float *tile_node_stack =
-        (float *)aligned_alloc(32, tile_size * sizeof(float));
+    float *tile_node_stack = (float *)malloc(tile_size * sizeof(float));
 
     for (npy_intp i_node = 0; i_node < n_nodes; i_node++) {
       Node node = nodes_list[i_node];
       if (node.masked)
         continue;
-      memset(tile_node_stack, 0, tile_size * sizeof(float));
+
+      for (npy_intp i = 0; i < tile_size; i++) {
+        tile_node_stack[i] = 0.0f;
+      }
 
       for (npy_intp i_trace = 0; i_trace < n_traces; i_trace++) {
         float weight = node.weights[i_trace];

@@ -6,10 +6,6 @@
 #include <float.h>
 #include <omp.h>
 
-static inline npy_intp min_intp(npy_intp a, npy_intp b) {
-  return a < b ? a : b;
-}
-
 static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
   PyObject *obj, *result_max_idx, *result_max_values;
   PyObject *node_mask = Py_None;
@@ -76,7 +72,7 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
       (npy_intp *)PyArray_DATA((PyArrayObject *)result_max_idx);
   result_max_values_data =
       (float *)PyArray_DATA((PyArrayObject *)result_max_values);
-  memset(result_max_values_data, FLT_MIN, n_samples * sizeof(float));
+  memset(result_max_values_data, (float)FLT_MIN, n_samples * sizeof(float));
 
   data_arr_data = (float *)PyArray_DATA(data_arr);
 
