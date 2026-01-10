@@ -34,6 +34,27 @@ def weights_exponential(
     return weights
 
 
+def weights_logistic(
+    distances: np.ndarray,
+    distance_taper: float,
+    required_stations: int = 4,
+    waterlevel: float = 0.0,
+) -> np.ndarray:
+    if required_stations < 1:
+        raise ValueError("required_stations must be at least 1")
+
+    required_stations = min(required_stations, distances.shape[1])
+    sorted_distances = np.sort(distances, axis=1)
+    threshold_distance = sorted_distances[:, required_stations - 1, np.newaxis]
+
+    # k = 9.19 / distance_taper  # 1-99% range
+    k = 7.84 / distance_taper  # 2-98% range
+    return 1 - (
+        (1 - waterlevel)
+        / (1 + np.exp(-k * (distances - (threshold_distance + distance_taper / 2))))
+    )
+
+
 def weights_gaussian(
     distances: np.ndarray,
     distance_taper: float,
@@ -149,7 +170,7 @@ class DistanceWeights(BaseModel):
 
         try:
             distances = [node_lut[node.hash][station_indices] for node in nodes]
-            return weights_gaussian(
+            return weights_logistic(
                 np.array(distances),
                 required_stations=self.required_closest_stations,
                 distance_taper=self.distance_taper,
