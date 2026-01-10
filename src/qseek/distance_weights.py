@@ -47,8 +47,10 @@ def weights_gaussian(
     sorted_distances = np.sort(distances, axis=1)
     threshold_distance = sorted_distances[:, required_stations - 1, np.newaxis]
 
+    # Full width at half maximum (FWHM) to standard deviation conversion:
+    # FWHM = 2.355 * sigma
     weights = np.exp(
-        -(((distances - threshold_distance) ** 2) / (2 * (distance_taper / 2) ** 2))
+        -(((distances - threshold_distance) ** 2) / (2 * (distance_taper / 2.355) ** 2))
     )
     weights[distances <= threshold_distance] = 1.0
     if waterlevel > 0.0:
