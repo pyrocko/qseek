@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from qseek.distance_weights import weights_gaussian
+from qseek.distance_weights import weights_gaussian, weights_logistic
 
 KM = 1e3
 
@@ -11,14 +11,21 @@ KM = 1e3
 def test_weights_gaussian_min_stations():
     rng = np.random.default_rng(42)
     n_nodes = 10
-    n_stations = 50
+    n_stations = 100
 
     station_distances = rng.uniform(0, 50 * KM, size=(n_nodes, n_stations))
 
-    required_stations = 5
+    required_stations = 10
     distance_taper = 20 * KM
 
     station_weights = weights_gaussian(
+        station_distances,
+        distance_taper=distance_taper,
+        required_stations=required_stations,
+        waterlevel=0.1,
+    )
+
+    station_weights_logistic = weights_logistic(
         station_distances,
         distance_taper=distance_taper,
         required_stations=required_stations,
@@ -41,6 +48,15 @@ def test_weights_gaussian_min_stations():
         s=30,
         ec="none",
         label="Station",
+    )
+
+    ax.scatter(
+        distances,
+        station_weights_logistic[node][sorted_distances],
+        alpha=0.5,
+        s=30,
+        ec="none",
+        label="Logistic Function",
     )
 
     ax.axvline(dist_cutoff, color="red", linestyle="--", alpha=0.8, zorder=-1)
