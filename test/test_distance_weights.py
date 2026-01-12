@@ -15,13 +15,21 @@ def test_weights_gaussian_min_stations():
 
     station_distances = rng.uniform(0, 50 * KM, size=(n_nodes, n_stations))
 
-    required_stations = 5
-    distance_taper = 20 * KM
+    n_stations_plateau = 4
+    n_stations_taper = 8
 
     station_weights = weights_gaussian(
         station_distances,
-        distance_taper=distance_taper,
-        required_stations=required_stations,
+        n_stations_plateau=n_stations_plateau,
+        n_stations_taper=n_stations_taper,
+        waterlevel=0.1,
+    )
+
+    station_weights_taper = weights_gaussian(
+        station_distances,
+        n_stations_plateau=n_stations_plateau,
+        n_stations_taper=0,
+        taper_distance=10 * KM,
         waterlevel=0.1,
     )
 
@@ -30,7 +38,11 @@ def test_weights_gaussian_min_stations():
     sorted_distances = np.argsort(station_distances[node])
     distances = station_distances[node][sorted_distances]
     weights = station_weights[node][sorted_distances]
-    dist_cutoff = distances[required_stations - 1]
+    weights_taper = station_weights_taper[node][sorted_distances]
+
+    dist_cutoff = distances[n_stations_plateau - 1]
+    n_stations_taper = min(n_stations_taper + n_stations_plateau, distances.size)
+    distance_taper = distances[n_stations_taper - 1] - dist_cutoff
 
     fig = plt.figure(figsize=(8, 4))
     ax = fig.add_subplot(111)
@@ -38,6 +50,15 @@ def test_weights_gaussian_min_stations():
         distances,
         weights,
         alpha=0.9,
+        s=30,
+        ec="none",
+        label="Station",
+    )
+
+    ax.scatter(
+        distances,
+        weights_taper,
+        alpha=0.1,
         s=30,
         ec="none",
         label="Station",
@@ -65,7 +86,7 @@ def test_weights_gaussian_min_stations():
     ax.text(
         dist_cutoff * 0.8,
         0.3,
-        f"Req. closest stations = {required_stations}",
+        f"Req. closest stations = {n_stations_plateau}",
         c="black",
         ha="right",
         rotation=90.0,
