@@ -36,42 +36,56 @@ def weights_exponential(
 
 def weights_logistic(
     distances: np.ndarray,
-    distance_taper: float,
-    required_stations: int = 4,
+    taper_distance: float = 0.0,
+    n_stations_plateau: int = 4,
     waterlevel: float = 0.0,
 ) -> np.ndarray:
-    if required_stations < 1:
+    if n_stations_plateau < 1:
         raise ValueError("required_stations must be at least 1")
 
-    required_stations = min(required_stations, distances.shape[1])
+    n_stations_plateau = min(n_stations_plateau, distances.shape[1])
     sorted_distances = np.sort(distances, axis=1)
-    threshold_distance = sorted_distances[:, required_stations - 1, np.newaxis]
+    threshold_distance = sorted_distances[:, n_stations_plateau - 1, np.newaxis]
 
     # k = 9.19 / distance_taper  # 1-99% range
-    k = 7.84 / distance_taper  # 2-98% range
+    k = 7.84 / taper_distance  # 2-98% range
     return 1 - (
         (1 - waterlevel)
-        / (1 + np.exp(-k * (distances - (threshold_distance + distance_taper / 2))))
+        / (1 + np.exp(-k * (distances - (threshold_distance + taper_distance / 2))))
     )
 
 
 def weights_gaussian(
     distances: np.ndarray,
-    distance_taper: float,
-    required_stations: int = 4,
+    n_stations_plateau: int = 4,
+    n_stations_taper: int = 5,
+    taper_distance: float = 1000.0,
     waterlevel: float = 0.0,
 ) -> np.ndarray:
-    if required_stations < 1:
+    if n_stations_plateau < 1:
         raise ValueError("required_stations must be at least 1")
+    if n_stations_taper < 0:
+        raise ValueError("taper_stations must be at least 0")
+    if taper_distance < 0.0:
+        raise ValueError("distance_taper must be positive")
 
-    required_stations = min(required_stations, distances.shape[1])
+    n_stations_plateau = min(n_stations_plateau, distances.shape[1])
     sorted_distances = np.sort(distances, axis=1)
-    threshold_distance = sorted_distances[:, required_stations - 1, np.newaxis]
+    threshold_distance = sorted_distances[:, n_stations_plateau - 1, np.newaxis]
+
+    if n_stations_taper > 0:
+        n_stations_taper = min(
+            n_stations_taper + n_stations_plateau, distances.shape[1]
+        )
+        taper_distance = sorted_distances[:, n_stations_taper - 1, np.newaxis]
+        taper_distance += threshold_distance
+    else:
+        taper_distance = (threshold_distance + taper_distance) / 2.355
 
     # Full width at half maximum (FWHM) to standard deviation conversion:
     # FWHM = 2.355 * sigma
     weights = np.exp(
-        -(((distances - threshold_distance) ** 2) / (2 * (distance_taper / 2.355) ** 2))
+        -(((distances - threshold_distance) ** 2) / (2 * (taper_distance) ** 2))
     )
     weights[distances <= threshold_distance] = 1.0
     if waterlevel > 0.0:
@@ -80,18 +94,23 @@ def weights_gaussian(
 
 
 class DistanceWeights(BaseModel):
-    distance_taper: PositiveFloat | Literal["mean_interstation"] = Field(
+    taper_distance: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Taper distance for the Gaussian weighting function"
         " in meters. 'mean_interstation' uses twice the mean interstation distance for"
         " the radius. Default is 'mean_interstation'.",
     )
-    required_closest_stations: PositiveInt = Field(
+    n_stations_taper: int = Field(
+        default=8,
+        ge=0,
+        description="Number of stations to calculate the taper distance in the"
+        " spatial weighting function. Default is 5.",
+    )
+    n_stations_plateau: PositiveInt = Field(
         default=4,
-        description="Number of stations to assign full weight in the"
-        " spatial weighting function, only more distant stations are tapered with a"
-        " Gaussian decay. This ensures that the closest _N_ stations have an equal and"
-        " the highest contribution to the detection and localization. Default is 4.",
+        description="The number of closest stations to retain with full weight (1.0). "
+        "These stations form the 'plateau' of the spatial weighting function, "
+        "ensuring the core aperture is never down-weighted. Default is 4.",
     )
     waterlevel: float = Field(
         default=0.0,
@@ -115,16 +134,16 @@ class DistanceWeights(BaseModel):
         )
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
-        if self.distance_taper == "mean_interstation":
-            self.distance_taper = 2 * stations.mean_interstation_distance()
+        if self.taper_distance == "mean_interstation":
+            self.taper_distance = 2 * stations.mean_interstation_distance()
             logger.info(
                 "using 2x mean interstation distance as distance taper: %g m",
-                self.distance_taper,
+                self.taper_distance,
             )
         logger.info(
             "distance weighting uses %d closest stations and a taper of %g m",
-            self.required_closest_stations,
-            self.distance_taper,
+            self.n_stations_plateau,
+            self.taper_distance,
         )
 
         self._stations = StationList.from_inventory(stations)
@@ -145,20 +164,6 @@ class DistanceWeights(BaseModel):
         for node, sta_distances in zip(nodes, distances, strict=True):
             node_lut[node.hash] = sta_distances
 
-    def get_node_weights(self, node: Node, stations: list[Station]) -> np.ndarray:
-        try:
-            distances = self._node_lut[node.hash]
-        except KeyError:
-            self.fill_lut([node])
-            return self.get_node_weights(node, stations)
-
-        return weights_gaussian(
-            distances,
-            required_stations=self.required_closest_stations,
-            distance_taper=self.distance_taper,
-            waterlevel=self.waterlevel,
-        )
-
     @alog_call
     async def get_weights(
         self,
@@ -170,10 +175,11 @@ class DistanceWeights(BaseModel):
 
         try:
             distances = [node_lut[node.hash][station_indices] for node in nodes]
-            return weights_logistic(
+            return weights_gaussian(
                 np.array(distances),
-                required_stations=self.required_closest_stations,
-                distance_taper=self.distance_taper,
+                n_stations_plateau=self.n_stations_plateau,
+                n_stations_taper=self.n_stations_taper,
+                taper_distance=self.taper_distance,
                 waterlevel=self.waterlevel,
             )
         except KeyError:

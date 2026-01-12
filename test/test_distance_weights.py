@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from qseek.distance_weights import weights_gaussian, weights_logistic
+from qseek.distance_weights import weights_gaussian
 
 KM = 1e3
 
@@ -11,24 +11,25 @@ KM = 1e3
 def test_weights_gaussian_min_stations():
     rng = np.random.default_rng(42)
     n_nodes = 10
-    n_stations = 100
+    n_stations = 1000
 
     station_distances = rng.uniform(0, 50 * KM, size=(n_nodes, n_stations))
 
-    required_stations = 10
-    distance_taper = 20 * KM
+    n_stations_plateau = 10
+    n_stations_taper = 100
 
     station_weights = weights_gaussian(
         station_distances,
-        distance_taper=distance_taper,
-        required_stations=required_stations,
+        n_stations_plateau=n_stations_plateau,
+        n_stations_taper=n_stations_taper,
         waterlevel=0.1,
     )
 
-    station_weights_logistic = weights_logistic(
+    station_weights_taper = weights_gaussian(
         station_distances,
-        distance_taper=distance_taper,
-        required_stations=required_stations,
+        n_stations_plateau=n_stations_plateau,
+        n_stations_taper=0,
+        taper_distance=10 * KM,
         waterlevel=0.1,
     )
 
@@ -37,7 +38,11 @@ def test_weights_gaussian_min_stations():
     sorted_distances = np.argsort(station_distances[node])
     distances = station_distances[node][sorted_distances]
     weights = station_weights[node][sorted_distances]
-    dist_cutoff = distances[required_stations - 1]
+    weights_taper = station_weights_taper[node][sorted_distances]
+
+    dist_cutoff = distances[n_stations_plateau - 1]
+    n_stations_taper = min(n_stations_taper + n_stations_plateau, distances.size)
+    distance_taper = distances[n_stations_taper - 1] - dist_cutoff
 
     fig = plt.figure(figsize=(8, 4))
     ax = fig.add_subplot(111)
@@ -52,11 +57,11 @@ def test_weights_gaussian_min_stations():
 
     ax.scatter(
         distances,
-        station_weights_logistic[node][sorted_distances],
-        alpha=0.5,
+        weights_taper,
+        alpha=0.1,
         s=30,
         ec="none",
-        label="Logistic Function",
+        label="Station",
     )
 
     ax.axvline(dist_cutoff, color="red", linestyle="--", alpha=0.8, zorder=-1)
@@ -81,7 +86,7 @@ def test_weights_gaussian_min_stations():
     ax.text(
         dist_cutoff * 0.8,
         0.3,
-        f"Req. closest stations = {required_stations}",
+        f"Req. closest stations = {n_stations_plateau}",
         c="black",
         ha="right",
         rotation=90.0,
