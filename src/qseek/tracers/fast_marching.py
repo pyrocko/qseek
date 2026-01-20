@@ -310,8 +310,10 @@ class FastMarchingTracer(RayTracer):
         """Add a travel time slice to the tracer."""
         key = (table.station.location_hash(), table.phase)
         if key in self._travel_time_tables:
-            raise ValueError(
-                f"travel time table {table.phase} for {table.station} already exists"
+            logger.warning(
+                "duplicate travel time table for location %.4f %.4f",
+                table.station.effective_lat,
+                table.station.effective_lon,
             )
         self._travel_time_tables[key] = table
 
