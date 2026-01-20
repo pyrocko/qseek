@@ -162,7 +162,8 @@ class SeedLink(WaveformProvider):
         self.save_sds_archive.mkdir(parents=True, exist_ok=True)
 
         self._squirrel = Squirrel()
-        self._squirrel.add(str(self.save_sds_archive), check=False)
+        # This is disabled for now to avoid issues with large backfills
+        # self._squirrel.add(str(self.save_sds_archive), check=False)
 
         for client in self.clients:
             client.prepare(stations, timeout=self.timeout.total_seconds())
