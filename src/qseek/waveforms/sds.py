@@ -256,7 +256,11 @@ class SDSArchive(WaveformProvider):
                 if nsl not in self._archive_stations:
                     self._archive_stations[nsl] = StationCovarage(nsl=nsl)
                 station_coverage = self._archive_stations[nsl]
-                station_coverage.add_file(file)
+                try:
+                    station_coverage.add_file(file)
+                except ValueError:
+                    logger.warning("cannot add file %s", file)
+                    continue
 
                 self._stats.n_files_scanned += 1
                 self._stats.n_bytes_scanned += file.stat().st_size
