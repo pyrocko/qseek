@@ -199,7 +199,7 @@ class StationInventory(BaseModel):
             nsls (list[NSL]): List of NSL codes to keep.
         """
         n_removed_stations = 0
-        for sta in self.stations.copy():
+        for sta in sorted(self.stations, key=lambda s: s.nsl.pretty):
             if sta.nsl not in nsls:
                 logger.warning(
                     "removing station %s from inventory",
