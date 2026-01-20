@@ -120,18 +120,20 @@ def _nsl_from_filename(name: str) -> NSL:
     return NSL(network, station, location)
 
 
+def _get_date_from_filename(path: Path) -> date:
+    *_, filename = path.parts
+    *_, year, julian_day = filename.split(".")
+    return date(int(year), 1, 1) + timedelta(days=int(julian_day) - 1)
+
+
 class StationCovarage(NamedTuple):
     nsl: NSL
     channels: set[str] = set()
     file_dates: list[date] = []
 
     def add_file(self, file: Path):
-        *_, channel, filename = file.parts
-        # if self.nsl != _nsl_from_filename(filename):
-        #     raise ValueError(f"File {file} does not match station {self.nsl.pretty}")
-        *_, year, julian_day = filename.split(".")
-        file_date = date(int(year), 1, 1) + timedelta(days=int(julian_day) - 1)
-
+        *_, channel, _ = file.parts
+        file_date = _get_date_from_filename(file)
         self.file_dates.append(file_date)
         self.channels.add(channel.rstrip(".D"))
 
@@ -252,15 +254,21 @@ class SDSArchive(WaveformProvider):
                 total=None,
             )
             for file in sds_iter:
+                try:
+                    file_date = _get_date_from_filename(file)
+                except ValueError:
+                    logger.warning("cannot parse date from filename %s", file)
+                    continue
+                if self.start_time and file_date < self.start_time.date():
+                    continue
+                if self.end_time and file_date > self.end_time.date():
+                    continue
+
                 nsl = _nsl_from_filename(file.name)
                 if nsl not in self._archive_stations:
                     self._archive_stations[nsl] = StationCovarage(nsl=nsl)
                 station_coverage = self._archive_stations[nsl]
-                try:
-                    station_coverage.add_file(file)
-                except ValueError:
-                    logger.warning("cannot add file %s", file)
-                    continue
+                station_coverage.add_file(file)
 
                 self._stats.n_files_scanned += 1
                 self._stats.n_bytes_scanned += file.stat().st_size
