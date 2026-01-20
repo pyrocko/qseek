@@ -58,13 +58,31 @@ def weights_logistic(
 def weights_gaussian(
     distances: np.ndarray,
     n_stations_plateau: int = 4,
-    n_stations_taper: int = 5,
+    n_stations_taper_distance: int = 5,
     taper_distance: float = 1000.0,
     waterlevel: float = 0.0,
 ) -> np.ndarray:
+    """Gaussian distance weights with plateau and taper.
+
+    Args:
+        distances: Array of shape (n_nodes, n_stations) with node-station distances
+            in meters.
+        n_stations_plateau: Number of closest stations to retain with full weight (1.0).
+            Default is 4.
+        n_stations_taper_distance: Number of stations to define the taper width.
+            If 0, taper_distance is used instead. Default is 5.
+        taper_distance: Taper distance in meters if n_stations_taper_distance is 0.
+            The taper distance is given as full width at half maximum (FWHM).
+            Default is 1000.0.
+        waterlevel: Stations outside the taper are lifted by this fraction.
+            Default is 0.0.
+
+    Returns:
+        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
+    """
     if n_stations_plateau < 1:
         raise ValueError("required_stations must be at least 1")
-    if n_stations_taper < 0:
+    if n_stations_taper_distance < 0:
         raise ValueError("taper_stations must be at least 0")
     if taper_distance < 0.0:
         raise ValueError("distance_taper must be positive")
@@ -73,22 +91,28 @@ def weights_gaussian(
     sorted_distances = np.sort(distances, axis=1)
     threshold_distance = sorted_distances[:, n_stations_plateau - 1, np.newaxis]
 
-    if n_stations_taper > 0:
-        n_stations_taper = min(
-            n_stations_taper + n_stations_plateau, distances.shape[1]
-        )
-        sigma = (
-            sorted_distances[:, n_stations_taper - 1, np.newaxis] - threshold_distance
-        )
-    else:
-        sigma = taper_distance / 2.355
+    if n_stations_taper_distance > 0:
+        n_stations_taper = n_stations_taper_distance + n_stations_plateau
+        idx_stations_taper = min(n_stations_taper, distances.shape[1])
 
-    # Full width at half maximum (FWHM) to standard deviation conversion:
-    # FWHM = 2.355 * sigma
-    weights = np.exp(-(((distances - threshold_distance) ** 2) / (2 * sigma**2)))
+        sigma_distance = sorted_distances[:, idx_stations_taper - 1, np.newaxis]
+        # Linearly interpolate taper distance if station count is less
+        # than requested stations for taper to broaden the taper.
+        if idx_stations_taper < n_stations_taper:
+            sigma_distance = (sigma_distance / idx_stations_taper) * n_stations_taper
+        sigma_distance /= 2
+    else:
+        # Full width at half maximum (FWHM) to standard deviation conversion:
+        # FWHM = 2.355 * sigma
+        sigma_distance = taper_distance / 2.355
+
+    weights = np.exp(
+        -(((distances - threshold_distance) ** 2) / (2 * sigma_distance**2))
+    )
     weights[distances <= threshold_distance] = 1.0
+
     if waterlevel > 0.0:
-        weights = (1 - waterlevel) * weights + waterlevel
+        weights = (1.0 - waterlevel) * weights + waterlevel
     return weights
 
 
@@ -97,13 +121,16 @@ class DistanceWeights(BaseModel):
         default="mean_interstation",
         description="Taper distance for the Gaussian weighting function"
         " in meters. 'mean_interstation' uses twice the mean interstation distance for"
-        " the radius. Default is 'mean_interstation'.",
+        " the radius. Fixed taper distance is NOT USED if"
+        " `n_stations_taper_distance` is > 0. Default is 'mean_interstation'.",
     )
-    n_stations_taper: int = Field(
-        default=8,
+    n_stations_taper_distance: int = Field(
+        default=6,
         ge=0,
         description="Number of stations to calculate the taper distance in the"
-        " spatial weighting function. Default is 5.",
+        " spatial weighting function. This opens the aperture of the included stations"
+        " gradually for deep events and events that are away from the network. "
+        "If set to 0, the fixed `taper_distance` is used instead. Default is 6.",
     )
     n_stations_plateau: PositiveInt = Field(
         default=4,
@@ -177,7 +204,7 @@ class DistanceWeights(BaseModel):
             return weights_gaussian(
                 np.array(distances),
                 n_stations_plateau=self.n_stations_plateau,
-                n_stations_taper=self.n_stations_taper,
+                n_stations_taper_distance=self.n_stations_taper_distance,
                 taper_distance=self.taper_distance,
                 waterlevel=self.waterlevel,
             )
