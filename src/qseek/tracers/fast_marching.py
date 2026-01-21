@@ -438,7 +438,7 @@ class FastMarchingTracer(RayTracer):
             raise ValueError(f"phase {phase} is not supported by this tracer")
 
         node_lut = self._node_lut
-        station_indices = self._stations.get_indices(stations)
+        station_indices = self._stations.get_indexes(stations)
 
         try:
             travel_times = [node_lut[nd.hash, phase][station_indices] for nd in nodes]
