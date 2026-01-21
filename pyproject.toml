@@ -5,6 +5,7 @@ requires = [
     "numpy>=2",
     "setuptools_scm>=8",
     "simde-py==0.8.4rc1",
+    "py-cpuinfo>=9.0"
 ]
 build-backend = "setuptools.build_meta"
 
@@ -82,7 +83,7 @@ qseek-inversion = "qseek_inversion.app.qseek_inversion:main"
 
 [tool.setuptools.packages.find]
 where = ["src/"]
-include = ["qseek"]
+include = ["qseek*"]
 
 [project.urls]
 Documentation = "https://pyrocko.github.io/qseek/"
