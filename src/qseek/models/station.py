@@ -241,20 +241,6 @@ class StationInventory(BaseModel):
         if not self.stations:
             raise ValueError("no stations available, add stations to start detection")
 
-    def mean_interstation_distance(self) -> float:
-        """Calculate the mean interstation distance.
-
-        Returns:
-            float: Mean interstation distance in meters.
-        """
-        distances = [
-            sta_1.distance_to(sta_2)
-            for sta_1 in self
-            for sta_2 in self
-            if sta_1 is not sta_2
-        ]
-        return float(np.mean(distances))
-
     @property
     def n_stations(self) -> int:
         """Number of stations."""
@@ -390,7 +376,7 @@ class StationList(Sequence[Station]):
         """
         return self._indices[nsl.pretty]
 
-    def get_indices(self, stations: Sequence[Station]) -> np.ndarray:
+    def get_indexes(self, stations: Sequence[Station]) -> np.ndarray:
         """Get the indices of stations by their NSL codes.
 
         Args:

@@ -14,45 +14,56 @@ from qseek.octree import get_node_coordinates
 from qseek.utils import alog_call
 
 if TYPE_CHECKING:
+    from qseek.models.location import Location
     from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree
 
 
 logger = logging.getLogger(__name__)
 
+KM = 1e3
 
-def weights_exponential(
-    distances: np.ndarray,
-    radius: float,
-    exponent: float = 2.0,
-    waterlevel: float = 0.0,
-    normalize: bool = True,
+
+def _get_interstation_distances(locations: Sequence[Location]) -> np.array:
+    coords = get_coordinates(locations, system="geographic")
+    coords_ecef = np.array(od.geodetic_to_ecef(*coords.T)).T
+    distances = np.linalg.norm(coords_ecef - coords_ecef[:, np.newaxis], axis=2)
+    np.fill_diagonal(distances, np.nan)
+    return distances.astype(np.float32)
+
+
+def _nnm(distances: np.ndarray) -> float:
+    """Calculate the median nearest neighbor distance between stations.
+
+    Args:
+        distances: Array of shape (n_stations, n_stations) with interstation distances
+            in meters.
+
+    Returns:
+        Median nearest neighbor distance in meters.
+    """
+    return np.nanmedian(np.nanmin(distances, axis=1))
+
+
+def _get_station_density(
+    interstation_distances: np.ndarray,
+    radius: float = 0.0,
 ) -> np.ndarray:
-    weights = (1 - waterlevel) / (1 + (distances / radius) ** exponent) + waterlevel
-    if normalize:
-        weights /= weights.max()
-    return weights
+    """Calculate station density from Gaussian kernel densities.
 
+    Args:
+        interstation_distances: Array of shape (n_stations, n_stations) with
+            interstation distances in meters.
+        radius: Kernel radius in meters. If 0.0, the median nearest neighbor distance
+            is used. Default is 0.0.
 
-def weights_logistic(
-    distances: np.ndarray,
-    taper_distance: float = 0.0,
-    n_stations_plateau: int = 4,
-    waterlevel: float = 0.0,
-) -> np.ndarray:
-    if n_stations_plateau < 1:
-        raise ValueError("required_stations must be at least 1")
-
-    n_stations_plateau = min(n_stations_plateau, distances.shape[1])
-    sorted_distances = np.sort(distances, axis=1)
-    threshold_distance = sorted_distances[:, n_stations_plateau - 1, np.newaxis]
-
-    # k = 9.19 / distance_taper  # 1-99% range
-    k = 7.84 / taper_distance  # 2-98% range
-    return 1 - (
-        (1 - waterlevel)
-        / (1 + np.exp(-k * (distances - (threshold_distance + taper_distance / 2))))
-    )
+    Returns:
+        Array of shape (n_stations,) with station densities.
+    """
+    if radius <= 0.0:
+        radius = _nnm(interstation_distances)
+    kde = np.nansum(np.exp(-((interstation_distances**2) / (2 * radius**2))), axis=1)
+    return kde / kde.max()
 
 
 def weights_gaussian(
@@ -100,7 +111,6 @@ def weights_gaussian(
         # than requested stations for taper to broaden the taper.
         if idx_stations_taper < n_stations_taper:
             sigma_distance = (sigma_distance / idx_stations_taper) * n_stations_taper
-        sigma_distance /= 2
     else:
         # Full width at half maximum (FWHM) to standard deviation conversion:
         # FWHM = 2.355 * sigma
@@ -117,12 +127,12 @@ def weights_gaussian(
 
 
 class DistanceWeights(BaseModel):
-    taper_distance: PositiveFloat | Literal["mean_interstation"] = Field(
-        default="mean_interstation",
+    taper_distance: PositiveFloat | Literal["nearest_neighbor_median"] = Field(
+        default="nearest_neighbor_median",
         description="Taper distance for the Gaussian weighting function"
-        " in meters. 'mean_interstation' uses twice the mean interstation distance for"
-        " the radius. Fixed taper distance is NOT USED if"
-        " `n_stations_taper_distance` is > 0. Default is 'mean_interstation'.",
+        " in meters. 'nearest_neighbor_median' uses twice the mean interstation "
+        "distance for the radius. Fixed taper distance is NOT USED if"
+        " `n_stations_taper_distance` is > 0. Default is 'nearest_neighbor_median'.",
     )
     n_stations_taper_distance: int = Field(
         default=6,
@@ -146,9 +156,10 @@ class DistanceWeights(BaseModel):
         "Default is 0.0.",
     )
 
-    _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
+    _node_distance_lut: ArrayLRUCache[bytes] = PrivateAttr()
     _stations: StationList = PrivateAttr()
     _station_coords_ecef: np.ndarray = PrivateAttr()
+    _interstation_distances: np.ndarray = PrivateAttr()
 
     def get_distances(self, nodes: Sequence[Node]) -> np.ndarray:
         node_coords = get_node_coordinates(nodes, system="geographic")
@@ -160,25 +171,29 @@ class DistanceWeights(BaseModel):
         )
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
-        if self.taper_distance == "mean_interstation":
-            self.taper_distance = 2 * stations.mean_interstation_distance()
-            logger.info(
-                "using 2x mean interstation distance as distance taper: %g m",
-                self.taper_distance,
-            )
-        logger.info(
-            "distance weighting uses %d closest stations and a taper of %g m",
-            self.n_stations_plateau,
-            self.taper_distance,
-        )
-
         self._stations = StationList.from_inventory(stations)
-        self._node_lut = ArrayLRUCache(name="distance_weights", short_name="DW")
+        self._node_distance_lut = ArrayLRUCache(
+            name="distance_weights", short_name="DW"
+        )
 
         sta_coords = get_coordinates(self._stations)
         self._station_coords_ecef = np.array(
-            od.geodetic_to_ecef(*sta_coords.T), dtype=np.float32
+            od.geodetic_to_ecef(*sta_coords.T),
+            dtype=np.float32,
         ).T
+        self._interstation_distances = _get_interstation_distances(list(self._stations))
+
+        if self.taper_distance == "median_nearest_neighbor":
+            self.taper_distance = _nnm(self._interstation_distances) * 2.0
+            logger.info(
+                "using 2x median nearest neighbor distance as taper: %g m",
+                self.taper_distance,
+            )
+        logger.info(
+            "distance weighting uses %d closest stations with a taper of %g m",
+            self.n_stations_plateau,
+            self.taper_distance,
+        )
 
         self.fill_lut(nodes=octree.nodes)
 
@@ -186,7 +201,7 @@ class DistanceWeights(BaseModel):
         logger.debug("filling distance weight LUT for %d nodes", len(nodes))
 
         distances = self.get_distances(nodes)
-        node_lut = self._node_lut
+        node_lut = self._node_distance_lut
         for node, sta_distances in zip(nodes, distances, strict=True):
             node_lut[node.hash] = sta_distances
 
@@ -196,18 +211,26 @@ class DistanceWeights(BaseModel):
         nodes: Sequence[Node],
         stations: Sequence[Station],
     ) -> np.ndarray:
-        node_lut = self._node_lut
-        station_indices = self._stations.get_indices(stations)
+        node_lut = self._node_distance_lut
+        station_idxs = self._stations.get_indexes(stations)
 
         try:
-            distances = [node_lut[node.hash][station_indices] for node in nodes]
-            return weights_gaussian(
+            distances = [node_lut[node.hash][station_idxs] for node in nodes]
+            distance_weights = weights_gaussian(
                 np.array(distances),
                 n_stations_plateau=self.n_stations_plateau,
                 n_stations_taper_distance=self.n_stations_taper_distance,
                 taper_distance=self.taper_distance,
                 waterlevel=self.waterlevel,
             )
+
+            if True:
+                station_density = _get_station_density(
+                    self._interstation_distances[station_idxs][:, station_idxs]
+                )
+                distance_weights /= station_density[np.newaxis, :]
+            return distance_weights
+
         except KeyError:
             fill_nodes = [node for node in nodes if node.hash not in node_lut]
 
