@@ -2,9 +2,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from qseek.distance_weights import weights_gaussian
+from qseek.distance_weights import _nnm, weights_gaussian
+from qseek.models.location import Location
 
 KM = 1e3
+
+
+def test_nearest_neighbor_median():
+    locations = [
+        Location(lat=0.0, lon=0.0),
+        Location(lat=0.0, lon=0.1),
+        Location(lat=0.1, lon=0.0),
+        Location(lat=0.1, lon=0.1),
+    ]
+
+    median_distance = _nnm(locations)
+    expected_distance = locations[0].distance_to(locations[1])
+
+    np.testing.assert_allclose(median_distance, expected_distance, rtol=1e-2)
 
 
 @pytest.mark.plot
