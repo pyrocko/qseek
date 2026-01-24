@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 import pyrocko.orthodrome as od
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, PrivateAttr
+from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
 
 from qseek.cache_lru import ArrayLRUCache
 from qseek.models.location import get_coordinates
@@ -25,6 +25,15 @@ KM = 1e3
 
 
 def _get_interstation_distances(locations: Sequence[Location]) -> np.array:
+    """Calculate interstation distances.
+
+    Args:
+        locations: List of station locations.
+
+    Returns:
+        Array of shape (n_stations, n_stations) with interstation distances in meters
+            The diagonal is filled with NaNs.
+    """
     coords = get_coordinates(locations, system="geographic")
     coords_ecef = np.array(od.geodetic_to_ecef(*coords.T)).T
     distances = np.linalg.norm(coords_ecef - coords_ecef[:, np.newaxis], axis=2)
@@ -32,7 +41,7 @@ def _get_interstation_distances(locations: Sequence[Location]) -> np.array:
     return distances.astype(np.float32)
 
 
-def _nnm(distances: np.ndarray) -> float:
+def _nn_median(distances: np.ndarray) -> float:
     """Calculate the median nearest neighbor distance between stations.
 
     Args:
@@ -42,10 +51,11 @@ def _nnm(distances: np.ndarray) -> float:
     Returns:
         Median nearest neighbor distance in meters.
     """
+    distances = np.atleast_2d(distances)
     return np.nanmedian(np.nanmin(distances, axis=1))
 
 
-def _get_station_density(
+def _station_density(
     interstation_distances: np.ndarray,
     radius: float = 0.0,
 ) -> np.ndarray:
@@ -61,9 +71,80 @@ def _get_station_density(
         Array of shape (n_stations,) with station densities.
     """
     if radius <= 0.0:
-        radius = _nnm(interstation_distances)
+        radius = _nn_median(interstation_distances)
+    # radius: sigma of the Gaussian kernel
     kde = np.nansum(np.exp(-((interstation_distances**2) / (2 * radius**2))), axis=1)
-    return kde / kde.max()
+    kde += 1.0  # add station self-contribution
+    return kde
+
+
+def _station_weights(
+    insterstation_distances: np.ndarray, radius: float = 0.0
+) -> np.ndarray:
+    """Calculate station weights from station densities.
+
+    Args:
+        insterstation_distances: Array of shape (n_stations, n_stations) with
+            interstation distances in meters.
+        radius: Kernel radius in meters. If 0.0, the median nearest neighbor distance
+            is used. Default is 0.0.
+
+    Returns:
+        Array of shape (n_stations,) with station weights between 0 and 1.
+    """
+    station_densities = _station_density(insterstation_distances, radius=radius)
+    return 1 - (station_densities - station_densities.min()) / station_densities.max()
+
+
+def distance_weights(
+    distances: np.ndarray,
+    station_weights: np.ndarray,
+    station_weight_plateau: float = 4.0,
+    station_weight_taper: float = 12.0,
+) -> np.ndarray:
+    """Calculate distance weights with plateau and taper based on station weights.
+
+    The stations weights act as an information content measure. The plateau and taper
+    distances are defined based on cumulative station weights.
+
+    Args:
+        distances: Array of shape (n_nodes, n_stations) with node-station distances
+            in meters.
+        station_weights: Array of shape (n_stations,) with station weights between
+            0 and 1.
+        station_weight_plateau: Station weight value to define the plateau distance.
+            Default is 4.0.
+        station_weight_taper: Station weight value to define the taper distance.
+            Default is 8.0.
+
+    Returns:
+        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
+    """
+    n_nodes = distances.shape[0]
+
+    distance_sort = np.argsort(distances, axis=1)
+    sorted_distances = np.take_along_axis(distances, distance_sort, axis=1)
+    sorted_weights = station_weights[distance_sort]
+
+    weights_cum = np.cumsum(sorted_weights, axis=1)
+
+    # First index where cumulative weights exceed plateau and taper weights
+    idxs_plateau = np.argmax(weights_cum >= station_weight_plateau, axis=1)
+    idxs_taper = np.argmax(weights_cum >= station_weight_taper, axis=1)
+
+    # If total cumulative weight is less than plateau/taper, set to last index
+    idxs_plateau[weights_cum[:, -1] < station_weight_plateau] = distances.shape[1] - 1
+    idxs_taper[weights_cum[:, -1] < station_weight_taper] = distances.shape[1] - 1
+
+    plateau_distances = sorted_distances[np.arange(n_nodes), idxs_plateau, np.newaxis]
+    taper_distance = sorted_distances[np.arange(n_nodes), idxs_taper, np.newaxis]
+    taper_sigma = taper_distance / 2
+
+    distance_weights = np.exp(
+        -(((distances - plateau_distances) ** 2) / (2 * taper_sigma**2))
+    )
+    distance_weights[distances <= plateau_distances] = 1.0
+    return distance_weights
 
 
 def weights_gaussian(
@@ -127,33 +208,20 @@ def weights_gaussian(
 
 
 class DistanceWeights(BaseModel):
-    taper_distance: PositiveFloat | Literal["nearest_neighbor_median"] = Field(
-        default="nearest_neighbor_median",
-        description="Taper distance for the Gaussian weighting function"
-        " in meters. 'nearest_neighbor_median' uses twice the mean interstation "
-        "distance for the radius. Fixed taper distance is NOT USED if"
-        " `n_stations_taper_distance` is > 0. Default is 'nearest_neighbor_median'.",
+    effective_plateau_weight: PositiveFloat = Field(
+        default=4.0,
+        description="The cumulative station weight required to define the"
+        "'Core Aperture' (Plateau). A value of 4.0 ensures the location is constrained"
+        "by the equivalent of 4 independent, high-quality stations.",
     )
-    n_stations_taper_distance: int = Field(
-        default=6,
-        ge=0,
-        description="Number of stations to calculate the taper distance in the"
-        " spatial weighting function. This opens the aperture of the included stations"
-        " gradually for deep events and events that are away from the network. "
-        "If set to 0, the fixed `taper_distance` is used instead. Default is 6.",
-    )
-    n_stations_plateau: PositiveInt = Field(
-        default=4,
-        description="The number of closest stations to retain with full weight (1.0). "
-        "These stations form the 'plateau' of the spatial weighting function, "
-        "ensuring the core aperture is never down-weighted. Default is 4.",
-    )
-    waterlevel: float = Field(
-        default=0.0,
-        ge=0.0,
-        le=1.0,
-        description="Stations outside the taper are lifted by this fraction. "
-        "Default is 0.0.",
+    taper_decay_factor: PositiveFloat = Field(
+        default=3.0,
+        description="Controls the gradualness of the spatial filter's edge (Gamma). "
+        "Where the 'Core Aperture' ends, the Gaussian spatial taper extends further"
+        " based on this factor with sigma = (Gamma * R_plateau) / 2."
+        "A higher value (e.g., 5.0) creates a 'softer' taper, retaining more "
+        "influence from distant stations to improve stability. "
+        "A lower value (e.g., 1.0) creates a 'sharper' cutoff.",
     )
 
     _node_distance_lut: ArrayLRUCache[bytes] = PrivateAttr()
@@ -164,7 +232,6 @@ class DistanceWeights(BaseModel):
     def get_distances(self, nodes: Sequence[Node]) -> np.ndarray:
         node_coords = get_node_coordinates(nodes, system="geographic")
         node_coords = np.array(od.geodetic_to_ecef(*node_coords.T), dtype=np.float32).T
-
         return np.linalg.norm(
             self._station_coords_ecef - node_coords[:, np.newaxis],
             axis=2,
@@ -183,17 +250,10 @@ class DistanceWeights(BaseModel):
         ).T
         self._interstation_distances = _get_interstation_distances(list(self._stations))
 
-        if self.taper_distance == "median_nearest_neighbor":
-            self.taper_distance = _nnm(self._interstation_distances) * 2.0
-            logger.info(
-                "using 2x median nearest neighbor distance as taper: %g m",
-                self.taper_distance,
-            )
-        logger.info(
-            "distance weighting uses %d closest stations with a taper of %g m",
-            self.n_stations_plateau,
-            self.taper_distance,
-        )
+        logger.info("calculating overall station weights")
+        station_weights = _station_weights(self._interstation_distances)
+        for sta, weight in zip(stations, station_weights, strict=True):
+            sta.set_apparent_weight(weight)
 
         self.fill_lut(nodes=octree.nodes)
 
@@ -216,20 +276,19 @@ class DistanceWeights(BaseModel):
 
         try:
             distances = [node_lut[node.hash][station_idxs] for node in nodes]
-            distance_weights = weights_gaussian(
-                np.array(distances),
-                n_stations_plateau=self.n_stations_plateau,
-                n_stations_taper_distance=self.n_stations_taper_distance,
-                taper_distance=self.taper_distance,
-                waterlevel=self.waterlevel,
-            )
 
-            if True:
-                station_density = _get_station_density(
-                    self._interstation_distances[station_idxs][:, station_idxs]
-                )
-                distance_weights /= station_density[np.newaxis, :]
-            return distance_weights
+            weights_stations = _station_weights(
+                self._interstation_distances[station_idxs][:, station_idxs]
+            )
+            weights_distance = distance_weights(
+                distances=np.asarray(distances),
+                station_weights=weights_stations,
+                station_weight_plateau=self.effective_plateau_weight,
+                station_weight_taper=self.effective_plateau_weight
+                * self.taper_decay_factor,
+            )
+            weights = weights_distance * weights_stations
+            return weights / weights.max(axis=1, keepdims=True)
 
         except KeyError:
             fill_nodes = [node for node in nodes if node.hash not in node_lut]
