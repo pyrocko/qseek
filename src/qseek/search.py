@@ -42,6 +42,7 @@ from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
     BackgroundTasks,
+    CpuCount,
     PhaseDescription,
     datetime_now,
     get_cpu_count,
@@ -334,7 +335,7 @@ class Search(BaseModel):
         " consuming. Default is 5 minutes.",
     )
 
-    n_threads: int | Literal["auto"] = Field(
+    n_threads: CpuCount = Field(
         default="auto",
         description="Number of threads for stacking and migration. "
         "`'auto'` will use the maximum number of cores and leaves resources "
@@ -373,25 +374,6 @@ class Search(BaseModel):
                 raise ValueError(f"station_corrections path {path} is not a directory")
             return corrections_from_path(path)
         return v
-
-    @field_validator("n_threads")
-    @classmethod
-    def _compute_threads(cls, n_threads: int | Literal["auto"]) -> int:
-        # We limit the number of threads to the number of available cores and leave some
-        # cores for other processes.
-        cpu_count = get_cpu_count()
-        max_compute_threads = max(cpu_count - 4, 1)
-        if n_threads == "auto":
-            n_threads = max_compute_threads
-        if n_threads < 0:
-            raise ValueError("Number of threads must be greater than 0")
-        if n_threads > cpu_count:
-            logger.warning(
-                "number of compute threads exceeds available cores, reducing to %d",
-                max_compute_threads,
-            )
-            n_threads = cpu_count
-        return n_threads
 
     def init_rundir(self, force: bool = False) -> None:
         rundir = (

@@ -67,6 +67,13 @@ if not CACHE_DIR.exists():
     CACHE_DIR.mkdir(parents=True)
 
 
+MeasurementUnit = Literal[
+    "displacement",
+    "velocity",
+    "acceleration",
+]
+
+
 class Symbols:
     Target = "🞋"
     Check = "✓"
@@ -500,7 +507,7 @@ def datetime_now() -> datetime:
     return datetime.now(tz=timezone.utc)
 
 
-def get_cpu_count() -> int:
+def _get_cpu_count() -> int:
     """Get the number of CPUs available for the current job/task.
 
     The function first checks if the environment variable SLURM_CPUS_PER_TASK is set.
@@ -516,15 +523,13 @@ def get_cpu_count() -> int:
     Returns:
         int: The number of CPUs available for the current job/task.
     """
-    return int(
-        os.environ.get(
-            "SLURM_CPUS_PER_TASK",
-            os.environ.get(
-                "PBS_NUM_PPN",
-                os.cpu_count() or 0,
-            ),
-        )
-    )
+    if slurm_cpus := os.environ.get("SLURM_CPUS_PER_TASK"):
+        return int(slurm_cpus)
+
+    if pbs_cpus := os.environ.get("PBS_NUM_PPN"):
+        return int(pbs_cpus)
+
+    return os.cpu_count() or 0
 
 
 def get_total_memory() -> int:
@@ -542,15 +547,13 @@ def get_total_memory() -> int:
     Returns:
         int: The available memory in bytes for the current job/task.
     """
-    return int(
-        os.environ.get(
-            "SLURM_MEM_PER_NODE",
-            os.environ.get(
-                "PBS_VMEM",
-                psutil.virtual_memory().total,
-            ),
-        )
-    )
+    if slurm_mem := os.environ.get("SLURM_MEM_PER_NODE"):
+        return int(slurm_mem)
+
+    if pbs_mem := os.environ.get("PBS_VMEM"):
+        return int(pbs_mem)
+
+    return psutil.virtual_memory().total
 
 
 def filter_clipped_traces(
@@ -630,10 +633,33 @@ def load_insights() -> None:
         logger.debug("package qseek.insights not installed")
 
 
-MeasurementUnit = Literal[
-    "displacement",
-    "velocity",
-    "acceleration",
+def _validate_cpu_count(
+    reserved_cores: int,
+) -> Callable[[int | Literal["auto"], Callable], int]:
+    # We limit the number of threads to the number of available cores and leave some
+    # cores for other processes.
+
+    def wrapper(n_threads: int | Literal["auto"], handler: Callable) -> int:
+        cpu_count = _get_cpu_count()
+        max_compute_threads = max(cpu_count - reserved_cores, 1)
+        n_threads = max_compute_threads if n_threads == "auto" else handler(n_threads)
+
+        if n_threads < 0:
+            raise ValueError("Number of threads must be greater than 0")
+        if n_threads > cpu_count:
+            logger.warning(
+                "number of compute threads exceeds available cores, reducing to %d",
+                max_compute_threads,
+            )
+            n_threads = cpu_count
+        return n_threads
+
+    return wrapper
+
+
+CpuCount = Annotated[
+    int | Literal["auto"],
+    WrapValidator(_validate_cpu_count(reserved_cores=4)),
 ]
 
 

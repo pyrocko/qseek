@@ -22,7 +22,7 @@ from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
 from qseek.tracers.utils import LayeredEarthModel1D, surface_distances_reference
-from qseek.utils import Range, alog_call, datetime_now, get_cpu_count
+from qseek.utils import Range, _get_cpu_count, alog_call, datetime_now
 
 if TYPE_CHECKING:
     from qseek.models.location import Location
@@ -321,7 +321,7 @@ class FastMarchingTracer(RayTracer):
         if self._layered_model is None:
             raise ValueError("layered model must be set for FastMarchingTracer")
 
-        nthreads = self.nthreads if self.nthreads > 0 else get_cpu_count() * 2
+        nthreads = self.nthreads if self.nthreads > 0 else _get_cpu_count() * 2
         executor = ThreadPoolExecutor(
             max_workers=nthreads,
             thread_name_prefix="qseek-fmm",
