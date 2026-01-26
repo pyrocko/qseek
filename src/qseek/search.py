@@ -392,6 +392,9 @@ class Search(BaseModel):
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
             logger.info("backing up existing rundir to %s", rundir_backup)
+        if rundir.exists() and not create_backup:
+            logger.warning("overwriting existing rundir %s", rundir)
+            shutil.rmtree(rundir)
 
         if rundir.exists() and not create_backup:
             logger.warning("overwriting existing rundir %s", rundir)
