@@ -99,8 +99,8 @@ def _station_weights(
 def distance_weights(
     distances: np.ndarray,
     station_weights: np.ndarray,
-    station_weight_plateau: float = 4.0,
-    station_weight_taper: float = 12.0,
+    weight_plateau: float = 4.0,
+    weight_taper: float = 12.0,
 ) -> np.ndarray:
     """Calculate distance weights with plateau and taper based on station weights.
 
@@ -112,10 +112,10 @@ def distance_weights(
             in meters.
         station_weights: Array of shape (n_stations,) with station weights between
             0 and 1.
-        station_weight_plateau: Station weight value to define the plateau distance.
-            Default is 4.0.
-        station_weight_taper: Station weight value to define the taper distance.
-            Default is 8.0.
+        weight_plateau: Cumulative station weight theshold to define the plateau
+            distance. Default is 4.0.
+        weight_taper: Cumulative Station weight threshold to define the taper
+            distance. Default is 12.0.
 
     Returns:
         Array of shape (n_nodes, n_stations) with weights between 0 and 1.
@@ -124,20 +124,23 @@ def distance_weights(
 
     distance_sort = np.argsort(distances, axis=1)
     sorted_distances = np.take_along_axis(distances, distance_sort, axis=1)
-    sorted_weights = station_weights[distance_sort]
+    sorted_station_weights = station_weights[distance_sort]
 
-    weights_cum = np.cumsum(sorted_weights, axis=1)
+    cum_station_weights = np.cumsum(sorted_station_weights, axis=1)
 
     # First index where cumulative weights exceed plateau and taper weights
-    idxs_plateau = np.argmax(weights_cum >= station_weight_plateau, axis=1)
-    idxs_taper = np.argmax(weights_cum >= station_weight_taper, axis=1)
+    idxs_plateau = np.argmax(cum_station_weights >= weight_plateau, axis=1)
+    idxs_taper = np.argmax(cum_station_weights >= weight_taper, axis=1)
 
     # If total cumulative weight is less than plateau/taper, set to last index
-    idxs_plateau[weights_cum[:, -1] < station_weight_plateau] = distances.shape[1] - 1
-    idxs_taper[weights_cum[:, -1] < station_weight_taper] = distances.shape[1] - 1
+    idx_last_station = distances.shape[1] - 1
+    idxs_plateau[cum_station_weights[:, -1] < weight_plateau] = idx_last_station
+    idxs_taper[cum_station_weights[:, -1] < weight_taper] = idx_last_station
 
     plateau_distances = sorted_distances[np.arange(n_nodes), idxs_plateau, np.newaxis]
     taper_distance = sorted_distances[np.arange(n_nodes), idxs_taper, np.newaxis]
+    # We use half sigma here, more weight will estimate better geometry of the
+    # station distribution
     taper_sigma = taper_distance / 2
 
     distance_weights = np.exp(
@@ -208,20 +211,20 @@ def weights_gaussian(
 
 
 class DistanceWeights(BaseModel):
-    effective_plateau_weight: PositiveFloat = Field(
+    plateau_weight: PositiveFloat = Field(
         default=4.0,
         description="The cumulative station weight required to define the"
         "'Core Aperture' (Plateau). A value of 4.0 ensures the location is constrained"
         "by the equivalent of 4 independent, high-quality stations.",
     )
-    taper_decay_factor: PositiveFloat = Field(
-        default=3.0,
-        description="Controls the gradualness of the spatial filter's edge (Gamma). "
-        "Where the 'Core Aperture' ends, the Gaussian spatial taper extends further"
-        " based on this factor with sigma = (Gamma * R_plateau) / 2."
-        "A higher value (e.g., 5.0) creates a 'softer' taper, retaining more "
-        "influence from distant stations to improve stability. "
-        "A lower value (e.g., 1.0) creates a 'sharper' cutoff.",
+    taper_weight: PositiveFloat = Field(
+        default=12.0,
+        description="The cumulative station weight threshold that defines where the "
+        "Gaussian taper reaches its effective limit. This value determines how many "
+        "equivalent stations contribute to the location estimate beyond the core "
+        "aperture. Higher values (e.g., 20.0) include more distant stations with "
+        "gradually decreasing weights, while lower values (e.g., 8.0) create a "
+        "more localized influence zone. Default is 12.0.",
     )
 
     _node_distance_lut: ArrayLRUCache[bytes] = PrivateAttr()
@@ -283,9 +286,8 @@ class DistanceWeights(BaseModel):
             weights_distance = distance_weights(
                 distances=np.asarray(distances),
                 station_weights=weights_stations,
-                station_weight_plateau=self.effective_plateau_weight,
-                station_weight_taper=self.effective_plateau_weight
-                * self.taper_decay_factor,
+                weight_plateau=self.plateau_weight,
+                weight_taper=self.taper_weight,
             )
             weights = weights_distance * weights_stations
             return weights / weights.max(axis=1, keepdims=True)
