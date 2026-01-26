@@ -69,6 +69,12 @@ search.add_argument(
     default=False,
     help="backup old rundir and create a new",
 )
+search.add_argument(
+    "--no-backup",
+    action="store_true",
+    default=False,
+    help="override existing rundir without creating a backup",
+)
 
 continue_run = subparsers.add_parser(
     "continue",
@@ -258,7 +264,10 @@ def main() -> None:
 
             async def run() -> None:
                 http = asyncio.create_task(webserver.start())
-                await search.start(force_rundir=args.force)
+                await search.start(
+                    force_rundir=args.force,
+                    create_backup=not args.no_backup,
+                )
                 await http
 
             asyncio.run(run(), debug=loop_debug)

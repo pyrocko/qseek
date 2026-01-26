@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -375,7 +376,7 @@ class Search(BaseModel):
             return corrections_from_path(path)
         return v
 
-    def init_rundir(self, force: bool = False) -> None:
+    def init_rundir(self, force: bool = False, create_backup: bool = True) -> None:
         rundir = (
             self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
         )
@@ -384,7 +385,7 @@ class Search(BaseModel):
         if rundir.exists() and not force:
             raise FileExistsError(f"Rundir {rundir} already exists")
 
-        if rundir.exists() and force:
+        if rundir.exists() and force and create_backup:
             create_time = time_to_path(
                 datetime.fromtimestamp(rundir.stat().st_ctime)  # noqa
             ).split(".")[0]
@@ -392,7 +393,14 @@ class Search(BaseModel):
             rundir.rename(rundir_backup)
             logger.info("backing up existing rundir to %s", rundir_backup)
 
+        if rundir.exists() and not create_backup:
+            logger.warning("overwriting existing rundir %s", rundir)
+            # Move directory first for slow HPC storage
+            rm_rundir = rundir.move(rundir.with_suffix("-del"))
+            shutil.rmtree(rm_rundir)
+
         if not rundir.exists():
+            logger.info("creating rundir %s", rundir)
             rundir.mkdir()
 
         self._init_logging()
@@ -508,9 +516,13 @@ class Search(BaseModel):
 
         self._catalog.prepare()
 
-    async def start(self, force_rundir: bool = False) -> None:
+    async def start(
+        self,
+        force_rundir: bool = False,
+        create_backup: bool = True,
+    ) -> None:
         if not self.has_rundir():
-            self.init_rundir(force=force_rundir)
+            self.init_rundir(force=force_rundir, create_backup=create_backup)
 
         self.create_folders()
         await self.prepare()
