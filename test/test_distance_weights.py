@@ -173,8 +173,8 @@ def test_distance_weights():
     distance_weight = distance_weights(
         distances,
         station_weight,
-        station_weight_plateau=station_weight_plateau,
-        station_weight_taper=4 * station_weight_plateau,
+        weight_plateau=station_weight_plateau,
+        weight_taper=4 * station_weight_plateau,
     )
     total_weight = distance_weight * station_weight[np.newaxis, :]
 
