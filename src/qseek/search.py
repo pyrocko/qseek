@@ -25,7 +25,6 @@ from scipy import stats
 
 from qseek.cache_lru import CACHES
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
-from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.magnitudes import EventMagnitudeCalculatorType
@@ -39,14 +38,15 @@ from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.reduce import DelaySumReduce
 from qseek.signals import Signal
+from qseek.station_weights import StationWeights
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
     BackgroundTasks,
     CpuCount,
     PhaseDescription,
+    _get_cpu_count,
     datetime_now,
-    get_cpu_count,
     get_total_memory,
     human_readable_bytes,
     time_to_path,
@@ -266,10 +266,11 @@ class Search(BaseModel):
         ),
         description="List of ray tracers for travel time calculation.",
     )
-    distance_weights: DistanceWeights | None = Field(
-        default_factory=DistanceWeights,
+    station_weights: StationWeights | None = Field(
+        default_factory=StationWeights,
         validation_alias=AliasChoices("spatial_weights", "distance_weights"),
-        description="Spatial weights for distance weighting.",
+        description="Station weighting based on station density and "
+        "source-station distance.",
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
@@ -358,7 +359,7 @@ class Search(BaseModel):
     _rundir: Path = PrivateAttr()
 
     _compute_semaphore: asyncio.Semaphore = PrivateAttr(
-        asyncio.Semaphore(max(1, get_cpu_count() - 4))
+        asyncio.Semaphore(max(1, _get_cpu_count() - 4))
     )
 
     # Signals
@@ -504,8 +505,8 @@ class Search(BaseModel):
         await self.pre_processing.prepare()
         await self.image_functions.prepare()
 
-        if self.distance_weights:
-            self.distance_weights.prepare(self.stations, self.octree)
+        if self.station_weights:
+            self.station_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -567,7 +568,7 @@ class Search(BaseModel):
             ray_tracers=self.ray_tracers,
             window_padding=window_padding,
             station_corrections=self.station_corrections,
-            distance_weights=self.distance_weights,
+            distance_weights=self.station_weights,
             detection_threshold=self.detection_threshold,
             pick_confidence_threshold=self.pick_confidence_threshold,
             node_interpolation=self.node_interpolation,
@@ -713,7 +714,7 @@ class OctreeSearch:
         ray_tracers: RayTracers,
         window_padding: timedelta,
         station_corrections: StationCorrectionType | None = None,
-        distance_weights: DistanceWeights | None = None,
+        distance_weights: StationWeights | None = None,
         detection_threshold: float | Literal["MAD"] = "MAD",
         detection_blinding: timedelta = timedelta(seconds=1.0),
         pick_confidence_threshold: float = 0.3,

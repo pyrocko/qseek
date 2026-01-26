@@ -210,7 +210,7 @@ def weights_gaussian(
     return weights
 
 
-class DistanceWeights(BaseModel):
+class StationWeights(BaseModel):
     plateau_weight: PositiveFloat = Field(
         default=4.0,
         description="The cumulative station weight required to define the"
@@ -256,7 +256,7 @@ class DistanceWeights(BaseModel):
         logger.info("calculating overall station weights")
         station_weights = _station_weights(self._interstation_distances)
         for sta, weight in zip(stations, station_weights, strict=True):
-            sta.set_apparent_weight(weight)
+            sta.set_apparent_weight(float(weight))
 
         self.fill_lut(nodes=octree.nodes)
 
