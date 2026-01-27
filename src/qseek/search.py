@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Deque, Literal, Self, Sequence
 import numpy as np
 import psutil
 from pydantic import (
-    AliasChoices,
     BaseModel,
     ByteSize,
     ConfigDict,
@@ -268,7 +267,6 @@ class Search(BaseModel):
     )
     station_weights: StationWeights | None = Field(
         default_factory=StationWeights,
-        validation_alias=AliasChoices("spatial_weights", "distance_weights"),
         description="Station weighting based on station density and "
         "source-station distance.",
     )
@@ -393,9 +391,6 @@ class Search(BaseModel):
             rundir_backup = rundir.with_name(f"{rundir.name}.bak-{create_time}")
             rundir.rename(rundir_backup)
             logger.info("backing up existing rundir to %s", rundir_backup)
-        if rundir.exists() and not create_backup:
-            logger.warning("overwriting existing rundir %s", rundir)
-            shutil.rmtree(rundir)
 
         if rundir.exists() and not create_backup:
             logger.warning("overwriting existing rundir %s", rundir)
