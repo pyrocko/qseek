@@ -65,8 +65,8 @@ class InversionLayered1D(BaseModel):
         await self.event_selection.prepare(rundir=self.import_rundir)
         # await search.prepare()
         self._search = search
-        if search.distance_weights:
-            search.distance_weights.prepare(
+        if search.station_weights:
+            search.station_weights.prepare(
                 self.event_selection.stations,
                 search.octree,
             )
@@ -84,7 +84,7 @@ class InversionLayered1D(BaseModel):
             detection_blinding=search.detection_blinding,
             pick_confidence_threshold=search.pick_confidence_threshold,
             station_corrections=search.station_corrections,
-            distance_weights=search.distance_weights,
+            distance_weights=search.station_weights,
             ignore_boundary=search.ignore_boundary,
             ignore_boundary_width=search.ignore_boundary_width,
             node_interpolation=False,
