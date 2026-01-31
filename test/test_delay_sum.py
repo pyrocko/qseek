@@ -44,8 +44,6 @@ def get_nodes(shifts, weights) -> list[delay_sum.NodeStack]:
         delay_sum.NodeStack(
             shifts=shift,
             weights=weight,
-            masked=False,
-            trace_group=0,
         )
         for shift, weight in zip(shifts, weights, strict=True)
     ]
