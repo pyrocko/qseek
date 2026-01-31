@@ -16,7 +16,6 @@ typedef struct {
   int32_t *shifts;
   float *weights;
   int masked;
-  int trace_group;
 } Node;
 
 typedef struct {
@@ -119,7 +118,7 @@ static int prepare(PyObject *nodes, PyObject *traces, PyObject *offsets,
     if (!PyTuple_Check(node_tuple) || PyTuple_Size(node_tuple) < 3) {
       PyErr_SetString(
           PyExc_TypeError,
-          "Each node must be a tuple of (shifts, weights, masked, ...)");
+          "Each node must be a tuple of (shifts, weights, masked)");
       free(*nodes_list);
       free(*traces_list);
       return 0;
@@ -147,8 +146,6 @@ static int prepare(PyObject *nodes, PyObject *traces, PyObject *offsets,
     (*nodes_list)[i].shifts = PyArray_DATA((PyArrayObject *)shifts_arr);
     (*nodes_list)[i].weights = PyArray_DATA((PyArrayObject *)weights_arr);
     (*nodes_list)[i].masked = PyObject_IsTrue(masked_obj);
-    // TODO: read the optional trace group from the 4th tuple element
-    (*nodes_list)[i].trace_group = 0;
   }
 
   *min_shift = INT32_MAX;
