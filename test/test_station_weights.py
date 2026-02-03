@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 from pyrocko import orthodrome as od
 
-from qseek.distance_weights import (
+from qseek.models.location import Location, get_coordinates
+from qseek.station_weights import (
     _get_interstation_distances,
     _nn_median,
     _station_density,
@@ -11,7 +12,6 @@ from qseek.distance_weights import (
     distance_weights,
     weights_gaussian,
 )
-from qseek.models.location import Location, get_coordinates
 
 KM = 1e3
 
