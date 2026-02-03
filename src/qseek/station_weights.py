@@ -79,7 +79,8 @@ def _station_density(
 
 
 def _station_weights(
-    insterstation_distances: np.ndarray, radius: float = 0.0
+    insterstation_distances: np.ndarray,
+    radius: float = 0.0,
 ) -> np.ndarray:
     """Calculate station weights from station densities.
 
@@ -94,6 +95,7 @@ def _station_weights(
     """
     station_densities = _station_density(insterstation_distances, radius=radius)
     return 1 - (station_densities - station_densities.min()) / station_densities.max()
+    return 1 / np.sqrt(station_densities)
 
 
 def distance_weights(
@@ -101,6 +103,7 @@ def distance_weights(
     station_weights: np.ndarray,
     weight_plateau: float = 4.0,
     weight_taper: float = 12.0,
+    waterlevel: float = 0.0,
 ) -> np.ndarray:
     """Calculate distance weights with plateau and taper based on station weights.
 
@@ -116,6 +119,8 @@ def distance_weights(
             distance. Default is 4.0.
         weight_taper: Cumulative Station weight threshold to define the taper
             distance. Default is 12.0.
+        waterlevel: Stations outside the taper are lifted by this fraction.
+            Default is 0.0.
 
     Returns:
         Array of shape (n_nodes, n_stations) with weights between 0 and 1.
@@ -147,6 +152,8 @@ def distance_weights(
         -(((distances - plateau_distances) ** 2) / (2 * taper_sigma**2))
     )
     distance_weights[distances <= plateau_distances] = 1.0
+    if waterlevel > 0.0:
+        distance_weights = (1.0 - waterlevel) * distance_weights + waterlevel
     return distance_weights
 
 
@@ -226,6 +233,15 @@ class StationWeights(BaseModel):
         "gradually decreasing weights, while lower values (e.g., 8.0) create a "
         "more localized influence zone. Default is 12.0.",
     )
+    waterlevel: float = Field(
+        default=0.0,
+        le=1.0,
+        description="Minimum weight assigned to stations outside the taper "
+        "region. This prevents weights from reaching zero, ensuring that all "
+        "stations contribute at least minimally to the location estimate. "
+        "A waterlevel of 0.1 means that stations beyond the taper will have a "
+        "minimum weight of 10% of the maximum possible weight. Default is 0.0.",
+    )
 
     _node_distance_lut: ArrayLRUCache[bytes] = PrivateAttr()
     _stations: StationList = PrivateAttr()
@@ -288,8 +304,10 @@ class StationWeights(BaseModel):
                 station_weights=weights_stations,
                 weight_plateau=self.plateau_weight,
                 weight_taper=self.taper_weight,
+                waterlevel=self.waterlevel,
             )
-            weights = weights_distance * weights_stations
+            # weights = weights_distance * weights_stations
+            weights = weights_distance
             return weights / weights.max(axis=1, keepdims=True)
 
         except KeyError:
