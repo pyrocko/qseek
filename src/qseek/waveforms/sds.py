@@ -59,7 +59,6 @@ async def _load_file(
     ctx = contextvars.copy_context()
 
     def load_traces() -> list[Trace]:
-        # logger.debug("loading file %s", file)
         return list(
             iload(
                 str(file),
@@ -72,7 +71,10 @@ async def _load_file(
         ctx.run,
         load_traces,
     )
-    return await loop.run_in_executor(executor, func_call)
+    traces = await loop.run_in_executor(executor, func_call)
+    if not traces:
+        logger.warning("no waveforms loaded from file %s at %s", file, start_time)
+    return traces
 
 
 async def _load_files(
@@ -303,6 +305,14 @@ class SDSArchive(WaveformProvider):
             archive_start.date(),
             archive_end.date(),
         )
+        logger.info("available stations in SDS archive: %d", self.n_stations)
+        logger.info(
+            "available NSLs in SDS archive: %s",
+            ", ".join(
+                nsl.pretty
+                for nsl in sorted(self.available_nsls(), key=lambda s: s.pretty)
+            ),
+        )
 
         self._station_selection = stations
         self._executor = ThreadPoolExecutor(max_workers=self.n_threads)
@@ -321,6 +331,10 @@ class SDSArchive(WaveformProvider):
 
     def available_nsls(self) -> set[NSL]:
         return set(self._archive_stations.keys())
+
+    @property
+    def n_stations(self) -> int:
+        return len(self._archive_stations)
 
     def _get_available_files(
         self,
@@ -341,12 +355,10 @@ class SDSArchive(WaveformProvider):
             channel_type = channel[:2]
             if self.channel_selector and channel_type not in self.channel_selector:
                 continue
-            file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
-            file = folder / file_name
+            file = folder / f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
             if not file.exists():
                 # This is a fallback for non-zero padded julian days
-                file_name = f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
-                file = folder / file_name
+                file = folder / f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
                 if not file.exists():
                     continue
             available_files[channel] = file
