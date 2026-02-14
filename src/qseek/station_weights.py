@@ -299,7 +299,7 @@ class StationWeights(BaseModel):
             weights_stations = _station_weights(
                 self._interstation_distances[station_idxs][:, station_idxs]
             )
-            weights_distance = distance_weights(
+            return distance_weights(
                 distances=np.asarray(distances),
                 station_weights=weights_stations,
                 weight_plateau=self.plateau_weight,
@@ -307,8 +307,6 @@ class StationWeights(BaseModel):
                 waterlevel=self.waterlevel,
             )
             # weights = weights_distance * weights_stations
-            weights = weights_distance
-            return weights / weights.max(axis=1, keepdims=True)
 
         except KeyError:
             fill_nodes = [node for node in nodes if node.hash not in node_lut]
