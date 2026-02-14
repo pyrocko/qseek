@@ -133,7 +133,7 @@ class StationInventory(BaseModel):
 
         for path in self.station_xmls:
             if path.is_dir():
-                station_xmls = path.glob("*.xml")
+                station_xmls = list(path.glob("*.[xX][mM][lL]"))
             elif path.is_file():
                 station_xmls = [path]
             else:
@@ -148,8 +148,7 @@ class StationInventory(BaseModel):
 
         for sta in loaded_stations:
             sta = Station.from_pyrocko_station(sta)
-            if sta not in self.stations:
-                self.stations.append(sta)
+            self.stations.append(sta)
 
         self.sanitize_stations()
 
