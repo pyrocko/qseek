@@ -254,7 +254,7 @@ class TravelTimeTree(BaseModel):
         stations: Sequence[Station],
     ) -> np.ndarray:
         node_lut = self._node_lut
-        station_indices = self._stations.get_indices(stations)
+        station_indices = self._stations.get_indexes(stations)
 
         try:
             travel_times = [node_lut[node.hash][station_indices] for node in nodes]
