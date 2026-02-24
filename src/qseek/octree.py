@@ -51,12 +51,9 @@ def get_node_coordinates(
     system: CoordSystem = "geographic",
 ) -> np.ndarray:
     if system == "geographic":
-        node_locations = (node.as_location() for node in nodes)
-        return np.array(
-            [
-                (*node.effective_lat_lon, node.effective_elevation)
-                for node in node_locations
-            ]
+        return get_coordinates(
+            [node.as_location() for node in nodes],
+            system="geographic",
         )
     if system == "cartesian":
         node_locations = (node.as_location() for node in nodes)

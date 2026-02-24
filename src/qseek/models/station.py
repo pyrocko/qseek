@@ -56,6 +56,12 @@ class Station(Location):
         description="Location code",
         max_length=2,
     )
+    apparent_weight: PositiveFloat = Field(
+        default=1.0,
+        description="Apparent station weight, assuming all stations in the inventory"
+        " are online. During detection this weight is dynamic, depending on the"
+        "availability of the stations.",
+    )
 
     @classmethod
     def from_pyrocko_station(cls, station: PyrockoStation) -> Station:
@@ -96,6 +102,18 @@ class Station(Location):
             tuple[str, str, str]: Network, Station, Location
         """
         return _NSL(self.network, self.station, self.location)
+
+    def set_apparent_weight(self, weight: float) -> None:
+        """Set the apparent station weight.
+
+        The apparent weight assumes all stations in the inventory are online. During
+        detection station weight is dynamic, depending on the availability of
+        the stations.
+
+        Args:
+            weight (float): Station weight.
+        """
+        self.apparent_weight = weight
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.nsl))
@@ -241,20 +259,6 @@ class StationInventory(BaseModel):
         if not self.stations:
             raise ValueError("no stations available, add stations to start detection")
 
-    def mean_interstation_distance(self) -> float:
-        """Calculate the mean interstation distance.
-
-        Returns:
-            float: Mean interstation distance in meters.
-        """
-        distances = [
-            sta_1.distance_to(sta_2)
-            for sta_1 in self
-            for sta_2 in self
-            if sta_1 is not sta_2
-        ]
-        return float(np.mean(distances))
-
     @property
     def n_stations(self) -> int:
         """Number of stations."""
@@ -341,13 +345,14 @@ class StationInventory(BaseModel):
         """
         with filename.open("w") as f:
             f.write(
-                "network,station,location,latitude,longitude,elevation,depth,WKT_geom\n"
+                "network,station,location,latitude,longitude,elevation,depth,"
+                "apparent_weight,WKT_geom\n"
             )
             for sta in self:
                 f.write(
                     f"{sta.network},{sta.station},{sta.location},"
                     f"{sta.effective_lat},{sta.effective_lon},{sta.elevation},"
-                    f"{sta.depth},{sta.as_wkt()}\n"
+                    f"{sta.depth},{sta.apparent_weight},{sta.as_wkt()}\n"
                 )
 
     def export_vtk(self, reference: Location | None = None) -> None: ...
@@ -390,7 +395,7 @@ class StationList(Sequence[Station]):
         """
         return self._indices[nsl.pretty]
 
-    def get_indices(self, stations: Sequence[Station]) -> np.ndarray:
+    def get_indexes(self, stations: Sequence[Station]) -> np.ndarray:
         """Get the indices of stations by their NSL codes.
 
         Args:
