@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
+from importlib.metadata import version
 from typing import TYPE_CHECKING, AbstractSet, Any, Mapping, Type, TypeVar
 from uuid import UUID
 
 import aiohttp_cors
 from aiohttp import web
-from pkg_resources import get_distribution
 from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:
@@ -114,8 +114,8 @@ class WebServer:
                 continue
 
     async def get_index(self, request: web.Request) -> web.Response:
-        version = get_distribution("qseek")
-        return web.Response(text=f"{version} HTTP server running...")
+        qseek_version = version("qseek")
+        return web.Response(text=f"{qseek_version} HTTP server running...")
 
     async def get_detections(self, request: web.Request) -> web.Response:
         return pydantic_response(
