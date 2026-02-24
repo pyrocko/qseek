@@ -532,6 +532,9 @@ def _get_cpu_count() -> int:
     return os.cpu_count() or 0
 
 
+get_cpu_count = _get_cpu_count
+
+
 def get_total_memory() -> int:
     """Get the total memory in bytes for the current job/task.
 
