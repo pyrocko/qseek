@@ -326,7 +326,7 @@ class SDSArchive(WaveformProvider):
         time = datetime.min.time()
         return (
             datetime.combine(min(start_dates), time).astimezone(timezone.utc),
-            datetime.combine(min(end_dates), time).astimezone(timezone.utc),
+            datetime.combine(max(end_dates), time).astimezone(timezone.utc),
         )
 
     def available_nsls(self) -> set[NSL]:
