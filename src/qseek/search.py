@@ -807,6 +807,7 @@ class OctreeSearch:
         self,
         stations: Sequence[Station],
         nodes: Sequence[Node],
+        traveltime_mask: np.ndarray | None = None,
         normalize_weights: bool = True,
         apply_waterlevel: float = 1e-3,
     ) -> np.ndarray:
@@ -820,6 +821,10 @@ class OctreeSearch:
             )
         else:
             weights = np.ones(shape=(n_nodes, n_stations), dtype=np.float32)
+
+        # Zero out stations with missing travel times *before* normalisation
+        if traveltime_mask is not None:
+            weights[traveltime_mask] = 0.0
 
         if normalize_weights:
             with np.errstate(divide="ignore", invalid="ignore"):
@@ -889,6 +894,7 @@ class OctreeSearch:
             image_weights = await self.get_weights(
                 stations=image.stations,
                 nodes=new_nodes,
+                traveltime_mask=np.isnan(image_traveltimes),
             )
             image_weights *= image.weight
 
