@@ -489,7 +489,7 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
           npy_intp i_res = tile_base_idx + i;
           simde__m256 trace_vec =
               simde_mm256_loadu_ps(&trace.data[trace_start_idx + i]);
-          simde__m256 stack_vec = simde_mm256_load_ps(&tile_node_stack[i_res]);
+          simde__m256 stack_vec = simde_mm256_loadu_ps(&tile_node_stack[i_res]);
           stack_vec = simde_mm256_fmadd_ps(trace_vec, weight_vec, stack_vec);
           simde_mm256_storeu_ps(&tile_node_stack[i_res], stack_vec);
         }
