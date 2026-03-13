@@ -72,7 +72,9 @@ static PyObject *argmax(PyObject *module, PyObject *args, PyObject *kwds) {
       (npy_intp *)PyArray_DATA((PyArrayObject *)result_max_idx);
   result_max_values_data =
       (float *)PyArray_DATA((PyArrayObject *)result_max_values);
-  memset(result_max_values_data, (float)FLT_MIN, n_samples * sizeof(float));
+  for (npy_intp i = 0; i < n_samples; i++) {
+    result_max_values_data[i] = -FLT_MAX;
+  }
 
   data_arr_data = (float *)PyArray_DATA(data_arr);
 
