@@ -225,9 +225,9 @@ class DelaySumReduce:
             tuple[np.ndarray, np.ndarray]: Stacked maximum values and node indices.
         """
         self._check_state()
-        if trim_padding:
+        if trim_padding and self._padding_samples:
             begin = self._padding_samples
-            end = -(self._padding_samples + 1)
+            end = self._stack_max.size - self._padding_samples
             return self._stack_max[begin:end], self._stack_max_idx[begin:end]
 
         return self._stack_max, self._stack_max_idx
