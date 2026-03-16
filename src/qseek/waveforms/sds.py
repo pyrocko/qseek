@@ -207,6 +207,11 @@ class SDSArchive(WaveformProvider):
         "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) including timezone. "
         "E.g. `2024-12-31T00:00:00Z`.",
     )
+    channel_orientations: str = Field(
+        default="ENZ0123",
+        description="Allowed channel orientations in the SDS archive. Default is"
+        "`ENZ0123` which includes all standard orientations.",
+    )
 
     n_threads: PositiveInt = Field(
         default=4,
@@ -353,8 +358,12 @@ class SDSArchive(WaveformProvider):
                 continue
             channel = folder.name.rstrip(".D")
             channel_type = channel[:2]
+            channel_orientation = channel[-1]
             if self.channel_selector and channel_type not in self.channel_selector:
                 continue
+            if channel_orientation not in self.channel_orientations:
+                continue
+
             file = folder / f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
             if not file.exists():
                 # This is a fallback for non-zero padded julian days
