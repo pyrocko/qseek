@@ -10,6 +10,7 @@ import numpy as np
 from pyrocko.trace import Trace
 from scipy import signal
 
+from qseek.delay_sum import NodeStack
 from qseek.ext.delay_sum import delay_sum_reduce, delay_sum_snapshot
 from qseek.stats import Stats
 
@@ -27,16 +28,12 @@ STATS = DelaySumReduceStats()
 
 class DelaySumReduce:
     traces: list[Trace]
-    nodes: list[Node]
+    nodes: dict[Node, NodeStack]
 
     _start_time: datetime
     _end_time: datetime
     _padding: timedelta
     _sampling_rate: float
-
-    _trace_offsets: np.ndarray
-    _trace_weights: np.ndarray
-    _node_shifts: np.ndarray
 
     _trace_data: list[np.ndarray]
     _padding_samples: int
@@ -47,8 +44,6 @@ class DelaySumReduce:
     _stack_max_idx: np.ndarray
 
     _node_idx: dict[bytes, int]
-    _node_removal_mask: np.ndarray
-    _integrated_nodes: np.ndarray
     _dirty: bool = True
 
     def __init__(
@@ -86,19 +81,13 @@ class DelaySumReduce:
         self._padding = padding
 
         self._sampling_rate = sr
-        self._node_shifts = np.empty((0, self.n_traces), dtype=np.int32)
-        self._trace_weights = np.empty((0, self.n_traces), dtype=np.float32)
-
         self._trace_data = [tr.ydata.astype(np.float32, copy=False) for tr in traces]
 
         self._stack_max = np.zeros(self._result_nsamples, dtype=np.float32)
         self._stack_max_idx = np.zeros(self._result_nsamples, dtype=np.int32)
 
         self._node_idx = {}
-        self._node_removal_mask = np.empty(0, dtype=bool)
-        self._integrated_nodes = np.empty(0, dtype=bool)
-
-        self.nodes = []
+        self.nodes = {}
 
     @property
     def n_nodes(self) -> int:
@@ -127,49 +116,19 @@ class DelaySumReduce:
             indices = np.array([self._node_idx[node.hash] for node in nodes])
         except KeyError as e:
             raise ValueError("One or more nodes to remove not found.") from e
-        self._node_removal_mask[indices] = True
         self._stack_max[np.isin(self._stack_max_idx, indices)] = 0.0
         self._invalidate_state()
 
-    def add_nodes(
-        self,
-        nodes: Sequence[Node],
-        traveltimes: np.ndarray,
-        weights: np.ndarray,
-    ) -> None:
-        n_new_nodes = len(nodes)
+    def add_nodes(self, nodes: dict[Node, NodeStack]) -> None:
+        """Add nodes to the stack.
 
-        required_shape = (n_new_nodes, self.n_traces)
-        if traveltimes.shape != required_shape:
-            raise ValueError(f"Shifts shape must be {required_shape}.")
-        if weights.shape != required_shape:
-            raise ValueError(f"Weights shape must be {required_shape}.")
-
-        if weights.dtype != np.float32:
-            raise ValueError("Weights must be of dtype np.float32.")
-
-        # Cleaning traveltimes
-        traveltime_mask = np.isnan(traveltimes)
-        traveltimes[traveltime_mask] = 0.0
-        weights[traveltime_mask] = 0.0
-
-        shifts = np.round(-traveltimes * self._sampling_rate).astype(np.int32)
-
-        self._node_shifts = np.vstack((self._node_shifts, shifts))
-        self._trace_weights = np.vstack((self._trace_weights, weights))
-
-        self._node_removal_mask = np.concatenate(
-            (self._node_removal_mask, np.zeros(n_new_nodes, dtype=bool)),
-        )
-        self._integrated_nodes = np.concatenate(
-            (self._integrated_nodes, np.zeros(n_new_nodes, dtype=bool))
-        )
-
+        Args:
+            nodes (dict[Node, NodeStack]): _description_
+        """
         n_nodes_old = len(self.nodes)
         new_indices = {node.hash: n_nodes_old + i for i, node in enumerate(nodes)}
         self._node_idx.update(new_indices)
-
-        self.nodes.extend(nodes)
+        self.nodes.update(nodes)
         self._invalidate_state()
 
     async def stack(
@@ -187,10 +146,6 @@ class DelaySumReduce:
             tuple[np.ndarray, np.ndarray]: Unpadded stacked maximum values and
                 node indices.
         """
-        rq_shp = (self.n_nodes, self.n_traces)
-        if self._node_shifts.shape != rq_shp or self._trace_weights.shape != rq_shp:
-            raise ValueError(f"Shape of weights and shifts must be {rq_shp}.")
-
         (
             self._stack_max,
             self._stack_max_idx,
@@ -199,15 +154,16 @@ class DelaySumReduce:
             delay_sum_reduce,
             traces=self._trace_data,
             offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
-            node_mask=self._integrated_nodes,
+            nodes=list(self.nodes.values()),
             shift_range=(0, self._result_nsamples),
             node_stack_max=self._stack_max,
             node_stack_max_idx=self._stack_max_idx,
             n_threads=n_threads,
         )
-        self._integrated_nodes[:] = True
+        new_nodes = [node for node, stack in self.nodes.items() if not stack.masked]
+        for node in new_nodes:
+            self.nodes[node] = self.nodes[node].mask(True)
+
         self._dirty = False
 
         return self._stack_max, self._stack_max_idx
@@ -252,13 +208,14 @@ class DelaySumReduce:
             ydata=data,
         )
 
-    async def get_snapshot(self, sample: int) -> np.ndarray:
+    async def get_snapshot(self, sample: int, nodes: Sequence[Node]) -> np.ndarray:
         """Get a snapshot of the delay-sum at a given sample index.
 
         Removed nodes are excluded from the snapshot.
 
         Args:
             sample (int): Sample index to get the snapshot at.
+            nodes (Sequence[Node]): Nodes to include in the snapshot.
 
         Returns:
             np.ndarray: Snapshot of the delay-sum at the given sample index.
@@ -266,13 +223,12 @@ class DelaySumReduce:
         snapshot = delay_sum_snapshot(
             traces=self._trace_data,
             offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
+            nodes=list(self.nodes.values()),
             index=sample + self._padding_samples,
             shift_range=(0, self._result_nsamples),
-            node_mask=self._node_removal_mask,
         )
-        return snapshot[~self._node_removal_mask]
+        mask = np.array(self._node_idx[node.hash] for node in nodes)
+        return snapshot[mask]
 
     async def find_peaks(
         self,
