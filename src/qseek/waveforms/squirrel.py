@@ -112,7 +112,7 @@ class SquirrelStats(Stats):
 
 
 class PyrockoSquirrel(WaveformProvider):
-    """Waveform provider using Pyrocko's Squirrel."""
+    """Load unstructured waveform data through Pyrocko's Squirrel."""
 
     provider: Literal["PyrockoSquirrel"] = "PyrockoSquirrel"
 

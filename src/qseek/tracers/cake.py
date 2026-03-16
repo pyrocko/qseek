@@ -333,7 +333,7 @@ class TravelTimeTree(BaseModel):
 
 
 class CakeTracer(RayTracer):
-    """Travel time calculation for 1D layered velocity models.
+    """1D layered velocity model ray tracing using Pyrocko's cake module.
 
     Calculation is based on Pyrocko Cake ray tracer.
     """

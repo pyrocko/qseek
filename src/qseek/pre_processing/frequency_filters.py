@@ -59,7 +59,7 @@ def _sos_filter(
 
 
 class Bandpass(BatchPreProcessing):
-    """Apply a bandpass filter to the traces."""
+    """Bandpass filter waveform data."""
 
     process: Literal["bandpass"] = "bandpass"
 
@@ -120,7 +120,7 @@ class Bandpass(BatchPreProcessing):
 
 
 class Highpass(BatchPreProcessing):
-    """Apply a highpass filter to the traces."""
+    """Highpass filter waveform data."""
 
     process: Literal["highpass"] = "highpass"
     corners: int = Field(
@@ -162,7 +162,7 @@ class Highpass(BatchPreProcessing):
 
 
 class Lowpass(BatchPreProcessing):
-    """Apply a lowpass filter to the traces."""
+    """Lowpass filter waveform data."""
 
     process: Literal["lowpass"] = "lowpass"
     corners: int = Field(

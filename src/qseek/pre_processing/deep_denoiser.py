@@ -22,7 +22,7 @@ obspy_compat.plant()
 
 
 class DeepDenoiser(BatchPreProcessing):
-    """De-noise the traces using the DeepDenoiser neural network (Zhu et al., 2019)."""
+    """De-noise the traces using the DeepDenoiser neural network (slow)."""
 
     process: Literal["deep-denoiser"] = "deep-denoiser"
 

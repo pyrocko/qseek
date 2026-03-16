@@ -119,7 +119,7 @@ class SeedLinkStats(Stats):
 
 
 class SeedLink(WaveformProvider):
-    """Waveform provider to connect to SeedLink real-time streams."""
+    """Connect to real-time SeedLink streams."""
 
     provider: Literal["SeedLink"] = "SeedLink"
     timeout: timedelta = Field(

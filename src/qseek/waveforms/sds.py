@@ -186,7 +186,7 @@ class SDSArchiveStats(Stats):
 
 
 class SDSArchive(WaveformProvider):
-    """SDSArchive waveform provider for reading data from a local SDS archive."""
+    """Load MiniSEED waveform data from a local SDS archive (fastest)."""
 
     provider: Literal["SDSArchive"] = "SDSArchive"
 

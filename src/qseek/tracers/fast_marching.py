@@ -199,7 +199,7 @@ class StationTravelTimeTable(BaseModel):
 
 
 class FastMarchingTracer(RayTracer):
-    """Travel time calculation for layered 1D velocity models.
+    """1D layered velocity model travel time calculation using fast marching (fastest).
 
     Calculation is based on fast marching method to solve the Eikonal solution.
     This the more perfomant than the Pyrocko Cake ray tracer, especially for
