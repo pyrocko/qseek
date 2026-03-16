@@ -950,8 +950,8 @@ class OctreeSearch:
 
             # This iteration is also slow
             if self.semblance_density_search:
-                snapshot = await stack.get_snapshot(time_idx)
-                octree.map_semblance(snapshot)
+                snapshot = await stack.get_snapshot(time_idx, leaf_only=True)
+                octree.map_semblance(snapshot, leaf_only=True)
 
                 densest_node = max(
                     octree.leaf_nodes,
@@ -1017,6 +1017,7 @@ class OctreeSearch:
                     receivers=image.stations,
                 )
 
+                station_delays = []
                 if self.station_corrections:
                     for arrival, nsl in zip(
                         arrivals_model, image.stations.get_nsls(), strict=True
@@ -1025,7 +1026,13 @@ class OctreeSearch:
                             nsl, image.phase, node=source_node
                         )
                         if arrival and delay:
-                            arrival.time += timedelta(seconds=delay)
+                            phase_delay = timedelta(seconds=delay)
+                            arrival.time += phase_delay
+                            station_delays.append(phase_delay)
+                        else:
+                            station_delays.append(timedelta(seconds=0))
+                else:
+                    station_delays = [timedelta(seconds=0.0)] * len(image.stations)
 
                 arrival_times = [arr.time if arr else None for arr in arrivals_model]
 
@@ -1040,12 +1047,14 @@ class OctreeSearch:
                         phase=image.phase,
                         model=modelled_time,
                         observed=obs,
+                        station_delay=station_delay,
                     )
                     if modelled_time
                     else None
-                    for modelled_time, obs in zip(
+                    for modelled_time, obs, station_delay in zip(
                         arrivals_model,
                         arrivals_observed,
+                        station_delays,
                         strict=True,
                     )
                 ]
