@@ -20,7 +20,7 @@ from pyrocko.cake import LayeredModel, load_model
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
 
 from qseek.models.location import Location, get_coordinates
-from qseek.models.station import StationInventory
+from qseek.models.station import StationList
 from qseek.octree import Node, get_node_coordinates
 from qseek.utils import CACHE_DIR
 
@@ -173,7 +173,7 @@ def surface_distances(
 
 def surface_distances_reference(
     nodes: Sequence[Node],
-    stations: StationInventory,
+    stations: StationList,
     reference: Location,
 ) -> np.ndarray:
     """Returns the surface distance from all nodes to all stations.
