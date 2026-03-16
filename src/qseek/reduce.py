@@ -47,8 +47,7 @@ class DelaySumReduce:
     _stack_max_idx: np.ndarray
 
     _node_idx: dict[bytes, int]
-    _node_removal_mask: np.ndarray
-    _integrated_nodes: np.ndarray
+    _stacked_nodes: np.ndarray
     _dirty: bool = True
 
     def __init__(
@@ -95,8 +94,7 @@ class DelaySumReduce:
         self._stack_max_idx = np.zeros(self._result_nsamples, dtype=np.int32)
 
         self._node_idx = {}
-        self._node_removal_mask = np.empty(0, dtype=bool)
-        self._integrated_nodes = np.empty(0, dtype=bool)
+        self._stacked_nodes = np.empty(0, dtype=bool)
 
         self.nodes = []
 
@@ -115,10 +113,10 @@ class DelaySumReduce:
             )
 
     def remove_nodes(self, nodes: Sequence[Node]) -> None:
-        """Remove nodes from stacking.
+        """Remove nodes from stack.
 
         Args:
-            nodes (list[Node]): Nodes to remove.
+            nodes (Sequence[Node]): Nodes to remove.
 
         Raises:
             ValueError: If one or more nodes are not found.
@@ -127,13 +125,12 @@ class DelaySumReduce:
             indices = np.array([self._node_idx[node.hash] for node in nodes])
         except KeyError as e:
             raise ValueError("One or more nodes to remove not found.") from e
-        self._node_removal_mask[indices] = True
         self._stack_max[np.isin(self._stack_max_idx, indices)] = 0.0
         self._invalidate_state()
 
     def add_nodes(
         self,
-        nodes: Sequence[Node],
+        nodes: list[Node],
         traveltimes: np.ndarray,
         weights: np.ndarray,
     ) -> None:
@@ -154,15 +151,11 @@ class DelaySumReduce:
         weights[traveltime_mask] = 0.0
 
         shifts = np.round(-traveltimes * self._sampling_rate).astype(np.int32)
-
         self._node_shifts = np.vstack((self._node_shifts, shifts))
         self._trace_weights = np.vstack((self._trace_weights, weights))
 
-        self._node_removal_mask = np.concatenate(
-            (self._node_removal_mask, np.zeros(n_new_nodes, dtype=bool)),
-        )
-        self._integrated_nodes = np.concatenate(
-            (self._integrated_nodes, np.zeros(n_new_nodes, dtype=bool))
+        self._stacked_nodes = np.concatenate(
+            (self._stacked_nodes, np.zeros(n_new_nodes, dtype=bool))
         )
 
         n_nodes_old = len(self.nodes)
@@ -201,13 +194,13 @@ class DelaySumReduce:
             offsets=self._trace_offsets,
             shifts=self._node_shifts,
             weights=self._trace_weights,
-            node_mask=self._integrated_nodes,
+            node_mask=self._stacked_nodes,
             shift_range=(0, self._result_nsamples),
             node_stack_max=self._stack_max,
             node_stack_max_idx=self._stack_max_idx,
             n_threads=n_threads,
         )
-        self._integrated_nodes[:] = True
+        self._stacked_nodes[:] = True
         self._dirty = False
 
         return self._stack_max, self._stack_max_idx
@@ -252,17 +245,23 @@ class DelaySumReduce:
             ydata=data,
         )
 
-    async def get_snapshot(self, sample: int) -> np.ndarray:
+    async def get_snapshot(self, sample: int, leaf_only: bool = True) -> np.ndarray:
         """Get a snapshot of the delay-sum at a given sample index.
 
         Removed nodes are excluded from the snapshot.
 
         Args:
             sample (int): Sample index to get the snapshot at.
+            leaf_only (bool, optional): Whether to include only leaf nodes in the
+                snapshot. Defaults to True.
 
         Returns:
             np.ndarray: Snapshot of the delay-sum at the given sample index.
         """
+        mask_nodes = None
+        if leaf_only:
+            mask_nodes = np.array([bool(n.children) for n in self.nodes], dtype=bool)
+
         snapshot = delay_sum_snapshot(
             traces=self._trace_data,
             offsets=self._trace_offsets,
@@ -270,9 +269,9 @@ class DelaySumReduce:
             weights=self._trace_weights,
             index=sample + self._padding_samples,
             shift_range=(0, self._result_nsamples),
-            node_mask=self._node_removal_mask,
+            node_mask=mask_nodes,
         )
-        return snapshot[~self._node_removal_mask]
+        return snapshot[~mask_nodes] if mask_nodes is not None else snapshot
 
     async def find_peaks(
         self,
