@@ -9,6 +9,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from fnmatch import fnmatch
 from functools import wraps
 from pathlib import Path
 from typing import (
@@ -142,11 +143,16 @@ class _NSL(NamedTuple):
         Returns:
             bool: True if the objects match, False otherwise.
         """
+        fn = fnmatch
         if self.location:
-            return self == other
+            return (
+                fn(other.network, self.network)
+                and fn(other.station, self.station)
+                and fn(other.location, self.location)
+            )
         if self.station:
-            return self.network == other.network and self.station == other.station
-        return self.network == other.network
+            return fn(other.network, self.network) and fn(other.station, self.station)
+        return fn(other.network, self.network)
 
     @classmethod
     def parse(cls, nsl: str | NSL | list[str] | tuple[str, str, str]) -> NSL:

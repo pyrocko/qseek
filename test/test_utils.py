@@ -59,6 +59,38 @@ def test_nsl():
     code2 = _NSL(network="6E", station="TE234", location="AB")
     assert code1.match(code2)
 
+    code1 = _NSL(network="6E", station="TE*", location="AB")
+    code2 = _NSL(network="6E", station="TE234", location="AB")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE???", location="AB")
+    code2 = _NSL(network="6E", station="TE234", location="AB")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE234", location="A?")
+    code2 = _NSL(network="6E", station="TE234", location="AB")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE???", location="AC")
+    code2 = _NSL(network="6E", station="TE234", location="AB")
+    assert not code1.match(code2)
+
+    code1 = _NSL(network="6E", station="TE???")
+    code2 = _NSL(network="6E", station="TE234")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6E", station="")
+    code2 = _NSL(network="6E", station="")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="6?", station="")
+    code2 = _NSL(network="6E", station="")
+    assert code1.match(code2)
+
+    code1 = _NSL(network="5?", station="")
+    code2 = _NSL(network="6E", station="")
+    assert not code1.match(code2)
+
     code1 = _NSL(network="6E", station="TE234", location="AB")
     code2 = _NSL(network="6E", station="TE234", location="")
     assert not code1.match(code2)
