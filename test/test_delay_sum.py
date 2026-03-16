@@ -127,6 +127,7 @@ def test_delay_sum_reduce_snapshot(data, n_threads: int):
         )
         pyrocko_max_reduce_snapshot = res_pyrocko[:, idx]
         np.testing.assert_allclose(snapshot, pyrocko_max_reduce_snapshot, rtol=1e-5)
+        np.testing.assert_allclose(snapshot, max_res, rtol=1e-5)
 
 
 @pytest.mark.benchmark(group="delay_sum")
@@ -248,9 +249,9 @@ def test_delay_sum_reduce_mask(
     traces, offsets, shifts, weights = data
     n_nodes = shifts.shape[0]
 
-    # Mask random 10 nodes
+    # Mask random nodes
     mask = np.zeros(n_nodes, dtype=bool)
-    masked_indices = random.sample(range(n_nodes), 10)
+    masked_indices = random.sample(range(n_nodes), 50)
     mask[masked_indices] = True
 
     def stack_reduce_qseek():

@@ -271,11 +271,27 @@ async def test_travel_time_module(
                 plt.show()
 
 
-def test_surface_distances(octree, stations) -> None:
-    station_list = StationList.from_inventory(stations)
+def test_surface_distances(octree) -> None:
+    rng = np.random.default_rng(1232)
+    n_stations = 100
+    stations: list[Station] = []
+    for i_sta in range(n_stations):
+        station = Station(
+            network="XX",
+            station="STA%02d" % i_sta,
+            lat=10.0,
+            lon=10.0,
+            elevation=rng.uniform(0, 1) * KM,
+            depth=rng.uniform(0, 0.2) * KM,
+            north_shift=rng.uniform(-100, 100) * KM,
+            east_shift=rng.uniform(-100, 100) * KM,
+        )
+        stations.append(station)
+
+    station_list = StationList(stations)
     distances_full = surface_distances(octree.nodes, station_list)
 
     distances_short = surface_distances_reference(
-        octree.nodes, stations, octree.location
+        octree.nodes, station_list, octree.location
     )
     np.testing.assert_allclose(distances_full, distances_short, rtol=1e-2)
