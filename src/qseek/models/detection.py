@@ -876,6 +876,19 @@ class EventDetection(Location):
         """Number of phase picks in the detection."""
         return self.receivers.n_picks()
 
+    @computed_field
+    @property
+    def rms(self) -> float | None:
+        """Root mean square of the traveltime delays of the observed arrivals."""
+        delays = []
+        for receiver in self.receivers:
+            for arrival in receiver.phase_arrivals.values():
+                if arrival.traveltime_delay is not None:
+                    delays.append(arrival.traveltime_delay.total_seconds())
+        if not delays:
+            return None
+        return float(np.sqrt(np.mean(np.square(delays))))
+
     def get_receiver_azimuths(self, observed_only: bool = True) -> dict[str, float]:
         """Get receiver azimuths.
 
@@ -966,6 +979,7 @@ class EventDetection(Location):
             "azimuthal_coverage": self.get_azimuthal_coverage(),
             "n_stations": self.n_stations,
             "n_picks": self.n_picks,
+            "rms": round(self.rms, 4) if self.rms is not None else None,
         }
         if self.uncertainty:
             csv_line.update(
