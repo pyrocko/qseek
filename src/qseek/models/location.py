@@ -170,8 +170,8 @@ class Location(BaseModel):
         )
 
         return (
-            self.east_shift - other.east_shift - shift_east[0],
-            self.north_shift - other.north_shift - shift_north[0],
+            float(self.east_shift - other.east_shift - shift_east[0]),
+            float(self.north_shift - other.north_shift - shift_north[0]),
             -(self.effective_elevation - other.effective_elevation),
         )
 
