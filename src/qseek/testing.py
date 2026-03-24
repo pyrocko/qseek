@@ -26,6 +26,10 @@ DATA_FILES = {
     "FORGE_3D_5_large.P.mod.buf",
     "FORGE_3D_5_large.S.mod.hdr",
     "FORGE_3D_5_large.S.mod.buf",
+    "terceira-1km.P.mod.hdr",
+    "terceira-1km.P.mod.buf",
+    "terceira-1km.S.mod.hdr",
+    "terceira-1km.S.mod.buf",
 }
 
 KM = 1e3
