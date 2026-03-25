@@ -75,7 +75,7 @@ def stations() -> StationInventory:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko"])
+@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko", "eikonalfm"])
 async def test_station_travel_time_table_constant(
     plot: bool,
     implementation: FMMImplementation,
@@ -123,10 +123,16 @@ async def test_station_travel_time_table_constant(
     ).reshape(*grid[0].shape)
     analytical_vp_tt = dists / model.layers[0].vp
 
+    atol = {
+        "scikit-fmm": 1e-2,
+        "pyrocko": 1e-1,
+        "eikonalfm": 1e-4,
+    }
+
     np.testing.assert_allclose(
         table._travel_times,
         analytical_vp_tt,
-        atol=1e-1,
+        atol=atol[implementation],
     )
 
     if plot:
@@ -156,7 +162,7 @@ async def test_station_travel_time_table_constant(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko"])
+@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko", "eikonalfm"])
 async def test_travel_time_module(
     octree: Octree,
     stations: StationInventory,

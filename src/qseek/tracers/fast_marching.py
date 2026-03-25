@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
+import eikonalfm
 import numpy as np
 import skfmm
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 Phase = Literal["fm:P", "fm:S"]
 
 InterpolationMethod = Literal["nearest", "linear", "cubic"]
-FMMImplementation = Literal["pyrocko", "scikit-fmm"]
+FMMImplementation = Literal["pyrocko", "scikit-fmm", "eikonalfm"]
 
 
 class StationTravelTimeTable(BaseModel):
@@ -60,7 +61,7 @@ class StationTravelTimeTable(BaseModel):
     @classmethod
     def check_depth_range(cls, depth_range: Range) -> Range:
         if depth_range.start > 0.0:
-            raise ValueError("depth range start must be >= 0.0")
+            raise ValueError("depth range start must be <= 0.0")
         return depth_range
 
     def model_post_init(self, __context: Any) -> None:
@@ -95,11 +96,22 @@ class StationTravelTimeTable(BaseModel):
             shape=(self._distances.size, self._depths.size),
             fill_value=-1.0,
         )
+        src_idx = self._get_source_idx()
+        times[src_idx] = 0.0
+        return times
+
+    def _get_source_idx(self) -> tuple[int, int]:
         depth_idx = np.where(self._depths == 0.0)
         if depth_idx[0].size != 1:
             raise ValueError("depth 0.0 not found in depth range")
-        times[0, depth_idx[0]] = 0.0
-        return times
+        return 0, int(depth_idx[0])
+
+    def _get_meshgrid(self) -> tuple[np.ndarray, np.ndarray]:
+        return np.meshgrid(self._distances, self._depths, indexing="ij")
+
+    def _get_source_distance_grid(self):
+        distance, depth = self._get_meshgrid()
+        return np.sqrt(distance**2 + depth**2)
 
     def _get_travel_time_interpolator(self) -> RegularGridInterpolator:
         if self._interpolator is None:
@@ -115,10 +127,10 @@ class StationTravelTimeTable(BaseModel):
 
     async def calculate(
         self,
-        implementation: FMMImplementation = "scikit-fmm",
+        implementation: FMMImplementation = "eikonalfm",
         executor: ThreadPoolExecutor | None = None,
     ) -> None:
-        velocity_model = self._get_velocity_grid()
+        velocity_grid = self._get_velocity_grid()
         arrival_times = self._get_source_arrival_grid()
 
         def eikonal_wrapper(arrival_times: np.ndarray, delta: float) -> np.ndarray:
@@ -133,17 +145,26 @@ class StationTravelTimeTable(BaseModel):
             )
             if implementation == "pyrocko":
                 eikonal.eikonal_solver_fmm_cartesian(
-                    velocity_model,
+                    velocity_grid,
                     arrival_times,
                     delta=delta,
                 )
             elif implementation == "scikit-fmm":
                 arrival_times = skfmm.travel_time(
                     arrival_times,
-                    velocity_model,
+                    velocity_grid,
                     dx=delta,
                     order=2,
                 )
+            elif implementation == "eikonalfm":
+                eikonal_factors = eikonalfm.factored_fast_marching(
+                    velocity_grid,
+                    x_s=self._get_source_idx(),
+                    dx=(self.grid_spacing, self.grid_spacing),
+                    order=2,
+                )
+                distances = self._get_source_distance_grid()
+                arrival_times = eikonal_factors * distances
             else:
                 raise ValueError(f"unknown eikonal solver {implementation}")
             self._travel_times = arrival_times
@@ -225,7 +246,7 @@ class FastMarchingTracer(RayTracer):
     )
 
     implementation: FMMImplementation = Field(
-        default="pyrocko",
+        default="eikonalfm",
         description="Implementation of the Fast Marching Method. Pyrocko only supports"
         " first-order FMM for now.",
     )
@@ -346,7 +367,7 @@ class FastMarchingTracer(RayTracer):
                 depth_range=Range(
                     min(octree_depth_range[0] - station.effective_depth, 0.0)
                     - depth_margin,
-                    octree_depth_range[1] + station.effective_elevation + depth_margin,
+                    octree_depth_range[1] - station.effective_depth + depth_margin,
                 ),
                 grid_spacing=octree.smallest_node_size(),
                 earth_model=self._layered_model,  # type: ignore
