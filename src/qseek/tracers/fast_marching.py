@@ -104,7 +104,7 @@ class StationTravelTimeTable(BaseModel):
         depth_idx = np.where(self._depths == 0.0)
         if depth_idx[0].size != 1:
             raise ValueError("depth 0.0 not found in depth range")
-        return 0, int(depth_idx[0])
+        return 0, int(depth_idx[0].item())
 
     def _get_meshgrid(self) -> tuple[np.ndarray, np.ndarray]:
         return np.meshgrid(self._distances, self._depths, indexing="ij")
