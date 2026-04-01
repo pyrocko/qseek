@@ -3,8 +3,8 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from qseek.ui.header import Header
-from qseek.ui.overview import OverviewPage
+from qseek.ui.components.header import Header
+from qseek.ui.pages.overview import OverviewPage
 from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
