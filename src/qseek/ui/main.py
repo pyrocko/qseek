@@ -31,7 +31,7 @@ def start_ui(basepath: Path, reload: bool = True) -> None:
         overview_page = OverviewPage(manager)
         event_details = EventPage(manager)
 
-        with ui.row().classes("w-full").style("max-width: 2100px").classes("mx-auto"):
+        with ui.row().classes("w-full").style("max-width: 1290px;").classes("mx-auto"):
             pages = ui.sub_pages(
                 {
                     "/": overview_page.render,

@@ -76,6 +76,10 @@ class CatalogProxy:
                 return ev
         raise ValueError(f"Event with uid {uid} not found")
 
+    @property
+    def n_events(self) -> int:
+        return len(self.events)
+
 
 class RunProxy:
     path: Path

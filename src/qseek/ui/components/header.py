@@ -24,7 +24,7 @@ class Header:
             ui.header()
             .classes("justify-center items-center px-4 gap-1 bg-grey-10")
             .props("elevated"),
-            ui.row().classes("w-full").style("max-width: 2100px"),
+            ui.row().classes("w-full").style("max-width: 1290px"),
         ):
             ui.image("/static/logo_light.svg").classes("w-24")
             ui.separator().props("vertical").classes("opacity-20 my-2")
