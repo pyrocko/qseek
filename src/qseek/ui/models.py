@@ -37,6 +37,7 @@ class CatalogProxy:
     catalog: EventCatalog
 
     events: list[EventMinimal]
+    uids: list[UUID]
     lats: np.ndarray
     lons: np.ndarray
     depths: np.ndarray
@@ -69,6 +70,7 @@ class CatalogProxy:
             self.magnitudes,
         ) = map(np.array, zip(*(ev.as_tuple() for ev in self.events), strict=True))
         self.times = [ev.time for ev in self.events]
+        self.uids = [ev.uid for ev in self.events]
 
     def get_event_by_uid(self, uid: UUID) -> EventMinimal:
         for ev in self.events:
@@ -83,6 +85,8 @@ class CatalogProxy:
 
 class RunProxy:
     path: Path
+    n_events: int
+    hash: str
 
     _search: Search | None = None
     _catalog: CatalogProxy | None = None
@@ -90,6 +94,12 @@ class RunProxy:
     def __init__(self, path: Path) -> None:
         self.path = path
         search_file = path / "search.json"
+        detections_file = path / "detections.json"
+        if not search_file.is_file():
+            raise ValueError(f"search.json not found in {path}")
+        if not detections_file.is_file():
+            raise ValueError(f"detections.json not found in {path}")
+
         self.hash = hashlib.sha1(search_file.read_bytes()).hexdigest()
 
     async def get_catalog(self) -> CatalogProxy:

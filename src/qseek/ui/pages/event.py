@@ -1,8 +1,12 @@
+from __future__ import annotations
+
+import math
 from uuid import UUID
 
 from nicegui import ui
 
 from qseek.ui.base import Page
+from qseek.ui.utils import stat_card
 
 
 class EventPage(Page):
@@ -10,6 +14,96 @@ class EventPage(Page):
         run = self.run_manager.get_active_run()
         catalog = await run.get_catalog()
         event = catalog.get_event_by_uid(UUID(event_id))
+        ev = event.event
 
-        ui.label("Event Details").classes("text-h4 mb-4")
-        ui.label(str(event))
+        lat, lon = ev.effective_lat_lon
+        depth_km = ev.depth / 1000.0
+
+        # Header
+        with ui.row().classes("w-full items-center gap-2 mb-1"):
+            ui.button(icon="arrow_back", on_click=ui.navigate.back).props("flat round")
+            ui.label(event.time.strftime("%Y-%m-%d  %H:%M:%S UTC")).classes(
+                "text-h5 font-mono"
+            )
+            ui.space()
+            ui.chip(str(event.uid), icon="fingerprint").props("outline").classes(
+                "text-xs font-mono text-grey-6"
+            )
+
+        ui.separator().classes("mb-4")
+
+        # Stat cards
+        with ui.row().classes("w-full flex-wrap gap-3 mb-5"):
+            mag = ev.magnitude
+            if (
+                mag is not None
+                and mag.average is not None
+                and not math.isnan(mag.average)
+            ):
+                mag_subtitle = (
+                    f"± {mag.error:.2f}"
+                    if mag.error is not None and not math.isnan(mag.error)
+                    else ""
+                )
+                stat_card(
+                    f"Magnitude ({mag.name})",
+                    f"{mag.average:.2f}",
+                    "speed",
+                    subtitle=mag_subtitle,
+                    tooltip=f"Network magnitude computed as the median of "
+                    f"station magnitudes ({len(mag.station_magnitudes)} stations). "
+                    f"Error is the median absolute deviation.",
+                )
+
+            stat_card(
+                "Event Semblance",
+                f"{event.semblance:.3f}",
+                icon="graphic_eq",
+                tooltip="Normalized coherence of the stacked phase arrival beam "
+                "in [0, 1]. Higher values indicate a more focused, confident "
+                "detection.",
+            )
+            stat_card(
+                "Stations",
+                str(ev.n_stations),
+                icon="sensors",
+                subtitle="Contributing stations",
+                tooltip="Number of seismic stations online and contributing to the"
+                " stacked phase arrival beam.",
+            )
+            # suf_lat = "E" if lon >= 0 else "W"
+            # suf_lon = "N" if lat >= 0 else "S"
+            # _stat_card(
+            #     "Coordinates",
+            #     f"{lat:.4f}°{suf_lat} {lon:.4f}°{suf_lon}",
+            #     icon="explore",
+            #     subtitle=f"± {(ev.uncertainty.horizontal / 1000):.2f} km"
+            #     if ev.uncertainty
+            #     else "",
+            # )
+            stat_card(
+                "Depth",
+                f"{depth_km:.2f} km",
+                icon="vertical_align_bottom",
+                subtitle=f"± {(ev.uncertainty.vertical / 1000):.2f} km"
+                if ev.uncertainty
+                else "",
+                tooltip="Depth below the Earth's surface. Uncertainty (±) is "
+                "derived from the 2% semblance threshold around the peak node.",
+            )
+            stat_card(
+                "RMS",
+                f"{ev.rms:.3f} s",
+                icon="adjust",
+                tooltip="Root mean square of traveltime residuals between "
+                "observed (picked) and modelled phase arrivals. Lower values indicate "
+                "a better fit to the velocity model. Note that Qseek is using the "
+                "full annotation information and is not working on picked arrival times",
+            )
+
+        # Map
+        ui.label("Location").classes("text-subtitle1 font-medium mb-2")
+        m = ui.leaflet(center=(lat, lon), zoom=9).classes(
+            "w-full h-96 rounded-lg shadow"
+        )
+        m.marker(latlng=(lat, lon))

@@ -19,7 +19,7 @@ class Component:
         self.run = run
 
     async def render(self) -> None:
-        with ui.card().classes("col-5"):
+        with ui.card().classes("min-w-40 shadow-2"):
             ui.label(self.name).classes("text-h5")
             ui.label(self.description).classes("text-body2 mb-2")
             await self.view()

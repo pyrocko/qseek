@@ -2,6 +2,7 @@ import plotly.graph_objects as go
 from nicegui import ui
 
 from qseek.ui.base import Component
+from qseek.ui.utils import on_click_plotly_event
 
 
 class SemblanceRate(Component):
@@ -23,6 +24,7 @@ to semblance value.
             y=semblances,
             mode="markers",
             name="Event Semblance",
+            customdata=catalog.uids,
             marker={
                 "color": "black",
                 "size": semblances / semblances.max() * 20,
@@ -30,12 +32,14 @@ to semblance value.
                 "opacity": 0.3,
             },
         )
+
         fig.update_layout(
             template="plotly_white",
             xaxis_title="Time",
             yaxis_title="Semblance",
         )
-        ui.plotly(fig).classes("w-full h-64")
+
+        ui.plotly(fig).classes("w-full h-64").on("plotly_click", on_click_plotly_event)
 
 
 class MagnitudeRate(Component):
