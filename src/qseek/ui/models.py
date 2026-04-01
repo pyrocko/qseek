@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 import numpy as np
 from nicegui import app
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class EventMinimal:
+    uid: UUID
     lat: float
     lon: float
     depth: float
@@ -46,6 +48,7 @@ class CatalogProxy:
         self.catalog = catalog
         self.events = [
             EventMinimal(
+                uid=ev.uid,
                 lat=ev.lat,
                 lon=ev.lon,
                 depth=ev.depth,
@@ -66,6 +69,12 @@ class CatalogProxy:
             self.magnitudes,
         ) = map(np.array, zip(*(ev.as_tuple() for ev in self.events), strict=True))
         self.times = [ev.time for ev in self.events]
+
+    def get_event_by_uid(self, uid: UUID) -> EventMinimal:
+        for ev in self.events:
+            if ev.uid == uid:
+                return ev
+        raise ValueError(f"Event with uid {uid} not found")
 
 
 class RunProxy:

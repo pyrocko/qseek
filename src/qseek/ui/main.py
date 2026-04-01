@@ -4,6 +4,7 @@ from pathlib import Path
 from nicegui import app, ui
 
 from qseek.ui.components.header import Header
+from qseek.ui.pages.event import EventPage
 from qseek.ui.pages.overview import OverviewPage
 from qseek.utils import load_insights, setup_rich_logging
 
@@ -23,19 +24,20 @@ def start_ui(basepath: Path, reload: bool = True) -> None:
 
     @ui.page("/")
     @ui.page("/{_:path}")
-    def main_page():
+    def main_page() -> None:
         header = Header(manager)
         header.render()
 
         overview_page = OverviewPage(manager)
+        event_details = EventPage(manager)
 
         with ui.row().classes("w-full").style("max-width: 2100px").classes("mx-auto"):
             pages = ui.sub_pages(
                 {
                     "/": overview_page.render,
+                    "/event/{event_id}": event_details.render,
                     # "/statistics/{run_hash}": statistics,
                     # "/network/{run_hash}": network,
-                    # "/event-details/{run_hash}/{event_id}": event_details,
                 }
             ).classes("flex-grow p-4")
         manager.on_active_run_change(pages.refresh)
