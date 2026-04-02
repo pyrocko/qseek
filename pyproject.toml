@@ -45,7 +45,8 @@ dependencies = [
     "psutil>=7.0",
     "aiofiles>=23.0",
     "scikit-fmm >= 2025.1",
-    "eikonalfm @ git+https://github.com/kevinganster/eikonalfm"
+    "eikonalfm @ git+https://github.com/kevinganster/eikonalfm",
+    "plotly>=6.6.0",
 ]
 
 classifiers = [

@@ -6,6 +6,7 @@ from uuid import UUID
 from nicegui import ui
 
 from qseek.ui.base import Page
+from qseek.ui.components.event import EventMap, StationAzimuthsPlot
 from qseek.ui.utils import stat_card
 
 
@@ -16,7 +17,6 @@ class EventPage(Page):
         event = catalog.get_event_by_uid(UUID(event_id))
         ev = event.event
 
-        lat, lon = ev.effective_lat_lon
         depth_km = ev.depth / 1000.0
 
         # Header
@@ -33,7 +33,7 @@ class EventPage(Page):
         ui.separator().classes("mb-4")
 
         # Stat cards
-        with ui.row().classes("w-full flex-wrap gap-3 mb-5"):
+        with ui.row().classes("w-full flex-wrap gap-2 mb-5"):
             mag = ev.magnitude
             if (
                 mag is not None
@@ -63,6 +63,17 @@ class EventPage(Page):
                 "in [0, 1]. Higher values indicate a more focused, confident "
                 "detection.",
             )
+            picks = ev.receivers.get_num_phase_picks()
+            stat_card(
+                "Picks",
+                str(ev.n_picks),
+                icon="gavel",
+                subtitle=f"Phases: {
+                    ' '.join(f'{ph[-1]} {n}' for ph, n in picks.items())
+                }",
+                tooltip="Number of phase arrivals associated with the event. Qseek "
+                "associates picks based on their contribution to the semblance ",
+            )
             stat_card(
                 "Stations",
                 str(ev.n_stations),
@@ -91,19 +102,19 @@ class EventPage(Page):
                 tooltip="Depth below the Earth's surface. Uncertainty (±) is "
                 "derived from the 2% semblance threshold around the peak node.",
             )
+            rms_phases = ev.receivers.get_rms()
             stat_card(
                 "RMS",
                 f"{ev.rms:.3f} s",
                 icon="adjust",
+                subtitle=f"Phases: {
+                    ', '.join(f'{ph[-1]} {rms:.3f} s' for ph, rms in rms_phases.items())
+                }",
                 tooltip="Root mean square of traveltime residuals between "
                 "observed (picked) and modelled phase arrivals. Lower values indicate "
                 "a better fit to the velocity model. Note that Qseek is using the "
                 "full annotation information and is not working on picked arrival times",
             )
-
-        # Map
-        ui.label("Location").classes("text-subtitle1 font-medium mb-2")
-        m = ui.leaflet(center=(lat, lon), zoom=9).classes(
-            "w-full h-96 rounded-lg shadow"
-        )
-        m.marker(latlng=(lat, lon))
+        with ui.row().classes("w-full flex-wrap gap-2 mb-5"):
+            await EventMap(event.event).render()
+            await StationAzimuthsPlot(event.event).render()

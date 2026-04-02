@@ -1,5 +1,6 @@
 from nicegui import ui
 
+from qseek.models.detection import EventDetection
 from qseek.ui.models import RunManager, RunProxy
 
 
@@ -23,6 +24,17 @@ class Component:
             ui.label(self.name).classes("text-h5")
             ui.label(self.description).classes("text-body2 mb-2")
             await self.view()
+
+    async def view(self) -> None:
+        raise NotImplementedError
+
+
+class EventComponent(Component):
+    name: str = "Event Component"
+    description: str = ""
+
+    def __init__(self, event: EventDetection):
+        self.event = event
 
     async def view(self) -> None:
         raise NotImplementedError
