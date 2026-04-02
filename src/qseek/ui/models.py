@@ -26,11 +26,20 @@ class EventMinimal:
     depth: float
     time: datetime
     semblance: float
+    n_picks: int
     magnitude: float
     event: EventDetection
 
-    def as_tuple(self) -> tuple[float, float, float, datetime, float, float]:
-        return self.lat, self.lon, self.depth, self.time, self.semblance, self.magnitude
+    def as_tuple(self) -> tuple[float, float, float, datetime, float, float, float]:
+        return (
+            self.lat,
+            self.lon,
+            self.depth,
+            self.time,
+            self.semblance,
+            self.n_picks,
+            self.magnitude,
+        )
 
 
 class CatalogProxy:
@@ -50,11 +59,12 @@ class CatalogProxy:
         self.events = [
             EventMinimal(
                 uid=ev.uid,
-                lat=ev.lat,
-                lon=ev.lon,
+                lat=ev.effective_lat,
+                lon=ev.effective_lon,
                 depth=ev.depth,
                 time=ev.time,
                 semblance=ev.semblance,
+                n_picks=ev.n_picks,
                 magnitude=ev.magnitude or ev.semblance,
                 event=ev,
             )
@@ -67,6 +77,7 @@ class CatalogProxy:
             self.depths,
             _,
             self.semblances,
+            self.n_picks,
             self.magnitudes,
         ) = map(np.array, zip(*(ev.as_tuple() for ev in self.events), strict=True))
         self.times = [ev.time for ev in self.events]
@@ -81,6 +92,22 @@ class CatalogProxy:
     @property
     def n_events(self) -> int:
         return len(self.events)
+
+    @property
+    def median_n_picks(self) -> int:
+        return np.nanmedian([ev.n_picks for ev in self.events])
+
+    @property
+    def median_semblance(self) -> float:
+        return np.nanmedian([ev.semblance for ev in self.events])
+
+    @property
+    def median_magnitude(self) -> float:
+        return np.nanmedian([ev.magnitude for ev in self.events])
+
+    @property
+    def median_depth(self) -> float:
+        return np.nanmedian([ev.depth for ev in self.events])
 
 
 class RunProxy:
