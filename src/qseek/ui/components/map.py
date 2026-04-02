@@ -5,6 +5,7 @@ from qseek.ui.base import Component
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
+import json
 
 
 class OverviewMap(Component):
@@ -31,27 +32,41 @@ class OverviewMap(Component):
             },
         )
 
+        # Farben vektorisiert berechnen
         norm = mcolors.Normalize(vmin=min(depths), vmax=max(depths))
         cmap = cm.get_cmap("magma")
+        norm_depths = norm(np.array(depths))
+        colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
 
-        def depth_to_color(d):
-            return mcolors.to_hex(cmap(norm(d)))
-
-        for lat, lon, depth, magnitude in zip(
-            lats, lons, depths, magnitudes, strict=True
-        ):
-            color = depth_to_color(depth)
-            size = magnitude * 4  # Adjust size based on magnitude
-
-            m.generic_layer(
-                name="circleMarker",
-                args=[
-                    (lat, lon),
-                    {
-                        "radius": size,
-                        "color": color,
-                        "fillColor": color,
-                        "fillOpacity": 0.8,
-                    },
-                ],
+        # Marker-Daten vorbereiten
+        markers_data = [
+            {
+                "lat": float(lat),
+                "lon": float(lon),
+                "radius": float(magnitude * 4),
+                "color": color,
+            }
+            for lat, lon, magnitude, color in zip(
+                lats, lons, magnitudes, colors, strict=True
             )
+        ]
+
+        # Warten bis die Map im Browser initialisiert ist
+        await m.initialized()
+
+        # Alle Marker gebündelt in einem JS-Aufruf
+        ui.run_javascript(f"""
+            var map = getElement({m.id}).map;
+            var data = {json.dumps(markers_data)};
+            var group = L.layerGroup();
+            for (var i = 0; i < data.length; i++) {{
+                var d = data[i];
+                L.circleMarker([d.lat, d.lon], {{
+                    radius: d.radius,
+                    color: d.color,
+                    fillColor: d.color,
+                    fillOpacity: 0.8
+                }}).addTo(group);
+            }}
+            group.addTo(map);
+        """)

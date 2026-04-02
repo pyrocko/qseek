@@ -23,6 +23,9 @@ class EventMinimal:
     uid: UUID
     lat: float
     lon: float
+    distance: float
+    north_shift: float
+    east_shift: float
     depth: float
     time: datetime
     semblance: float
@@ -30,11 +33,16 @@ class EventMinimal:
     magnitude: float
     event: EventDetection
 
-    def as_tuple(self) -> tuple[float, float, float, datetime, float, float, float]:
+    def as_tuple(
+        self,
+    ) -> tuple[float, float, float, float, float, float, datetime, float, float, float]:
         return (
             self.lat,
             self.lon,
             self.depth,
+            self.distance,
+            self.north_shift,
+            self.east_shift,
             self.time,
             self.semblance,
             self.n_picks,
@@ -53,6 +61,7 @@ class CatalogProxy:
     times: list[datetime]
     magnitudes: np.ndarray
     semblances: np.ndarray
+    distances_to_center: np.ndarray
 
     def __init__(self, catalog: EventCatalog):
         self.catalog = catalog
@@ -61,6 +70,9 @@ class CatalogProxy:
                 uid=ev.uid,
                 lat=ev.effective_lat,
                 lon=ev.effective_lon,
+                distance=np.sqrt(ev.north_shift**2 + ev.east_shift**2 + ev.depth**2),
+                north_shift=ev.north_shift,
+                east_shift=ev.east_shift,
                 depth=ev.depth,
                 time=ev.time,
                 semblance=ev.semblance,
@@ -75,6 +87,9 @@ class CatalogProxy:
             self.lats,
             self.lons,
             self.depths,
+            self.distances_to_center,
+            self.north_shift,
+            self.east_shift,
             _,
             self.semblances,
             self.n_picks,
