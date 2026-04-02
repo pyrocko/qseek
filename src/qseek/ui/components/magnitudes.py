@@ -1,15 +1,124 @@
+from typing import Tuple, Dict
+
 from qseek.ui.base import Component
+import numpy as np
+from nicegui import ui
+import plotly.graph_objects as go
 
 
 class MagnitudeFrequency(Component):
-    name = "Magnitude Frequency"
+    name = "Magnitude Frequency Distribution"
     description = """Frequency of detected events over magnitude bins."""
 
-    async def view(self) -> None: ...
+    async def _maximum_curvature(self, magnitudes: np.ndarray) -> Tuple[float, Dict]:
+        # Create magnitude bins
+        bin_width = 0.1
+        min_mag = np.floor(magnitudes.min() * 10) / 10
+        max_mag = np.ceil(magnitudes.max() * 10) / 10
+        bins = np.arange(min_mag - bin_width / 2, max_mag + bin_width / 2, bin_width)
+
+        # Calculate histogram
+        counts, bin_edges = np.histogram(magnitudes, bins=bins)
+
+        # Find bin with maximum count
+        max_idx = np.argmax(counts)
+        mc_value = bin_edges[max_idx]
+
+        params = {
+            "bin_counts": counts.tolist(),
+            "bin_edges": bin_edges.tolist(),
+            "max_count": int(counts[max_idx]),
+        }
+
+        return mc_value, params
+
+    async def _b_positive_estimation(self, magnitudes, delta_m=0.1):
+        mags = np.asarray(magnitudes)
+        if len(mags) < 2:
+            return np.nan, np.nan
+        dm = np.diff(mags)
+        dm_pos = dm[dm > 0]
+        if len(dm_pos) < 5:
+            return np.nan, np.nan
+        mean_dm = np.mean(dm_pos)
+        if mean_dm <= delta_m / 2:
+            return np.nan, np.nan
+        b_hat = np.log10(np.e) / (mean_dm - delta_m / 2)
+        std_err = b_hat / np.sqrt(len(dm_pos))
+        return float(b_hat), float(std_err)
+
+    async def view(self) -> None:
+        catalog = await self.run.get_catalog()
+        magnitudes = catalog.magnitudes
+
+        mc_value, mc_params = await self._maximum_curvature(magnitudes)
+        b_value, b_std_err = await self._b_positive_estimation(magnitudes)
+
+        fig = go.Figure()
+        fig.update_layout(margin={"l": 0, "r": 0, "t": 0, "b": 0})
+        fig.add_bar(
+            x=mc_params["bin_edges"][:-1],
+            y=np.log10(mc_params["bin_counts"]),
+            name="Magnitude Distribution",
+            marker_color="gray",
+        )
+        fig.add_vline(
+            x=mc_value,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"MC={mc_value:.2f}",
+            annotation_position="top right",
+        )
+        if not np.isnan(b_value):
+            fig.add_annotation(
+                x=0.95,
+                y=0.95,
+                xref="paper",
+                yref="paper",
+                text=f"b-value={b_value:.2f} ± {b_std_err:.2f}",
+                showarrow=False,
+                bgcolor="white",
+                bordercolor="black",
+                borderwidth=1,
+            )
+
+        fig.update_layout(
+            template="plotly_white",
+            xaxis_title="Magnitude",
+            yaxis_title="log(Frequency)",
+        )
+
+        ui.plotly(fig).classes("w-full h-64")
 
 
 class MagnitudeSemblance(Component):
     name = "Magnitude vs Semblance"
     description = """Magnitude of detected events over their semblance value."""
 
-    async def view(self) -> None: ...
+    async def view(self) -> None:
+        catalog = await self.run.get_catalog()
+        magnitudes = catalog.magnitudes
+        semblances = catalog.semblances
+
+        fig = go.Figure()
+        fig.update_layout(margin={"l": 0, "r": 0, "t": 0, "b": 0})
+        fig.add_scatter(
+            x=semblances,
+            y=magnitudes,
+            mode="markers",
+            name="Magnitude vs Semblance",
+            marker={
+                "color": "black",
+                "size": 10,
+                "line": {"width": 0},
+                "opacity": 0.3,
+            },
+        )
+
+        fig.update_layout(
+            template="plotly_white",
+            xaxis_title="Semblance",
+            yaxis_title="Magnitude",
+        )
+
+        ui.plotly(fig).classes("w-full h-64")

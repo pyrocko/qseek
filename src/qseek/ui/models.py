@@ -93,22 +93,6 @@ class CatalogProxy:
     def n_events(self) -> int:
         return len(self.events)
 
-    @property
-    def median_n_picks(self) -> int:
-        return np.nanmedian([ev.n_picks for ev in self.events])
-
-    @property
-    def median_semblance(self) -> float:
-        return np.nanmedian([ev.semblance for ev in self.events])
-
-    @property
-    def median_magnitude(self) -> float:
-        return np.nanmedian([ev.magnitude for ev in self.events])
-
-    @property
-    def median_depth(self) -> float:
-        return np.nanmedian([ev.depth for ev in self.events])
-
 
 class RunProxy:
     path: Path

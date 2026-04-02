@@ -9,7 +9,7 @@ import matplotlib.colors as mcolors
 
 class OverviewMap(Component):
     name = "Event Map"
-    description = """Map of detected events. Color corresponds to depth."""
+    description = """Map of detected events. Color corresponds to depth and size corresponds to magnitude."""
 
     async def view(self) -> None:
         catalog = await self.run.get_catalog()
