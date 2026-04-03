@@ -4,8 +4,8 @@ from pathlib import Path
 
 from nicegui import ui
 
-from qseek.ui.components.event_search import EventSearch
 from qseek.ui.components.run_manager import run_selection_dialog
+from qseek.ui.components.search import EventSearch
 from qseek.ui.models import RunManager
 
 _LOGO_SVG = (Path(__file__).parent.parent / "static" / "logo_light.svg").read_text()
@@ -19,7 +19,7 @@ class Header:
     def __init__(self, manager: RunManager) -> None:
         self.manager = manager
 
-    def render(self) -> None:
+    async def render(self) -> None:
         with (
             ui.header()
             .classes("justify-center items-center px-4 gap-1")
@@ -27,14 +27,21 @@ class Header:
             .props("elevated"),
             ui.row().classes("w-full").style("max-width: 1290px"),
         ):
-            ui.html(_LOGO_SVG, sanitize=False).classes("w-24")
+            with (
+                ui.element("a")
+                .props(
+                    "href='https://pyrocko.github.io/qseek/' target='_blank' rel='noopener'"
+                )
+                .classes()
+            ):
+                ui.html(_LOGO_SVG, sanitize=False).classes("w-24")
             ui.button(
                 "Overview",
-                on_click=lambda: ui.navigate("/"),
+                on_click=lambda _: ui.navigate.to("/"),
             ).props("flat color=white")
             ui.space()
 
-            EventSearch().render()
+            await EventSearch(self.manager).render()
 
             active_run = self.manager.get_active_run()
             ui.button(

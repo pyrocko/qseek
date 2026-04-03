@@ -9,7 +9,7 @@ from qseek.ui.base import Page
 from qseek.ui.components.event import (
     EventMap,
     ObservationsAzimuthsPlot,
-    StationDistancesPlot,
+    TravelTimeResidualPlot,
 )
 from qseek.ui.utils import stat_card
 
@@ -71,8 +71,8 @@ class EventPage(Page):
             stat_card(
                 "Picks",
                 str(ev.n_picks),
-                icon="gavel",
-                subtitle=f"{'; '.join(f'{ph[-1]} {n}' for ph, n in picks.items())}",
+                icon="network_ping",
+                subtitle=f"{' / '.join(f'{ph[-1]} {n}' for ph, n in picks.items())}",
                 tooltip="Number of phase arrivals associated with the event. Qseek "
                 "associates picks based on their contribution to the semblance ",
             )
@@ -110,7 +110,7 @@ class EventPage(Page):
                 f"{ev.rms:.3f} s",
                 icon="adjust",
                 subtitle=f"{
-                    '; '.join(f'{ph[-1]} {rms:.3f} s' for ph, rms in rms_phases.items())
+                    ' / '.join(f'{p[-1]} {rms:.3f} s' for p, rms in rms_phases.items())
                 }",
                 tooltip="Root mean square of traveltime residuals between "
                 "observed (picked) and modelled phase arrivals. Lower values indicate "
@@ -124,6 +124,6 @@ class EventPage(Page):
             phases = list(ev.receivers.get_available_phases())
 
             with ui.card().classes("w-full flex-wrap gap-2"):
-                await StationDistancesPlot(event.event, phases).view()
+                await TravelTimeResidualPlot(event.event, phases).view()
             with ui.card().classes("w-full flex-wrap gap-2"):
                 await ObservationsAzimuthsPlot(event.event, phases).view()

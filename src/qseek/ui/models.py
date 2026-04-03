@@ -30,7 +30,7 @@ class EventMinimal:
     time: datetime
     semblance: float
     n_picks: int
-    magnitude: float
+    magnitude: float | None
     event: EventDetection
 
     def as_tuple(
@@ -77,7 +77,7 @@ class CatalogProxy:
                 time=ev.time,
                 semblance=ev.semblance,
                 n_picks=ev.n_picks,
-                magnitude=ev.magnitude or ev.semblance,
+                magnitude=ev.magnitude,
                 event=ev,
             )
             for ev in catalog.events
@@ -113,6 +113,7 @@ class RunProxy:
     path: Path
     n_events: int
     hash: str
+    created: datetime
 
     _search: Search | None = None
     _catalog: CatalogProxy | None = None
@@ -126,7 +127,11 @@ class RunProxy:
         if not detections_file.is_file():
             raise ValueError(f"detections.json not found in {path}")
 
-        self.hash = hashlib.sha1(search_file.read_bytes()).hexdigest()
+        self.created = datetime.fromtimestamp(search_file.stat().st_ctime)  # noqa
+        self.n_events = sum(1 for _ in search_file.open())
+        hash = hashlib.sha1(search_file.read_bytes())
+        hash.update(detections_file.read_bytes())
+        self.hash = hash.hexdigest()
 
     async def get_catalog(self) -> CatalogProxy:
         if not self._catalog:

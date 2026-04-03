@@ -73,7 +73,8 @@ class ObservationsAzimuthsPlot(EventComponent):
 
         for col, phase in enumerate(phases, start=1):
             delays, pick_confidence, has_obs, max_delay = phase_data[phase]
-            cb_x = (col - 1) * (subplot_width + h_spacing) + subplot_width + 0.02
+            # Center each colorbar under its subplot
+            cb_x = (col - 1) * (subplot_width + h_spacing) + subplot_width / 2
             fig.add_trace(
                 go.Scatterpolar(
                     r=distances,
@@ -106,10 +107,14 @@ class ObservationsAzimuthsPlot(EventComponent):
                         "showscale": True,
                         "colorbar": {
                             "title": f"{phase[-1]} Delay (s)",
-                            "thickness": 15,
+                            "orientation": "h",
+                            "thickness": 12,
                             "x": cb_x,
-                            "len": 0.9,
-                            "y": 0.5,
+                            "xanchor": "center",
+                            "y": -0.12,
+                            "yanchor": "top",
+                            "len": subplot_width,
+                            "tickformat": "+.2f",
                         },
                         "opacity": [1.0 if obs else 0.5 for obs in has_obs],
                         "line": {"color": "black", "width": 1.2},
@@ -124,22 +129,23 @@ class ObservationsAzimuthsPlot(EventComponent):
             fig.update_layout(**{polar_key: polar_axis_config})
 
         fig.update_layout(
-            margin={"l": 60, "r": 80, "t": 30, "b": 20},
+            margin={"l": 60, "r": 40, "t": 30, "b": 60},
             template="plotly_white",
         )
         self.header()
         ui.plotly(fig).classes("w-full h-96")
 
 
-class StationDistancesPlot(EventComponent):
+class TravelTimeResidualPlot(EventComponent):
     def __init__(self, event, phases: list[str]):
         super().__init__(event)
         self.phases = phases
-        self.name = "Traveltime Residuals"
+        self.name = "Travel Time Residuals"
         self.description = (
-            "Traveltime vs distance for all phase arrivals. "
-            "Black circles = modelled, colored diamonds = observed (color = delay). "
-            "Stems connect modelled to observed. Marker size = pick confidence."
+            "Traveltime residuals (t_observed - t_modelled) per phase vs. epicentral distance. "
+            "Marker size scales with pick confidence. "
+            "Color encodes the residual: red = late arrival, blue = early arrival. "
+            "Open markers at zero indicate stations with no observation for that phase."
         )
 
     async def view(self) -> None:
@@ -149,28 +155,12 @@ class StationDistancesPlot(EventComponent):
         distances = [ev.surface_distance_to(r) / 1000.0 for r in ev.receivers]
         labels = [f"{r.network}.{r.station}.{r.location}" for r in ev.receivers]
 
-        # Per-phase symbol pairs (modelled, observed)
-        symbols = [
-            ("circle", "diamond"),
-            ("square", "star-diamond"),
-            ("triangle-up", "cross"),
-        ]
+        _symbols = ["circle", "diamond", "square", "cross"]
 
-        # Collect per-phase data and find global max delay for shared colorscale
         phase_data = {}
-        global_max_delay = 1.0
+        global_max_delay = 0.0
         for phase in phases:
             arrivals = [r.phase_arrivals.get(phase) for r in ev.receivers]
-            modelled_tt = [
-                (a.model.time - ev.time).total_seconds() if a else None
-                for a in arrivals
-            ]
-            observed_tt = [
-                (a.observed.time - ev.time).total_seconds()
-                if a and a.observed
-                else None
-                for a in arrivals
-            ]
             delays = [
                 a.traveltime_delay.total_seconds() if a and a.traveltime_delay else 0.0
                 for a in arrivals
@@ -180,139 +170,100 @@ class StationDistancesPlot(EventComponent):
                 for a in arrivals
             ]
             has_obs = [bool(a and a.observed) for a in arrivals]
-            has_arrival = [a is not None for a in arrivals]
-            phase_data[phase] = (
-                modelled_tt,
-                observed_tt,
-                delays,
-                pick_confidence,
-                has_obs,
-                has_arrival,
-            )
+            phase_data[phase] = (delays, pick_confidence, has_obs)
             phase_max = max(
                 (abs(d) for d, obs in zip(delays, has_obs, strict=False) if obs),
                 default=0.0,
             )
             global_max_delay = max(global_max_delay, phase_max)
+        global_max_delay = global_max_delay or 1.0  # fallback if no observations
 
         fig = go.Figure()
 
         for idx, phase in enumerate(phases):
-            modelled_tt, observed_tt, delays, pick_confidence, has_obs, has_arrival = (
-                phase_data[phase]
-            )
-            sym_mod, sym_obs = symbols[idx % len(symbols)]
+            delays, pick_confidence, has_obs = phase_data[phase]
+            symbol = _symbols[idx % len(_symbols)]
             phase_label = phase[-1]
 
-            # Stems
-            stem_x, stem_y = [], []
-            for dist, mod_t, obs_t, obs in zip(
-                distances, modelled_tt, observed_tt, has_obs, strict=False
-            ):
-                if obs:
-                    stem_x.extend([dist, dist, None])
-                    stem_y.extend([mod_t, obs_t, None])
-
-            fig.add_trace(
-                go.Scatter(
-                    x=stem_x,
-                    y=stem_y,
-                    mode="lines",
-                    line={"color": "grey", "width": 1},
-                    hoverinfo="skip",
-                    showlegend=False,
-                    legendgroup=phase_label,
-                )
-            )
-
-            # Modelled
-            fig.add_trace(
-                go.Scatter(
-                    x=[d for d, a in zip(distances, has_arrival, strict=False) if a],
-                    y=[t for t, a in zip(modelled_tt, has_arrival, strict=False) if a],
-                    mode="markers",
-                    name=f"{phase_label} modelled",
-                    legendgroup=phase_label,
-                    marker={
-                        "symbol": sym_mod,
-                        "size": 8,
-                        "color": "black",
-                        "opacity": [
-                            1.0 if obs else 0.3
-                            for obs, a in zip(has_obs, has_arrival, strict=False)
-                            if a
-                        ],
-                    },
-                    hovertext=[
-                        f"<b>{label}</b><br>Distance: {dist:.1f} km<br>Modelled TT: {mod:.3f} s"
-                        + ("" if obs else "<br>No pick")
-                        for label, dist, mod, obs, a in zip(
-                            labels,
-                            distances,
-                            modelled_tt,
-                            has_obs,
-                            has_arrival,
-                            strict=False,
-                        )
-                        if a
-                    ],
-                    hovertemplate="%{hovertext}<extra>"
-                    + phase_label
-                    + " modelled</extra>",
-                )
-            )
-
-            # Observed
-            obs_zip = [
-                (dist, tt, delay, conf, label)
-                for dist, tt, delay, conf, label, obs in zip(
-                    distances,
-                    observed_tt,
-                    delays,
-                    pick_confidence,
-                    labels,
-                    has_obs,
-                    strict=False,
+            # Observed — colored by residual, opacity by confidence
+            obs_data = [
+                (dist, delay, conf, label)
+                for dist, delay, conf, label, obs in zip(
+                    distances, delays, pick_confidence, labels, has_obs, strict=False
                 )
                 if obs
             ]
-            if obs_zip:
-                o_dist, o_tt, o_delays, o_conf, o_labels = zip(*obs_zip, strict=False)
-                is_last_phase = idx == len(phases) - 1
+            if obs_data:
+                o_dist, o_delays, o_conf, o_labels = zip(*obs_data, strict=False)
                 fig.add_trace(
                     go.Scatter(
                         x=list(o_dist),
-                        y=list(o_tt),
+                        y=list(o_delays),
                         mode="markers",
-                        name=f"{phase_label} observed",
+                        name=phase_label,
                         legendgroup=phase_label,
                         marker={
-                            "symbol": sym_obs,
-                            "size": [max(c * 10, 5) for c in o_conf],
+                            "symbol": symbol,
+                            "size": [max(c * 14, 5) for c in o_conf],
                             "color": list(o_delays),
                             "colorscale": "RdBu_r",
                             "cmin": -global_max_delay,
                             "cmax": global_max_delay,
-                            "showscale": is_last_phase,
-                            "colorbar": {"title": "Delay (s)", "thickness": 15},
+                            "showscale": False,
                             "line": {"color": "black", "width": 1.2},
                         },
                         hovertext=[
-                            f"<b>{label}</b><br>Distance: {dist:.1f} km<br>"
-                            f"Observed TT: {tt:.3f} s<br>Confidence: {conf:.2f}<br>Delay: {delay:.3f} s"
-                            for label, dist, tt, conf, delay in zip(
-                                o_labels, o_dist, o_tt, o_conf, o_delays, strict=False
+                            f"<b>{label} Phase</b><br>"
+                            f"Distance: {dist:.1f} km<br>"
+                            f"Phase: {phase_label}<br>"
+                            f"Residual: {delay:+.3f} s<br>"
+                            f"Confidence: {conf:.2f}"
+                            for label, dist, delay, conf in zip(
+                                o_labels, o_dist, o_delays, o_conf, strict=False
                             )
                         ],
-                        hovertemplate="%{hovertext}<extra>"
-                        + phase_label
-                        + " observed</extra>",
+                        hovertemplate="%{hovertext}<extra></extra>",
                     )
                 )
 
+            # Non-observed — open markers pinned to zero
+            nobs_data = [
+                (dist, label)
+                for dist, label, obs in zip(distances, labels, has_obs, strict=False)
+                if not obs
+            ]
+            if nobs_data:
+                n_dist, n_labels = zip(*nobs_data, strict=False)
+                fig.add_trace(
+                    go.Scatter(
+                        x=list(n_dist),
+                        y=[0.0] * len(n_dist),
+                        mode="markers",
+                        name=f"{phase_label} (no obs)",
+                        legendgroup=phase_label,
+                        showlegend=False,
+                        marker={
+                            "symbol": symbol + "-open",
+                            "size": 6,
+                            "color": "grey",
+                            "opacity": 0.7,
+                        },
+                        hovertext=[
+                            f"<b>{label} Phase</b><br>"
+                            f"Distance: {dist:.1f} km<br>"
+                            f"Phase: {phase_label}<br>"
+                            f"No observation"
+                            for label, dist in zip(n_labels, n_dist, strict=False)
+                        ],
+                        hovertemplate="%{hovertext}<extra></extra>",
+                    )
+                )
+
+        fig.add_hline(y=0, line={"color": "grey", "width": 1, "dash": "dot"})
+
         fig.update_layout(
             xaxis={"title": "Distance (km)"},
-            yaxis={"title": "Traveltime (s)"},
+            yaxis={"title": "Residual (s)", "zeroline": False},
             legend={
                 "orientation": "h",
                 "yanchor": "bottom",
@@ -320,11 +271,11 @@ class StationDistancesPlot(EventComponent):
                 "xanchor": "left",
                 "x": 0,
             },
-            margin={"l": 60, "r": 80, "t": 40, "b": 40},
+            margin={"l": 60, "r": 40, "t": 40, "b": 40},
             template="plotly_white",
         )
         self.header()
-        ui.plotly(fig).classes("w-full h-96")
+        ui.plotly(fig).classes("w-full h-80")
 
 
 class EventMap(EventComponent):
@@ -374,7 +325,7 @@ class EventMap(EventComponent):
         # Equilateral triangle (side=13, centered in 16x16): apex(8,0.5), base(1.5,11.75)-(14.5,11.75)
         station_svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
-            '<polygon points="8,0.5 14.5,11.75 1.5,11.75" fill="white" stroke="black" stroke-width="1.5"/>'
+            '<polygon points="8,0.5 14.5,11.75 1.5,11.75" fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
             "</svg>"
         )
 
@@ -396,7 +347,8 @@ class EventMap(EventComponent):
                 className: ''
             }});
             var group = L.featureGroup();
-            group.addLayer(L.marker([{ev.effective_lat}, {ev.effective_lon}], {{icon: eventIcon}}));
+            group.addLayer(L.marker([{ev.effective_lat}, {ev.effective_lon}], {{icon: eventIcon}})
+                .bindTooltip('<b>Event</b><br>{ev.time.strftime("%Y-%m-%d %H:%M:%S")} UTC<br>Lat: {ev.effective_lat:.4f}°<br>Lon: {ev.effective_lon:.4f}°<br>Depth: {ev.effective_depth / 1000.0:.1f} km', {{permanent: false}}));
             {json.dumps(stations)}.forEach(function(s) {{
                 group.addLayer(L.marker([s.lat, s.lon], {{icon: stationIcon}})
                     .bindTooltip(s.label + '<br> Distance: ' + s.distance_km + ' km', {{permanent: false}}));
