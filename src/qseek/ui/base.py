@@ -25,6 +25,10 @@ class Component:
             ui.label(self.description).classes("text-body2 mb-2")
             await self.view()
 
+    def header(self) -> None:
+        ui.label(self.name).classes("text-h5")
+        ui.label(self.description).classes("text-body2 mb-2")
+
     async def view(self) -> None:
         raise NotImplementedError
 

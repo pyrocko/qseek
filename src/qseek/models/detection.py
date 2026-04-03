@@ -329,11 +329,18 @@ class EventReceivers(BaseModel):
             return 0
         return sum(receiver.n_picks(phase) for receiver in self.receivers)
 
-    def get_num_phase_picks(self) -> dict[str, int]:
+    def get_available_phases(self) -> set[PhaseDescription]:
+        """Get the set of available phases in the receiver set."""
+        phases = set()
+        for receiver in self.receivers:
+            phases.update(receiver.phase_arrivals.keys())
+        return phases
+
+    def get_num_phase_picks(self) -> dict[PhaseDescription, int]:
         """Get the number of picks for each phase.
 
         Returns:
-            dict[str, int]: A dictionary with phase names as keys and the number of
+            dict[PhaseDescription, int]: A dictionary with phase descriptions as keys and the number of
                 picks as values.
         """
         phases = set()

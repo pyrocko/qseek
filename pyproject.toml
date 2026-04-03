@@ -5,7 +5,7 @@ requires = [
     "numpy>=2",
     "setuptools_scm>=8",
     "simde-py==0.8.4rc1",
-    "py-cpuinfo>=9.0"
+    "py-cpuinfo>=9.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -47,6 +47,7 @@ dependencies = [
     "scikit-fmm >= 2025.1",
     "eikonalfm @ git+https://github.com/kevinganster/eikonalfm",
     "plotly>=6.6.0",
+    "nicegui>=3",
 ]
 
 classifiers = [

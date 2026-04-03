@@ -1,9 +1,10 @@
-from typing import Tuple, Dict
+from typing import Dict, Tuple
+
+import numpy as np
+import plotly.graph_objects as go
+from nicegui import ui
 
 from qseek.ui.base import Component
-import numpy as np
-from nicegui import ui
-import plotly.graph_objects as go
 
 
 class MagnitudeFrequency(Component):

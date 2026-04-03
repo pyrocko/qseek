@@ -1,11 +1,11 @@
+import json
+
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import numpy as np
 from nicegui import ui
 
 from qseek.ui.base import Component
-
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-import json
 
 
 class OverviewMap(Component):

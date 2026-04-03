@@ -1,6 +1,6 @@
+import numpy as np
 import plotly.graph_objects as go
 from nicegui import ui
-import numpy as np
 
 from qseek.ui.base import Component
 from qseek.ui.utils import on_click_plotly_event
@@ -32,6 +32,7 @@ to semblance value.
                 "line": {"width": 0},
                 "opacity": 0.3,
             },
+            hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
         )
 
         fig.update_layout(

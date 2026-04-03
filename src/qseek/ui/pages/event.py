@@ -6,7 +6,11 @@ from uuid import UUID
 from nicegui import ui
 
 from qseek.ui.base import Page
-from qseek.ui.components.event import EventMap, StationAzimuthsPlot
+from qseek.ui.components.event import (
+    EventMap,
+    ObservationsAzimuthsPlot,
+    StationDistancesPlot,
+)
 from qseek.ui.utils import stat_card
 
 
@@ -68,9 +72,7 @@ class EventPage(Page):
                 "Picks",
                 str(ev.n_picks),
                 icon="gavel",
-                subtitle=f"Phases: {
-                    ' '.join(f'{ph[-1]} {n}' for ph, n in picks.items())
-                }",
+                subtitle=f"{'; '.join(f'{ph[-1]} {n}' for ph, n in picks.items())}",
                 tooltip="Number of phase arrivals associated with the event. Qseek "
                 "associates picks based on their contribution to the semblance ",
             )
@@ -107,8 +109,8 @@ class EventPage(Page):
                 "RMS",
                 f"{ev.rms:.3f} s",
                 icon="adjust",
-                subtitle=f"Phases: {
-                    ', '.join(f'{ph[-1]} {rms:.3f} s' for ph, rms in rms_phases.items())
+                subtitle=f"{
+                    '; '.join(f'{ph[-1]} {rms:.3f} s' for ph, rms in rms_phases.items())
                 }",
                 tooltip="Root mean square of traveltime residuals between "
                 "observed (picked) and modelled phase arrivals. Lower values indicate "
@@ -116,5 +118,12 @@ class EventPage(Page):
                 "full annotation information and is not working on picked arrival times",
             )
         with ui.row().classes("w-full flex-wrap gap-2 mb-5"):
-            await EventMap(event.event).render()
-            await StationAzimuthsPlot(event.event).render()
+            with ui.card().classes("w-full shadow-2 gap-2"):
+                await EventMap(event.event).view()
+
+            phases = list(ev.receivers.get_available_phases())
+
+            with ui.card().classes("w-full flex-wrap gap-2"):
+                await StationDistancesPlot(event.event, phases).view()
+            with ui.card().classes("w-full flex-wrap gap-2"):
+                await ObservationsAzimuthsPlot(event.event, phases).view()

@@ -1,16 +1,16 @@
-from nicegui import ui
 import numpy as np
+from nicegui import ui
 
 from qseek.ui.base import Page
+from qseek.ui.components.magnitudes import MagnitudeFrequency, MagnitudeSemblance
+from qseek.ui.components.map import OverviewMap
 from qseek.ui.components.statistics import (
-    SemblanceRate,
+    DepthSection,
     MagnitudeRate,
     MigrationPlot,
-    DepthSection,
+    SemblanceRate,
 )
 from qseek.ui.utils import stat_card
-from qseek.ui.components.map import OverviewMap
-from qseek.ui.components.magnitudes import MagnitudeFrequency, MagnitudeSemblance
 
 
 class OverviewPage(Page):
@@ -19,17 +19,17 @@ class OverviewPage(Page):
         catalog = await run.get_catalog()
 
         median_n_picks = np.nanmedian([ev.n_picks for ev in catalog.events])
-        max_n_picks = np.nanmax([ev.n_picks for ev in catalog.events])
-        min_n_picks = np.nanmin([ev.n_picks for ev in catalog.events])
-        semblance_median = np.nanmedian([ev.semblance for ev in catalog.events])
+        np.nanmax([ev.n_picks for ev in catalog.events])
+        np.nanmin([ev.n_picks for ev in catalog.events])
+        np.nanmedian([ev.semblance for ev in catalog.events])
         semblance_max = np.nanmax([ev.semblance for ev in catalog.events])
         min_semblance = np.nanmin([ev.semblance for ev in catalog.events])
-        median_magnitude = np.nanmedian([ev.magnitude for ev in catalog.events])
+        np.nanmedian([ev.magnitude for ev in catalog.events])
         min_magnitude = np.nanmin([ev.magnitude for ev in catalog.events])
         max_magnitude = np.nanmax([ev.magnitude for ev in catalog.events])
-        median_depth = np.nanmedian([ev.depth for ev in catalog.events])
-        max_depth = np.nanmax([ev.depth for ev in catalog.events])
-        min_depth = np.nanmin([ev.depth for ev in catalog.events])
+        np.nanmedian([ev.depth for ev in catalog.events])
+        np.nanmax([ev.depth for ev in catalog.events])
+        np.nanmin([ev.depth for ev in catalog.events])
         event_rate = len(catalog.events) / (
             (catalog.times[-1] - catalog.times[0]).total_seconds() / (3600 * 24)
         )

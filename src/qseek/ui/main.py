@@ -12,6 +12,8 @@ load_insights()
 
 from qseek.ui.models import RunManager  # noqa: E402
 
+ui.card.default_classes = "flex-1 min-w-md col-6 shadow-2"
+
 
 def start_ui(basepath: Path, reload: bool = True) -> None:
     app.add_static_files("/static", Path(__file__).parent / "static")
