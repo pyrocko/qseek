@@ -1,9 +1,9 @@
 from nicegui import ui
 
-from qseek.ui.models import RunManager
+from qseek.ui.manager import SourceManager
 
 
-def run_selection_dialog(manager: RunManager) -> None:
+def run_selection_dialog(manager: SourceManager) -> None:
     active_run = manager.get_active_run()
     active_hash = active_run.hash if active_run else None
 
@@ -19,6 +19,13 @@ def run_selection_dialog(manager: RunManager) -> None:
                 "name": "path",
                 "label": "Run",
                 "field": "path",
+                "sortable": True,
+                "align": "left",
+            },
+            {
+                "name": "source",
+                "label": "Source",
+                "field": "source",
                 "sortable": True,
                 "align": "left",
             },
@@ -40,8 +47,9 @@ def run_selection_dialog(manager: RunManager) -> None:
 
         rows = [
             {
-                "path": run.path.name,
+                "path": run.name,
                 "hash": run.hash,
+                "source": run.source,
                 "created": run.created.strftime("%Y-%m-%d %H:%M"),
                 "n_events": run.n_events,
             }
@@ -50,6 +58,21 @@ def run_selection_dialog(manager: RunManager) -> None:
 
         table = (
             ui.table(columns=columns, rows=rows).props("flat hover").classes("w-full")
+        )
+        table.add_slot(
+            "body-cell-source",
+            """
+            <q-td :props="props">
+                <q-chip
+                    dense outline
+                    :color="props.row.source === 'local' ? 'green' : 'light-blue'"
+                    text-color="white"
+                    class="text-xs"
+                >
+                    {{ props.row.source }}
+                </q-chip>
+            </q-td>
+            """,
         )
         table.props(
             f":row-class=\"row => row.hash === '{active_hash}' ? 'bg-blue-1 text-bold' : ''\""

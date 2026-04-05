@@ -4,9 +4,9 @@ from pathlib import Path
 
 from nicegui import ui
 
-from qseek.ui.components.run_manager import run_selection_dialog
+from qseek.ui.components.run_dialog import run_selection_dialog
 from qseek.ui.components.search import EventSearch
-from qseek.ui.models import RunManager
+from qseek.ui.manager import SourceManager
 
 _LOGO_SVG = (Path(__file__).parent.parent / "static" / "logo_light.svg").read_text()
 
@@ -16,7 +16,7 @@ _NAV_ITEMS = [
 
 
 class Header:
-    def __init__(self, manager: RunManager) -> None:
+    def __init__(self, manager: SourceManager) -> None:
         self.manager = manager
 
     async def render(self) -> None:
@@ -45,7 +45,7 @@ class Header:
 
             active_run = self.manager.get_active_run()
             ui.button(
-                active_run.path.name,
+                active_run.name,
                 icon="folder_open",
                 on_click=lambda: run_selection_dialog(self.manager),
             ).props("flat color=white")

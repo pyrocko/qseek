@@ -46,8 +46,6 @@ dependencies = [
     "aiofiles>=23.0",
     "scikit-fmm >= 2025.1",
     "eikonalfm @ git+https://github.com/kevinganster/eikonalfm",
-    "plotly>=6.6.0",
-    "nicegui>=3",
 ]
 
 classifiers = [
@@ -64,6 +62,13 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+ui = [
+    "plotly>=6.6.0",
+    "nicegui>=3",
+    "asyncssh>=2.22",
+    "rfc3986>=2.0.0",
+    "watchfiles>=1.1",
+]
 docs = [
     "mkdocs-material>=9.6",
     "mkdocstrings[python]>=1.0",

@@ -5,7 +5,7 @@ import asyncio
 from nicegui import ui
 from nicegui.events import KeyEventArguments
 
-from qseek.ui.models import RunManager
+from qseek.ui.manager import SourceManager
 
 _NAV_KEYS = {"ArrowDown", "ArrowUp", "Enter", "Escape"}
 _PREVENT_DEFAULT_JS = (
@@ -14,7 +14,7 @@ _PREVENT_DEFAULT_JS = (
 
 
 class EventSearch:
-    def __init__(self, manager: RunManager) -> None:
+    def __init__(self, manager: SourceManager) -> None:
         self.manager = manager
 
     async def render(self) -> None:

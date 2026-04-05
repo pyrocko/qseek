@@ -189,12 +189,12 @@ class TravelTimeResidualPlot(EventComponent):
             obs_data = [
                 (dist, delay, conf, label)
                 for dist, delay, conf, label, obs in zip(
-                    distances, delays, pick_confidence, labels, has_obs, strict=False
+                    distances, delays, pick_confidence, labels, has_obs, strict=True
                 )
                 if obs
             ]
             if obs_data:
-                o_dist, o_delays, o_conf, o_labels = zip(*obs_data, strict=False)
+                o_dist, o_delays, o_conf, o_labels = zip(*obs_data, strict=True)
                 fig.add_trace(
                     go.Scatter(
                         x=list(o_dist),
@@ -213,13 +213,13 @@ class TravelTimeResidualPlot(EventComponent):
                             "line": {"color": "black", "width": 1.2},
                         },
                         hovertext=[
-                            f"<b>{label} Phase</b><br>"
+                            f"<b>{label}</b><br>"
                             f"Distance: {dist:.1f} km<br>"
                             f"Phase: {phase_label}<br>"
                             f"Residual: {delay:+.3f} s<br>"
                             f"Confidence: {conf:.2f}"
                             for label, dist, delay, conf in zip(
-                                o_labels, o_dist, o_delays, o_conf, strict=False
+                                o_labels, o_dist, o_delays, o_conf, strict=True
                             )
                         ],
                         hovertemplate="%{hovertext}<extra></extra>",
@@ -229,11 +229,11 @@ class TravelTimeResidualPlot(EventComponent):
             # Non-observed — open markers pinned to zero
             nobs_data = [
                 (dist, label)
-                for dist, label, obs in zip(distances, labels, has_obs, strict=False)
+                for dist, label, obs in zip(distances, labels, has_obs, strict=True)
                 if not obs
             ]
             if nobs_data:
-                n_dist, n_labels = zip(*nobs_data, strict=False)
+                n_dist, n_labels = zip(*nobs_data, strict=True)
                 fig.add_trace(
                     go.Scatter(
                         x=list(n_dist),
@@ -253,7 +253,7 @@ class TravelTimeResidualPlot(EventComponent):
                             f"Distance: {dist:.1f} km<br>"
                             f"Phase: {phase_label}<br>"
                             f"No observation"
-                            for label, dist in zip(n_labels, n_dist, strict=False)
+                            for label, dist in zip(n_labels, n_dist, strict=True)
                         ],
                         hovertemplate="%{hovertext}<extra></extra>",
                     )

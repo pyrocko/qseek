@@ -1,11 +1,12 @@
 from nicegui import ui
 
 from qseek.models.detection import EventDetection
-from qseek.ui.models import RunManager, RunProxy
+from qseek.ui.explorer import RunSource
+from qseek.ui.manager import SourceManager
 
 
 class Page:
-    def __init__(self, run_manager: RunManager):
+    def __init__(self, run_manager: SourceManager):
         self.run_manager = run_manager
 
     async def render(self) -> None:
@@ -16,7 +17,7 @@ class Component:
     name: str = "Component"
     description: str = ""
 
-    def __init__(self, run: RunProxy):
+    def __init__(self, run: RunSource):
         self.run = run
 
     async def render(self) -> None:
@@ -47,7 +48,7 @@ class EventComponent(Component):
 class Badge:
     name: str
 
-    def __init__(self, run: RunProxy):
+    def __init__(self, run: RunSource):
         self.run = run
 
     async def render(self) -> None: ...

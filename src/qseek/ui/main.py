@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 
@@ -10,23 +11,28 @@ from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
 
-from qseek.ui.models import RunManager  # noqa: E402
+from qseek.ui.manager import SourceManager  # noqa: E402
 
 ui.card.default_classes = "flex-1 min-w-md col-6 shadow-2"
 
 
-def start_ui(basepath: Path, reload: bool = True) -> None:
+def start_ui(uris: list[str], reload: bool = True) -> None:
     app.add_static_files("/static", Path(__file__).parent / "static")
 
-    manager = RunManager()
-    manager.add_dir(basepath)
+    manager = SourceManager()
 
-    if not manager.n_runs:
-        raise RuntimeError(f"No runs found in {basepath}")
+    ready = asyncio.Event()
+
+    async def load_runs():
+        await manager.add_uris(uris)
+        ready.set()
+
+    app.on_startup(load_runs)
 
     @ui.page("/")
     @ui.page("/{_:path}")
     async def main_page() -> None:
+        await ready.wait()
         header = Header(manager)
         await header.render()
 
@@ -34,7 +40,7 @@ def start_ui(basepath: Path, reload: bool = True) -> None:
         event_details = EventPage(manager)
 
         with ui.row().classes("w-full").style("max-width: 1290px").classes("mx-auto"):
-            pages = ui.sub_pages(
+            ui.sub_pages(
                 {
                     "/": overview_page.render,
                     "/event/{event_id}": event_details.render,
@@ -42,7 +48,7 @@ def start_ui(basepath: Path, reload: bool = True) -> None:
                     # "/network/{run_hash}": network,
                 }
             ).classes("flex-grow p-4")
-        manager.on_active_run_change(pages.refresh)
+        manager.on_active_run_change(lambda: ui.navigate.to("/"))
 
         with (
             ui.row().classes("items-center opacity-60 px-4 py-3 w-full justify-center"),
@@ -56,14 +62,20 @@ def start_ui(basepath: Path, reload: bool = True) -> None:
                 sanitize=False,
             )
 
-    ui.run(title="Qseek Explorer", reload=reload)
+    ui.run(title="Qseek Explorer", favicon="🚀", reload=reload)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("basepath", type=Path)
+    parser.add_argument(
+        "uris",
+        type=str,
+        nargs="+",
+        help="Path or URI to Qseek runs"
+        " (e.g. /path/to/runs or ssh://user@host:port/path/to/runs)",
+    )
     args = parser.parse_args()
     setup_rich_logging(level=logging.INFO)
-    start_ui(args.basepath)
+    start_ui(args.uris)
