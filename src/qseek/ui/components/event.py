@@ -12,12 +12,11 @@ class ObservationsAzimuthsPlot(EventComponent):
         super().__init__(event)
         self.phases = phases
         self.name = "Station Observations"
-        self.description = (
-            "Azimuthal plot of station observations for each phase. "
-            "Colored diamonds = observed (color = delay), size = pick confidence. "
-            "Hover for details. No modelled arrivals shown here since azimuths are "
-            "not meaningful without a reference event.",
-        )
+        self.description = """
+Azimuthal plot of station observations for each phase. Colored diamonds = observed
+(color is delay), size is pick confidence. No modelled arrivals shown here since
+azimuths are not meaningful without a reference event.
+"""
 
     async def view(self) -> None:
         ev = self.event
@@ -141,12 +140,12 @@ class TravelTimeResidualPlot(EventComponent):
         super().__init__(event)
         self.phases = phases
         self.name = "Travel Time Residuals"
-        self.description = (
-            "Traveltime residuals (t_observed - t_modelled) per phase vs. epicentral distance. "
-            "Marker size scales with pick confidence. "
-            "Color encodes the residual: red = late arrival, blue = early arrival. "
-            "Open markers at zero indicate stations with no observation for that phase."
-        )
+        self.description = """
+Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
+ phase vs. epicentral distance. Marker size scales with pick confidence. Color encodes
+ the residual: red = late arrival, blue = early arrival. Open markers at zero indicate
+ stations with no pick for that phase.
+"""
 
     async def view(self) -> None:
         ev = self.event
@@ -226,20 +225,20 @@ class TravelTimeResidualPlot(EventComponent):
                     )
                 )
 
-            # Non-observed — open markers pinned to zero
-            nobs_data = [
+            # No picks — open markers pinned to zero
+            nopick_data = [
                 (dist, label)
                 for dist, label, obs in zip(distances, labels, has_obs, strict=True)
                 if not obs
             ]
-            if nobs_data:
-                n_dist, n_labels = zip(*nobs_data, strict=True)
+            if nopick_data:
+                n_dist, n_labels = zip(*nopick_data, strict=True)
                 fig.add_trace(
                     go.Scatter(
                         x=list(n_dist),
                         y=[0.0] * len(n_dist),
                         mode="markers",
-                        name=f"{phase_label} (no obs)",
+                        name=f"{phase_label} (no pick)",
                         legendgroup=phase_label,
                         showlegend=False,
                         marker={
@@ -252,7 +251,7 @@ class TravelTimeResidualPlot(EventComponent):
                             f"<b>{label} Phase</b><br>"
                             f"Distance: {dist:.1f} km<br>"
                             f"Phase: {phase_label}<br>"
-                            f"No observation"
+                            f"No pick"
                             for label, dist in zip(n_labels, n_dist, strict=True)
                         ],
                         hovertemplate="%{hovertext}<extra></extra>",
@@ -280,7 +279,9 @@ class TravelTimeResidualPlot(EventComponent):
 
 class EventMap(EventComponent):
     name = "Event Map"
-    description = "Map showing event location and receiver stations."
+    description = """
+Map showing event location and online stations contributing to the location.
+"""
 
     async def view(self) -> None:
         ev = self.event

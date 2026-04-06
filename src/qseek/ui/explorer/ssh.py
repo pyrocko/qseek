@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import contextlib
 import logging
+import os
 import tempfile
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -44,7 +45,7 @@ class SshSource(RunSource):
             self._tempfolder.name,
             self.name,
         )
-        self._task = asyncio.create_task(self.watch_for_updates())
+        # self._task = asyncio.create_task(self.watch_for_updates())
 
     @classmethod
     async def create(cls, connection: asyncssh.SSHClientConnection, remote_path: Path):
@@ -131,12 +132,9 @@ class SshExplorer(RunExplorer):
         Raises:
             ValueError: If the SSH URI is invalid.
         """
-        ssh = rfc3986.uri_reference(ssh_uri)
+        ssh = rfc3986.urlparse(ssh_uri)
         if ssh.scheme != "ssh":
             raise ValueError("Invalid SSH URI: scheme must be 'ssh'")
-        if not ssh.is_valid():
-            raise ValueError("Invalid SSH URI: {}".format(ssh_uri))
-
         if not ssh.path:
             raise ValueError("Invalid SSH URI: path is required")
 
@@ -147,6 +145,10 @@ class SshExplorer(RunExplorer):
             self._connection = await asyncssh.connect(
                 self.ssh.host,
                 port=int(self.ssh.port or 22),
+                compression_algs="zlib@openssh.com",
+                username=self.ssh.userinfo.split(":")[0]
+                if self.ssh.userinfo
+                else os.getlogin(),
             )
 
         path = self.ssh.path

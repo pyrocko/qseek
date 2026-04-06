@@ -121,9 +121,10 @@ explore = subparsers.add_parser(
     description="Start the web UI to explore the results of an existing run",
 )
 explore.add_argument(
-    "basepath",
-    type=Path,
-    help="Root path of runs, the UI will show all runs in this directory",
+    "uris",
+    type=str,
+    nargs="+",
+    help="URIs to explore, can be local paths or SSH URIs (e.g. ssh://user@host/path/to/rundir)",
 )
 
 features_extract = subparsers.add_parser(
@@ -377,7 +378,7 @@ def main() -> None:
         case "explore":
             from qseek.ui.main import start_ui
 
-            start_ui(args.basepath, reload=False)
+            start_ui(args.uris, reload=False)
 
         case "serve":
             from qseek.search import Search

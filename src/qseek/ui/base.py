@@ -1,3 +1,5 @@
+import warnings
+
 from nicegui import ui
 
 from qseek.models.detection import EventDetection
@@ -20,6 +22,7 @@ class Component:
     def __init__(self, run: RunSource):
         self.run = run
 
+    @warnings.deprecated("The render method is deprecated, please use header() instead")
     async def render(self) -> None:
         with ui.card().classes("flex-1 min-w-md col-6 shadow-2"):
             ui.label(self.name).classes("text-h5")
@@ -28,7 +31,7 @@ class Component:
 
     def header(self) -> None:
         ui.label(self.name).classes("text-h5")
-        ui.label(self.description).classes("text-body2 mb-2")
+        ui.html(self.description, tag="div", sanitize=False).classes("text-body2 mb-2")
 
     async def view(self) -> None:
         raise NotImplementedError
