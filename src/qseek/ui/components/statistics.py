@@ -34,7 +34,7 @@ to semblance value.
                 "line": {"width": 0},
                 "opacity": 0.3,
             },
-            hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
+            # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
         )
 
         fig.update_layout(
@@ -112,7 +112,7 @@ class MigrationPlot(Component):
             marker={
                 "color": depths,
                 "colorscale": "Magma",
-                "size": catalog.magnitudes / catalog.magnitudes.max() * 20,
+                "size": catalog.semblances / catalog.semblances.max() * 20,
                 "line": {"width": 0},
                 "opacity": 0.3,
             },
@@ -165,7 +165,7 @@ class DepthSection(Component):
             marker={
                 "color": times_num,
                 "colorscale": "Jet",
-                "size": catalog.magnitudes / catalog.magnitudes.max() * 20,
+                "size": catalog.semblances / catalog.semblances.max() * 20,
                 "line": {"width": 0},
                 "opacity": 0.3,
             },

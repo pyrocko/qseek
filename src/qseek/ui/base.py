@@ -24,7 +24,7 @@ class Component:
 
     @warnings.deprecated("The render method is deprecated, please use header() instead")
     async def render(self) -> None:
-        with ui.card().classes("flex-1 min-w-md col-6 shadow-2"):
+        with ui.card().classes("w-full flex-wrap col-6 shadow-2"):
             ui.label(self.name).classes("text-h5")
             ui.label(self.description).classes("text-body2 mb-2")
             await self.view()

@@ -63,7 +63,7 @@ class OverviewPage(Page):
             )
             stat_card(
                 "Median Picks",
-                f"{median_n_picks:.1f}",
+                f"{median_n_picks:.0f}",
                 icon="scatter_plot",
                 subtitle=f"Min: {min_n_picks}, Max: {max_n_picks}",
                 tooltip="Median number of picks per event.",
@@ -84,13 +84,19 @@ class OverviewPage(Page):
             )
 
         with ui.row().classes("items-center gap-4 w-full"):
-            await SemblanceRate(run).render()
-            await OverviewMap(run).render()
-            await MigrationPlot(run).render()
-            await DepthSection(run, direction="north-south").render()
-            await DepthSection(run, direction="east-west").render()
+            with ui.expansion("Map", icon="map").classes("w-full"):
+                await OverviewMap(run).render()
+            with ui.expansion("Rates", icon="insights").classes("w-full"):
+                await SemblanceRate(run).render()
+            with ui.expansion("Migration Plot", icon="show_chart").classes("w-full"):
+                await MigrationPlot(run).render()
+            with ui.expansion("Depth Sections", icon="vertical_align_center").classes(
+                "w-full"
+            ):
+                await DepthSection(run, direction="north-south").render()
+                await DepthSection(run, direction="east-west").render()
 
-        if True:
+        if False:
             ui.label("Magnitudes").classes("text-h2")
             with ui.row().classes("items-center gap-4 w-full"):
                 await MagnitudeFrequency(run).render()

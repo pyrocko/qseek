@@ -38,9 +38,9 @@ class OverviewMap(Component):
         colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
 
         marker_data = [
-            [float(lat), float(lon), float(magnitude * 4), color]
-            for lat, lon, magnitude, color in zip(
-                lats, lons, magnitudes, colors, strict=True
+            [float(lat), float(lon), float(semblance * 4), color]
+            for lat, lon, semblance, color in zip(
+                lats, lons, catalog.semblances, colors, strict=True
             )
         ]
 
@@ -51,7 +51,7 @@ class OverviewMap(Component):
             const map = getElement({m.id}).map;
             const data = {json.dumps(marker_data)};
             const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
-            
+
             data.forEach(point => {{
                 L.circleMarker([point[0], point[1]], {{
                     renderer: canvasRenderer,
