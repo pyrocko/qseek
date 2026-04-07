@@ -6,6 +6,7 @@ import numpy as np
 from nicegui import ui
 
 from qseek.ui.base import Component
+from qseek.ui.state import get_tab_state
 
 
 class OverviewMap(Component):
@@ -13,13 +14,27 @@ class OverviewMap(Component):
     description = """Map of detected events. Color corresponds to depth and size corresponds to magnitude."""
 
     async def view(self) -> None:
-        catalog = await self.run.get_catalog()
-        lats = catalog.lats
-        lons = catalog.lons
-        depths = catalog.depths
-        magnitudes = catalog.magnitudes
+        state = get_tab_state()
+        catalog = await state.run.get_catalog()
 
-        m = ui.leaflet(center=(np.mean(lats), np.mean(lons)), zoom=9).classes(
+        norm = mcolors.Normalize(vmin=min(catalog.depths), vmax=max(catalog.depths))
+        cmap = cm.get_cmap("magma")
+        norm_depths = norm(np.array(catalog.depths))
+        colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
+
+        marker_data = [
+            [float(lat), float(lon), float(semblance), color, str(uid)]
+            for lat, lon, semblance, color, uid in zip(
+                catalog.lats,
+                catalog.lons,
+                catalog.semblances,
+                colors,
+                catalog.uids,
+                strict=True,
+            )
+        ]
+
+        m = ui.leaflet(center=(np.mean(catalog.lats), np.mean(catalog.lons))).classes(
             "w-full h-96 rounded-lg shadow"
         )
         m.clear_layers()
@@ -32,18 +47,6 @@ class OverviewMap(Component):
             },
         )
 
-        norm = mcolors.Normalize(vmin=min(depths), vmax=max(depths))
-        cmap = cm.get_cmap("magma")
-        norm_depths = norm(np.array(depths))
-        colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
-
-        marker_data = [
-            [float(lat), float(lon), float(semblance * 4), color]
-            for lat, lon, semblance, color in zip(
-                lats, lons, catalog.semblances, colors, strict=True
-            )
-        ]
-
         await m.initialized()
 
         ui.run_javascript(
@@ -52,14 +55,18 @@ class OverviewMap(Component):
             const data = {json.dumps(marker_data)};
             const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
 
+            var group = L.featureGroup();
             data.forEach(point => {{
                 L.circleMarker([point[0], point[1]], {{
                     renderer: canvasRenderer,
-                    radius: point[2],
-                    color: point[3],
+                    radius: point[2] * 6,
+                    stroke: false,
                     fillColor: point[3],
-                    fillOpacity: 0.8
-                }}).addTo(map);
+                    fillOpacity: 0.7
+                }}).on('click', () => window.location.href = 'event/' + point[4])
+                  .addTo(group);
             }});
+            group.addTo(map);
+            map.fitBounds(group.getBounds(), {{padding: [20, 20]}});
             """
         )

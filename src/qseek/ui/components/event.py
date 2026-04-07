@@ -34,6 +34,10 @@ azimuths are not meaningful without a reference event.
                 a.traveltime_delay.total_seconds() if a and a.traveltime_delay else 0
                 for a in arrivals
             ]
+            modelled_tt = [
+                (a.model.time - ev.time).total_seconds() if a else None
+                for a in arrivals
+            ]
             pick_confidence = [
                 a.observed.detection_value if a and a.observed else 0 for a in arrivals
             ]
@@ -42,7 +46,13 @@ azimuths are not meaningful without a reference event.
                 (abs(d) for d, obs in zip(delays, has_obs, strict=False) if obs),
                 default=1.0,
             )
-            phase_data[phase] = (delays, pick_confidence, has_obs, max_delay)
+            phase_data[phase] = (
+                delays,
+                modelled_tt,
+                pick_confidence,
+                has_obs,
+                max_delay,
+            )
 
         polar_axis_config = {
             "angularaxis": {
@@ -71,7 +81,7 @@ azimuths are not meaningful without a reference event.
         )
 
         for col, phase in enumerate(phases, start=1):
-            delays, pick_confidence, has_obs, max_delay = phase_data[phase]
+            delays, modelled_tt, pick_confidence, has_obs, max_delay = phase_data[phase]
             # Center each colorbar under its subplot
             cb_x = (col - 1) * (subplot_width + h_spacing) + subplot_width / 2
             fig.add_trace(
@@ -80,18 +90,21 @@ azimuths are not meaningful without a reference event.
                     theta=azimuths,
                     mode="markers",
                     hovertext=[
-                        f"<b>{label}</b><br>Distance: {dist:.1f} km<br>Azimuth: {az:.1f}°<br>"
+                        f"<b>{label}</b> ({dist:.1f} km; {az:.1f}°)<br>"
+                        + f"Confidence: {conf:.2f}<br>"
                         + (
-                            f"Confidence: {conf:.2f}<br>Delay: {delay:.3f} s"
-                            if obs
-                            else "No pick"
+                            f"Delay: {delay:+.3f} s ({delay / tt * 100:+.1f}%)<br>"
+                            if obs and tt
+                            else "No pick<br>"
                         )
-                        for label, dist, az, conf, delay, obs in zip(
+                        + f"Total TT: {tt:.2f} s<br>"
+                        for label, dist, az, conf, delay, tt, obs in zip(
                             labels,
                             distances,
                             azimuths,
                             pick_confidence,
                             delays,
+                            modelled_tt,
                             has_obs,
                             strict=False,
                         )
@@ -164,12 +177,16 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
                 a.traveltime_delay.total_seconds() if a and a.traveltime_delay else 0.0
                 for a in arrivals
             ]
+            modelled_tt = [
+                (a.model.time - ev.time).total_seconds() if a else None
+                for a in arrivals
+            ]
             pick_confidence = [
                 a.observed.detection_value if a and a.observed else 0.0
                 for a in arrivals
             ]
             has_obs = [bool(a and a.observed) for a in arrivals]
-            phase_data[phase] = (delays, pick_confidence, has_obs)
+            phase_data[phase] = (delays, modelled_tt, pick_confidence, has_obs)
             phase_max = max(
                 (abs(d) for d, obs in zip(delays, has_obs, strict=False) if obs),
                 default=0.0,
@@ -180,20 +197,26 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
         fig = go.Figure()
 
         for idx, phase in enumerate(phases):
-            delays, pick_confidence, has_obs = phase_data[phase]
+            delays, modelled_tt, pick_confidence, has_obs = phase_data[phase]
             symbol = _symbols[idx % len(_symbols)]
             phase_label = phase[-1]
 
             # Observed — colored by residual, opacity by confidence
             obs_data = [
-                (dist, delay, conf, label)
-                for dist, delay, conf, label, obs in zip(
-                    distances, delays, pick_confidence, labels, has_obs, strict=True
+                (dist, delay, tt, conf, label)
+                for dist, delay, tt, conf, label, obs in zip(
+                    distances,
+                    delays,
+                    modelled_tt,
+                    pick_confidence,
+                    labels,
+                    has_obs,
+                    strict=True,
                 )
                 if obs
             ]
             if obs_data:
-                o_dist, o_delays, o_conf, o_labels = zip(*obs_data, strict=True)
+                o_dist, o_delays, o_tt, o_conf, o_labels = zip(*obs_data, strict=True)
                 fig.add_trace(
                     go.Scatter(
                         x=list(o_dist),
@@ -212,13 +235,12 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
                             "line": {"color": "black", "width": 1.2},
                         },
                         hovertext=[
-                            f"<b>{label}</b><br>"
-                            f"Distance: {dist:.1f} km<br>"
-                            f"Phase: {phase_label}<br>"
-                            f"Residual: {delay:+.3f} s<br>"
-                            f"Confidence: {conf:.2f}"
-                            for label, dist, delay, conf in zip(
-                                o_labels, o_dist, o_delays, o_conf, strict=True
+                            f"<b>{phase_label} - {label}</b> ({dist:.1f} km)<br>"
+                            f"Confidence: {conf:.2f}<br>"
+                            f"Residual: {delay:+.3f} s ({delay / tt * 100:+.1f}%)<br>"
+                            f"Total TT: {tt:.2f} s"
+                            for label, dist, delay, tt, conf in zip(
+                                o_labels, o_dist, o_delays, o_tt, o_conf, strict=True
                             )
                         ],
                         hovertemplate="%{hovertext}<extra></extra>",

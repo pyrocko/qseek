@@ -5,6 +5,7 @@ from uuid import UUID
 
 import numpy as np
 
+from qseek.magnitudes.base import EventMagnitude
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection
 
@@ -16,7 +17,6 @@ class EventMinimal:
     uid: UUID
     lat: float
     lon: float
-    distance: float
     north_shift: float
     east_shift: float
     depth: float
@@ -28,12 +28,11 @@ class EventMinimal:
 
     def as_tuple(
         self,
-    ) -> tuple[float, float, float, float, float, float, datetime, float, float, float]:
+    ) -> tuple[float, float, float, float, float, datetime, float, float, float]:
         return (
             self.lat,
             self.lon,
             self.depth,
-            self.distance,
             self.north_shift,
             self.east_shift,
             self.time,
@@ -52,9 +51,8 @@ class CatalogProxy:
     lons: np.ndarray
     depths: np.ndarray
     times: list[datetime]
-    magnitudes: np.ndarray
+    magnitudes: EventMagnitude | None
     semblances: np.ndarray
-    distances_to_center: np.ndarray
 
     def __init__(self, catalog: EventCatalog):
         self.catalog = catalog
@@ -63,7 +61,6 @@ class CatalogProxy:
                 uid=ev.uid,
                 lat=ev.effective_lat,
                 lon=ev.effective_lon,
-                distance=np.sqrt(ev.north_shift**2 + ev.east_shift**2 + ev.depth**2),
                 north_shift=ev.north_shift,
                 east_shift=ev.east_shift,
                 depth=ev.depth,
@@ -80,7 +77,6 @@ class CatalogProxy:
             self.lats,
             self.lons,
             self.depths,
-            self.distances_to_center,
             self.north_shift,
             self.east_shift,
             _,

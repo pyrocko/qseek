@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
+from nicegui import binding
+
 from qseek.models.catalog import EventCatalog
 from qseek.search import Search
 from qseek.ui.models import CatalogProxy
@@ -33,8 +35,10 @@ class RunSource(Protocol):
     source: Literal["local", "ssh"]
 
     name: str
-    created: datetime
-    n_events: int
+
+    n_events: int = binding.BindableProperty()
+    last_update: datetime = binding.BindableProperty()
+
     hash: str
     updated: asyncio.Event
 

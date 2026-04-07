@@ -1,10 +1,12 @@
 from nicegui import ui
 
 from qseek.ui.manager import SourceManager
+from qseek.ui.state import get_tab_state
 
 
 def run_selection_dialog(manager: SourceManager) -> None:
-    active_run = manager.get_active_run()
+    state = get_tab_state()
+    active_run = state.run
     active_hash = active_run.hash if active_run else None
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
@@ -50,7 +52,7 @@ def run_selection_dialog(manager: SourceManager) -> None:
                 "path": run.name,
                 "hash": run.hash,
                 "source": run.source,
-                "created": run.created.strftime("%Y-%m-%d %H:%M"),
+                "created": run.last_update.strftime("%Y-%m-%d %H:%M"),
                 "n_events": run.n_events,
             }
             for run in manager.runs.values()
@@ -83,5 +85,15 @@ def run_selection_dialog(manager: SourceManager) -> None:
             lambda e: (manager.set_active_run(e.args[1]["hash"]), dialog.close()),
         )
         table.props("style='cursor: pointer'")
+
+        table.add_slot(
+            "empty",
+            """
+            <div class="q-pa-md flex flex-col items-center gap-2">
+                <q-icon name="folder_open" size="3em" color="grey-5" />
+                <div class="text-grey-5">No runs loaded</div>
+            </div>
+            """,
+        )
 
         dialog.open()

@@ -7,6 +7,7 @@ from nicegui import app, ui
 from qseek.ui.components.header import Header
 from qseek.ui.pages.event import EventPage
 from qseek.ui.pages.overview import OverviewPage
+from qseek.ui.state import get_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
@@ -20,7 +21,6 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
     app.add_static_files("/static", Path(__file__).parent / "static")
 
     manager = SourceManager()
-
     ready = asyncio.Event()
 
     async def load_runs():
@@ -33,22 +33,20 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
     @ui.page("/{_:path}")
     async def main_page() -> None:
         await ready.wait()
-        header = Header(manager)
-        await header.render()
+        await ui.context.client.connected()
 
-        overview_page = OverviewPage(manager)
-        event_details = EventPage(manager)
+        state = get_tab_state()
+
+        await Header().render(manager)
 
         with ui.row().classes("w-full").style("max-width: 1290px").classes("mx-auto"):
-            ui.sub_pages(
+            sub_pages = ui.sub_pages(
                 {
-                    "/": overview_page.render,
-                    "/event/{event_id}": event_details.render,
-                    # "/statistics/{run_hash}": statistics,
-                    # "/network/{run_hash}": network,
+                    "/": OverviewPage().render,
+                    "/event/{event_id}": EventPage().render,
                 }
             ).classes("flex-grow p-4")
-        manager.on_active_run_change(lambda: ui.navigate.to("/"))
+        state.run_changed.subscribe(sub_pages.refresh)
 
         with (
             ui.row().classes("items-center opacity-60 px-4 py-3 w-full justify-center"),

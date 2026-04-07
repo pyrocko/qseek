@@ -5,7 +5,7 @@ import asyncio
 from nicegui import ui
 from nicegui.events import KeyEventArguments
 
-from qseek.ui.manager import SourceManager
+from qseek.ui.state import get_tab_state
 
 _NAV_KEYS = {"ArrowDown", "ArrowUp", "Enter", "Escape"}
 _PREVENT_DEFAULT_JS = (
@@ -14,9 +14,6 @@ _PREVENT_DEFAULT_JS = (
 
 
 class EventSearch:
-    def __init__(self, manager: SourceManager) -> None:
-        self.manager = manager
-
     async def render(self) -> None:
         results: list[dict] = []
         selected_idx = 0
@@ -83,6 +80,8 @@ class EventSearch:
 
                 search_results()
 
+            state = get_tab_state()
+
             async def on_search(value: str) -> None:
                 nonlocal selected_idx
                 if len(value) < 3:
@@ -91,7 +90,8 @@ class EventSearch:
                     menu.close()
                     return
 
-                catalog = await self.manager.get_active_run().get_catalog()
+                catalog = await state.run.get_catalog()
+
                 results.clear()
                 for event in catalog.events:
                     if str(event.uid).startswith(value) or value in event.time.strftime(

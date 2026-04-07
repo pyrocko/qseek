@@ -41,7 +41,7 @@ class LocalRun(RunSource):
         self.name = self.run_dir.name
         self.hash = hashlib.sha1(search_json.read_bytes()).hexdigest()
 
-        self.created = datetime.fromtimestamp(search_json.stat().st_ctime)  # noqa
+        self.last_update = datetime.fromtimestamp(search_json.stat().st_ctime)  # noqa
         self.n_events = _count_lines(detections_json)
         self._task = asyncio.create_task(self.watch_for_updates())
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     async def main():
         async for run in discoverer.discover():
             print(  # noqa
-                f"Found run created at {run.created} with {run.n_events} events"
+                f"Found run created at {run.last_update} with {run.n_events} events"
             )
 
     asyncio.run(main())

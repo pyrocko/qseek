@@ -7,6 +7,7 @@ from nicegui import ui
 from qseek.ui.components.run_dialog import run_selection_dialog
 from qseek.ui.components.search import EventSearch
 from qseek.ui.manager import SourceManager
+from qseek.ui.state import get_tab_state
 
 _LOGO_SVG = (Path(__file__).parent.parent / "static" / "logo_light.svg").read_text()
 
@@ -16,10 +17,7 @@ _NAV_ITEMS = [
 
 
 class Header:
-    def __init__(self, manager: SourceManager) -> None:
-        self.manager = manager
-
-    async def render(self) -> None:
+    async def render(self, manager: SourceManager) -> None:
         with (
             ui.header()
             .classes("justify-center items-center px-4 gap-1")
@@ -41,11 +39,14 @@ class Header:
             ).props("flat color=white")
             ui.space()
 
-            await EventSearch(self.manager).render()
+            await EventSearch().render()
 
-            active_run = self.manager.get_active_run()
-            ui.button(
-                active_run.name,
-                icon="folder_open",
-                on_click=lambda: run_selection_dialog(self.manager),
-            ).props("flat color=white")
+            active_run = get_tab_state().run
+            with ui.row().classes("items-center gap-1 no-wrap"):
+                ui.label(active_run.name).classes(
+                    "text-white text-sm font-mono opacity-70 max-w-48 ellipsis"
+                ).tooltip(active_run.name)
+                ui.button(
+                    icon="folder_open",
+                    on_click=lambda: run_selection_dialog(manager),
+                ).props("flat color=white round dense")

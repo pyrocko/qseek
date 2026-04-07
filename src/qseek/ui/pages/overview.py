@@ -10,12 +10,13 @@ from qseek.ui.components.statistics import (
     MigrationPlot,
     SemblanceRate,
 )
+from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
 
 
 class OverviewPage(Page):
     async def render(self) -> None:
-        run = self.run_manager.get_active_run()
+        run = get_tab_state().run
         catalog = await run.get_catalog()
 
         median_n_picks = np.nanmedian([ev.n_picks for ev in catalog.events])
@@ -84,17 +85,26 @@ class OverviewPage(Page):
             )
 
         with ui.row().classes("items-center gap-4 w-full"):
-            with ui.expansion("Map", icon="map").classes("w-full"):
-                await OverviewMap(run).render()
-            with ui.expansion("Rates", icon="insights").classes("w-full"):
-                await SemblanceRate(run).render()
-            with ui.expansion("Migration Plot", icon="show_chart").classes("w-full"):
-                await MigrationPlot(run).render()
-            with ui.expansion("Depth Sections", icon="vertical_align_center").classes(
-                "w-full"
-            ):
-                await DepthSection(run, direction="north-south").render()
-                await DepthSection(run, direction="east-west").render()
+            await OverviewMap().render()
+            with ui.expansion(
+                "Rates",
+                icon="insights",
+                value=True,
+            ).classes("w-full"):
+                await SemblanceRate().render()
+            with ui.expansion(
+                "Migration Plot",
+                icon="show_chart",
+                value=True,
+            ).classes("w-full"):
+                await MigrationPlot().render()
+            with ui.expansion(
+                "Depth Sections",
+                icon="vertical_align_center",
+                value=True,
+            ).classes("w-full"):
+                await DepthSection(direction="north-south").render()
+                await DepthSection(direction="east-west").render()
 
         if False:
             ui.label("Magnitudes").classes("text-h2")

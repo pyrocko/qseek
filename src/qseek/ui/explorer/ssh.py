@@ -35,7 +35,7 @@ class SshSource(RunSource):
         self.hash = hash
 
         self.n_events = n_events
-        self.created = created
+        self.last_update = created
 
         self.updated = asyncio.Event()
 
@@ -101,7 +101,7 @@ class SshSource(RunSource):
                 check=True,
             )
             modified = datetime.fromtimestamp(int(result.stdout.strip()))  # noqa
-            if modified > self.created:
+            if modified > self.last_update:
                 logger.info("Run %s has been updated, refreshing...", self.name)
                 result = await self.connection.run(
                     f"wc -l {self.remote_path / 'detections.json'}",
@@ -109,7 +109,7 @@ class SshSource(RunSource):
                 )
 
                 self.n_events = int(result.stdout.strip().split()[0])
-                self.created = modified
+                self.last_update = modified
                 await self._copy_catalog_files(force=True)
 
                 self.updated.set()
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.DEBUG)
         async for run in discoverer.discover():
             print(  # noqa
-                f"Found run created at {run.created} with {run.n_events} events"
+                f"Found run created at {run.last_update} with {run.n_events} events"
             )
 
     asyncio.run(main())

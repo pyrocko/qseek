@@ -11,12 +11,13 @@ from qseek.ui.components.event import (
     ObservationsAzimuthsPlot,
     TravelTimeResidualPlot,
 )
+from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
 
 
 class EventPage(Page):
     async def render(self, event_id: str) -> None:
-        run = self.run_manager.get_active_run()
+        run = get_tab_state().run
         catalog = await run.get_catalog()
         event = catalog.get_event_by_uid(UUID(event_id))
         ev = event.event

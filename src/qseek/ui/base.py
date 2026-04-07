@@ -1,16 +1,12 @@
-import warnings
+from __future__ import annotations
 
 from nicegui import ui
 
 from qseek.models.detection import EventDetection
 from qseek.ui.explorer import RunSource
-from qseek.ui.manager import SourceManager
 
 
 class Page:
-    def __init__(self, run_manager: SourceManager):
-        self.run_manager = run_manager
-
     async def render(self) -> None:
         raise NotImplementedError
 
@@ -19,10 +15,6 @@ class Component:
     name: str = "Component"
     description: str = ""
 
-    def __init__(self, run: RunSource):
-        self.run = run
-
-    @warnings.deprecated("The render method is deprecated, please use header() instead")
     async def render(self) -> None:
         with ui.card().classes("w-full flex-wrap col-6 shadow-2"):
             ui.label(self.name).classes("text-h5")
