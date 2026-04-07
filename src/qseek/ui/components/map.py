@@ -32,41 +32,34 @@ class OverviewMap(Component):
             },
         )
 
-        # Farben vektorisiert berechnen
         norm = mcolors.Normalize(vmin=min(depths), vmax=max(depths))
         cmap = cm.get_cmap("magma")
         norm_depths = norm(np.array(depths))
         colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
 
-        # Marker-Daten vorbereiten
-        markers_data = [
-            {
-                "lat": float(lat),
-                "lon": float(lon),
-                "radius": float(magnitude * 4),
-                "color": color,
-            }
+        marker_data = [
+            [float(lat), float(lon), float(magnitude * 4), color]
             for lat, lon, magnitude, color in zip(
                 lats, lons, magnitudes, colors, strict=True
             )
         ]
 
-        # Warten bis die Map im Browser initialisiert ist
         await m.initialized()
 
-        # Alle Marker gebündelt in einem JS-Aufruf
-        ui.run_javascript(f"""
-            var map = getElement({m.id}).map;
-            var data = {json.dumps(markers_data)};
-            var group = L.layerGroup();
-            for (var i = 0; i < data.length; i++) {{
-                var d = data[i];
-                L.circleMarker([d.lat, d.lon], {{
-                    radius: d.radius,
-                    color: d.color,
-                    fillColor: d.color,
+        ui.run_javascript(
+            f"""
+            const map = getElement({m.id}).map;
+            const data = {json.dumps(marker_data)};
+            const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
+            
+            data.forEach(point => {{
+                L.circleMarker([point[0], point[1]], {{
+                    renderer: canvasRenderer,
+                    radius: point[2],
+                    color: point[3],
+                    fillColor: point[3],
                     fillOpacity: 0.8
-                }}).addTo(group);
-            }}
-            group.addTo(map);
-        """)
+                }}).addTo(map);
+            }});
+            """
+        )

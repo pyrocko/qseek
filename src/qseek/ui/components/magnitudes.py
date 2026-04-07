@@ -62,6 +62,8 @@ class MagnitudeFrequency(Component):
             y=np.log10(mc_params["bin_counts"]),
             name="Magnitude Distribution",
             marker_color="gray",
+            hoverinfo="none",
+            hovertemplate=None,
         )
         fig.add_vline(
             x=mc_value,
@@ -114,6 +116,8 @@ class MagnitudeSemblance(Component):
                 "line": {"width": 0},
                 "opacity": 0.3,
             },
+            hoverinfo="none",
+            hovertemplate=None,
         )
 
         fig.update_layout(

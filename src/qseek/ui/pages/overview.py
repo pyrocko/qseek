@@ -19,6 +19,8 @@ class OverviewPage(Page):
         catalog = await run.get_catalog()
 
         median_n_picks = np.nanmedian([ev.n_picks for ev in catalog.events])
+        max_n_picks = np.nanmax([ev.n_picks for ev in catalog.events])
+        min_n_picks = np.nanmin([ev.n_picks for ev in catalog.events])
         semblance_max = np.nanmax([ev.semblance for ev in catalog.events])
         min_semblance = np.nanmin([ev.semblance for ev in catalog.events])
         min_magnitude = np.nanmin(
@@ -50,28 +52,35 @@ class OverviewPage(Page):
                 str(catalog.n_events),
                 icon="crisis_alert",
                 subtitle=f"over {num_days:.0f} days",
+                tooltip="Total number of detected events in the catalog.",
             )
             stat_card(
                 "Event rate",
-                f"{event_rate:.2f} events/day",
+                f"{event_rate:.2f}",
+                subtitle="events/day",
                 icon="timeline",
+                tooltip="Average number of detected events per day.",
             )
             stat_card(
                 "Median Picks",
                 f"{median_n_picks:.1f}",
                 icon="scatter_plot",
+                subtitle=f"Min: {min_n_picks}, Max: {max_n_picks}",
+                tooltip="Median number of picks per event.",
             )
             stat_card(
                 "Max Semblance",
                 f"{semblance_max:.2f}",
                 icon="stacked_line_chart",
                 subtitle=f"Min Semblance: {min_semblance:.2f}",
+                tooltip="Maximum semblance value among all detected events.",
             )
             stat_card(
                 "Max Magnitude",
                 f"{max_magnitude:.2f}",
                 icon="bar_chart",
                 subtitle=f"Min Magnitude: {min_magnitude:.2f}",
+                tooltip="Maximum magnitude among all detected events.",
             )
 
         with ui.row().classes("items-center gap-4 w-full"):

@@ -25,6 +25,8 @@ to semblance value.
             y=semblances,
             mode="markers",
             name="Event Semblance",
+            hoverinfo="none",
+            hovertemplate=None,
             customdata=catalog.uids,
             marker={
                 "color": "black",
@@ -62,6 +64,9 @@ to magnitude value.
             y=magnitudes,
             mode="markers",
             name="Event Magnitude",
+            hoverinfo="none",
+            hovertemplate=None,
+            customdata=catalog.uids,
             marker={
                 "color": "black",
                 "size": magnitudes / magnitudes.max() * 20,
@@ -74,7 +79,7 @@ to magnitude value.
             xaxis_title="Time",
             yaxis_title="Magnitude",
         )
-        ui.plotly(fig).classes("w-full h-64")
+        ui.plotly(fig).classes("w-full h-64").on("plotly_click", on_click_plotly_event)
 
 
 class StationCoverage(Component):
@@ -101,6 +106,9 @@ class MigrationPlot(Component):
             y=distances,
             mode="markers",
             name="Migration Plot",
+            hoverinfo="none",
+            hovertemplate=None,
+            customdata=catalog.uids,
             marker={
                 "color": depths,
                 "colorscale": "Magma",
@@ -116,7 +124,7 @@ class MigrationPlot(Component):
             yaxis_title="Distance to Center (km)",
         )
 
-        ui.plotly(fig).classes("w-full h-64")
+        ui.plotly(fig).classes("w-full h-64").on("plotly_click", on_click_plotly_event)
 
 
 class DepthSection(Component):
@@ -151,9 +159,12 @@ class DepthSection(Component):
             y=-depths,
             mode="markers",
             name=self.name,
+            customdata=catalog.uids,
+            hoverinfo="none",
+            hovertemplate=None,
             marker={
                 "color": times_num,
-                "colorscale": "Magma",
+                "colorscale": "Jet",
                 "size": catalog.magnitudes / catalog.magnitudes.max() * 20,
                 "line": {"width": 0},
                 "opacity": 0.3,
@@ -166,4 +177,4 @@ class DepthSection(Component):
             yaxis_title="Depth (m)",
         )
 
-        ui.plotly(fig).classes("w-full h-64")
+        ui.plotly(fig).classes("w-full h-64").on("plotly_click", on_click_plotly_event)
