@@ -11,8 +11,8 @@ from pydantic import Field, PositiveFloat, PrivateAttr, model_validator
 from pyrocko import io
 
 from qseek.magnitudes.base import (
-    EventMagnitude,
     EventMagnitudeCalculator,
+    EventStationMagnitude,
 )
 from qseek.magnitudes.local_magnitude_model import (
     WOOD_ANDERSON,
@@ -35,7 +35,7 @@ KM = 1e3
 MM = 1e3
 
 
-class LocalMagnitude(EventMagnitude):
+class LocalMagnitude(EventStationMagnitude):
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
     model: ModelName = Field(

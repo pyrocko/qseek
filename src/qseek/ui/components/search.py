@@ -67,9 +67,9 @@ class EventSearch:
                                 ):
                                     if item["magnitude"] is not None:
                                         ui.label("M").classes("text-xs text-grey-6")
-                                        ui.label(f"{item['magnitude']:.2f}").classes(
-                                            "text-sm text-bold font-mono"
-                                        )
+                                        ui.label(
+                                            f"{item['magnitude'].average:.2f}"
+                                        ).classes("text-sm text-bold font-mono")
                                     else:
                                         ui.label("S ").classes(
                                             "text-s text-grey-6 italic"

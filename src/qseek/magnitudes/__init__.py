@@ -7,10 +7,10 @@ from qseek.magnitudes import (
     local_magnitude,  # noqa: F401
     moment_magnitude,  # noqa: F401
 )
-from qseek.magnitudes.base import EventMagnitude, EventMagnitudeCalculator
+from qseek.magnitudes.base import EventMagnitudeCalculator, EventStationMagnitude
 
 EventMagnitudeType = Annotated[
-    Union[(EventMagnitude, *EventMagnitude.get_subclasses())],
+    Union[(EventStationMagnitude, *EventStationMagnitude.get_subclasses())],
     Field(..., discriminator="magnitude"),
 ]
 

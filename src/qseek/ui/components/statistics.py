@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import numpy as np
 import plotly.graph_objects as go
-from nicegui import ui
+from nicegui import background_tasks, ui
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
@@ -54,7 +56,7 @@ to semblance value.
             )
             plot.update()
 
-        await update_plot()
+        background_tasks.create(update_plot())
 
 
 class StationCoverage(Component):
@@ -110,7 +112,7 @@ class MigrationPlot(Component):
             )
             plot.update()
 
-        await update_plot()
+        background_tasks.create(update_plot())
 
 
 class DepthSection(Component):
@@ -172,4 +174,4 @@ class DepthSection(Component):
             )
             plot.update()
 
-        await update_plot()
+        background_tasks.create(update_plot())

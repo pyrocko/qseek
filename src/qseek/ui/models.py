@@ -5,7 +5,7 @@ from uuid import UUID
 
 import numpy as np
 
-from qseek.magnitudes.base import EventMagnitude
+from qseek.magnitudes.base import EventStationMagnitude
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection
 
@@ -23,12 +23,22 @@ class EventMinimal:
     time: datetime
     semblance: float
     n_picks: int
-    magnitude: float | None
+    magnitude: EventStationMagnitude | None
     event: EventDetection
 
     def as_tuple(
         self,
-    ) -> tuple[float, float, float, float, float, datetime, float, float, float]:
+    ) -> tuple[
+        float,
+        float,
+        float,
+        float,
+        float,
+        datetime,
+        float,
+        float,
+        EventStationMagnitude | None,
+    ]:
         return (
             self.lat,
             self.lon,
@@ -51,7 +61,7 @@ class CatalogProxy:
     lons: np.ndarray
     depths: np.ndarray
     times: list[datetime]
-    magnitudes: EventMagnitude | None
+    magnitudes: EventStationMagnitude | None
     semblances: np.ndarray
 
     def __init__(self, catalog: EventCatalog):

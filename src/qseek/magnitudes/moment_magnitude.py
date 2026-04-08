@@ -11,8 +11,8 @@ from pydantic import DirectoryPath, Field, PositiveFloat, PrivateAttr
 from pyrocko import gf, io
 
 from qseek.magnitudes.base import (
-    EventMagnitude,
     EventMagnitudeCalculator,
+    EventStationMagnitude,
     StationAmplitudes,
 )
 from qseek.magnitudes.moment_magnitude_store import (
@@ -134,7 +134,7 @@ class StationMomentMagnitude(NamedTuple):
     snr: float = 0.0
 
 
-class MomentMagnitude(EventMagnitude):
+class MomentMagnitude(EventStationMagnitude):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
     station_magnitudes: list[StationMomentMagnitude] = Field(

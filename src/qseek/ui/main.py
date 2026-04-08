@@ -2,7 +2,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from nicegui import app, ui
+from nicegui import app, core, ui
 
 from qseek.ui.components.header import Header
 from qseek.ui.pages.event import EventPage
@@ -24,8 +24,13 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
     ready = asyncio.Event()
 
     async def load_runs():
+        core.sio.eio.ping_interval = 30.0
+        core.sio.eio.ping_timeout = 30.0
         await manager.add_uris(uris)
         ready.set()
+
+        loop = asyncio.get_event_loop()
+        loop.set_debug(True)
 
     app.on_startup(load_runs)
 

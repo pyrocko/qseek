@@ -3,7 +3,7 @@ import json
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
-from nicegui import ui
+from nicegui import background_tasks, ui
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
@@ -49,24 +49,28 @@ class OverviewMap(Component):
 
         await m.initialized()
 
-        ui.run_javascript(
-            f"""
-            const map = getElement({m.id}).map;
-            const data = {json.dumps(marker_data)};
-            const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
+        async def add_markers():
+            with m:
+                ui.run_javascript(
+                    f"""
+                const map = getElement({m.id}).map;
+                const data = {json.dumps(marker_data)};
+                const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
 
-            var group = L.featureGroup();
-            data.forEach(point => {{
-                L.circleMarker([point[0], point[1]], {{
-                    renderer: canvasRenderer,
-                    radius: point[2] * 6,
-                    stroke: false,
-                    fillColor: point[3],
-                    fillOpacity: 0.7
-                }}).on('click', () => window.location.href = 'event/' + point[4])
-                  .addTo(group);
-            }});
-            group.addTo(map);
-            map.fitBounds(group.getBounds(), {{padding: [20, 20]}});
-            """
-        )
+                var group = L.featureGroup();
+                data.forEach(point => {{
+                    L.circleMarker([point[0], point[1]], {{
+                        renderer: canvasRenderer,
+                        radius: point[2] * 6,
+                        stroke: false,
+                        fillColor: point[3],
+                        fillOpacity: 0.7
+                    }}).on('click', () => window.location.href = 'event/' + point[4])
+                    .addTo(group);
+                }});
+                group.addTo(map);
+                map.fitBounds(group.getBounds(), {{padding: [20, 20]}});
+                """,
+                )
+
+        background_tasks.create(add_markers(), name="markers-map")

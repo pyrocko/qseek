@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from nicegui import ui
 from plotly.subplots import make_subplots
 
+from qseek.magnitudes.base import EventStationMagnitude
 from qseek.ui.base import EventComponent
 
 
@@ -379,3 +380,52 @@ Map showing event location and online stations contributing to the location.
             group.addTo(map);
             map.fitBounds(group.getBounds(), {{padding: [30, 30]}});
         """)
+
+
+class EventStationMagnitudes(EventComponent):
+    name = "Station Magnitudes"
+
+    description = """
+Station magnitudes for each phase. Only shown if station magnitudes are available for the event.
+"""
+
+    async def view(self, magnitudes: EventStationMagnitude) -> None:
+        self.header()
+
+        if not magnitudes:
+            ui.label("No station magnitudes available for this event.").classes(
+                "text-gray-6"
+            )
+            return
+
+        return
+
+        station_mags = []
+        for sta_mag in magnitudes.station_magnitudes:
+            station_mags.append(
+                {
+                    "distance_epi": sta_mag.distance_epi,
+                    "distnace_hypo": sta_mag.distance_hypo,
+                    "magnitude": sta_mag.magnitude,
+                }
+            )
+
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=[m["station"] for m in station_mags],
+                    y=[m["magnitude"] for m in station_mags],
+                    text=[m["phase"] for m in station_mags],
+                    marker_color="#5C8FA3",
+                )
+            ]
+        )
+        fig.update_layout(
+            title="Station Magnitudes",
+            xaxis_title="Station",
+            yaxis_title="Magnitude",
+            margin={"l": 60, "r": 40, "t": 40, "b": 80},
+            template="plotly_white",
+        )
+        self.header()
+        ui.plotly(fig).classes("w-full h-80")

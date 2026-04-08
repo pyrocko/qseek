@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from qseek.features.base import EventFeature
-    from qseek.magnitudes.base import EventMagnitude
+    from qseek.magnitudes.base import EventStationMagnitude
 
 
 logger = logging.getLogger(__name__)
@@ -686,7 +686,7 @@ class EventDetection(Location):
         self._receiver_cache = ReceiverCache.get_instance(rundir / FILENAME_RECEIVERS)
 
     @property
-    def magnitude(self) -> EventMagnitude | None:
+    def magnitude(self) -> EventStationMagnitude | None:
         """Returns the magnitude of the event.
 
         If there are no magnitudes available, returns None.
@@ -825,7 +825,7 @@ class EventDetection(Location):
         """
         self.uncertainty = uncertainty
 
-    def add_magnitude(self, magnitude: EventMagnitude) -> None:
+    def add_magnitude(self, magnitude: EventStationMagnitude) -> None:
         """Add magnitude to detection.
 
         Args:

@@ -8,6 +8,7 @@ from nicegui import ui
 from qseek.ui.base import Page
 from qseek.ui.components.event import (
     EventMap,
+    EventStationMagnitudes,
     ObservationsAzimuthsPlot,
     TravelTimeResidualPlot,
 )
@@ -21,12 +22,6 @@ class EventPage(Page):
         catalog = await run.get_catalog()
         event = catalog.get_event_by_uid(UUID(event_id))
         ev = event.event
-        magnitude_values = [
-            ev.magnitude.average
-            for ev in catalog.events
-            if ev.magnitude is not None and ev.magnitude.average is not None
-        ]
-        has_magnitude = len(magnitude_values) > 0
 
         depth_km = ev.depth / 1000.0
 
@@ -135,4 +130,6 @@ class EventPage(Page):
             with ui.card().classes("w-full flex-wrap gap-2"):
                 await ObservationsAzimuthsPlot(event.event, phases).view()
 
-            # if has_magnitude:
+            for ev_mag in ev.magnitudes:
+                with ui.card().classes("w-full flex-wrap gap-2"):
+                    await EventStationMagnitudes(ev).view(ev_mag)

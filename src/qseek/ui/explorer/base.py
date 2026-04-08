@@ -52,7 +52,8 @@ class RunSource(Protocol):
     async def get_catalog(self) -> CatalogProxy:
         if not self._catalog:
             catalog_dir = await self.get_catalog_path()
-            self._catalog = CatalogProxy(EventCatalog.load_rundir(catalog_dir))
+            catalog = await asyncio.to_thread(EventCatalog.load_rundir, catalog_dir)
+            self._catalog = CatalogProxy(catalog)
         return self._catalog
 
     async def get_search(self) -> Search:

@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from typing import Dict, Tuple
 
 import numpy as np
 import plotly.graph_objects as go
-from nicegui import ui
-from qseek.ui.state import get_tab_state
-from qseek.ui.utils import on_click_plotly_event
+from nicegui import background_tasks, ui
 
 from qseek.ui.base import Component
+from qseek.ui.state import get_tab_state
+from qseek.ui.utils import on_click_plotly_event
 
 
 class MagnitudeFrequency(Component):
@@ -103,7 +105,7 @@ class MagnitudeFrequency(Component):
                 )
             plot.update()
 
-        await update_plot()
+        background_tasks.create(update_plot())
 
 
 class MagnitudeSemblance(Component):
@@ -152,7 +154,7 @@ class MagnitudeSemblance(Component):
             )
             plot.update()
 
-        await update_plot()
+        background_tasks.create(update_plot())
 
 
 class MagnitudeRate(Component):
@@ -208,7 +210,7 @@ to magnitude value.
             )
             plot.update()
 
-        await update_plot()
+        background_tasks.create(update_plot())
 
 
 class StationMagnitudes(Component):

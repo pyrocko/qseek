@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import numpy as np
 from nicegui import ui
 
 from qseek.ui.base import Page
 from qseek.ui.components.magnitudes import (
     MagnitudeFrequency,
-    MagnitudeSemblance,
     MagnitudeRate,
+    MagnitudeSemblance,
 )
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.components.statistics import (
