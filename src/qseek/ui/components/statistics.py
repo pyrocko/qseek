@@ -57,42 +57,6 @@ to semblance value.
         await update_plot()
 
 
-class MagnitudeRate(Component):
-    name = "Magnitude Rate"
-    description = """Magnitude of detected events over time. Size of markers corresponds
-to magnitude value.
-"""
-
-    async def view(self) -> None:
-        catalog = await self.run.get_catalog()
-        magnitudes = catalog.magnitudes
-        times = catalog.times
-
-        fig = go.Figure()
-        fig.update_layout(margin={"l": 0, "r": 0, "t": 0, "b": 0})
-        fig.add_scatter(
-            x=times,
-            y=magnitudes,
-            mode="markers",
-            name="Event Magnitude",
-            hoverinfo="none",
-            hovertemplate=None,
-            customdata=catalog.uids,
-            marker={
-                "color": "black",
-                "size": magnitudes / magnitudes.max() * 20,
-                "line": {"width": 0},
-                "opacity": 0.3,
-            },
-        )
-        fig.update_layout(
-            template="plotly_white",
-            xaxis_title="Time",
-            yaxis_title="Magnitude",
-        )
-        ui.plotly(fig).classes("w-full h-64").on("plotly_click", on_click_plotly_event)
-
-
 class StationCoverage(Component):
     name = "Station Coverage"
     description = """Number of stations contributing to each detected event."""

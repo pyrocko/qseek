@@ -2,11 +2,14 @@ import numpy as np
 from nicegui import ui
 
 from qseek.ui.base import Page
-from qseek.ui.components.magnitudes import MagnitudeFrequency, MagnitudeSemblance
+from qseek.ui.components.magnitudes import (
+    MagnitudeFrequency,
+    MagnitudeSemblance,
+    MagnitudeRate,
+)
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.components.statistics import (
     DepthSection,
-    MagnitudeRate,
     MigrationPlot,
     SemblanceRate,
 )
@@ -18,18 +21,25 @@ class OverviewPage(Page):
     async def render(self) -> None:
         run = get_tab_state().run
         catalog = await run.get_catalog()
-
-        median_n_picks = np.nanmedian([ev.n_picks for ev in catalog.events])
-        max_n_picks = np.nanmax([ev.n_picks for ev in catalog.events])
-        min_n_picks = np.nanmin([ev.n_picks for ev in catalog.events])
-        semblance_max = np.nanmax([ev.semblance for ev in catalog.events])
-        min_semblance = np.nanmin([ev.semblance for ev in catalog.events])
-        min_magnitude = np.nanmin(
-            [ev.magnitude or ev.semblance for ev in catalog.events]
-        )
-        max_magnitude = np.nanmax(
-            [ev.magnitude or ev.semblance for ev in catalog.events]
-        )
+        n_picks_values = [ev.n_picks for ev in catalog.events if ev.n_picks is not None]
+        semblance_values = [
+            ev.semblance for ev in catalog.events if ev.semblance is not None
+        ]
+        magnitude_values = [
+            ev.magnitude.average
+            for ev in catalog.events
+            if ev.magnitude is not None and ev.magnitude.average is not None
+        ]
+        # print(catalog.events[0].magnitude)  # Debug print
+        has_magnitude = len(magnitude_values) > 0
+        median_n_picks = np.nanmedian(n_picks_values) if n_picks_values else np.nan
+        max_n_picks = np.nanmax(n_picks_values) if n_picks_values else np.nan
+        min_n_picks = np.nanmin(n_picks_values) if n_picks_values else np.nan
+        semblance_max = np.nanmax(semblance_values) if semblance_values else np.nan
+        min_semblance = np.nanmin(semblance_values) if semblance_values else np.nan
+        if has_magnitude:
+            min_magnitude = np.nanmin(magnitude_values)
+            max_magnitude = np.nanmax(magnitude_values)
 
         event_rate = len(catalog.events) / (
             (catalog.times[-1] - catalog.times[0]).total_seconds() / (3600 * 24)
@@ -76,13 +86,14 @@ class OverviewPage(Page):
                 subtitle=f"Min Semblance: {min_semblance:.2f}",
                 tooltip="Maximum semblance value among all detected events.",
             )
-            stat_card(
-                "Max Magnitude",
-                f"{max_magnitude:.2f}",
-                icon="bar_chart",
-                subtitle=f"Min Magnitude: {min_magnitude:.2f}",
-                tooltip="Maximum magnitude among all detected events.",
-            )
+            if has_magnitude:
+                stat_card(
+                    "Max Magnitude",
+                    f"{max_magnitude:.2f}",
+                    icon="bar_chart",
+                    subtitle=f"Min Magnitude: {min_magnitude:.2f}",
+                    tooltip="Maximum magnitude among all detected events.",
+                )
 
         with ui.row().classes("items-center gap-4 w-full"):
             await OverviewMap().render()
@@ -106,9 +117,9 @@ class OverviewPage(Page):
                 await DepthSection(direction="north-south").render()
                 await DepthSection(direction="east-west").render()
 
-        if False:
+        if has_magnitude:
             ui.label("Magnitudes").classes("text-h2")
             with ui.row().classes("items-center gap-4 w-full"):
-                await MagnitudeFrequency(run).render()
-                await MagnitudeSemblance(run).render()
-                await MagnitudeRate(run).render()
+                await MagnitudeFrequency().render()
+                await MagnitudeSemblance().render()
+                await MagnitudeRate().render()
