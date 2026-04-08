@@ -4,17 +4,8 @@ import numpy as np
 from nicegui import ui
 
 from qseek.ui.base import Page
-from qseek.ui.components.magnitudes import (
-    MagnitudeFrequency,
-    MagnitudeRate,
-    MagnitudeSemblance,
-)
+from qseek.ui.components import statistics as statistics_components
 from qseek.ui.components.map import OverviewMap
-from qseek.ui.components.statistics import (
-    DepthSection,
-    MigrationPlot,
-    SemblanceRate,
-)
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
 
@@ -27,21 +18,11 @@ class OverviewPage(Page):
         semblance_values = [
             ev.semblance for ev in catalog.events if ev.semblance is not None
         ]
-        magnitude_values = [
-            ev.magnitude.average
-            for ev in catalog.events
-            if ev.magnitude is not None and ev.magnitude.average is not None
-        ]
-        # print(catalog.events[0].magnitude)  # Debug print
-        has_magnitude = len(magnitude_values) > 0
         median_n_picks = np.nanmedian(n_picks_values) if n_picks_values else np.nan
         max_n_picks = np.nanmax(n_picks_values) if n_picks_values else np.nan
         min_n_picks = np.nanmin(n_picks_values) if n_picks_values else np.nan
         semblance_max = np.nanmax(semblance_values) if semblance_values else np.nan
         min_semblance = np.nanmin(semblance_values) if semblance_values else np.nan
-        if has_magnitude:
-            min_magnitude = np.nanmin(magnitude_values)
-            max_magnitude = np.nanmax(magnitude_values)
 
         event_rate = len(catalog.events) / (
             (catalog.times[-1] - catalog.times[0]).total_seconds() / (3600 * 24)
@@ -88,12 +69,12 @@ class OverviewPage(Page):
                 subtitle=f"Min Semblance: {min_semblance:.2f}",
                 tooltip="Maximum semblance value among all detected events.",
             )
-            if has_magnitude:
+            if catalog.has_magnitudes:
                 stat_card(
                     "Max Magnitude",
-                    f"{max_magnitude:.2f}",
+                    f"{catalog.max_magnitude:.2f}",
                     icon="bar_chart",
-                    subtitle=f"Min Magnitude: {min_magnitude:.2f}",
+                    subtitle=f"Min Magnitude: {catalog.min_magnitude:.2f}",
                     tooltip="Maximum magnitude among all detected events.",
                 )
 
@@ -104,24 +85,19 @@ class OverviewPage(Page):
                 icon="insights",
                 value=True,
             ).classes("w-full"):
-                await SemblanceRate().render()
+                await statistics_components.SemblanceRate().render()
             with ui.expansion(
                 "Migration Plot",
                 icon="show_chart",
                 value=True,
             ).classes("w-full"):
-                await MigrationPlot().render()
+                await statistics_components.MigrationPlot().render()
             with ui.expansion(
                 "Depth Sections",
                 icon="vertical_align_center",
                 value=True,
             ).classes("w-full"):
-                await DepthSection(direction="north-south").render()
-                await DepthSection(direction="east-west").render()
-
-        if has_magnitude:
-            ui.label("Magnitudes").classes("text-h2")
-            with ui.row().classes("items-center gap-4 w-full"):
-                await MagnitudeFrequency().render()
-                await MagnitudeSemblance().render()
-                await MagnitudeRate().render()
+                await statistics_components.DepthSection(
+                    direction="north-south"
+                ).render()
+                await statistics_components.DepthSection(direction="east-west").render()

@@ -106,3 +106,28 @@ class CatalogProxy:
     @property
     def n_events(self) -> int:
         return len(self.events)
+
+    @property
+    def magnitude_values(self) -> np.ndarray:
+        return np.asarray(
+            [
+                ev.magnitude.average
+                for ev in self.events
+                if ev.magnitude is not None and ev.magnitude.average is not None
+            ],
+            dtype=float,
+        )
+
+    @property
+    def has_magnitudes(self) -> bool:
+        return len(self.magnitude_values) > 0
+
+    @property
+    def min_magnitude(self) -> float:
+        values = self.magnitude_values
+        return float(np.nanmin(values)) if len(values) else 0.0
+
+    @property
+    def max_magnitude(self) -> float:
+        values = self.magnitude_values
+        return float(np.nanmax(values)) if len(values) else 0.0

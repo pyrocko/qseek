@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import plotly.graph_objects as go
 from nicegui import ui
 from plotly.subplots import make_subplots
@@ -390,7 +391,7 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
 """
 
     async def view(self, magnitudes: EventStationMagnitude) -> None:
-        self.header()
+        # self.header()
 
         if not magnitudes:
             ui.label("No station magnitudes available for this event.").classes(
@@ -398,27 +399,66 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
             )
             return
 
-        return
-
         station_mags = []
         for sta_mag in magnitudes.station_magnitudes:
             station_mags.append(
                 {
+                    "station": sta_mag.station.network
+                    + "."
+                    + sta_mag.station.station
+                    + "."
+                    + sta_mag.station.location,
                     "distance_epi": sta_mag.distance_epi,
                     "distnace_hypo": sta_mag.distance_hypo,
                     "magnitude": sta_mag.magnitude,
+                    "error": sta_mag.error,
+                    "snr": sta_mag.snr,
                 }
             )
 
         fig = go.Figure(
             data=[
-                go.Bar(
-                    x=[m["station"] for m in station_mags],
+                go.Scatter(
+                    x=[m["distance_epi"] for m in station_mags],
                     y=[m["magnitude"] for m in station_mags],
-                    text=[m["phase"] for m in station_mags],
-                    marker_color="#5C8FA3",
+                    mode="markers",
+                    marker={
+                        "size": 9,
+                        "color": [m["snr"] for m in station_mags],
+                        "colorscale": "Viridis",
+                        "showscale": True,
+                        "colorbar": {"title": "SNR"},
+                        "line": {"color": "black", "width": 1},
+                    },
+                    error_y={
+                        "type": "data",
+                        "array": [m["error"] for m in station_mags],
+                        "visible": True,
+                    },
+                    hovertemplate=(
+                        "<b>%{text}</b><br>"
+                        "Distance (epi): %{x:.1f} km<br>"
+                        "Magnitude: %{y:.2f}<br>"
+                        "SNR: %{marker.color:.2f}<extra></extra>"
+                    ),
+                    text=[m["station"] for m in station_mags],
                 )
             ]
+        )
+        mean_mag = np.mean([m["magnitude"] for m in station_mags])
+        median_mag = np.median([m["magnitude"] for m in station_mags])
+        std_mag = np.std([m["magnitude"] for m in station_mags])
+        fig.add_hline(
+            y=mean_mag,
+            line=dict(color="red", width=1.5, dash="dash"),
+            annotation_text=f"Mean: {mean_mag:.2f}",
+            annotation_position="top left",
+        )
+        fig.add_hline(
+            y=median_mag,
+            line=dict(color="green", width=1.5, dash="dash"),
+            annotation_text=f"Median: {median_mag:.2f}",
+            annotation_position="bottom left",
         )
         fig.update_layout(
             title="Station Magnitudes",

@@ -37,6 +37,16 @@ class Header:
                 "Overview",
                 on_click=lambda _: ui.navigate.to("/"),
             ).props("flat color=white")
+            catalog = await get_tab_state().run.get_catalog()
+            if catalog.has_magnitudes:
+                ui.button(
+                    "Magnitudes",
+                    on_click=lambda _: ui.navigate.to("/magnitudes"),
+                ).props("flat color=white")
+            else:
+                ui.button("No magnitudes").props("flat color=grey-3 disable").classes(
+                    "text-sm font-semibold px-3 mt1.0"
+                )
             ui.space()
 
             await EventSearch().render()

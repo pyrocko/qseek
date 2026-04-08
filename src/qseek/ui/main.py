@@ -6,6 +6,7 @@ from nicegui import app, core, ui
 
 from qseek.ui.components.header import Header
 from qseek.ui.pages.event import EventPage
+from qseek.ui.pages.magnitudes import MagnitudesPage
 from qseek.ui.pages.overview import OverviewPage
 from qseek.ui.state import get_tab_state
 from qseek.utils import load_insights, setup_rich_logging
@@ -48,6 +49,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
             sub_pages = ui.sub_pages(
                 {
                     "/": OverviewPage().render,
+                    "/magnitudes": MagnitudesPage().render,
                     "/event/{event_id}": EventPage().render,
                 }
             ).classes("flex-grow p-4")
