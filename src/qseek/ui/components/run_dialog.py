@@ -9,12 +9,40 @@ def run_selection_dialog(manager: SourceManager) -> None:
     active_run = state.run
     active_hash = active_run.hash if active_run else None
 
+    async def download_active_catalog_csv() -> None:
+        if active_run is None:
+            ui.notify("No active run selected", color="warning")
+            return
+
+        try:
+            catalog_path = await active_run.get_catalog_path()
+            csv_dir = catalog_path / "csv"
+            csv_dir.mkdir(parents=True, exist_ok=True)
+            csv_file = csv_dir / "detections.csv"
+
+            if not csv_file.exists():
+                catalog = await active_run.get_catalog()
+                await catalog.catalog.export_csv(csv_file)
+
+            ui.download(
+                src=str(csv_file),
+                filename=f"{active_run.name}_detections.csv",
+            )
+        except Exception as exc:
+            ui.notify(f"Failed to prepare CSV download: {exc}", color="negative")
+
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
         with ui.row().classes("items-center justify-between w-full pb-2"):
             with ui.column().classes("gap-0"):
                 ui.label("Switch Run").classes("text-lg text-bold")
                 ui.label("Select a run to explore").classes("text-sm text-grey-6")
-            ui.button(icon="close", on_click=dialog.close).props("flat round dense")
+            with ui.row().classes("items-center gap-1"):
+                ui.button(
+                    "Download CSV",
+                    icon="download",
+                    on_click=download_active_catalog_csv,
+                ).props("flat dense")
+                ui.button(icon="close", on_click=dialog.close).props("flat round dense")
 
         columns = [
             {

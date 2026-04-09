@@ -23,10 +23,20 @@ class MagnitudesPage(Page):
             ).props("outline").classes("text-xs font-mono text-grey-9")
 
         if not catalog.has_magnitudes:
-            ui.label("No magnitudes").classes("text-grey-6 text-body1")
+            with ui.row().classes("items-center gap-2 text-grey-6 mt-2"):
+                ui.icon("info").classes("text-grey-6")
+                ui.label("No magnitudes available").classes("text-body1 font-medium")
+            ui.label(
+                "No event magnitudes are present in this catalog yet. "
+                "Run magnitude estimation to enable these plots."
+            ).classes("text-grey-6 text-body2")
             return
 
         with ui.row().classes("items-center gap-4 w-full"):
-            await magnitude_components.MagnitudeFrequency().render()
-            await magnitude_components.MagnitudeSemblance().render()
             await magnitude_components.MagnitudeRate().render()
+
+        with ui.row().classes("items-start gap-4 w-full"):
+            with ui.column().classes("w-[calc(50%-0.5rem)]"):
+                await magnitude_components.MagnitudeFrequency().render()
+            with ui.column().classes("w-[calc(50%-0.5rem)]"):
+                await magnitude_components.MagnitudeSemblance().render()

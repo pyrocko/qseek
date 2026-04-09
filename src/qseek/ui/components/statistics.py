@@ -54,6 +54,30 @@ to semblance value.
                 },
                 # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
             )
+            total_semblance = np.sum(semblances)
+            cumulative_semblance = (
+                np.cumsum(semblances) / total_semblance
+                if total_semblance > 0
+                else np.zeros_like(semblances)
+            )
+            fig.update_layout(
+                yaxis2={
+                    "title": "Cumulative Semblance",
+                    "overlaying": "y",
+                    "side": "right",
+                    "showgrid": False,
+                }
+            )
+            fig.add_scatter(
+                x=times,
+                y=cumulative_semblance,
+                mode="lines",
+                name="Cumulative Semblance",
+                hoverinfo="none",
+                hovertemplate=None,
+                line={"color": "red", "dash": "solid", "width": 3},
+                yaxis="y2",
+            )
             plot.update()
 
         background_tasks.create(update_plot())
