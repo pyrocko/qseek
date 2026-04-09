@@ -18,6 +18,16 @@ or
 pipx install git+https://github.com/pyrocko/qseek
 ```
 
+> **HPC/Cluster Users:** This package requires a C compiler to build extensions. If you don't load one, the installation will fail with a compilation error.
+>
+> **Example Error:**
+> ```text
+> building 'qseek.ext.array_tools' extension
+> error: command 'gcc' failed: No such file or directory
+> ERROR: Failed building editable for qseek
+> ```
+> **Solution:** Run `module load gcc` (or your cluster's equivalent) before installing.
+
 ## Running Qseek
 
 The main entry point in the executeable is the `qseek` command. The provided command line interface (CLI) and a JSON config file is all what is needed to run the program.
