@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from nicegui import ui
 
 from qseek.ui.manager import SourceManager
@@ -6,102 +8,84 @@ from qseek.ui.state import get_tab_state
 
 def run_selection_dialog(manager: SourceManager) -> None:
     state = get_tab_state()
-    active_run = state.run
-    active_hash = active_run.hash if active_run else None
+    active_hash = state.run.hash if state.run else None
 
     with (
-        ui.dialog().props("w-max-96") as dialog,
-        ui.card().classes("w-auto min-w-96"),
+        ui.dialog() as dialog,
+        ui.card().classes("w-[560px] gap-0 !p-0 overflow-hidden rounded-xl shadow-2xl"),
     ):
+        # ── Header ──────────────────────────────────────────────────────────
+        with ui.row().classes("items-center w-full px-5 pt-5 pb-4 gap-3"):
+            ui.icon("folder_open", size="sm").classes("text-primary")
+            with ui.column().classes("gap-0 flex-1"):
+                ui.label("Switch Run").classes("text-base font-bold leading-snug")
+                ui.label("Select a run to explore").classes(
+                    "text-xs text-grey-6 leading-tight"
+                )
+            ui.button(icon="close", on_click=dialog.close).props(
+                "flat round dense size=sm color=grey-7"
+            )
+
+        ui.separator().classes("opacity-20")
+
+        # ── Run list ────────────────────────────────────────────────────────
         with (
-            ui.row().classes("items-center justify-between w-full pb-2"),
-            ui.column().classes("gap-0"),
+            ui.scroll_area().classes("w-full").style("max-height: 420px"),
+            ui.column().classes("w-full gap-0"),
         ):
-            ui.label("Switch Run").classes("text-lg text-bold")
-            ui.label("Select a run to explore").classes("text-sm text-grey-6")
+            runs = sorted(
+                manager.runs.values(),
+                key=lambda r: r.last_update,
+                reverse=True,
+            )
+            for run in runs:
+                is_active = run.hash == active_hash
+                card_classes = (
+                    "w-full px-5 py-3.5 cursor-pointer gap-3 items-center "
+                    "transition-colors duration-100 rounded-none border-0 "
+                    + ("bg-blue-1" if is_active else "hover:bg-grey-1")
+                )
 
-        columns = [
-            {
-                "name": "path",
-                "label": "Run",
-                "field": "path",
-                "sortable": True,
-                "align": "left",
-            },
-            {
-                "name": "source",
-                "label": "Source",
-                "field": "source",
-                "sortable": True,
-                "align": "left",
-            },
-            {
-                "name": "last_modified",
-                "label": "Last Modified",
-                "field": "last_modified",
-                "sortable": True,
-                "align": "left",
-            },
-            {
-                "name": "n_events",
-                "label": "Events",
-                "field": "n_events",
-                "sortable": True,
-                "align": "right",
-            },
-        ]
+                async def change_run(_, h=run.hash):
+                    dialog.close()
+                    await manager.set_active_run(h)
 
-        rows = [
-            {
-                "path": run.name,
-                "hash": run.hash,
-                "source": run.source,
-                "last_modified": run.last_update.strftime("%Y-%m-%d %H:%M"),
-                "n_events": run.n_events,
-            }
-            for run in manager.runs.values()
-        ]
+                with ui.row().classes(card_classes).on("click", change_run):
+                    # Active indicator dot
+                    ui.element("div").classes(
+                        "w-2 h-2 rounded-full flex-shrink-0 "
+                        + ("bg-primary" if is_active else "bg-transparent")
+                    )
 
-        table = (
-            ui.table(columns=columns, rows=rows)
-            .props("flat hover sort-by=last_modified :sort-descending=true")
-            .classes("w-full")
-        )
-        table.add_slot(
-            "body-cell-source",
-            """
-            <q-td :props="props">
-                <q-chip
-                    dense outline
-                    :color="props.row.source === 'local' ? 'green' : 'light-blue'"
-                    text-color="white"
-                    class="text-xs"
-                >
-                    {{ props.row.source }}
-                </q-chip>
-            </q-td>
-            """,
-        )
-        table.props(
-            f":row-class=\"row => row.hash === '{active_hash}' ? 'bg-blue-1 text-bold' : ''\""
-        )
+                    with ui.column().classes("gap-0.5 flex-1 min-w-0"):
+                        ui.label(run.name).classes(
+                            "text-sm font-medium truncate "
+                            + (
+                                "text-blue-9 font-semibold"
+                                if is_active
+                                else "text-grey-9"
+                            )
+                        )
+                        ui.label(
+                            f"Last updated {run.last_update.strftime('%Y-%m-%d %H:%M')}"
+                        ).classes("text-xs text-grey-5 font-mono")
 
-        async def change_run(e):
-            selected_hash = e.args[1]["hash"]
-            dialog.close()
-            await manager.set_active_run(selected_hash)
+                    # Right side: source chip + event count (fixed widths to prevent jumping)
+                    with ui.row().classes("items-center gap-3 flex-shrink-0"):
+                        source_color = "positive" if run.source == "local" else "info"
+                        ui.chip(run.source, icon="hub").props(
+                            f"dense outline color={source_color}"
+                        ).classes("text-xs w-16 justify-center")
 
-        table.on("rowClick", change_run)
-        table.props("style='cursor: pointer'")
+                        ui.label(f"{run.n_events:,} events").classes(
+                            "text-xs text-grey-6 font-mono text-right w-24"
+                        )
 
-        table.add_slot(
-            "empty",
-            """
-            <div class="q-pa-md flex flex-col items-center gap-2">
-                <q-icon name="folder_open" size="3em" color="grey-5" />
-                <div class="text-grey-5">No runs loaded</div>
-            </div>
-            """,
-        )
+                ui.separator().classes("opacity-10 mx-4")
+
+        if not runs:
+            with ui.column().classes("items-center gap-3 py-12 w-full"):
+                ui.icon("folder_off", size="3em").classes("text-grey-3")
+                ui.label("No runs loaded").classes("text-sm text-grey-5")
 
         dialog.open()

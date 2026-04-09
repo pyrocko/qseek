@@ -9,7 +9,8 @@ from qseek.ui.state import get_tab_state
 
 class MagnitudesPage(Page):
     async def render(self) -> None:
-        catalog = get_tab_state().filtered_catalog
+        state = get_tab_state()
+        catalog = await state.get_filtered_catalog()
 
         with ui.row().classes("w-full items-center gap-2 mb-1"):
             ui.label("Magnitudes").classes("text-h1")

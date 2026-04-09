@@ -146,8 +146,9 @@ class MigrationPlot(Component):
         plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_navigate(plot)
 
+        catalog = await state.get_filtered_catalog()
+
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
             distances = np.sqrt(
                 catalog.north_shifts**2 + catalog.east_shifts**2 + catalog.depths**2
             )
@@ -171,6 +172,7 @@ class MigrationPlot(Component):
             )
             plot.update()
 
+        catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 

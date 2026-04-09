@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import TypedDict
 from uuid import UUID
 
 import numpy as np
@@ -11,15 +12,15 @@ from qseek.ui.explorer.base import RunSource
 from qseek.ui.models import EventMinimal
 
 
+class NiceGuiRange(TypedDict):
+    min: float
+    max: float
+
+
 class FilteredCatalog:
-    semblance_min: float = binding.BindableProperty()
-    semblance_max: float = binding.BindableProperty()
-
-    magnitudes_min: float = binding.BindableProperty()
-    magnitudes_max: float = binding.BindableProperty()
-
-    date_min: datetime = binding.BindableProperty()
-    date_max: datetime = binding.BindableProperty()
+    semblance_range: NiceGuiRange = binding.BindableProperty()
+    magnitude_range: NiceGuiRange = binding.BindableProperty()
+    date_range: dict = binding.BindableProperty()
 
     events: list[EventMinimal] = []
     uids: list[UUID] = []
@@ -32,32 +33,47 @@ class FilteredCatalog:
     east_shifts: np.ndarray = np.array([])
     north_shifts: np.ndarray = np.array([])
 
+    _all_events: list[EventMinimal] = []
     _catalog: EventCatalog | None = None
 
     def __init__(self):
-        self.semblance_min = 0.0
-        self.semblance_max = 2.0
-        self.magnitudes_min = -1.0
-        self.magnitudes_max = 9.0
-
-        self.date_min = datetime.fromisoformat("1970-01-01T00:00:00Z")
-        self.date_max = datetime.fromisoformat("2050-01-01T00:00:00Z")
+        self.semblance_range = {
+            "min": 0.0,
+            "max": 2.0,
+        }
+        self.magnitude_range = {
+            "min": -1.0,
+            "max": 9.0,
+        }
+        self.date_range = {
+            "from": "1970-01-01",
+            "to": "2050-01-01",
+        }
 
         self.updated = Event()
 
     async def set_run(self, run: RunSource):
         self._catalog = await run.get_catalog()
-        self._update()
+        self._all_events = [EventMinimal.from_event(ev) for ev in self._catalog.events]
+        self._refresh_event_data()
 
-    def _update(self):
+    def _refresh_event_data(self):
         if self._catalog is None:
             raise RuntimeError("No catalog set for filtering")
 
+        date_min = datetime.strptime(self.date_range["from"], "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        )
+        date_max = datetime.strptime(self.date_range["to"], "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        )
         self.events = [
-            EventMinimal.from_event(ev)
-            for ev in self._catalog.events
-            if self.semblance_min <= ev.semblance <= self.semblance_max
-            and self.date_min <= ev.time <= self.date_max
+            ev
+            for ev in self._all_events
+            if self.semblance_range["min"]
+            <= ev.semblance
+            <= self.semblance_range["max"]
+            and date_min <= ev.time <= date_max
         ]
 
         self.times = [ev.time for ev in self.events]
@@ -81,6 +97,7 @@ class FilteredCatalog:
             *_,
         ) = map(np.array, zip(*(ev.as_tuple() for ev in self.events), strict=True))
 
+        self.reset_filters()
         self.updated.emit()
 
     def get_event_by_uid(self, uid: UUID) -> EventMinimal:
@@ -88,6 +105,24 @@ class FilteredCatalog:
             if ev.uid == uid:
                 return ev
         raise ValueError(f"Event with uid {uid} not found")
+
+    def reset_filters(self):
+        semblances = np.array([ev.semblance for ev in self._all_events])
+        times = [ev.time for ev in self._all_events]
+
+        self.semblance_range = {
+            "min": semblances.min(),
+            "max": semblances.max(),
+        }
+        self.magnitude_range = {
+            "min": -1,
+            "max": 7,
+        }
+
+        self.date_range = {
+            "from": min(times).strftime("%Y-%m-%d"),
+            "to": max(times).strftime("%Y-%m-%d"),
+        }
 
     def has_magnitudes(self):
         return not np.all(np.isnan(self.magnitudes))
