@@ -6,7 +6,7 @@ from nicegui import background_tasks, ui
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import on_click_plotly_event
+from qseek.ui.utils import attach_plotly_navigate
 
 
 class SemblanceRate(Component):
@@ -26,11 +26,8 @@ to semblance value.
             xaxis_title="Time",
             yaxis_title="Semblance",
         )
-        plot = (
-            ui.plotly(fig)
-            .classes("w-full h-64")
-            .on("plotly_click", on_click_plotly_event)
-        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.run.get_catalog()
@@ -105,11 +102,8 @@ class MigrationPlot(Component):
             yaxis_title="Distance to Center (km)",
         )
 
-        plot = (
-            ui.plotly(fig)
-            .classes("w-full h-64")
-            .on("plotly_click", on_click_plotly_event)
-        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.run.get_catalog()
@@ -161,11 +155,8 @@ class DepthSection(Component):
             yaxis_title="Depth (m)",
         )
 
-        plot = (
-            ui.plotly(fig)
-            .classes("w-full h-64")
-            .on("plotly_click", on_click_plotly_event)
-        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.run.get_catalog()

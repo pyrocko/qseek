@@ -8,6 +8,8 @@ from plotly.subplots import make_subplots
 from qseek.magnitudes.base import EventStationMagnitude
 from qseek.ui.base import EventComponent
 
+KM = 1e3
+
 
 class ObservationsAzimuthsPlot(EventComponent):
     def __init__(self, event, phases: list[str]):
@@ -403,18 +405,42 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
         for sta_mag in magnitudes.station_magnitudes:
             station_mags.append(
                 {
-                    "station": sta_mag.station.network
-                    + "."
-                    + sta_mag.station.station
-                    + "."
-                    + sta_mag.station.location,
-                    "distance_epi": sta_mag.distance_epi,
-                    "distnace_hypo": sta_mag.distance_hypo,
+                    "station": sta_mag.station.pretty,
+                    "distance_epi": sta_mag.distance_epi / KM,
+                    "distnace_hypo": sta_mag.distance_hypo / KM,
                     "magnitude": sta_mag.magnitude,
                     "error": sta_mag.error,
                     "snr": sta_mag.snr,
+                    "peak_amplitude": sta_mag.peak_amp,
                 }
             )
+
+        # SNR (linear ratio) → per-point opacity [0.3, 1.0] via log-normalization
+        snr_arr = np.clip(
+            np.array([m["snr"] for m in station_mags], dtype=float), 1e-6, None
+        )
+        log_snr = np.log(snr_arr)
+        log_min, log_max = log_snr.min(), log_snr.max()
+        snr_norm = (
+            (log_snr - log_min) / (log_max - log_min)
+            if log_max > log_min
+            else np.ones_like(log_snr)
+        )
+        opacities = (0.3 + 0.7 * snr_norm).tolist()
+
+        # peak_amplitude → symbol size [6, 20] px
+        amp_arr = np.array([m["peak_amplitude"] for m in station_mags], dtype=float)
+        amp_min, amp_max = amp_arr.min(), amp_arr.max()
+        amp_norm = (
+            (amp_arr - amp_min) / (amp_max - amp_min)
+            if amp_max > amp_min
+            else np.ones_like(amp_arr)
+        )
+        sizes = (6 + 10 * amp_norm).tolist()
+
+        magnitudes_arr = np.array([m["magnitude"] for m in station_mags])
+        median_mag = float(np.median(magnitudes_arr))
+        std_mag = float(np.std(magnitudes_arr))
 
         fig = go.Figure(
             data=[
@@ -423,49 +449,51 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
                     y=[m["magnitude"] for m in station_mags],
                     mode="markers",
                     marker={
-                        "size": 9,
-                        "color": [m["snr"] for m in station_mags],
-                        "colorscale": "Viridis",
-                        "showscale": True,
-                        "colorbar": {"title": "SNR"},
-                        "line": {"color": "black", "width": 1},
+                        "size": sizes,
+                        "color": "#5C8FA3",
+                        "opacity": opacities,
+                        "line": {"color": "rgba(0,0,0,0.4)", "width": 1},
                     },
                     error_y={
                         "type": "data",
                         "array": [m["error"] for m in station_mags],
                         "visible": True,
+                        "color": "rgba(92,143,163,0.35)",
+                        "thickness": 1.5,
                     },
                     hovertemplate=(
                         "<b>%{text}</b><br>"
                         "Distance (epi): %{x:.1f} km<br>"
                         "Magnitude: %{y:.2f}<br>"
-                        "SNR: %{marker.color:.2f}<extra></extra>"
+                        "SNR: %{customdata[0]:.1f}<br>"
+                        "Peak amplitude: %{customdata[1]:.3g}<extra></extra>"
                     ),
                     text=[m["station"] for m in station_mags],
+                    customdata=[[m["snr"], m["peak_amplitude"]] for m in station_mags],
                 )
             ]
         )
-        mean_mag = np.mean([m["magnitude"] for m in station_mags])
-        median_mag = np.median([m["magnitude"] for m in station_mags])
-        std_mag = np.std([m["magnitude"] for m in station_mags])
-        fig.add_hline(
-            y=mean_mag,
-            line=dict(color="red", width=1.5, dash="dash"),
-            annotation_text=f"Mean: {mean_mag:.2f}",
-            annotation_position="top left",
+
+        # Median line with ±std_mag shadow
+        fig.add_hrect(
+            y0=median_mag - std_mag,
+            y1=median_mag + std_mag,
+            fillcolor="seagreen",
+            opacity=0.08,
+            line_width=0,
         )
         fig.add_hline(
             y=median_mag,
-            line=dict(color="green", width=1.5, dash="dash"),
-            annotation_text=f"Median: {median_mag:.2f}",
-            annotation_position="bottom left",
+            line={"color": "seagreen", "width": 2},
+            annotation_text=f"Median: {median_mag:.2f} ± {std_mag:.2f}",
+            annotation_position="top left",
         )
         fig.update_layout(
-            title="Station Magnitudes",
-            xaxis_title="Station",
+            xaxis_title="Epicentral Distance (km)",
             yaxis_title="Magnitude",
             margin={"l": 60, "r": 40, "t": 40, "b": 80},
             template="plotly_white",
         )
+
         self.header()
         ui.plotly(fig).classes("w-full h-80")

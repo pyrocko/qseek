@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import contextlib
 import logging
-import os
 import tempfile
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -48,19 +47,37 @@ class SshSource(RunSource):
         # self._task = asyncio.create_task(self.watch_for_updates())
 
     @classmethod
+    def from_metadata(
+        cls,
+        connection: asyncssh.SSHClientConnection,
+        remote_path: Path,
+        hash: str,
+        mtime: int,
+        n_events: int,
+    ) -> SshSource:
+        """Construct from pre-fetched metadata (avoids extra SSH channels)."""
+        created = datetime.fromtimestamp(mtime)  # noqa: DTZ006
+        return cls(connection, remote_path, n_events, hash, created)
+
+    @classmethod
     async def create(cls, connection: asyncssh.SSHClientConnection, remote_path: Path):
+        """Create by fetching metadata in a single SSH channel."""
         search_json = remote_path / "search.json"
         detections_json = remote_path / "detections.json"
-        result = await connection.run(f"sha1sum {search_json}", check=True)
-        hash = result.stdout.strip().split()[0]
-        result = await connection.run(f"stat -c %Y {detections_json}", check=True)
-        created = datetime.fromtimestamp(int(result.stdout.strip()))  # noqa
+
         result = await connection.run(
-            f"wc -l {detections_json}",
+            f'python3 -c "'
+            f"import hashlib, os; "
+            f"h = hashlib.sha1(open('{search_json}', 'rb').read()).hexdigest(); "
+            f"s = os.stat('{detections_json}'); "
+            f"n = sum(1 for _ in open('{detections_json}')); "
+            f"print(h, int(s.st_mtime), n)"
+            f'"',
             check=True,
         )
-        n_events = int(result.stdout.strip().split()[0])
-        return cls(connection, remote_path, n_events, hash, created)
+        parts = result.stdout.strip().split()
+        hash, mtime, n_events = parts[0], int(parts[1]), int(parts[2])
+        return cls.from_metadata(connection, remote_path, hash, mtime, n_events)
 
     async def get_search_json(self) -> Path:
         await asyncssh.scp(
@@ -94,21 +111,24 @@ class SshSource(RunSource):
         return Path(self._tempfolder.name)
 
     async def watch_for_updates(self, poll_interval: float = 60.0):
+        detections_json = self.remote_path / "detections.json"
         while True:
             await asyncio.sleep(poll_interval)
+            # Fetch mtime and line count in a single SSH channel
             result = await self.connection.run(
-                f"stat -c %Y {self.remote_path / 'detections.json'}",
+                f'python3 -c "'
+                f"import os; "
+                f"s = os.stat('{detections_json}'); "
+                f"n = sum(1 for _ in open('{detections_json}')); "
+                f"print(int(s.st_mtime), n)"
+                f'"',
                 check=True,
             )
-            modified = datetime.fromtimestamp(int(result.stdout.strip()))  # noqa
+            parts = result.stdout.strip().split()
+            modified = datetime.fromtimestamp(int(parts[0]))  # noqa: DTZ006
             if modified > self.last_update:
                 logger.info("Run %s has been updated, refreshing...", self.name)
-                result = await self.connection.run(
-                    f"wc -l {self.remote_path / 'detections.json'}",
-                    check=True,
-                )
-
-                self.n_events = int(result.stdout.strip().split()[0])
+                self.n_events = int(parts[1])
                 self.last_update = modified
                 await self._copy_catalog_files(force=True)
 
@@ -141,29 +161,51 @@ class SshExplorer(RunExplorer):
         self.ssh = ssh
 
     async def discover(self) -> AsyncIterator[RunSource]:
+        options = {}
+        if self.ssh.userinfo:
+            parts = self.ssh.userinfo.split(":")
+            options["username"] = parts[0]
+            if len(parts) == 2:
+                options["password"] = parts[1]
+
         if self._connection is None:
             self._connection = await asyncssh.connect(
                 self.ssh.host,
                 port=int(self.ssh.port or 22),
                 compression_algs="zlib@openssh.com",
-                username=self.ssh.userinfo.split(":")[0]
-                if self.ssh.userinfo
-                else os.getlogin(),
+                **options,
             )
 
         path = self.ssh.path
         if path.startswith("/~"):
             path = path.replace("/~", "~/", 1)
+        # One SSH channel to get all run metadata at once
         result = await self._connection.run(
-            f"""
-python3 -c "from pathlib import Path;
-directory = Path('{path}').expanduser();
-[print(str(p.parent)) for p in directory.glob('*/search.json')];"
-""",
+            f'python3 -c "'
+            f"import hashlib, os; "
+            f"from pathlib import Path; "
+            f"directory = Path('{path}').expanduser(); "
+            f"runs = [p.parent for p in directory.glob('*/search.json')]; "
+            f"[print(str(r), "
+            f"hashlib.sha1(open(r/'search.json','rb').read()).hexdigest(), "
+            f"int(os.stat(r/'detections.json').st_mtime), "
+            f"sum(1 for _ in open(r/'detections.json'))) "
+            f"for r in runs if (r/'detections.json').exists()]"
+            f'"',
             check=True,
         )
         for line in result.stdout.splitlines():
-            yield await SshSource.create(self._connection, Path(line))
+            try:
+                rundir, hash, mtime, n_events = line.split()
+                yield SshSource.from_metadata(
+                    self._connection,
+                    Path(rundir),
+                    hash,
+                    int(mtime),
+                    int(n_events),
+                )
+            except Exception as e:
+                logger.warning("Failed to create SshSource for %s: %s", line, e)
 
     def __del__(self):
         if self._connection:

@@ -45,11 +45,11 @@ class Header:
 
             await EventSearch().render()
 
-            active_run = get_tab_state().run
+            tab_state = get_tab_state()
             with ui.row().classes("items-center gap-1 no-wrap"):
-                ui.label(active_run.name).classes(
+                ui.label().classes(
                     "text-white text-sm font-mono opacity-70 max-w-48 ellipsis"
-                ).tooltip(active_run.name)
+                ).bind_text_from(tab_state, "run_name").tooltip(tab_state.run_name)
                 ui.button(
                     icon="folder_open",
                     on_click=lambda: run_selection_dialog(manager),

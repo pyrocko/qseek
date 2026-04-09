@@ -28,6 +28,9 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         core.sio.eio.ping_interval = 30.0
         core.sio.eio.ping_timeout = 30.0
         await manager.add_uris(uris)
+        if manager.n_runs == 0:
+            app.shutdown()
+            raise EnvironmentError("No runs found at the specified URIs")
         ready.set()
 
         loop = asyncio.get_event_loop()
@@ -51,9 +54,15 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
                     "/": OverviewPage().render,
                     "/magnitudes": MagnitudesPage().render,
                     "/event/{event_id}": EventPage().render,
-                }
+                },
+                show_404=False,
             ).classes("flex-grow p-4")
-        state.run_changed.subscribe(sub_pages.refresh)
+
+        def on_run_changed():
+            ui.navigate.to("/")
+            sub_pages.refresh()
+
+        state.run_changed.subscribe(on_run_changed)
 
         with (
             ui.row().classes("items-center opacity-60 px-4 py-3 w-full justify-center"),

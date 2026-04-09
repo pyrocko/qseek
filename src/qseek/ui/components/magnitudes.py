@@ -9,7 +9,6 @@ from scipy.stats import gaussian_kde
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import on_click_plotly_event
 
 
 def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
@@ -376,11 +375,7 @@ class StationMagnitudes(Component):
             xaxis_title="Time",
             yaxis_title="Magnitude",
         )
-        plot = (
-            ui.plotly(fig)
-            .classes("w-full h-64")
-            .on("plotly_click", on_click_plotly_event)
-        )
+        plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
             catalog = await state.run.get_catalog()

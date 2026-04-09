@@ -9,29 +9,10 @@ def run_selection_dialog(manager: SourceManager) -> None:
     active_run = state.run
     active_hash = active_run.hash if active_run else None
 
-    async def download_active_catalog_csv() -> None:
-        if active_run is None:
-            ui.notify("No active run selected", color="warning")
-            return
-
-        try:
-            catalog_path = await active_run.get_catalog_path()
-            csv_dir = catalog_path / "csv"
-            csv_dir.mkdir(parents=True, exist_ok=True)
-            csv_file = csv_dir / "detections.csv"
-
-            if not csv_file.exists():
-                catalog = await active_run.get_catalog()
-                await catalog.catalog.export_csv(csv_file)
-
-            ui.download(
-                src=str(csv_file),
-                filename=f"{active_run.name}_detections.csv",
-            )
-        except Exception as exc:
-            ui.notify(f"Failed to prepare CSV download: {exc}", color="negative")
-
-    with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
+    with (
+        ui.dialog().props("full-width") as dialog,
+        ui.card().classes("w-auto min-w-96"),
+    ):
         with ui.row().classes("items-center justify-between w-full pb-2"):
             with ui.column().classes("gap-0"):
                 ui.label("Switch Run").classes("text-lg text-bold")
@@ -60,9 +41,9 @@ def run_selection_dialog(manager: SourceManager) -> None:
                 "align": "left",
             },
             {
-                "name": "created",
-                "label": "Created",
-                "field": "created",
+                "name": "last_modified",
+                "label": "Last Modified",
+                "field": "last_modified",
                 "sortable": True,
                 "align": "left",
             },
@@ -80,14 +61,16 @@ def run_selection_dialog(manager: SourceManager) -> None:
                 "path": run.name,
                 "hash": run.hash,
                 "source": run.source,
-                "created": run.last_update.strftime("%Y-%m-%d %H:%M"),
+                "last_modified": run.last_update.strftime("%Y-%m-%d %H:%M"),
                 "n_events": run.n_events,
             }
             for run in manager.runs.values()
         ]
 
         table = (
-            ui.table(columns=columns, rows=rows).props("flat hover").classes("w-full")
+            ui.table(columns=columns, rows=rows)
+            .props("flat hover sort-by=last_modified :sort-descending=true")
+            .classes("w-full")
         )
         table.add_slot(
             "body-cell-source",

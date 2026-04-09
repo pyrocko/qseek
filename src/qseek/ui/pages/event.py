@@ -52,17 +52,17 @@ class EventPage(Page):
                     else ""
                 )
                 stat_card(
-                    f"Magnitude ({mag.name})",
+                    "Magnitude",
                     f"{mag.average:.2f}",
                     "speed",
                     subtitle=mag_subtitle,
-                    tooltip=f"Network magnitude computed as the median of "
-                    f"station magnitudes ({len(mag.station_magnitudes)} stations). "
+                    tooltip=f"Network {mag.name} magnitude as computed as the median"
+                    f" of station magnitudes ({len(mag.station_magnitudes)} stations). "
                     f"Error is the median absolute deviation.",
                 )
 
             stat_card(
-                "Event Semblance",
+                "Semblance",
                 f"{event.semblance:.3f}",
                 icon="graphic_eq",
                 tooltip="Normalized coherence of the stacked phase arrival beam "
