@@ -287,16 +287,16 @@ to magnitude value.
             magnitudes_sorted = magnitudes[time_order]
 
             point_density = None
-            if len(magnitudes) > 5000:
-                try:
-                    time_numeric = np.asarray(
-                        [time.timestamp() for time in times],
-                        dtype=float,
-                    )
-                    kde = gaussian_kde(time_numeric, bw_method=0.01)
-                    point_density = kde(time_numeric)
-                except (ValueError, np.linalg.LinAlgError):
-                    point_density = None
+            try:
+                time_numeric = np.asarray(
+                    [time.timestamp() for time in times],
+                    dtype=float,
+                )
+                scott_kde = gaussian_kde(time_numeric, bw_method="scott")
+                kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
+                point_density = kde(time_numeric)
+            except (ValueError, np.linalg.LinAlgError):
+                point_density = None
 
             scatter_times = times
             scatter_magnitudes = magnitudes

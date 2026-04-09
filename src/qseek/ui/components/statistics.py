@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
+from scipy.stats import gaussian_kde
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
@@ -21,52 +22,92 @@ to semblance value.
 
         fig = go.Figure()
         fig.update_layout(
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            margin={"l": 0, "r": 80, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Time",
             yaxis_title="Semblance",
+            legend={
+                "x": 0.02,
+                "y": 0.98,
+                "xanchor": "left",
+                "yanchor": "top",
+                "bgcolor": "rgba(255,255,255,0.75)",
+            },
+            yaxis2={
+                "title": "Cumulative Semblance",
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
         )
         plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
-            semblances = catalog.semblances
-            times = catalog.times
+            records = [
+                (ev.time, ev.uid, ev.semblance)
+                for ev in catalog.events
+                if ev.semblance is not None and np.isfinite(ev.semblance)
+            ]
+            if not records:
+                return
+            times, uids, semblances = map(np.asarray, zip(*records, strict=True))
+            semblances = np.asarray(semblances, dtype=float)
+
+            time_order = np.argsort(times)
+            times_sorted = times[time_order]
+            semblances_sorted = semblances[time_order]
+
+            point_density = None
+            try:
+                time_numeric = np.asarray(
+                    [time.timestamp() for time in times],
+                    dtype=float,
+                )
+                scott_kde = gaussian_kde(time_numeric, bw_method="scott")
+                kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
+                point_density = kde(time_numeric)
+            except (ValueError, np.linalg.LinAlgError):
+                point_density = None
+
+            scatter_times = times
+            scatter_semblances = semblances
+            scatter_uids = uids
+            if point_density is not None:
+                density_order = np.argsort(point_density)
+                scatter_times = scatter_times[density_order]
+                scatter_semblances = scatter_semblances[density_order]
+                scatter_uids = scatter_uids[density_order]
+                point_density = point_density[density_order]
 
             plot.clear()
             fig.add_scatter(
-                x=times,
-                y=semblances,
+                x=scatter_times,
+                y=scatter_semblances,
                 mode="markers",
                 name="Event Semblance",
                 hoverinfo="none",
                 hovertemplate=None,
-                customdata=catalog.uids,
+                customdata=scatter_uids,
                 marker={
-                    "color": "black",
-                    "size": semblances / semblances.max() * 20,
+                    "color": point_density if point_density is not None else "black",
+                    "colorscale": "Viridis",
+                    "showscale": point_density is not None,
+                    "colorbar": {
+                        "title": "Density",
+                        "x": 1.1,
+                        "xanchor": "left",
+                    },
+                    "size": scatter_semblances / scatter_semblances.max() * 20,
                     "line": {"width": 0},
-                    "opacity": 0.3,
+                    "opacity": 0.1,
                 },
                 # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
             )
-            total_semblance = np.sum(semblances)
-            cumulative_semblance = (
-                np.cumsum(semblances) / total_semblance
-                if total_semblance > 0
-                else np.zeros_like(semblances)
-            )
-            fig.update_layout(
-                yaxis2={
-                    "title": "Cumulative Semblance",
-                    "overlaying": "y",
-                    "side": "right",
-                    "showgrid": False,
-                }
-            )
+            cumulative_semblance = np.cumsum(semblances_sorted)
             fig.add_scatter(
-                x=times,
+                x=times_sorted,
                 y=cumulative_semblance,
                 mode="lines",
                 name="Cumulative Semblance",
