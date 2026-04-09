@@ -30,7 +30,7 @@ to semblance value.
         attach_plotly_navigate(plot)
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
             semblances = catalog.semblances
             times = catalog.times
 
@@ -106,9 +106,9 @@ class MigrationPlot(Component):
         attach_plotly_navigate(plot)
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
             distances = np.sqrt(
-                catalog.north_shift**2 + catalog.east_shift**2 + catalog.depths**2
+                catalog.north_shifts**2 + catalog.east_shifts**2 + catalog.depths**2
             )
 
             plot.clear()
@@ -159,12 +159,12 @@ class DepthSection(Component):
         attach_plotly_navigate(plot)
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
 
             if self.direction == "north-south":
-                distances = catalog.north_shift
+                distances = catalog.north_shifts
             else:
-                distances = catalog.east_shift
+                distances = catalog.east_shifts
 
             times = catalog.times
             times_num = np.array([(t - times[0]).total_seconds() for t in times]) / (

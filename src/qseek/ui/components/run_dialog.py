@@ -10,20 +10,15 @@ def run_selection_dialog(manager: SourceManager) -> None:
     active_hash = active_run.hash if active_run else None
 
     with (
-        ui.dialog().props("full-width") as dialog,
+        ui.dialog().props("w-max-96") as dialog,
         ui.card().classes("w-auto min-w-96"),
     ):
-        with ui.row().classes("items-center justify-between w-full pb-2"):
-            with ui.column().classes("gap-0"):
-                ui.label("Switch Run").classes("text-lg text-bold")
-                ui.label("Select a run to explore").classes("text-sm text-grey-6")
-            with ui.row().classes("items-center gap-1"):
-                ui.button(
-                    "Download CSV",
-                    icon="download",
-                    on_click=download_active_catalog_csv,
-                ).props("flat dense")
-                ui.button(icon="close", on_click=dialog.close).props("flat round dense")
+        with (
+            ui.row().classes("items-center justify-between w-full pb-2"),
+            ui.column().classes("gap-0"),
+        ):
+            ui.label("Switch Run").classes("text-lg text-bold")
+            ui.label("Select a run to explore").classes("text-sm text-grey-6")
 
         columns = [
             {
@@ -91,10 +86,12 @@ def run_selection_dialog(manager: SourceManager) -> None:
             f":row-class=\"row => row.hash === '{active_hash}' ? 'bg-blue-1 text-bold' : ''\""
         )
 
-        table.on(
-            "rowClick",
-            lambda e: (manager.set_active_run(e.args[1]["hash"]), dialog.close()),
-        )
+        async def change_run(e):
+            selected_hash = e.args[1]["hash"]
+            dialog.close()
+            await manager.set_active_run(selected_hash)
+
+        table.on("rowClick", change_run)
         table.props("style='cursor: pointer'")
 
         table.add_slot(

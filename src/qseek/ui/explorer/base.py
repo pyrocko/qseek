@@ -10,7 +10,6 @@ from nicegui import binding
 
 from qseek.models.catalog import EventCatalog
 from qseek.search import Search
-from qseek.ui.models import CatalogProxy
 
 
 class RunExplorer(Protocol):
@@ -42,18 +41,19 @@ class RunSource(Protocol):
     hash: str
     updated: asyncio.Event
 
-    _catalog: CatalogProxy | None = None
+    _catalog: EventCatalog | None = None
     _search: Search | None = None
 
     async def get_search_json(self) -> Path: ...
 
     async def get_catalog_path(self) -> Path: ...
 
-    async def get_catalog(self) -> CatalogProxy:
+    async def get_catalog(self) -> EventCatalog:
         if not self._catalog:
             catalog_dir = await self.get_catalog_path()
-            catalog = await asyncio.to_thread(EventCatalog.load_rundir, catalog_dir)
-            self._catalog = CatalogProxy(catalog)
+            self._catalog = await asyncio.to_thread(
+                EventCatalog.load_rundir, catalog_dir
+            )
         return self._catalog
 
     async def get_search(self) -> Search:

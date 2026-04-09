@@ -8,7 +8,7 @@ from qseek.ui.components.header import Header
 from qseek.ui.pages.event import EventPage
 from qseek.ui.pages.magnitudes import MagnitudesPage
 from qseek.ui.pages.overview import OverviewPage
-from qseek.ui.state import get_tab_state
+from qseek.ui.state import TabState, get_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
@@ -28,9 +28,12 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         core.sio.eio.ping_interval = 30.0
         core.sio.eio.ping_timeout = 30.0
         await manager.add_uris(uris)
+
         if manager.n_runs == 0:
             app.shutdown()
             raise EnvironmentError("No runs found at the specified URIs")
+        default_run = next(iter(manager.runs.values()))
+        TabState.set_default_run(default_run)
         ready.set()
 
         loop = asyncio.get_event_loop()

@@ -12,17 +12,31 @@ from qseek.ui.utils import stat_card
 
 class OverviewPage(Page):
     async def render(self) -> None:
-        run = get_tab_state().run
-        catalog = await run.get_catalog()
+        catalog = await get_tab_state().get_filtered_catalog()
+
+        if catalog.n_events == 0:
+            with ui.row().classes("items-center gap-2 text-grey-6 mt-2"):
+                ui.icon("info").classes("text-grey-6")
+                ui.label("No events found").classes("text-body1 font-medium")
+            ui.label(
+                "No events are present in this catalog yet. Run the detection pipeline to populate the catalog."
+            ).classes("text-grey-6 text-body2")
+            return
+
         n_picks_values = [ev.n_picks for ev in catalog.events if ev.n_picks is not None]
-        semblance_values = [
-            ev.semblance for ev in catalog.events if ev.semblance is not None
-        ]
-        median_n_picks = np.nanmedian(n_picks_values) if n_picks_values else np.nan
-        max_n_picks = np.nanmax(n_picks_values) if n_picks_values else np.nan
-        min_n_picks = np.nanmin(n_picks_values) if n_picks_values else np.nan
-        semblance_max = np.nanmax(semblance_values) if semblance_values else np.nan
-        min_semblance = np.nanmin(semblance_values) if semblance_values else np.nan
+
+        n_picks_median = np.nanmedian(n_picks_values) if n_picks_values else np.nan
+        n_picks_max = np.nanmax(n_picks_values) if n_picks_values else np.nan
+        n_picks_min = np.nanmin(n_picks_values) if n_picks_values else np.nan
+        semblance_max = np.nanmax(catalog.semblances)
+        semblance_min = np.nanmin(catalog.semblances)
+
+        if catalog.has_magnitudes():
+            magnitude_max = np.nanmax(catalog.magnitudes)
+            magnitude_min = np.nanmin(catalog.magnitudes)
+        else:
+            magnitude_max = 0.0
+            magnitude_min = 0.0
 
         event_rate = len(catalog.events) / (
             (catalog.times[-1] - catalog.times[0]).total_seconds() / (3600 * 24)
@@ -57,24 +71,24 @@ class OverviewPage(Page):
             )
             stat_card(
                 "Median Picks",
-                f"{median_n_picks:.0f}",
+                f"{n_picks_median:.0f}",
                 icon="scatter_plot",
-                subtitle=f"Min: {min_n_picks}, Max: {max_n_picks}",
+                subtitle=f"Min: {n_picks_min}, Max: {n_picks_max}",
                 tooltip="Median number of picks per event.",
             )
             stat_card(
                 "Max Semblance",
                 f"{semblance_max:.2f}",
                 icon="stacked_line_chart",
-                subtitle=f"Min Semblance: {min_semblance:.2f}",
+                subtitle=f"Min Semblance: {semblance_min:.2f}",
                 tooltip="Maximum semblance value among all detected events.",
             )
-            if catalog.has_magnitudes:
+            if catalog.has_magnitudes():
                 stat_card(
                     "Max Magnitude",
-                    f"{catalog.max_magnitude:.2f}",
+                    f"{magnitude_max:.2f}",
                     icon="bar_chart",
-                    subtitle=f"Min Magnitude: {catalog.min_magnitude:.2f}",
+                    subtitle=f"Min Magnitude: {magnitude_min:.2f}",
                     tooltip="Maximum magnitude among all detected events.",
                 )
 

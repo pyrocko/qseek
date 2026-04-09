@@ -4,16 +4,13 @@ from pathlib import Path
 
 from nicegui import ui
 
+from qseek.ui.components.catalog_filter import catalog_filter_dialog
 from qseek.ui.components.run_dialog import run_selection_dialog
 from qseek.ui.components.search import EventSearch
 from qseek.ui.manager import SourceManager
 from qseek.ui.state import get_tab_state
 
 _LOGO_SVG = (Path(__file__).parent.parent / "static" / "logo_light.svg").read_text()
-
-_NAV_ITEMS = [
-    ("Overview", "/"),
-]
 
 
 class Header:
@@ -53,4 +50,9 @@ class Header:
                 ui.button(
                     icon="folder_open",
                     on_click=lambda: run_selection_dialog(manager),
+                ).props("flat color=white round dense")
+
+                ui.button(
+                    icon="filter_alt",
+                    on_click=catalog_filter_dialog,
                 ).props("flat color=white round dense")

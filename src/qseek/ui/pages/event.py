@@ -18,8 +18,8 @@ from qseek.ui.utils import stat_card
 
 class EventPage(Page):
     async def render(self, event_id: str) -> None:
-        run = get_tab_state().run
-        catalog = await run.get_catalog()
+        state = get_tab_state()
+        catalog = await state.get_filtered_catalog()
         event = catalog.get_event_by_uid(UUID(event_id))
         ev = event.event
 

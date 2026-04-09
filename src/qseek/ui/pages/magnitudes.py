@@ -9,20 +9,12 @@ from qseek.ui.state import get_tab_state
 
 class MagnitudesPage(Page):
     async def render(self) -> None:
-        run = get_tab_state().run
-        catalog = await run.get_catalog()
+        catalog = get_tab_state().filtered_catalog
 
         with ui.row().classes("w-full items-center gap-2 mb-1"):
             ui.label("Magnitudes").classes("text-h1")
-            ui.space()
-            ui.chip(
-                str(
-                    f"Time range: {catalog.times[0].date()} - {catalog.times[-1].date()}"
-                ),
-                icon="schedule",
-            ).props("outline").classes("text-xs font-mono text-grey-9")
 
-        if not catalog.has_magnitudes:
+        if not catalog.has_magnitudes():
             with ui.row().classes("items-center gap-2 text-grey-6 mt-2"):
                 ui.icon("info").classes("text-grey-6")
                 ui.label("No magnitudes available").classes("text-body1 font-medium")

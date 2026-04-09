@@ -90,7 +90,7 @@ class EventSearch:
                     menu.close()
                     return
 
-                catalog = await state.run.get_catalog()
+                catalog = await state.get_filtered_catalog()
 
                 results.clear()
                 for event in catalog.events:

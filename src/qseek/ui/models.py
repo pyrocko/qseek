@@ -1,12 +1,10 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Self
 from uuid import UUID
 
-import numpy as np
-
 from qseek.magnitudes.base import EventStationMagnitude
-from qseek.models.catalog import EventCatalog
 from qseek.models.detection import EventDetection
 
 logger = logging.getLogger(__name__)
@@ -51,83 +49,18 @@ class EventMinimal:
             self.magnitude,
         )
 
-
-class CatalogProxy:
-    catalog: EventCatalog
-
-    events: list[EventMinimal]
-    uids: list[UUID]
-    lats: np.ndarray
-    lons: np.ndarray
-    depths: np.ndarray
-    times: list[datetime]
-    magnitudes: EventStationMagnitude | None
-    semblances: np.ndarray
-
-    def __init__(self, catalog: EventCatalog):
-        self.catalog = catalog
-        self.events = [
-            EventMinimal(
-                uid=ev.uid,
-                lat=ev.effective_lat,
-                lon=ev.effective_lon,
-                north_shift=ev.north_shift,
-                east_shift=ev.east_shift,
-                depth=ev.depth,
-                time=ev.time,
-                semblance=ev.semblance,
-                n_picks=ev.n_picks,
-                magnitude=ev.magnitude,
-                event=ev,
-            )
-            for ev in catalog.events
-        ]
-
-        (
-            self.lats,
-            self.lons,
-            self.depths,
-            self.north_shift,
-            self.east_shift,
-            _,
-            self.semblances,
-            self.n_picks,
-            self.magnitudes,
-        ) = map(np.array, zip(*(ev.as_tuple() for ev in self.events), strict=True))
-        self.times = [ev.time for ev in self.events]
-        self.uids = [ev.uid for ev in self.events]
-
-    def get_event_by_uid(self, uid: UUID) -> EventMinimal:
-        for ev in self.events:
-            if ev.uid == uid:
-                return ev
-        raise ValueError(f"Event with uid {uid} not found")
-
-    @property
-    def n_events(self) -> int:
-        return len(self.events)
-
-    @property
-    def magnitude_values(self) -> np.ndarray:
-        return np.asarray(
-            [
-                ev.magnitude.average
-                for ev in self.events
-                if ev.magnitude is not None and ev.magnitude.average is not None
-            ],
-            dtype=float,
+    @classmethod
+    def from_event(cls, event: EventDetection) -> Self:
+        return cls(
+            uid=event.uid,
+            lat=event.effective_lat,
+            lon=event.effective_lon,
+            north_shift=event.north_shift,
+            east_shift=event.east_shift,
+            depth=event.depth,
+            time=event.time,
+            semblance=event.semblance,
+            n_picks=event.n_picks,
+            magnitude=event.magnitude,
+            event=event,
         )
-
-    @property
-    def has_magnitudes(self) -> bool:
-        return len(self.magnitude_values) > 0
-
-    @property
-    def min_magnitude(self) -> float:
-        values = self.magnitude_values
-        return float(np.nanmin(values)) if len(values) else 0.0
-
-    @property
-    def max_magnitude(self) -> float:
-        values = self.magnitude_values
-        return float(np.nanmax(values)) if len(values) else 0.0

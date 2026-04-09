@@ -99,7 +99,7 @@ class MagnitudeFrequency(Component):
         plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
             magnitudes = np.asarray(
                 [
                     ev.magnitude.average
@@ -178,7 +178,7 @@ class MagnitudeSemblance(Component):
         plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
             magnitudes = np.asarray(
                 [
                     ev.magnitude.average if ev.magnitude is not None else np.nan
@@ -260,14 +260,10 @@ to magnitude value.
                 "showgrid": False,
             },
         )
-        plot = (
-            ui.plotly(fig)
-            .classes("w-full h-64")
-            .on("plotly_click", on_click_plotly_event)
-        )
+        plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
             records = [
                 (ev.time, ev.uid, ev.magnitude.average)
                 for ev in catalog.events
@@ -340,12 +336,7 @@ to magnitude value.
                 hoverinfo="none",
                 hovertemplate=None,
             )
-            total_magnitude = np.sum(magnitudes_sorted)
-            cumulative_magnitudes = (
-                np.cumsum(magnitudes_sorted) / total_magnitude
-                if total_magnitude > 0
-                else np.zeros_like(magnitudes_sorted)
-            )
+            cumulative_magnitudes = np.cumsum(magnitudes_sorted)
             fig.add_scatter(
                 x=times_sorted,
                 y=cumulative_magnitudes,
@@ -378,7 +369,7 @@ class StationMagnitudes(Component):
         plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_filtered_catalog()
             sta_mags = [
                 ev.magnitude.station_magnitudes
                 for ev in catalog.events

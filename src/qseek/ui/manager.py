@@ -7,7 +7,7 @@ from nicegui import app
 
 from qseek.ui.explorer import LocalRunExplorer, SshExplorer
 from qseek.ui.explorer.base import RunSource
-from qseek.ui.state import TabState, get_tab_state
+from qseek.ui.state import get_tab_state
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,6 @@ class SourceManager:
             raise ValueError(f"Invalid URI: {uri}")
         async for run_source in explorer.discover():
             self.runs[run_source.hash] = run_source
-            TabState.set_default_run(run_source)
 
         self.explorers.append(explorer)
 
@@ -44,7 +43,7 @@ class SourceManager:
     def n_runs(self) -> int:
         return len(self.runs)
 
-    def set_active_run(self, hash: str) -> None:
+    async def set_active_run(self, hash: str) -> None:
         if hash not in self.runs:
             raise ValueError(f"Run with hash {hash} not found")
         old_hash = app.storage.tab.get("active_run")
@@ -52,4 +51,4 @@ class SourceManager:
         if old_hash != hash:
             logger.info("Active run changed to %s", hash)
             tab_state = get_tab_state()
-            tab_state.set_run(self.runs[hash])
+            await tab_state.set_run(self.runs[hash])

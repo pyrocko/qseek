@@ -15,7 +15,7 @@ class OverviewMap(Component):
 
     async def view(self) -> None:
         state = get_tab_state()
-        catalog = await state.run.get_catalog()
+        catalog = await state.get_filtered_catalog()
 
         norm = mcolors.Normalize(vmin=min(catalog.depths), vmax=max(catalog.depths))
         cmap = cm.get_cmap("magma")
