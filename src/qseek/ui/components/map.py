@@ -18,7 +18,7 @@ class OverviewMap(Component):
         catalog = await state.get_filtered_catalog()
 
         norm = mcolors.Normalize(vmin=min(catalog.depths), vmax=max(catalog.depths))
-        cmap = cm.get_cmap("magma")
+        cmap = cm.get_cmap("cividis_r")
         norm_depths = norm(np.array(catalog.depths))
         colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
 

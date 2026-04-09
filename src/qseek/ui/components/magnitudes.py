@@ -9,6 +9,7 @@ from scipy.stats import gaussian_kde
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
+from qseek.ui.utils import attach_plotly_navigate
 
 
 def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
@@ -176,6 +177,7 @@ class MagnitudeSemblance(Component):
         )
         # fig.update_yaxes(scaleanchor="x", scaleratio=1)
         plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -186,13 +188,16 @@ class MagnitudeSemblance(Component):
                 ],
                 dtype=float,
             )
+            uids = np.asarray([str(ev.uid) for ev in catalog.events])
             finite_mask = np.isfinite(magnitudes)
             magnitudes = magnitudes[finite_mask]
             semblances = np.asarray(catalog.semblances, dtype=float)[finite_mask]
+            uids = uids[finite_mask]
             if len(magnitudes) == 0:
                 return
             magnitudes, mask = magnitude_outlier_filer(magnitudes)
             semblances = semblances[mask]
+            uids = uids[mask]
 
             point_density = None
             if len(magnitudes) >= 3:
@@ -211,8 +216,8 @@ class MagnitudeSemblance(Component):
 
             plot.clear()
             fig.add_scatter(
-                x=semblances,
-                y=magnitudes,
+                x=magnitudes,
+                y=semblances,
                 mode="markers",
                 name="Magnitude vs Semblance",
                 marker={
@@ -226,6 +231,7 @@ class MagnitudeSemblance(Component):
                 },
                 hoverinfo="none",
                 hovertemplate=None,
+                customdata=uids,
             )
             plot.update()
 

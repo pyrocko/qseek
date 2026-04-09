@@ -92,7 +92,7 @@ to semblance value.
                 customdata=scatter_uids,
                 marker={
                     "color": point_density if point_density is not None else "black",
-                    "colorscale": "Viridis",
+                    "colorscale": "inferno",
                     "showscale": point_density is not None,
                     "colorbar": {
                         "title": "Density",
