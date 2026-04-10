@@ -174,8 +174,8 @@ class MagnitudeSemblance(Component):
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
-            xaxis_title="Semblance",
-            yaxis_title="Magnitude",
+            xaxis_title="Magnitude",
+            yaxis_title="Semblance",
         )
         # fig.update_yaxes(scaleanchor="x", scaleratio=1)
         plot = ui.plotly(fig).classes("w-full h-64")
@@ -214,6 +214,7 @@ class MagnitudeSemblance(Component):
                 order = np.argsort(point_density)
                 semblances = semblances[order]
                 magnitudes = magnitudes[order]
+                uids = uids[order]
                 point_density = point_density[order]
 
             plot.clear()
