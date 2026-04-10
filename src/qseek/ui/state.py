@@ -111,6 +111,14 @@ class FilteredCatalog:
             *_,
         ) = map(np.array, zip(*(ev.as_tuple() for ev in self.events), strict=True))
 
+        self.lats = self.lats.astype(np.float32)
+        self.lons = self.lons.astype(np.float32)
+        self.depths = self.depths.astype(np.float32)
+        self.north_shifts = self.north_shifts.astype(np.float32)
+        self.east_shifts = self.east_shifts.astype(np.float32)
+        self.semblances = self.semblances.astype(np.float32)
+        self.n_picks = self.n_picks.astype(int)
+
         self.reset_filters()
         self.updated.emit()
 

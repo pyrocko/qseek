@@ -386,6 +386,7 @@ class StationMagnitudes(Component):
             yaxis_title="Magnitude",
         )
         plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -422,6 +423,358 @@ class StationMagnitudes(Component):
                     hovertemplate=None,
                 )
             )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class NPicksVsMagnitude(Component):
+    name = "Number of Picks vs Magnitude"
+    description = """Number of picks contributing to each event vs its magnitude."""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Number of Picks",
+            yaxis_title="Magnitude",
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+            n_picks = np.asarray(
+                [ev.n_picks for ev in catalog.events if ev.n_picks is not None],
+                dtype=float,
+            )
+            magnitudes = np.asarray(
+                [
+                    ev.magnitude.average
+                    for ev in catalog.events
+                    if ev.magnitude is not None and ev.magnitude.average is not None
+                ],
+                dtype=float,
+            )
+            uids = np.asarray([str(ev.uid) for ev in catalog.events])
+            if len(n_picks) == 0 or len(magnitudes) == 0:
+                return
+            # n_picks, mask = magnitude_outlier_filer(n_picks)
+            # magnitudes = magnitudes[mask]
+            plot.clear()
+            fig.add_trace(
+                go.Scattergl(
+                    x=n_picks,
+                    y=magnitudes,
+                    mode="markers",
+                    name="Number of Picks vs Magnitude",
+                    marker={
+                        "color": "black",
+                        "size": 10,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    customdata=uids,
+                )
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class SemblanceVsNPicks(Component):
+    name = "Semblance vs Number of Picks"
+    description = """Semblance value of detected events vs the number of picks contributing to them."""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Number of Picks",
+            yaxis_title="Semblance",
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+            n_picks = np.asarray(
+                [ev.n_picks for ev in catalog.events if ev.n_picks is not None],
+                dtype=float,
+            )
+            semblances = np.asarray(catalog.semblances, dtype=float)
+            finite_mask = np.isfinite(n_picks) & np.isfinite(semblances)
+            n_picks = n_picks[finite_mask]
+            semblances = semblances[finite_mask]
+            uids = np.asarray([str(ev.uid) for ev in catalog.events])[finite_mask]
+            if len(n_picks) == 0 or len(semblances) == 0:
+                return
+            # n_picks, mask = magnitude_outlier_filer(n_picks)
+            # semblances = semblances[mask]
+            plot.clear()
+            fig.add_trace(
+                go.Scattergl(
+                    x=n_picks,
+                    y=semblances,
+                    mode="markers",
+                    name="Semblance vs Number of Picks",
+                    marker={
+                        "color": "black",
+                        "size": 10,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    customdata=uids,
+                )
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class StationMagnitudeOverDistance(Component):
+    name = "Station Magnitudes vs Distance"
+    description = """Distance-corrected residuals of station magnitudes."""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Distance to Event (km)",
+            yaxis_title="Magnitude Residual",
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+
+            dists = []
+            mags = []
+
+            for ev in catalog.events:
+                if ev.magnitude is None or not ev.magnitude.station_magnitudes:
+                    continue
+
+                for sm in ev.magnitude.station_magnitudes:
+                    dist_km = sm.distance_epi / 1000.0
+                    if dist_km <= 0:
+                        continue
+                    if np.isfinite(dist_km) and np.isfinite(sm.magnitude):
+                        dists.append(dist_km)
+                        mags.append(sm.magnitude)
+
+            if len(dists) < 10:
+                return
+
+            dists = np.asarray(dists)
+            mags = np.asarray(mags)
+
+            # --- Fit attenuation model: M = a log10(r) + b ---
+            X = np.vstack([np.log10(dists), np.ones_like(dists)]).T
+            a, b = np.linalg.lstsq(X, mags, rcond=None)[0]
+
+            mag_model = a * np.log10(dists) + b
+            residuals = mags - mag_model
+
+            plot.clear()
+
+            # --- Scatter (transparent for density perception) ---
+            # fig.add_trace(
+            #     go.Scattergl(
+            #         x=dists,
+            #         y=residuals,
+            #         mode="markers",
+            #         marker=dict(size=4, opacity=0.3),
+            #         name="Residuals",
+            #     )
+            # )
+
+            # --- Binned robust trend ---
+            n_bins = int(np.clip(np.sqrt(len(dists)), 8, 40))
+            bins = np.linspace(dists.min(), dists.max(), n_bins + 1)
+            bin_ids = np.digitize(dists, bins) - 1
+
+            bx, by, bmad = [], [], []
+
+            for i in range(n_bins):
+                mask = bin_ids == i
+                if np.sum(mask) < 5:
+                    continue
+
+                res_bin = residuals[mask]
+
+                median = np.median(res_bin)
+                mad = np.median(np.abs(res_bin - median))
+
+                bx.append(0.5 * (bins[i] + bins[i + 1]))
+                by.append(median)
+                bmad.append(mad)
+
+            if bx:
+                fig.add_trace(
+                    go.Scattergl(
+                        x=bx,
+                        y=by,
+                        mode="lines",
+                        line=dict(width=3),
+                        showlegend=False,
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
+                fig.add_trace(
+                    go.Scattergl(
+                        x=bx,
+                        y=np.array(by) + np.array(bmad),
+                        mode="lines",
+                        line=dict(width=1, dash="dot"),
+                        showlegend=False,
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
+                fig.add_trace(
+                    go.Scattergl(
+                        x=bx,
+                        y=np.array(by) - np.array(bmad),
+                        mode="lines",
+                        line=dict(width=1, dash="dot"),
+                        showlegend=False,
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class StationMagnitudesOverStation(Component):
+    name = "Station Magnitude Residuals"
+    description = """Distance-corrected station magnitude residuals per station."""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+        fig = go.Figure()
+
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Station",
+            yaxis_title="Magnitude Residual",
+            showlegend=False,
+        )
+
+        plot = ui.plotly(fig).classes("w-full h-64")
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+
+            rows = []
+
+            # --- Collect global data for model fit ---
+            dists = []
+            mags = []
+
+            for ev in catalog.events:
+                if ev.magnitude is None or not ev.magnitude.station_magnitudes:
+                    continue
+
+                for sm in ev.magnitude.station_magnitudes:
+                    dist_km = sm.distance_epi / 1000.0
+                    if dist_km <= 0:
+                        continue
+                    if np.isfinite(dist_km) and np.isfinite(sm.magnitude):
+                        dists.append(dist_km)
+                        mags.append(sm.magnitude)
+
+            if len(dists) < 10:
+                return
+
+            dists = np.asarray(dists)
+            mags = np.asarray(mags)
+
+            # --- Fit attenuation model ---
+            X = np.vstack([np.log10(dists), np.ones_like(dists)]).T
+            a, b = np.linalg.lstsq(X, mags, rcond=None)[0]
+
+            # --- Compute residuals per station ---
+            for ev in catalog.events:
+                if ev.magnitude is None or not ev.magnitude.station_magnitudes:
+                    continue
+
+                for sm in ev.magnitude.station_magnitudes:
+                    dist_km = sm.distance_epi / 1000.0
+                    if dist_km <= 0:
+                        continue
+
+                    if hasattr(sm.station, "pretty"):
+                        name = sm.station.pretty
+                    else:
+                        name = ".".join(str(p) for p in sm.station)
+
+                    model = a * np.log10(dist_km) + b
+                    res = sm.magnitude - model
+
+                    if np.isfinite(res):
+                        rows.append((name, res))
+
+            if not rows:
+                return
+
+            # --- Group by station ---
+            station_dict = {}
+            for name, res in rows:
+                station_dict.setdefault(name, []).append(res)
+
+            # --- Filter + sort by median bias ---
+            stations = []
+            medians = []
+
+            for k, v in station_dict.items():
+                if len(v) < 5:
+                    continue
+                med = np.median(v)
+                stations.append(k)
+                medians.append(med)
+
+            order = np.argsort(medians)
+            stations = [stations[i] for i in order]
+
+            plot.clear()
+
+            # --- Violin plots ---
+            for st in stations:
+                fig.add_trace(
+                    go.Violin(
+                        y=station_dict[st],
+                        name=st,
+                        box={"visible": True},
+                        meanline={"visible": True},
+                        points="outliers",
+                        marker={"size": 4, "color": "black", "opacity": 0.3},
+                        line={"width": 1, "color": "black"},
+                        fillcolor="rgba(46, 139, 87, 0.25)",
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
+            fig.update_layout(xaxis={"type": "category"})
+
             plot.update()
 
         background_tasks.create(update_plot())

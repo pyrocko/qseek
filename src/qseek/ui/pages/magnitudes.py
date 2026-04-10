@@ -33,3 +33,6 @@ class MagnitudesPage(Page):
                 await magnitude_components.MagnitudeFrequency().render()
             with ui.column().classes("w-[calc(50%-0.5rem)]"):
                 await magnitude_components.MagnitudeSemblance().render()
+        with ui.row().classes("items-start gap-4 w-full"):
+            await magnitude_components.StationMagnitudesOverStation().render()
+            await magnitude_components.StationMagnitudeOverDistance().render()
