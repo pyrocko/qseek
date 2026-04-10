@@ -14,10 +14,14 @@ class Page:
 class Component:
     name: str = "Component"
     description: str = ""
+    icon: str = ""
 
     async def render(self) -> None:
         with ui.card().classes("w-full flex-wrap col-6 shadow-2"):
-            ui.label(self.name).classes("text-h5")
+            with ui.row().classes("text-h5"):
+                if self.icon:
+                    ui.icon(self.icon)
+                ui.label(self.name)
             ui.label(self.description).classes("text-body2 mb-2")
             await self.view()
 

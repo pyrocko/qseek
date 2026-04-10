@@ -36,9 +36,6 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         TabState.set_default_run(default_run)
         ready.set()
 
-        loop = asyncio.get_event_loop()
-        loop.set_debug(True)
-
     app.on_startup(load_runs)
 
     @ui.page("/")
@@ -50,15 +47,30 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         state = get_tab_state()
 
         await Header().render(manager)
+
         with ui.row().classes("w-full").style("max-width: 1290px").classes("mx-auto"):
-            sub_pages = ui.sub_pages(
-                {
-                    "/": OverviewPage().render,
-                    "/magnitudes": MagnitudesPage().render,
-                    "/event/{event_id}": EventPage().render,
-                },
-                show_404=False,
-            ).classes("flex-grow p-4")
+            with ui.column().classes(
+                "gap-3 w-full items-center justify-center text-center"
+                " text-lg pt-40 pb-40 opacity-60"
+            ) as column:
+                ui.spinner("audio", size="lg", color="gray")
+                ui.label().bind_text_from(
+                    state, "run_name", backward=lambda n: f"Loading run {n}..."
+                )
+                column.bind_visibility_from(state, "loading")
+
+            sub_pages = (
+                ui.sub_pages(
+                    {
+                        "/": OverviewPage().render,
+                        "/magnitudes": MagnitudesPage().render,
+                        "/event/{event_id}": EventPage().render,
+                    },
+                    show_404=False,
+                )
+                .classes("flex-grow")
+                .bind_visibility_from(state, "loading", backward=lambda v: not v)
+            )
 
         with (
             ui.row().classes("items-center opacity-60 px-4 py-3 w-full justify-center"),

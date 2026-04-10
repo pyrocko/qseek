@@ -167,6 +167,7 @@ class FilteredCatalog:
 class TabState:
     run: RunSource
     run_name: str = binding.BindableProperty()
+    loading: bool = binding.BindableProperty()
 
     filtered_catalog: FilteredCatalog
 
@@ -176,8 +177,11 @@ class TabState:
         if self._default_run is None:
             raise RuntimeError("No default run set")
 
+        self.loading = True
+
         self.run = self._default_run
-        self.run_name = self.run.name
+        self.run_name = self._default_run.name
+
         self.filtered_catalog = FilteredCatalog()
 
         self.run_changed = Event()
@@ -186,12 +190,16 @@ class TabState:
     async def set_run(self, run: RunSource):
         self.run = run
         self.run_name = run.name
+        self.loading = True
         await self.filtered_catalog.set_run(run)
         self.run_changed.emit()
+        self.loading = False
 
     async def get_filtered_catalog(self) -> FilteredCatalog:
         if self.filtered_catalog._catalog is None:
+            self.loading = True
             await self.filtered_catalog.set_run(self.run)
+            self.loading = False
         return self.filtered_catalog
 
     @classmethod

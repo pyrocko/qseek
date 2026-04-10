@@ -16,22 +16,17 @@ class OverviewMap(Component):
     async def view(self) -> None:
         state = get_tab_state()
         catalog = await state.get_filtered_catalog()
+        sorted_events = sorted(catalog.events, key=lambda ev: ev.depth)
 
         norm = mcolors.Normalize(vmin=min(catalog.depths), vmax=max(catalog.depths))
-        cmap = cm.get_cmap("cividis_r")
-        norm_depths = norm(np.array(catalog.depths))
+        cmap = cm.get_cmap("magma_r")
+
+        norm_depths = norm(np.array([ev.depth for ev in sorted_events]))
         colors = [mcolors.to_hex(cmap(d)) for d in norm_depths]
 
         marker_data = [
-            [float(lat), float(lon), float(semblance), color, str(uid)]
-            for lat, lon, semblance, color, uid in zip(
-                catalog.lats,
-                catalog.lons,
-                catalog.semblances,
-                colors,
-                catalog.uids,
-                strict=True,
-            )
+            [float(ev.lat), float(ev.lon), float(ev.semblance), color, str(ev.uid)]
+            for ev, color in zip(sorted_events, colors, strict=True)
         ]
 
         m = ui.leaflet(center=(np.mean(catalog.lats), np.mean(catalog.lons))).classes(

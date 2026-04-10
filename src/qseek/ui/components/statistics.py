@@ -12,6 +12,7 @@ from qseek.ui.utils import attach_plotly_navigate
 
 class SemblanceRate(Component):
     name = "Semblance Rate"
+    icon = ""
     description = """
 Semblance of detected events over time. Size of markers corresponds
 to semblance value.
@@ -22,7 +23,7 @@ to semblance value.
 
         fig = go.Figure()
         fig.update_layout(
-            margin={"l": 0, "r": 80, "t": 0, "b": 0},
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Time",
             yaxis_title="Semblance",
@@ -95,16 +96,11 @@ to semblance value.
                         "color": point_density
                         if point_density is not None
                         else "black",
-                        "colorscale": "inferno",
-                        "showscale": point_density is not None,
-                        "colorbar": {
-                            "title": "Density",
-                            "x": 1.1,
-                            "xanchor": "left",
-                        },
+                        "colorscale": "viridis",
+                        "showscale": False,
                         "size": scatter_semblances / scatter_semblances.max() * 15,
                         "line": {"width": 0},
-                        "opacity": 0.1,
+                        "opacity": 0.3,
                     },
                     # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
                 )
@@ -118,7 +114,7 @@ to semblance value.
                     name="Cumulative Semblance",
                     hoverinfo="none",
                     hovertemplate=None,
-                    line={"color": "red", "dash": "solid", "width": 3},
+                    line={"color": "rgba(0,0,0,0.7)", "dash": "solid", "width": 3},
                     yaxis="y2",
                 )
             )
@@ -246,7 +242,7 @@ class DepthSection(Component):
 
 
 class NPicksDistribution(Component):
-    name = "N Picks Distribution"
+    name = "Picks per Event"
     description = """Distribution of number of picks associated with detected events."""
 
     async def view(self) -> None:
@@ -257,7 +253,7 @@ class NPicksDistribution(Component):
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Number of Picks",
-            yaxis_title="Count",
+            yaxis_title="Number of Events",
         )
         plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_navigate(plot)

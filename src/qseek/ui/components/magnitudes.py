@@ -228,8 +228,7 @@ class MagnitudeSemblance(Component):
                         if point_density is not None
                         else "black",
                         "colorscale": "Viridis",
-                        "showscale": point_density is not None,
-                        "colorbar": {"title": "Density"},
+                        "showscale": False,
                         "size": 10,
                         "line": {"width": 0},
                         "opacity": 0.1,
@@ -254,7 +253,7 @@ to magnitude value.
         state = get_tab_state()
         fig = go.Figure()
         fig.update_layout(
-            margin={"l": 0, "r": 80, "t": 0, "b": 0},
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Time",
             yaxis_title="Magnitude",
@@ -335,12 +334,7 @@ to magnitude value.
                         if point_density is not None
                         else "black",
                         "colorscale": "Viridis",
-                        "showscale": point_density is not None,
-                        "colorbar": {
-                            "title": "Density",
-                            "x": 1.1,
-                            "xanchor": "left",
-                        },
+                        "showscale": False,
                         "size": (scatter_magnitudes - min_mag)
                         / (scatter_magnitudes.max() - min_mag)
                         * 15
@@ -360,7 +354,7 @@ to magnitude value.
                     y=cumulative_magnitudes,
                     mode="lines",
                     name="Cumulative Magnitude",
-                    line={"color": "red", "dash": "solid", "width": 3},
+                    line={"color": "rgba(0,0,0,0.7)", "dash": "solid", "width": 3},
                     hoverinfo="none",
                     hovertemplate=None,
                     yaxis="y2",
@@ -580,8 +574,8 @@ class StationMagnitudeOverDistance(Component):
             mags = np.asarray(mags)
 
             # --- Fit attenuation model: M = a log10(r) + b ---
-            X = np.vstack([np.log10(dists), np.ones_like(dists)]).T
-            a, b = np.linalg.lstsq(X, mags, rcond=None)[0]
+            magnitude_attenuation = np.vstack([np.log10(dists), np.ones_like(dists)]).T
+            a, b = np.linalg.lstsq(magnitude_attenuation, mags, rcond=None)[0]
 
             mag_model = a * np.log10(dists) + b
             residuals = mags - mag_model
@@ -626,7 +620,7 @@ class StationMagnitudeOverDistance(Component):
                         x=bx,
                         y=by,
                         mode="lines",
-                        line=dict(width=3),
+                        line={"width": 3},
                         showlegend=False,
                         hoverinfo="none",
                         hovertemplate=None,
@@ -638,7 +632,7 @@ class StationMagnitudeOverDistance(Component):
                         x=bx,
                         y=np.array(by) + np.array(bmad),
                         mode="lines",
-                        line=dict(width=1, dash="dot"),
+                        line={"width": 1, "dash": "dot"},
                         showlegend=False,
                         hoverinfo="none",
                         hovertemplate=None,
@@ -650,7 +644,7 @@ class StationMagnitudeOverDistance(Component):
                         x=bx,
                         y=np.array(by) - np.array(bmad),
                         mode="lines",
-                        line=dict(width=1, dash="dot"),
+                        line={"width": 1, "dash": "dot"},
                         showlegend=False,
                         hoverinfo="none",
                         hovertemplate=None,
@@ -708,8 +702,8 @@ class StationMagnitudesOverStation(Component):
             mags = np.asarray(mags)
 
             # --- Fit attenuation model ---
-            X = np.vstack([np.log10(dists), np.ones_like(dists)]).T
-            a, b = np.linalg.lstsq(X, mags, rcond=None)[0]
+            magnitude_attenuation = np.vstack([np.log10(dists), np.ones_like(dists)]).T
+            a, b = np.linalg.lstsq(magnitude_attenuation, mags, rcond=None)[0]
 
             # --- Compute residuals per station ---
             for ev in catalog.events:

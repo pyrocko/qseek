@@ -4,8 +4,13 @@ import numpy as np
 from nicegui import ui
 
 from qseek.ui.base import Page
-from qseek.ui.components import statistics as statistics_components
 from qseek.ui.components.map import OverviewMap
+from qseek.ui.components.statistics import (
+    DepthSection,
+    MigrationPlot,
+    NPicksDistribution,
+    SemblanceRate,
+)
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
 
@@ -73,14 +78,14 @@ class OverviewPage(Page):
                 "Median Picks",
                 f"{n_picks_median:.0f}",
                 icon="scatter_plot",
-                subtitle=f"Min: {n_picks_min}, Max: {n_picks_max}",
+                subtitle=f"Min {n_picks_min} / Max {n_picks_max}",
                 tooltip="Median number of picks per event.",
             )
             stat_card(
                 "Max Semblance",
                 f"{semblance_max:.2f}",
                 icon="stacked_line_chart",
-                subtitle=f"Min Semblance: {semblance_min:.2f}",
+                subtitle=f"Min {semblance_min:.2f}",
                 tooltip="Maximum semblance value among all detected events.",
             )
             if catalog.has_magnitudes():
@@ -94,30 +99,8 @@ class OverviewPage(Page):
 
         with ui.row().classes("items-center gap-4 w-full"):
             await OverviewMap().render()
-            with ui.expansion(
-                "Rates",
-                icon="insights",
-                value=True,
-            ).classes("w-full"):
-                await statistics_components.SemblanceRate().render()
-            with ui.expansion(
-                "Migration Plot",
-                icon="show_chart",
-                value=True,
-            ).classes("w-full"):
-                await statistics_components.MigrationPlot().render()
-            with ui.expansion(
-                "Depth Sections",
-                icon="vertical_align_center",
-                value=True,
-            ).classes("w-full"):
-                await statistics_components.DepthSection(
-                    direction="north-south"
-                ).render()
-                await statistics_components.DepthSection(direction="east-west").render()
-            with ui.expansion(
-                "N Picks Distribution",
-                icon="bar_chart",
-                value=True,
-            ).classes("w-full"):
-                await statistics_components.NPicksDistribution().render()
+            await SemblanceRate().render()
+            await MigrationPlot().render()
+            await DepthSection(direction="north-south").render()
+            await DepthSection(direction="east-west").render()
+            await NPicksDistribution().render()

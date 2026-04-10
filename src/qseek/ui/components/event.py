@@ -316,13 +316,21 @@ Map showing event location and online stations contributing to the location.
         m = ui.leaflet(center=(ev.effective_lat, ev.effective_lon), zoom=9).classes(
             "w-full h-96 rounded-lg shadow"
         )
+        m.tile_layer(
+            url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+            options={
+                "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                "subdomains": "abcd",
+                "maxZoom": 20,
+            },
+        )
         stations = [
             {
                 "lat": r.effective_lat,
                 "lon": r.effective_lon,
                 "label": f"{r.network}.{r.station}.{r.location}",
                 "distance_km": round(ev.surface_distance_to(r) / 1000.0, 1),
-                "has_pick": 1 if r.phase_arrivals["fm:S"].observed is not None else 0,
+                "n_picks": r.n_picks(),
             }
             for r in ev.receivers
         ]
@@ -350,16 +358,13 @@ Map showing event location and online stations contributing to the location.
         )
 
         # Equilateral triangle (side=13, centered in 16x16): apex(8,0.5), base(1.5,11.75)-(14.5,11.75)
-        station_svg_with_pick = (
-            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
+        _station_svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="{opacity}">'
             '<polygon points="8,0.5 14.5,11.75 1.5,11.75" fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
             "</svg>"
         )
-        station_svg_no_pick = (
-            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
-            '<polygon points="8,0.5 14.5,11.75 1.5,11.75" fill="#722f37" stroke="black" stroke-width="1.5"/>'
-            "</svg>"
-        )
+        station_svg_with_pick = _station_svg.format(opacity=1.0)
+        station_svg_no_pick = _station_svg.format(opacity=0.45)
 
         await m.initialized()
 
@@ -388,9 +393,9 @@ Map showing event location and online stations contributing to the location.
             group.addLayer(L.marker([{ev.effective_lat}, {ev.effective_lon}], {{icon: eventIcon}})
                 .bindTooltip('<b>Event</b><br>{ev.time.strftime("%Y-%m-%d %H:%M:%S")} UTC<br>Lat: {ev.effective_lat:.4f}°<br>Lon: {ev.effective_lon:.4f}°<br>Depth: {ev.effective_depth / 1000.0:.1f} km', {{permanent: false}}));
             {json.dumps(stations)}.forEach(function(s) {{
-                var icon = s.has_pick ? stationIconWithPick : stationIconNoPick;
+                var icon = s.n_picks > 0 ? stationIconWithPick : stationIconNoPick;
                 group.addLayer(L.marker([s.lat, s.lon], {{icon: icon}})
-                    .bindTooltip(s.label + '<br> Distance: ' + s.distance_km + ' km', {{permanent: false}}));
+                    .bindTooltip(`<b>${{s.label}}</b>` + '<br>Distance: ' + s.distance_km + ' km' + (s.n_picks ? `<br>Picks: ${{s.n_picks}}` : '<br><i>No picks</i>'), {{permanent: false}}));
             }});
             group.addTo(map);
             map.fitBounds(group.getBounds(), {{padding: [30, 30]}});
