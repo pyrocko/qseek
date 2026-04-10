@@ -137,14 +137,16 @@ class MagnitudeFrequency(Component):
                 fit = self._b_value_fit_line(bin_edges, counts, b_value, mc_value)
                 if fit is not None:
                     fit_x, fit_y, _, _ = fit
-                    fig.add_scatter(
-                        x=fit_x,
-                        y=fit_y,
-                        mode="lines",
-                        name="b-value fit",
-                        line={"color": "blue", "width": 2},
-                        hoverinfo="none",
-                        hovertemplate=None,
+                    fig.add_trace(
+                        go.Scattergl(
+                            x=fit_x,
+                            y=fit_y,
+                            mode="lines",
+                            name="b-value fit",
+                            line={"color": "blue", "width": 2},
+                            hoverinfo="none",
+                            hovertemplate=None,
+                        )
                     )
                 fig.add_annotation(
                     x=1.38,
@@ -215,23 +217,27 @@ class MagnitudeSemblance(Component):
                 point_density = point_density[order]
 
             plot.clear()
-            fig.add_scatter(
-                x=magnitudes,
-                y=semblances,
-                mode="markers",
-                name="Magnitude vs Semblance",
-                marker={
-                    "color": point_density if point_density is not None else "black",
-                    "colorscale": "Viridis",
-                    "showscale": point_density is not None,
-                    "colorbar": {"title": "Density"},
-                    "size": 10,
-                    "line": {"width": 0},
-                    "opacity": 0.1,
-                },
-                hoverinfo="none",
-                hovertemplate=None,
-                customdata=uids,
+            fig.add_trace(
+                go.Scattergl(
+                    x=magnitudes,
+                    y=semblances,
+                    mode="markers",
+                    name="Magnitude vs Semblance",
+                    marker={
+                        "color": point_density
+                        if point_density is not None
+                        else "black",
+                        "colorscale": "Viridis",
+                        "showscale": point_density is not None,
+                        "colorbar": {"title": "Density"},
+                        "size": 10,
+                        "line": {"width": 0},
+                        "opacity": 0.1,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    customdata=uids,
+                )
             )
             plot.update()
 
@@ -317,42 +323,48 @@ to magnitude value.
 
             plot.clear()
             min_mag = scatter_magnitudes.min() if len(scatter_magnitudes) > 0 else 0
-            fig.add_scatter(
-                x=scatter_times,
-                y=scatter_magnitudes,
-                mode="markers",
-                name="Event Magnitude",
-                customdata=scatter_uids,
-                marker={
-                    "color": point_density if point_density is not None else "black",
-                    "colorscale": "Viridis",
-                    "showscale": point_density is not None,
-                    "colorbar": {
-                        "title": "Density",
-                        "x": 1.1,
-                        "xanchor": "left",
+            fig.add_trace(
+                go.Scattergl(
+                    x=scatter_times,
+                    y=scatter_magnitudes,
+                    mode="markers",
+                    name="Event Magnitude",
+                    customdata=scatter_uids,
+                    marker={
+                        "color": point_density
+                        if point_density is not None
+                        else "black",
+                        "colorscale": "Viridis",
+                        "showscale": point_density is not None,
+                        "colorbar": {
+                            "title": "Density",
+                            "x": 1.1,
+                            "xanchor": "left",
+                        },
+                        "size": (scatter_magnitudes - min_mag)
+                        / (scatter_magnitudes.max() - min_mag)
+                        * 15
+                        if scatter_magnitudes.max() != min_mag
+                        else 10,
+                        "line": {"width": 0},
+                        "opacity": 0.1,
                     },
-                    "size": (scatter_magnitudes - min_mag)
-                    / (scatter_magnitudes.max() - min_mag)
-                    * 15
-                    if scatter_magnitudes.max() != min_mag
-                    else 10,
-                    "line": {"width": 0},
-                    "opacity": 0.1,
-                },
-                hoverinfo="none",
-                hovertemplate=None,
+                    hoverinfo="none",
+                    hovertemplate=None,
+                )
             )
             cumulative_magnitudes = np.cumsum(magnitudes_sorted)
-            fig.add_scatter(
-                x=times_sorted,
-                y=cumulative_magnitudes,
-                mode="lines",
-                name="Cumulative Magnitude",
-                line={"color": "red", "dash": "solid", "width": 3},
-                hoverinfo="none",
-                hovertemplate=None,
-                yaxis="y2",
+            fig.add_trace(
+                go.Scattergl(
+                    x=times_sorted,
+                    y=cumulative_magnitudes,
+                    mode="lines",
+                    name="Cumulative Magnitude",
+                    line={"color": "red", "dash": "solid", "width": 3},
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    yaxis="y2",
+                )
             )
 
             plot.update()
@@ -394,19 +406,21 @@ class StationMagnitudes(Component):
                     if ev.magnitude is not None and ev.magnitude.average is not None
                 ]
             )
-            fig.add_scatter(
-                x=stds,
-                y=magnitudes,
-                mode="markers",
-                name="Station Magnitude Std Dev vs Event Magnitude",
-                marker={
-                    "color": "black",
-                    "size": 10,
-                    "line": {"width": 0},
-                    "opacity": 0.3,
-                },
-                hoverinfo="none",
-                hovertemplate=None,
+            fig.add_trace(
+                go.Scattergl(
+                    x=stds,
+                    y=magnitudes,
+                    mode="markers",
+                    name="Station Magnitude Std Dev vs Event Magnitude",
+                    marker={
+                        "color": "black",
+                        "size": 10,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                )
             )
             plot.update()
 

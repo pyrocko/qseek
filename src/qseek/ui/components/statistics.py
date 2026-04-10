@@ -82,39 +82,45 @@ to semblance value.
                 point_density = point_density[density_order]
 
             plot.clear()
-            fig.add_scatter(
-                x=scatter_times,
-                y=scatter_semblances,
-                mode="markers",
-                name="Event Semblance",
-                hoverinfo="none",
-                hovertemplate=None,
-                customdata=scatter_uids,
-                marker={
-                    "color": point_density if point_density is not None else "black",
-                    "colorscale": "inferno",
-                    "showscale": point_density is not None,
-                    "colorbar": {
-                        "title": "Density",
-                        "x": 1.1,
-                        "xanchor": "left",
+            fig.add_trace(
+                go.Scattergl(
+                    x=scatter_times,
+                    y=scatter_semblances,
+                    mode="markers",
+                    name="Event Semblance",
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    customdata=scatter_uids,
+                    marker={
+                        "color": point_density
+                        if point_density is not None
+                        else "black",
+                        "colorscale": "inferno",
+                        "showscale": point_density is not None,
+                        "colorbar": {
+                            "title": "Density",
+                            "x": 1.1,
+                            "xanchor": "left",
+                        },
+                        "size": scatter_semblances / scatter_semblances.max() * 15,
+                        "line": {"width": 0},
+                        "opacity": 0.1,
                     },
-                    "size": scatter_semblances / scatter_semblances.max() * 20,
-                    "line": {"width": 0},
-                    "opacity": 0.1,
-                },
-                # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
+                    # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
+                )
             )
             cumulative_semblance = np.cumsum(semblances_sorted)
-            fig.add_scatter(
-                x=times_sorted,
-                y=cumulative_semblance,
-                mode="lines",
-                name="Cumulative Semblance",
-                hoverinfo="none",
-                hovertemplate=None,
-                line={"color": "red", "dash": "solid", "width": 3},
-                yaxis="y2",
+            fig.add_trace(
+                go.Scattergl(
+                    x=times_sorted,
+                    y=cumulative_semblance,
+                    mode="lines",
+                    name="Cumulative Semblance",
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    line={"color": "red", "dash": "solid", "width": 3},
+                    yaxis="y2",
+                )
             )
             plot.update()
 
@@ -154,21 +160,23 @@ class MigrationPlot(Component):
             )
 
             plot.clear()
-            fig.add_scatter(
-                x=catalog.times,
-                y=distances,
-                mode="markers",
-                name="Migration Plot",
-                hoverinfo="none",
-                hovertemplate=None,
-                customdata=catalog.uids,
-                marker={
-                    "color": catalog.depths,
-                    "colorscale": "Magma",
-                    "size": catalog.semblances / catalog.semblances.max() * 20,
-                    "line": {"width": 0},
-                    "opacity": 0.3,
-                },
+            fig.add_trace(
+                go.Scattergl(
+                    x=catalog.times,
+                    y=distances,
+                    mode="markers",
+                    name="Migration Plot",
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    customdata=catalog.uids,
+                    marker={
+                        "color": catalog.depths,
+                        "colorscale": "Magma",
+                        "size": catalog.semblances / catalog.semblances.max() * 15,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                )
             )
             plot.update()
 
@@ -214,21 +222,63 @@ class DepthSection(Component):
                 3600 * 24
             )
             plot.clear()
-            fig.add_scatter(
-                x=distances,
-                y=-catalog.depths,
-                mode="markers",
-                name=self.name,
-                customdata=catalog.uids,
+            fig.add_trace(
+                go.Scattergl(
+                    x=distances,
+                    y=-catalog.depths,
+                    mode="markers",
+                    name=self.name,
+                    customdata=catalog.uids,
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    marker={
+                        "color": times_num,
+                        "colorscale": "Jet",
+                        "size": catalog.semblances / catalog.semblances.max() * 15,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                )
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class NPicksDistribution(Component):
+    name = "N Picks Distribution"
+    description = """Distribution of number of picks associated with detected events."""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Number of Picks",
+            yaxis_title="Count",
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+            n_picks = catalog.n_picks
+            n_picks = n_picks[~np.isnan(n_picks)].astype(int)
+
+            counts = np.bincount(n_picks)
+            x = np.arange(len(counts))
+            y = counts
+
+            plot.clear()
+            fig.add_bar(
+                x=x,
+                y=y,
+                name="N Picks Distribution",
+                marker_color="gray",
                 hoverinfo="none",
                 hovertemplate=None,
-                marker={
-                    "color": times_num,
-                    "colorscale": "Jet",
-                    "size": catalog.semblances / catalog.semblances.max() * 20,
-                    "line": {"width": 0},
-                    "opacity": 0.3,
-                },
             )
             plot.update()
 

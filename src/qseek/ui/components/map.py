@@ -61,7 +61,7 @@ class OverviewMap(Component):
                 data.forEach(point => {{
                     L.circleMarker([point[0], point[1]], {{
                         renderer: canvasRenderer,
-                        radius: point[2] * 6,
+                        radius: point[2] * 4,
                         stroke: false,
                         fillColor: point[3],
                         fillOpacity: 0.7

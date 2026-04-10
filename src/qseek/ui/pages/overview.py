@@ -115,3 +115,9 @@ class OverviewPage(Page):
                     direction="north-south"
                 ).render()
                 await statistics_components.DepthSection(direction="east-west").render()
+            with ui.expansion(
+                "N Picks Distribution",
+                icon="bar_chart",
+                value=True,
+            ).classes("w-full"):
+                await statistics_components.NPicksDistribution().render()

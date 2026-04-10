@@ -222,7 +222,7 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
             if obs_data:
                 o_dist, o_delays, o_tt, o_conf, o_labels = zip(*obs_data, strict=True)
                 fig.add_trace(
-                    go.Scatter(
+                    go.Scattergl(
                         x=list(o_dist),
                         y=list(o_delays),
                         mode="markers",
@@ -260,7 +260,7 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
             if nopick_data:
                 n_dist, n_labels = zip(*nopick_data, strict=True)
                 fig.add_trace(
-                    go.Scatter(
+                    go.Scattergl(
                         x=list(n_dist),
                         y=[0.0] * len(n_dist),
                         mode="markers",
@@ -456,7 +456,7 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
 
         fig = go.Figure(
             data=[
-                go.Scatter(
+                go.Scattergl(
                     x=[m["distance_epi"] for m in station_mags],
                     y=[m["magnitude"] for m in station_mags],
                     mode="markers",
