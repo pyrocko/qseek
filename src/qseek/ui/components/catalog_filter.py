@@ -22,9 +22,9 @@ def catalog_filter_dialog():
 
             with ui.column().classes("gap-0 flex-1"):
                 ui.label("Filter Catalog").classes("text-base font-bold leading-snug")
-                ui.label("Narrow events by quality, magnitude, and time").classes(
-                    "text-xs text-grey-6 leading-tight"
-                )
+                ui.label(
+                    "Narrow events by quality, picks, magnitude, depth, and time"
+                ).classes("text-xs text-grey-6 leading-tight")
             ui.button(icon="close", on_click=dialog.close).props(
                 "flat round dense size=sm color=grey-7"
             )
@@ -44,9 +44,38 @@ def catalog_filter_dialog():
                     min=0.0,
                     max=2.0,
                     step=0.01,
-                ).classes("w-full").props(
-                    "color=primary :label-always='true'"
-                ).bind_value(catalog, "semblance_range")
+                ).classes("w-full").props("color=primary").bind_value(
+                    catalog, "semblance_range"
+                )
+                ui.label().classes(
+                    "text-xs text-grey-6 font-mono text-right"
+                ).bind_text_from(
+                    catalog,
+                    "semblance_range",
+                    backward=lambda r: f"{r['min']:.2f} - {r['max']:.2f}",
+                )
+
+            # ── Magnitude ──
+            with ui.column().classes("gap-2 w-full"):
+                with ui.row().classes("items-center gap-1.5"):
+                    ui.icon("sensors", size="xs").classes("text-grey-5")
+                    ui.label("N Picks").classes(
+                        "text-sm font-semibold text-grey-8 tracking-wide"
+                    )
+                ui.range(
+                    min=catalog.n_picks_range["min"],
+                    max=catalog.n_picks_range["max"],
+                    step=1.0,
+                ).classes("w-full").props("color=secondary").bind_value(
+                    catalog, "n_picks_range"
+                )
+                ui.label().classes(
+                    "text-xs text-grey-6 font-mono text-right"
+                ).bind_text_from(
+                    catalog,
+                    "n_picks_range",
+                    backward=lambda r: f"{round(r['min'])} - {round(r['max'])}",
+                )
 
             # ── Magnitude ──
             with ui.column().classes("gap-2 w-full"):
@@ -60,13 +89,42 @@ def catalog_filter_dialog():
                         min=-1,
                         max=9,
                         step=0.1,
-                    ).classes("w-full").props(
-                        "color=deep-orange :label-always='true'"
-                    ).bind_value(catalog, "magnitude_range")
+                    ).classes("w-full").props("color=deep-orange").bind_value(
+                        catalog, "magnitude_range"
+                    )
+                    ui.label().classes(
+                        "text-xs text-grey-6 font-mono text-right"
+                    ).bind_text_from(
+                        catalog,
+                        "magnitude_range",
+                        backward=lambda r: f"{r['min']:.1f} - {r['max']:.1f}",
+                    )
                 else:
                     ui.label("No magnitudes in catalog").classes(
                         "text-xs text-grey-4 italic"
                     )
+
+            # ── Date Range ──
+            with ui.column().classes("gap-2 w-full"):
+                with ui.row().classes("items-center gap-1.5"):
+                    ui.icon("height", size="xs").classes("text-grey-5")
+                    ui.label("Depth (m)").classes(
+                        "text-sm font-semibold text-grey-8 tracking-wide"
+                    )
+                ui.range(
+                    min=catalog.depth_range["min"],
+                    max=catalog.depth_range["max"],
+                    step=10.0,
+                ).classes("w-full").props("color=indigo").bind_value(
+                    catalog, "depth_range"
+                )
+                ui.label().classes(
+                    "text-xs text-grey-6 font-mono text-right"
+                ).bind_text_from(
+                    catalog,
+                    "depth_range",
+                    backward=lambda r: f"{r['min']:.0f} - {r['max']:.0f} m",
+                )
 
             # ── Date Range ──
             with ui.column().classes("gap-2 w-full"):
@@ -90,9 +148,11 @@ def catalog_filter_dialog():
                 ).classes("w-full font-mono text-sm").bind_text_from(
                     catalog,
                     "date_range",
-                    backward=lambda r: f"{r['from']}  \u2192  {r['to']}"
-                    if isinstance(r, dict) and "from" in r
-                    else "Select range",
+                    backward=lambda r: (
+                        f"{r['from']}  \u2192  {r['to']}"
+                        if isinstance(r, dict) and "from" in r
+                        else "Select range"
+                    ),
                 )
 
         ui.separator().classes("opacity-20")

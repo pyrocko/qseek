@@ -147,8 +147,8 @@ class MagnitudeFrequency(Component):
                         hovertemplate=None,
                     )
                 fig.add_annotation(
-                    x=0.05,
-                    y=0.95,
+                    x=1.38,
+                    y=0.7,
                     xref="paper",
                     yref="paper",
                     text=f"b-value={b_value:.2f} ± {b_std_err:.2f}",
@@ -267,6 +267,7 @@ to magnitude value.
             },
         )
         plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()

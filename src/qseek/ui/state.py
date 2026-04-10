@@ -20,6 +20,8 @@ class NiceGuiRange(TypedDict):
 class FilteredCatalog:
     semblance_range: NiceGuiRange = binding.BindableProperty()
     magnitude_range: NiceGuiRange = binding.BindableProperty()
+    depth_range: NiceGuiRange = binding.BindableProperty()
+    n_picks_range: NiceGuiRange = binding.BindableProperty()
     date_range: dict = binding.BindableProperty()
 
     events: list[EventMinimal] = []
@@ -30,6 +32,7 @@ class FilteredCatalog:
     lats: np.ndarray = np.array([])
     lons: np.ndarray = np.array([])
     depths: np.ndarray = np.array([])
+    n_picks: np.ndarray = np.array([])
     east_shifts: np.ndarray = np.array([])
     north_shifts: np.ndarray = np.array([])
 
@@ -45,6 +48,14 @@ class FilteredCatalog:
             "min": -1.0,
             "max": 9.0,
         }
+        self.depth_range = {
+            "min": 0.0,
+            "max": 50_000.0,
+        }
+        self.n_picks_range = {
+            "min": 0.0,
+            "max": 100.0,
+        }
         self.date_range = {
             "from": "1970-01-01",
             "to": "2050-01-01",
@@ -55,6 +66,7 @@ class FilteredCatalog:
     async def set_run(self, run: RunSource):
         self._catalog = await run.get_catalog()
         self._all_events = [EventMinimal.from_event(ev) for ev in self._catalog.events]
+        self.reset_filters()
         self._refresh_event_data()
 
     def _refresh_event_data(self):
@@ -73,6 +85,8 @@ class FilteredCatalog:
             if self.semblance_range["min"]
             <= ev.semblance
             <= self.semblance_range["max"]
+            and self.depth_range["min"] <= ev.depth <= self.depth_range["max"]
+            and self.n_picks_range["min"] <= ev.n_picks <= self.n_picks_range["max"]
             and date_min <= ev.time <= date_max
         ]
 
@@ -108,6 +122,8 @@ class FilteredCatalog:
 
     def reset_filters(self):
         semblances = np.array([ev.semblance for ev in self._all_events])
+        depths = np.array([ev.depth for ev in self._all_events])
+        n_picks = np.array([ev.n_picks for ev in self._all_events])
         times = [ev.time for ev in self._all_events]
 
         self.semblance_range = {
@@ -117,6 +133,14 @@ class FilteredCatalog:
         self.magnitude_range = {
             "min": -1,
             "max": 7,
+        }
+        self.depth_range = {
+            "min": depths.min(),
+            "max": depths.max(),
+        }
+        self.n_picks_range = {
+            "min": n_picks.min(),
+            "max": n_picks.max(),
         }
 
         self.date_range = {
