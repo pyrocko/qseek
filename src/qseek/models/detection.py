@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from collections import defaultdict
 from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import cached_property
@@ -47,7 +48,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from qseek.features.base import EventFeature
-    from qseek.magnitudes.base import EventMagnitude
+    from qseek.magnitudes.base import EventStationMagnitude
 
 
 logger = logging.getLogger(__name__)
@@ -328,21 +329,49 @@ class EventReceivers(BaseModel):
             return 0
         return sum(receiver.n_picks(phase) for receiver in self.receivers)
 
-    def get_num_phase_picks(self) -> dict[str, int]:
+    def get_available_phases(self) -> set[PhaseDescription]:
+        """Get the set of available phases in the receiver set."""
+        phases = set()
+        for receiver in self.receivers:
+            phases.update(receiver.phase_arrivals.keys())
+        return phases
+
+    def get_num_phase_picks(self) -> dict[PhaseDescription, int]:
         """Get the number of picks for each phase.
 
         Returns:
-            dict[str, int]: A dictionary with phase names as keys and the number of
+            dict[PhaseDescription, int]: A dictionary with phase descriptions as keys and the number of
                 picks as values.
         """
         phases = set()
         for receiver in self.receivers:
             phases.update(receiver.phase_arrivals.keys())
         return {
-            f"n_picks:{phase}": sum(
-                receiver.n_picks(phase) for receiver in self.receivers
-            )
+            f"{phase}": sum(receiver.n_picks(phase) for receiver in self.receivers)
             for phase in phases
+        }
+
+    def get_rms(self) -> dict[PhaseDescription, float]:
+        """Root mean square of the traveltime delays of the observed arrivals for a given phase.
+
+        Args:
+            phase (PhaseDescription | None): The phase description.
+            If None, the RMS for all phases is returned.
+
+        Returns:
+            float | None: The RMS of the traveltime delays for the given phase, or
+            None if there are no observed arrivals for the given phase.
+        """
+        delays = defaultdict(list)
+        for receiver in self.receivers:
+            for arrival_phase, arrival in receiver.phase_arrivals.items():
+                if arrival.traveltime_delay is not None:
+                    delays[arrival_phase].append(
+                        arrival.traveltime_delay.total_seconds()
+                    )
+        return {
+            phase: float(np.sqrt(np.mean(np.square(delays_list))))
+            for phase, delays_list in delays.items()
         }
 
     async def get_waveforms(
@@ -657,7 +686,7 @@ class EventDetection(Location):
         self._receiver_cache = ReceiverCache.get_instance(rundir / FILENAME_RECEIVERS)
 
     @property
-    def magnitude(self) -> EventMagnitude | None:
+    def magnitude(self) -> EventStationMagnitude | None:
         """Returns the magnitude of the event.
 
         If there are no magnitudes available, returns None.
@@ -796,7 +825,7 @@ class EventDetection(Location):
         """
         self.uncertainty = uncertainty
 
-    def add_magnitude(self, magnitude: EventMagnitude) -> None:
+    def add_magnitude(self, magnitude: EventStationMagnitude) -> None:
         """Add magnitude to detection.
 
         Args:
@@ -880,14 +909,10 @@ class EventDetection(Location):
     @property
     def rms(self) -> float | None:
         """Root mean square of the traveltime delays of the observed arrivals."""
-        delays = []
-        for receiver in self.receivers:
-            for arrival in receiver.phase_arrivals.values():
-                if arrival.traveltime_delay is not None:
-                    delays.append(arrival.traveltime_delay.total_seconds())
-        if not delays:
+        rms = self.receivers.get_rms()
+        if rms is None:
             return None
-        return float(np.sqrt(np.mean(np.square(delays))))
+        return float(np.mean(list(rms.values())))
 
     def get_receiver_azimuths(self, observed_only: bool = True) -> dict[str, float]:
         """Get receiver azimuths.

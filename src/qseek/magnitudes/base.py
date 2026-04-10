@@ -30,7 +30,7 @@ class StationLocalMagnitude(NamedTuple):
     snr: float = 0.0
 
 
-class EventMagnitude(BaseModel):
+class EventStationMagnitude(BaseModel):
     magnitude: Literal["EventMagnitude"] = "EventMagnitude"
 
     average: float | None = Field(
@@ -47,7 +47,7 @@ class EventMagnitude(BaseModel):
     )
 
     @classmethod
-    def get_subclasses(cls) -> tuple[type[EventMagnitude], ...]:
+    def get_subclasses(cls) -> tuple[type[EventStationMagnitude], ...]:
         """Get all subclasses of this class.
 
         Returns:
