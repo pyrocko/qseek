@@ -131,4 +131,4 @@ class NetworkPage(Page):
         with ui.row().classes("items-start gap-4 w-full"):
             await network_map_components.NetworkMap().render()
             await network_statistics_components.StationActivityOverview().render()
-            await network_statistics_components.NStations_over_time().render()
+            await network_statistics_components.NStationsOverTime().render()

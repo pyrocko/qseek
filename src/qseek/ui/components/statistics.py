@@ -428,7 +428,7 @@ class StationActivityOverview(Component):
         background_tasks.create(update_plot())
 
 
-class NStations_over_time(Component):
+class NStationsOverTime(Component):
     name = "N Stations over time"
     description = (
         """Number of stations contributing to each detected event over time."""
