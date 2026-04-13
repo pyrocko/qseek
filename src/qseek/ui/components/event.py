@@ -7,6 +7,7 @@ from plotly.subplots import make_subplots
 
 from qseek.magnitudes.base import EventStationMagnitude
 from qseek.ui.base import EventComponent
+from qseek.ui.utils import attach_plotly_navigate
 
 KM = 1e3
 
@@ -395,6 +396,9 @@ Map showing event location and online stations contributing to the location.
             {json.dumps(stations)}.forEach(function(s) {{
                 var icon = s.n_picks > 0 ? stationIconWithPick : stationIconNoPick;
                 group.addLayer(L.marker([s.lat, s.lon], {{icon: icon}})
+                    .on('click', function() {{
+                        window.location.href = '/station/' + encodeURIComponent(s.label);
+                    }})
                     .bindTooltip(`<b>${{s.label}}</b>` + '<br>Distance: ' + s.distance_km + ' km' + (s.n_picks ? `<br>Picks: ${{s.n_picks}}` : '<br><i>No picks</i>'), {{permanent: false}}));
             }});
             group.addTo(map);
@@ -482,11 +486,14 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
                         "<b>%{text}</b><br>"
                         "Distance (epi): %{x:.1f} km<br>"
                         "Magnitude: %{y:.2f}<br>"
-                        "SNR: %{customdata[0]:.1f}<br>"
-                        "Peak amplitude: %{customdata[1]:.3g}<extra></extra>"
+                        "SNR: %{customdata[1]:.1f}<br>"
+                        "Peak amplitude: %{customdata[2]:.3g}<extra></extra>"
                     ),
                     text=[m["station"] for m in station_mags],
-                    customdata=[[m["snr"], m["peak_amplitude"]] for m in station_mags],
+                    customdata=[
+                        [m["station"], m["snr"], m["peak_amplitude"]]
+                        for m in station_mags
+                    ],
                 )
             ]
         )
@@ -513,4 +520,5 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
         )
 
         self.header()
-        ui.plotly(fig).classes("w-full h-80")
+        plot = ui.plotly(fig).classes("w-full h-80")
+        attach_plotly_navigate(plot, route="station", customdata_index=0)

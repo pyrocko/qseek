@@ -10,6 +10,7 @@ from qseek.ui.components.statistics import (
     MigrationPlot,
     NPicksDistribution,
     SemblanceRate,
+    StationActivityOverview,
 )
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card

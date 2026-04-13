@@ -2,20 +2,26 @@ from nicegui import ui
 from nicegui.events import GenericEventArguments
 
 
-def on_click_plotly_event(event: GenericEventArguments) -> None:
+def on_click_plotly_event(event: GenericEventArguments, route: str = "event") -> None:
     points = event.args.get("points", [])
     if points:
-        uid = points[0].get("customdata")
-        if uid:
-            ui.navigate.to(f"event/{uid}")
+        target = points[0].get("customdata")
+        if target:
+            ui.navigate.to(f"/{route}/{target}")
 
 
-def attach_plotly_navigate(plot: ui.plotly) -> None:
+def attach_plotly_navigate(
+    plot: ui.plotly,
+    route: str = "event",
+    customdata_index: int | None = None,
+) -> None:
     """Attach a plotly_click → navigate handler entirely in the browser.
 
-    Reads `customdata` (event uid) from the clicked point and navigates to
-    ``event/{uid}`` without a Python round-trip.  Safe to call after every
-    ``plot.update()`` — the listener is replaced, not stacked.
+    Reads `customdata` from the clicked point and navigates to
+    ``{route}/{customdata}`` without a Python round-trip. If `customdata`
+    contains an array, `customdata_index` selects which element to use.
+    Safe to call after every ``plot.update()`` — the listener is replaced,
+    not stacked.
     """
     ui.run_javascript(f"""
         (function attach(retries) {{
@@ -28,8 +34,14 @@ def attach_plotly_navigate(plot: ui.plotly) -> None:
                 gd.removeAllListeners('plotly_click');
                 gd.on('plotly_click', function(data) {{
                     if (data.points && data.points.length > 0) {{
-                        var uid = data.points[0].customdata;
-                        if (uid) window.location.href = 'event/' + uid;
+                        var target = data.points[0].customdata;
+                        var idx = {customdata_index if customdata_index is not None else "null"};
+                        if (Array.isArray(target) && idx !== null) {{
+                            target = target[idx];
+                        }}
+                        if (target !== undefined && target !== null && target !== '') {{
+                            window.location.href = '/{route}/' + encodeURIComponent(String(target));
+                        }}
                     }}
                 }});
             }} else if (retries > 0) {{

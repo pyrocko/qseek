@@ -38,6 +38,10 @@ class Header:
                 "Magnitudes",
                 on_click=lambda _: ui.navigate.to("/magnitudes"),
             ).props("flat color=white")
+            ui.button(
+                "Network",
+                on_click=lambda _: ui.navigate.to("/network"),
+            ).props("flat color=white")
             ui.space()
 
             await EventSearch().render()

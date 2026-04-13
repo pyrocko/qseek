@@ -8,6 +8,8 @@ from qseek.ui.components.header import Header
 from qseek.ui.pages.event import EventPage
 from qseek.ui.pages.magnitudes import MagnitudesPage
 from qseek.ui.pages.overview import OverviewPage
+from qseek.ui.pages.station import StationPage
+from qseek.ui.pages.network import NetworkPage as NetworkPage
 from qseek.ui.state import TabState, get_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
@@ -65,6 +67,8 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
                         "/": OverviewPage().render,
                         "/magnitudes": MagnitudesPage().render,
                         "/event/{event_id}": EventPage().render,
+                        "/station/{station_id}": StationPage().render,
+                        "/network": NetworkPage().render,
                     },
                     show_404=False,
                 )

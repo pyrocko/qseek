@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
@@ -12,7 +14,6 @@ from qseek.ui.utils import attach_plotly_navigate
 
 class SemblanceRate(Component):
     name = "Semblance Rate"
-    icon = ""
     description = """
 Semblance of detected events over time. Size of markers corresponds
 to semblance value.
@@ -23,7 +24,7 @@ to semblance value.
 
         fig = go.Figure()
         fig.update_layout(
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            margin={"l": 0, "r": 80, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Time",
             yaxis_title="Semblance",
@@ -96,8 +97,13 @@ to semblance value.
                         "color": point_density
                         if point_density is not None
                         else "black",
-                        "colorscale": "viridis",
-                        "showscale": False,
+                        "colorscale": "inferno",
+                        "showscale": point_density is not None,
+                        "colorbar": {
+                            "title": "Density",
+                            "x": 1.1,
+                            "xanchor": "left",
+                        },
                         "size": scatter_semblances / scatter_semblances.max() * 15,
                         "line": {"width": 0},
                         "opacity": 0.3,
@@ -114,7 +120,7 @@ to semblance value.
                     name="Cumulative Semblance",
                     hoverinfo="none",
                     hovertemplate=None,
-                    line={"color": "rgba(0,0,0,0.7)", "dash": "solid", "width": 3},
+                    line={"color": "red", "dash": "solid", "width": 3},
                     yaxis="y2",
                 )
             )
@@ -242,7 +248,7 @@ class DepthSection(Component):
 
 
 class NPicksDistribution(Component):
-    name = "Picks per Event"
+    name = "N Picks Distribution"
     description = """Distribution of number of picks associated with detected events."""
 
     async def view(self) -> None:
@@ -253,7 +259,7 @@ class NPicksDistribution(Component):
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Number of Picks",
-            yaxis_title="Number of Events",
+            yaxis_title="Count",
         )
         plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_navigate(plot)
@@ -275,6 +281,223 @@ class NPicksDistribution(Component):
                 marker_color="gray",
                 hoverinfo="none",
                 hovertemplate=None,
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class StationActivityOverview(Component):
+    name = "Station Activity Overview"
+    description = "Active arrival windows for all stations across filtered events."
+
+    async def render(self) -> None:
+        with ui.card().classes("w-full flex-wrap shadow-2"):
+            with ui.row().classes("text-h5"):
+                ui.label(self.name)
+            ui.label(self.description).classes("text-body2 mb-2")
+            await self.view()
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis_title="Station",
+        )
+
+        plot = ui.plotly(fig).classes("w-full h-160")
+        attach_plotly_navigate(plot, route="station")
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+
+            rows = []
+            for ev in catalog.events:
+                for receiver in ev.event.receivers:
+                    if not receiver.phase_arrivals:
+                        continue
+                    start_time, _ = receiver.get_arrivals_time_window()
+                    rows.append(
+                        {
+                            "uid": str(ev.uid),
+                            "station": receiver.nsl.pretty_str(strip=True),
+                            "start": start_time,
+                        }
+                    )
+
+            if not rows:
+                return
+
+            stations = sorted({row["station"] for row in rows})
+            station_to_index = {name: idx for idx, name in enumerate(stations)}
+
+            start_timestamps = np.asarray(
+                [row["start"].timestamp() for row in rows], dtype=float
+            )
+            tmin = float(np.min(start_timestamps))
+            tmax = float(np.max(start_timestamps))
+
+            # Bin activity in fixed 1-day windows.
+            one_day = 24.0 * 3600.0
+            if tmax <= tmin:
+                time_edges = np.array(
+                    [tmin - one_day / 2, tmax + one_day / 2], dtype=float
+                )
+            else:
+                time_edges = np.arange(tmin, tmax + one_day, one_day, dtype=float)
+                if len(time_edges) < 2:
+                    time_edges = np.array([tmin, tmin + one_day], dtype=float)
+
+            activity = np.zeros((len(stations), len(time_edges) - 1), dtype=np.int32)
+            station_times = {station: [] for station in stations}
+            for row in rows:
+                station_times[row["station"]].append(row["start"].timestamp())
+
+            for station, times in station_times.items():
+                idx = station_to_index[station]
+                activity[idx], _ = np.histogram(
+                    np.asarray(times, dtype=float), time_edges
+                )
+                activity[activity > 0] = 1
+            time_centers = [
+                datetime.fromtimestamp(float(ts), tz=timezone.utc)
+                for ts in 0.5 * (time_edges[:-1] + time_edges[1:])
+            ]
+            station_customdata = np.tile(
+                np.asarray(stations, dtype=object).reshape(-1, 1),
+                (1, activity.shape[1]),
+            )
+
+            plot.clear()
+            fig.add_trace(
+                go.Heatmap(
+                    x=time_centers,
+                    y=np.arange(len(stations)),
+                    z=activity,
+                    colorscale=[
+                        [0.0, "rgba(0,0,0,0)"],  # keine Aktivität → unsichtbar
+                        [1.0, "gray"],  # Aktivität → rot
+                    ],
+                    zmin=0,
+                    customdata=station_customdata,
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    showscale=False,
+                    opacity=0.5,
+                )
+            )
+
+            separator_lines = [
+                {
+                    "type": "line",
+                    "xref": "paper",
+                    "x0": 0,
+                    "x1": 1,
+                    "yref": "y",
+                    "y0": idx + 0.5,
+                    "y1": idx + 0.5,
+                    "line": {"color": "rgba(90,90,90,0.55)", "width": 1.2},
+                    "layer": "above",
+                }
+                for idx in range(len(stations) - 1)
+            ]
+
+            tick_vals = list(range(len(stations)))
+            tick_text = stations
+            if len(stations) > 80:
+                step = int(np.ceil(len(stations) / 80))
+                tick_vals = tick_vals[::step]
+                tick_text = tick_text[::step]
+
+            fig.update_layout(shapes=separator_lines)
+            fig.update_xaxes(showgrid=False, zeroline=False)
+            fig.update_yaxes(
+                showgrid=False,
+                zeroline=False,
+                tickmode="array",
+                tickvals=tick_vals,
+                ticktext=tick_text,
+                range=[-0.5, len(stations) - 0.5],
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class NStations_over_time(Component):
+    name = "N Stations over time"
+    description = (
+        """Number of stations contributing to each detected event over time."""
+    )
+
+    async def view(self) -> None:
+        state = get_tab_state()
+        catalog = await state.get_filtered_catalog()
+
+        rows = []
+        for ev in catalog.events:
+            for receiver in ev.event.receivers:
+                if not receiver.phase_arrivals:
+                    continue
+                start_time, _ = receiver.get_arrivals_time_window()
+                rows.append(
+                    {
+                        "uid": str(ev.uid),
+                        "station": receiver.nsl.pretty_str(strip=True),
+                        "start": start_time,
+                    }
+                )
+
+        if not rows:
+            return
+
+        times = np.asarray([row["start"].timestamp() for row in rows], dtype=float)
+        time_edges = np.arange(
+            times.min(),
+            times.max() + 24 * 7 * 3600,
+            24 * 7 * 3600,
+            dtype=float,
+        )
+        station_counts = np.zeros(len(time_edges) - 1, dtype=np.int32)
+        for station in {row["station"] for row in rows}:
+            station_times = np.asarray(
+                [row["start"].timestamp() for row in rows if row["station"] == station],
+                dtype=float,
+            )
+            counts, _ = np.histogram(station_times, time_edges)
+            station_counts += (counts > 0).astype(np.int32)
+
+        time_centers = [
+            datetime.fromtimestamp(float(ts), tz=timezone.utc)
+            for ts in 0.5 * (time_edges[:-1] + time_edges[1:])
+        ]
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis_title="Number of Active Stations",
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot)
+
+        async def update_plot():
+            plot.clear()
+            fig.add_trace(
+                go.Scattergl(
+                    x=time_centers,
+                    y=station_counts,
+                    mode="lines",
+                    name="Active Stations",
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    line={"color": "gray", "dash": "solid", "width": 3},
+                )
             )
             plot.update()
 

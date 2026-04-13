@@ -27,7 +27,9 @@ def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
 
 class MagnitudeFrequency(Component):
     name = "Magnitude Frequency Distribution"
-    description = """Frequency of detected events over magnitude bins."""
+    description = (
+        """Warning: b-value estimates can be biased for unfiltered catalogs!"""
+    )
 
     def _b_value_fit_line(
         self,
@@ -232,7 +234,7 @@ class MagnitudeSemblance(Component):
                         "showscale": False,
                         "size": 10,
                         "line": {"width": 0},
-                        "opacity": 0.1,
+                        "opacity": 0.3,
                     },
                     hoverinfo="none",
                     hovertemplate=None,
@@ -342,7 +344,7 @@ to magnitude value.
                         if scatter_magnitudes.max() != min_mag
                         else 10,
                         "line": {"width": 0},
-                        "opacity": 0.1,
+                        "opacity": 0.3,
                     },
                     hoverinfo="none",
                     hovertemplate=None,
@@ -674,6 +676,7 @@ class StationMagnitudesOverStation(Component):
         )
 
         plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_navigate(plot, route="station")
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -753,9 +756,10 @@ class StationMagnitudesOverStation(Component):
 
             # --- Violin plots ---
             for st in stations:
+                station_values = station_dict[st]
                 fig.add_trace(
                     go.Violin(
-                        y=station_dict[st],
+                        y=station_values,
                         name=st,
                         box={"visible": True},
                         meanline={"visible": True},
@@ -763,6 +767,18 @@ class StationMagnitudesOverStation(Component):
                         marker={"size": 4, "color": "black", "opacity": 0.3},
                         line={"width": 1, "color": "black"},
                         fillcolor="rgba(46, 139, 87, 0.25)",
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+                fig.add_trace(
+                    go.Scattergl(
+                        x=[st],
+                        y=[float(np.median(station_values))],
+                        mode="markers",
+                        marker={"size": 22, "opacity": 0.001},
+                        customdata=[st],
+                        showlegend=False,
                         hoverinfo="none",
                         hovertemplate=None,
                     )
