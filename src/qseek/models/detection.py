@@ -374,6 +374,35 @@ class EventReceivers(BaseModel):
             for phase, delays_list in delays.items()
         }
 
+    def get_travel_time_pairs(
+        self, origin_time: datetime
+    ) -> dict[PhaseDescription, list[float]]:
+        """Get pairs of observed travel times for each phase.
+
+        If a receiver has only one phase, it is set to None.
+
+        Returns:
+            dict[PhaseDescription, list[datetime]]: A dictionary with phase descriptions as keys and lists of observed arrival times as values.
+        """
+        origin_timestamp = origin_time.timestamp()
+        arrival_time_pairs = defaultdict(list)
+        available_phases = self.get_available_phases()
+
+        for receiver in self.receivers:
+            receiver_arrivals = dict.fromkeys(available_phases, None)
+            for phase in available_phases:
+                arrival = receiver.phase_arrivals.get(phase, None)
+                if arrival and arrival.observed:
+                    receiver_arrivals[phase] = (
+                        arrival.observed.time.timestamp() - origin_timestamp
+                    )
+
+            if all(receiver_arrivals.values()):
+                for phase, time in receiver_arrivals.items():
+                    arrival_time_pairs[phase].append(time)
+
+        return arrival_time_pairs
+
     async def get_waveforms(
         self,
         squirrel: Squirrel,

@@ -126,9 +126,9 @@ class EventPage(Page):
             phases = list(ev.receivers.get_available_phases())
 
             with ui.card().classes("w-full flex-wrap gap-2"):
-                await TravelTimeResidualPlot(event.event, phases).view()
+                await TravelTimeResidualPlot(event.event).view(phases)
             with ui.card().classes("w-full flex-wrap gap-2"):
-                await ObservationsAzimuthsPlot(event.event, phases).view()
+                await ObservationsAzimuthsPlot(event.event).view(phases)
 
             for ev_mag in ev.magnitudes:
                 with ui.card().classes("w-full flex-wrap gap-2"):

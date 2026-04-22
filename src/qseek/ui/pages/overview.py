@@ -7,9 +7,10 @@ from qseek.ui.base import Page
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.components.statistics import (
     DepthSection,
+    EventRateSemblance,
     MigrationPlot,
     NPicksDistribution,
-    SemblanceRate,
+    WadatiDiagram,
 )
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
@@ -97,10 +98,31 @@ class OverviewPage(Page):
                     tooltip="Maximum magnitude among all detected events.",
                 )
 
-        with ui.row().classes("items-center gap-4 w-full"):
-            await OverviewMap().render()
-            await SemblanceRate().render()
-            await MigrationPlot().render()
-            await DepthSection(direction="north-south").render()
-            await DepthSection(direction="east-west").render()
-            await NPicksDistribution().render()
+        with ui.row().classes("w-full items-center"):
+            with ui.card().classes("col-12"):
+                overview = OverviewMap()
+                overview.header()
+                await overview.view()
+            with ui.card().classes("col-12"):
+                migration_plot = MigrationPlot()
+                migration_plot.header()
+                await migration_plot.view()
+            with ui.card().classes("col-12"):
+                semblance_rate = EventRateSemblance()
+                semblance_rate.header()
+                await semblance_rate.view()
+            with ui.card().classes("col-12"):
+                depth_section = DepthSection()
+                depth_section.header()
+                await depth_section.view(direction="north-south")
+                await depth_section.view(direction="east-west")
+
+            with ui.card().classes("col-12 col-md-[49%]"):
+                wadati_plot = WadatiDiagram()
+                wadati_plot.header()
+                await wadati_plot.view()
+
+            with ui.card().classes("col-12 col-md-[49%]"):
+                npicks_dist = NPicksDistribution()
+                npicks_dist.header()
+                await npicks_dist.view()

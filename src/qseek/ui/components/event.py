@@ -12,19 +12,15 @@ KM = 1e3
 
 
 class ObservationsAzimuthsPlot(EventComponent):
-    def __init__(self, event, phases: list[str]):
-        super().__init__(event)
-        self.phases = phases
-        self.name = "Station Observations"
-        self.description = """
+    name = "Station Observations"
+    description = """
 Azimuthal plot of station observations for each phase. Colored diamonds = observed
 (color is delay), size is pick confidence. No modelled arrivals shown here since
 azimuths are not meaningful without a reference event.
 """
 
-    async def view(self) -> None:
+    async def view(self, phases: list[str]) -> None:
         ev = self.event
-        phases = self.phases
         n = len(phases)
 
         distances = [ev.surface_distance_to(r) / 1000.0 for r in ev.receivers]
@@ -153,20 +149,16 @@ azimuths are not meaningful without a reference event.
 
 
 class TravelTimeResidualPlot(EventComponent):
-    def __init__(self, event, phases: list[str]):
-        super().__init__(event)
-        self.phases = phases
-        self.name = "Travel Time Residuals"
-        self.description = """
+    name = "Travel Time Residuals"
+    description = """
 Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
  phase vs. epicentral distance. Marker size scales with pick confidence. Color encodes
  the residual: red = late arrival, blue = early arrival. Open markers at zero indicate
  stations with no pick for that phase.
 """
 
-    async def view(self) -> None:
+    async def view(self, phases: list[str]) -> None:
         ev = self.event
-        phases = self.phases
 
         distances = [ev.surface_distance_to(r) / 1000.0 for r in ev.receivers]
         labels = [f"{r.network}.{r.station}.{r.location}" for r in ev.receivers]
@@ -406,7 +398,8 @@ class EventStationMagnitudes(EventComponent):
     name = "Station Magnitudes"
 
     description = """
-Station magnitudes for each phase. Only shown if station magnitudes are available for the event.
+Station magnitudes for each phase. Only shown if station magnitudes are available
+for the event.
 """
 
     async def view(self, magnitudes: EventStationMagnitude) -> None:

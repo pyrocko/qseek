@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import defaultdict
+
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
@@ -10,12 +12,12 @@ from qseek.ui.state import get_tab_state
 from qseek.ui.utils import attach_plotly_navigate
 
 
-class SemblanceRate(Component):
-    name = "Semblance Rate"
+class EventRateSemblance(Component):
+    name = "Event Rate"
     icon = ""
     description = """
-Semblance of detected events over time. Size of markers corresponds
-to semblance value.
+Semblance of detected events over time. Color corresponds to event density, size of
+markers corresponds to semblance value.
 """
 
     async def view(self) -> None:
@@ -132,7 +134,10 @@ class StationCoverage(Component):
 
 class MigrationPlot(Component):
     name = "Migration Plot"
-    description = """Plot distance to center over time to visualize event migration. Size of markers corresponds to magnitude and color corresponds to depth."""
+    description = """
+Plot distance to octree center over time to visualize event migration. Size of markers
+corresponds to magnitude and color corresponds to depth (light = shallow, dark = deep).
+"""
 
     async def view(self) -> None:
         state = get_tab_state()
@@ -181,22 +186,18 @@ class MigrationPlot(Component):
 
 
 class DepthSection(Component):
-    @property
-    def name(self) -> str:
-        axis = "North-South" if self.direction == "north-south" else "East-West"
-        return f"Depth Section ({axis})"
+    name = "Depth Sections"
+    description = """
+Depth of detected events along profile line through the center.
+Color corresponds to time and size corresponds to semblance.
+"""
 
-    description = """Depth of detected events along profile line through the center. Color corresponds to time and size corresponds to magnitude."""
-
-    def __init__(self, direction: str = "north-south") -> None:
-        self.direction = direction
-
-    async def view(self) -> None:
+    async def view(self, direction: str = "north-south") -> None:
         state = get_tab_state()
         fig = go.Figure()
 
         fig.update_layout(
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            margin={"l": 0, "r": 55, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Distance to Center (km)",
             yaxis_title="Depth (m)",
@@ -208,7 +209,7 @@ class DepthSection(Component):
         async def update_plot():
             catalog = await state.get_filtered_catalog()
 
-            if self.direction == "north-south":
+            if direction == "north-south":
                 distances = catalog.north_shifts
             else:
                 distances = catalog.east_shifts
@@ -229,7 +230,19 @@ class DepthSection(Component):
                     hovertemplate=None,
                     marker={
                         "color": times_num,
-                        "colorscale": "Jet",
+                        "colorscale": "Turbo",
+                        "showscale": True,
+                        "colorbar": {
+                            "title": {
+                                "text": "Days",
+                                "font": {"size": 10},
+                            },
+                            "thickness": 8,
+                            "len": 0.8,
+                            "outlinewidth": 0,
+                            "tickfont": {"size": 9},
+                            "tickformat": ".0f",
+                        },
                         "size": catalog.semblances / catalog.semblances.max() * 15,
                         "line": {"width": 0},
                         "opacity": 0.3,
@@ -243,7 +256,9 @@ class DepthSection(Component):
 
 class NPicksDistribution(Component):
     name = "Picks per Event"
-    description = """Distribution of number of picks associated with detected events."""
+    description = """
+Distribution of number of picks associated with detected events.
+"""
 
     async def view(self) -> None:
         state = get_tab_state()
@@ -255,7 +270,7 @@ class NPicksDistribution(Component):
             xaxis_title="Number of Picks",
             yaxis_title="Number of Events",
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
+        plot = ui.plotly(fig).classes("w-full h-full")
         attach_plotly_navigate(plot)
 
         async def update_plot():
@@ -267,6 +282,8 @@ class NPicksDistribution(Component):
             x = np.arange(len(counts))
             y = counts
 
+            median = float(np.median(n_picks))
+
             plot.clear()
             fig.add_bar(
                 x=x,
@@ -276,6 +293,136 @@ class NPicksDistribution(Component):
                 hoverinfo="none",
                 hovertemplate=None,
             )
+            fig.add_vline(
+                x=median,
+                line={
+                    "dash": "dash",
+                    "color": "rgba(0,0,0,0.4)",
+                    "width": 1.5,
+                },
+                annotation={
+                    "text": f"Median:\n{median:.0f} Picks",
+                    "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
+                    "xanchor": "left",
+                    "yanchor": "top",
+                    "showarrow": False,
+                    "yref": "paper",
+                    "y": 0.98,
+                },
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class WadatiDiagram(Component):
+    name = "Wadati Diagram"
+    description = """
+Showing t<sub>P</sub> vs t<sub>S</sub>-t<sub>P</sub> arrival times and the apparent
+Vp/Vs ratio of detected events. The size of markers corresponds to semblance and color
+corresponds to event time.
+"""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="P Travel Time (s)",
+            yaxis_title="S-P Travel Time (s)",
+            legend={
+                "x": 0.02,
+                "y": 0.98,
+                "xanchor": "left",
+                "yanchor": "top",
+                "bgcolor": "rgba(255,255,255,0.75)",
+            },
+        )
+        plot = ui.plotly(fig).classes("w-full h-full")
+        attach_plotly_navigate(plot)
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+
+            arrivals = defaultdict(list)
+            event_times = []
+            event_semblances = []
+            event_uids = []
+
+            for ev in catalog.events:
+                event = ev.event
+                if not event.receivers:
+                    continue
+
+                travel_time_pairs = event.receivers.get_travel_time_pairs(
+                    origin_time=event.time
+                )
+                if len(travel_time_pairs) != 2:
+                    continue
+
+                for phase, arrival_times in travel_time_pairs.items():
+                    arrivals[phase].extend(arrival_times)
+                    n_travel_times = len(arrival_times)
+
+                event_times.extend([event.time.timestamp()] * n_travel_times)
+                event_semblances.extend([event.semblance] * n_travel_times)
+                event_uids.extend([event.uid] * n_travel_times)
+
+            p_key = next((ph for ph in arrivals if ph.endswith("P")), None)
+            s_key = next((ph for ph in arrivals if ph.endswith("S")), None)
+            if not p_key or not s_key:
+                return
+
+            p_arr = np.array(arrivals[p_key])
+            s_arr = np.array(arrivals[s_key])
+            sp_arr = s_arr - p_arr
+
+            plot.clear()
+            fig.add_trace(
+                go.Scattergl(
+                    x=p_arr,
+                    y=sp_arr,
+                    mode="markers",
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    customdata=event_uids,
+                    marker={
+                        "color": np.array(event_times),
+                        "colorscale": "Turbo",
+                        "showscale": False,
+                        "size": np.array(event_semblances) / max(event_semblances) * 15,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                    showlegend=False,
+                    name="Wadati Plot",
+                )
+            )
+
+            mask = np.isfinite(p_arr) & np.isfinite(sp_arr) & (p_arr > 0)
+            if mask.sum() > 1:
+                p_clean = p_arr[mask]
+                sp_clean = sp_arr[mask]
+                vp_vs_median = float(np.median(sp_clean / p_clean) + 1)
+                p_range = np.array([0.0, p_clean.max()])
+                fig.add_trace(
+                    go.Scatter(
+                        x=p_range,
+                        y=(vp_vs_median - 1) * p_range,
+                        mode="lines",
+                        name=f"Vp/Vs = {vp_vs_median:.2f}",
+                        line={
+                            "color": "rgba(200,50,50,0.8)",
+                            "dash": "dash",
+                            "width": 1.5,
+                        },
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
             plot.update()
 
         background_tasks.create(update_plot())

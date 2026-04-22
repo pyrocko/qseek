@@ -15,7 +15,7 @@ load_insights()
 
 from qseek.ui.manager import SourceManager  # noqa: E402
 
-ui.card.default_classes = "flex-1 min-w-md col-6 shadow-2"
+ui.card.default_classes = "shadow-2"
 
 
 def start_ui(uris: list[str], reload: bool = True) -> None:
