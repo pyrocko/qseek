@@ -390,17 +390,13 @@ corresponds to event time.
                         kde = await asyncio.to_thread(
                             gaussian_kde, pts, bw_method="scott"
                         )
-                    density = await asyncio.to_thread(kde, pts)
-                    point_density = np.empty(len(p_arr))
-                    point_density[:] = np.nan
-                    point_density = density
-                    order = np.argsort(point_density)
-                    idx = order
-                    p_arr = p_arr[idx]
-                    sp_arr = sp_arr[idx]
-                    point_density = point_density[idx]
-                    event_uids = [event_uids[i] for i in idx]
-                    pick_confidences = pick_confidences[idx]
+                    point_density = await asyncio.to_thread(kde, pts)
+                    order = await asyncio.to_thread(np.argsort, point_density)
+                    p_arr = p_arr[order]
+                    sp_arr = sp_arr[order]
+                    point_density = point_density[order]
+                    event_uids = [event_uids[i] for i in order]
+                    pick_confidences = pick_confidences[order]
                 except (ValueError, np.linalg.LinAlgError):
                     point_density = None
 
