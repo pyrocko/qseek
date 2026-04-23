@@ -4,21 +4,25 @@ from pathlib import Path
 
 from nicegui import app, core, ui
 
-from qseek.ui.layout import drawer, header
-from qseek.ui.pages.analysis import analysis_page
-from qseek.ui.pages.event import event_page
-from qseek.ui.pages.magnitudes import magnitudes_page
-from qseek.ui.pages.overview import overview_page
-from qseek.ui.state import TabState, get_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
-_LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
 load_insights()
 
-from qseek.ui.manager import SourceManager  # noqa: E402
+
+_LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
 
 
 def start_ui(uris: list[str], reload: bool = True) -> None:
+    from qseek.ui.layout import drawer, header
+    from qseek.ui.manager import SourceManager
+    from qseek.ui.pages.analysis import analysis_page
+    from qseek.ui.pages.event import event_page
+    from qseek.ui.pages.magnitudes import magnitudes_page
+    from qseek.ui.pages.network import network_page
+    from qseek.ui.pages.overview import overview_page
+    from qseek.ui.pages.station import station_page
+    from qseek.ui.state import TabState, get_tab_state
+
     app.add_static_files("/static", Path(__file__).parent / "static")
 
     manager = SourceManager()
@@ -74,7 +78,9 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
                         "/": overview_page,
                         "/magnitudes": magnitudes_page,
                         "/analysis": analysis_page,
+                        "/network": network_page,
                         "/event/{event_id}": event_page,
+                        "/station/{station_nsl}": station_page,
                     },
                     show_404=False,
                 )

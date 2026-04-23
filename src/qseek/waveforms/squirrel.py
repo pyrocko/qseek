@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal, Self
 
 from pydantic import (
-    DirectoryPath,
     Field,
     PositiveInt,
     PrivateAttr,
@@ -21,6 +20,7 @@ from pyrocko.squirrel import Squirrel
 
 from qseek.models.station import StationInventory
 from qseek.stats import Stats
+from qseek.types import DirectoryPath
 from qseek.utils import (
     NSL,
     QUEUE_SIZE,

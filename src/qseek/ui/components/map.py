@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import matplotlib.cm as cm
@@ -45,11 +46,12 @@ class OverviewMap(Component):
         await m.initialized()
 
         async def add_markers():
+            data = await asyncio.to_thread(json.dumps, marker_data)
             with m:
                 ui.run_javascript(
                     f"""
                 const map = getElement({m.id}).map;
-                const data = {json.dumps(marker_data)};
+                const data = {data};
                 const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
 
                 var group = L.featureGroup();
@@ -68,4 +70,47 @@ class OverviewMap(Component):
                 """,
                 )
 
+        async def add_stations():
+            search = await state.run.get_search()
+            station_data = [
+                {
+                    "lat": float(sta.effective_lat),
+                    "lon": float(sta.effective_lon),
+                    "label": sta.nsl.pretty,
+                    "elevation": sta.elevation,
+                    "depth": sta.depth,
+                }
+                for sta in search.stations
+            ]
+            data = await asyncio.to_thread(json.dumps, station_data)
+            station_svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="0.75">'
+                '<polygon points="8,0.5 14.5,11.75 1.5,11.75"'
+                ' fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
+                "</svg>"
+            )
+            with m:
+                ui.run_javascript(
+                    f"""
+                const map = getElement({m.id}).map;
+                const stations = {data};
+                const stationIcon = L.divIcon({{
+                    html: '{station_svg}',
+                    iconSize: [12, 12],
+                    iconAnchor: [8, 8],
+                    className: ''
+                }});
+                stations.forEach(function(s) {{
+                    var tip = '<b>' + s.label + '</b>'
+                        + '<br>Elevation: ' + s.elevation.toFixed(0) + ' m';
+                    if (s.depth > 0) tip += '<br>Depth: ' + s.depth.toFixed(0) + ' m';
+                    L.marker([s.lat, s.lon], {{icon: stationIcon}})
+                        .bindTooltip(tip, {{permanent: false}})
+                        .on('click', function() {{ window.location.href = '/station/' + s.label; }})
+                        .addTo(map);
+                }});
+                """,
+                )
+
         background_tasks.create(add_markers(), name="markers-map")
+        background_tasks.create(add_stations(), name="stations-map")

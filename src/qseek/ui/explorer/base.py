@@ -10,6 +10,7 @@ from nicegui import binding
 
 from qseek.models.catalog import EventCatalog
 from qseek.search import Search
+from qseek.types import allow_non_existing_paths
 
 
 class RunExplorer(Protocol):
@@ -57,9 +58,8 @@ class RunSource(Protocol):
         return self._catalog
 
     async def get_search(self) -> Search:
+        allow_non_existing_paths(True)
         if not self._search:
             search_file = await self.get_search_json()
-            self._search = Search.model_validate_json(
-                search_file.read_bytes(), context={"assume_validated": True}
-            )
+            self._search = Search.model_validate_json(search_file.read_bytes())
         return self._search

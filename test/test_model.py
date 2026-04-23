@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
-from pydantic import FilePath, ValidationError
+from pydantic import ValidationError
 
-from qseek.base import Model, allow_non_existing_paths
+from qseek.base import Model
+from qseek.types import FilePath, allow_non_existing_paths
 
 
 def test_model_non_existsing_paths() -> None:

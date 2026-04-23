@@ -6,9 +6,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
 
 import numpy as np
 from pydantic import (
-    DirectoryPath,
     Field,
-    FilePath,
     GetCoreSchemaHandler,
     PositiveFloat,
 )
@@ -18,6 +16,7 @@ from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
 from qseek.base import Model
+from qseek.types import DirectoryPath, FilePath
 from qseek.utils import _NSL, NSL
 
 if TYPE_CHECKING:

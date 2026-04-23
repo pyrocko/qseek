@@ -10,7 +10,6 @@ import numpy as np
 from obspy import Stream
 from pydantic import (
     Field,
-    FilePath,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
@@ -21,6 +20,7 @@ from scipy import signal
 from seisbench import logger as seisbench_logger
 
 from qseek.images.base import ImageFunction, ObservedArrival, PhaseName, WaveformImage
+from qseek.types import FilePath
 from qseek.utils import alog_call, to_datetime
 
 obspy_compat.plant()

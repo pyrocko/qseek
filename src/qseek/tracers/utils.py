@@ -10,7 +10,6 @@ import numpy as np
 from pydantic import (
     ConfigDict,
     Field,
-    FilePath,
     PrivateAttr,
     StringConstraints,
 )
@@ -22,6 +21,7 @@ from qseek.base import Model
 from qseek.models.location import Location, get_coordinates
 from qseek.models.station import StationList
 from qseek.octree import Node, get_node_coordinates
+from qseek.types import FilePath
 from qseek.utils import CACHE_DIR
 
 logger = logging.getLogger(__name__)

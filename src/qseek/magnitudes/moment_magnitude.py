@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Literal, NamedTuple
 
 import numpy as np
-from pydantic import DirectoryPath, Field, PositiveFloat, PrivateAttr
+from pydantic import Field, PositiveFloat, PrivateAttr
 from pyrocko import gf, io
 
 from qseek.magnitudes.base import (
@@ -21,6 +21,7 @@ from qseek.magnitudes.moment_magnitude_store import (
     PeakAmplitudesStore,
     PeakAmplitudeStoreCache,
 )
+from qseek.types import DirectoryPath
 from qseek.utils import (
     CACHE_DIR,
     NSL,

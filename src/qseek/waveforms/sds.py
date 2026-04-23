@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 from pydantic import (
-    DirectoryPath,
     Field,
     PositiveInt,
     PrivateAttr,
@@ -24,6 +23,7 @@ from pyrocko.io.mseed import iload
 from pyrocko.trace import degapper
 
 from qseek.stats import Stats, get_progress
+from qseek.types import DirectoryPath
 from qseek.utils import (
     NSL,
     QUEUE_SIZE,
