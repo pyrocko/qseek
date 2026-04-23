@@ -8,7 +8,6 @@ from typing import Annotated, Any, Literal, Self, Sequence
 
 import numpy as np
 from pydantic import (
-    BaseModel,
     ConfigDict,
     Field,
     FilePath,
@@ -19,6 +18,7 @@ from pyrocko import orthodrome as od
 from pyrocko.cake import LayeredModel, load_model
 from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
 
+from qseek.base import Model
 from qseek.models.location import Location, get_coordinates
 from qseek.models.station import StationList
 from qseek.octree import Node, get_node_coordinates
@@ -55,7 +55,7 @@ if not DEFAULT_VELOCITY_MODEL_FILE.exists():
     DEFAULT_VELOCITY_MODEL_FILE.write_text(DEFAULT_VELOCITY_MODEL)
 
 
-class LayeredEarthModel1D(BaseModel):
+class LayeredEarthModel1D(Model):
     filename: FilePath | None = Field(
         default=DEFAULT_VELOCITY_MODEL_FILE,
         description="Path to velocity model.",

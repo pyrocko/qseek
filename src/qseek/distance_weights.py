@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 import pyrocko.orthodrome as od
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, PrivateAttr
+from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 
+from qseek.base import Model
 from qseek.cache_lru import ArrayLRUCache
 from qseek.models.location import get_coordinates
 from qseek.models.station import StationList
@@ -58,7 +59,7 @@ def weights_gaussian(
     return weights
 
 
-class DistanceWeights(BaseModel):
+class DistanceWeights(Model):
     distance_taper: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
         description="Taper distance for the Gaussian weighting function"

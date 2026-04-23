@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr, StringConstraints
+from pydantic import Field, PrivateAttr, StringConstraints
 from pyrocko.trace import Trace, snuffle
 
+from qseek.base import Model
 from qseek.stats import Stats
 
 if TYPE_CHECKING:
@@ -94,7 +95,7 @@ class WaveformBatch:
         snuffle(self.traces)
 
 
-class WaveformProvider(BaseModel):
+class WaveformProvider(Model):
     provider: Literal["WaveformProvider"] = "WaveformProvider"
 
     channel_selector: (

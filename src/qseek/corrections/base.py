@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
-from pydantic import BaseModel
+from qseek.base import Model
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from qseek.utils import NSL, PhaseDescription
 
 
-class TravelTimeCorrections(BaseModel):
+class TravelTimeCorrections(Model):
     corrections: Literal["TravelTimeCorrections"] = "TravelTimeCorrections"
 
     @classmethod

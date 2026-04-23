@@ -14,7 +14,6 @@ from pydantic import (
     AliasChoices,
     BaseModel,
     ByteSize,
-    ConfigDict,
     Field,
     PositiveFloat,
     PrivateAttr,
@@ -23,6 +22,7 @@ from pydantic import (
 )
 from scipy import stats
 
+from qseek.base import Model
 from qseek.cache_lru import CACHES
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
@@ -235,10 +235,10 @@ class SearchProgress(BaseModel):
     time_progress: datetime | None = None
 
 
-class Search(BaseModel):
+class Search(Model):
     project_dir: Path = Path(".")
     stations: StationInventory = Field(
-        default=StationInventory(),
+        default_factory=StationInventory,
         description="Station inventory from StationXML or Pyrocko Station YAML.",
     )
     data_provider: WaveformProviderType = Field(
@@ -349,7 +349,7 @@ class Search(BaseModel):
     )
     created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
-    _progress: SearchProgress = PrivateAttr(SearchProgress())
+    _progress: SearchProgress = PrivateAttr(default_factory=SearchProgress)
 
     _last_detection_export: int = 0
 
@@ -363,8 +363,6 @@ class Search(BaseModel):
 
     # Signals
     _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
-
-    model_config = ConfigDict(extra="forbid")
 
     @field_validator("station_corrections", mode="before")
     @classmethod

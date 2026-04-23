@@ -4,10 +4,23 @@ from nicegui import ui
 
 from qseek.ui.components.catalog_filter import catalog_filter_dialog
 from qseek.ui.components.run_dialog import run_selection_dialog
+from qseek.ui.components.search import event_search
 from qseek.ui.manager import SourceManager
 from qseek.ui.state import get_tab_state
 
 _LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
+
+
+async def header() -> None:
+    with (
+        ui.header()
+        .classes("justify-center items-center px-4 gap-1 bg-white/30 backdrop-blur-sm")
+        .props("bordered"),
+        ui.row().classes("w-full").style("max-width: 1290px"),
+    ):
+        ui.space()
+        await event_search()
+        ui.space()
 
 
 def _drawer_button(name: str, icon: str, link: str) -> None:
@@ -24,16 +37,17 @@ def drawer(manager: SourceManager) -> None:
     with (
         ui.left_drawer(top_corner=True, bottom_corner=True)
         .classes("w-40")
-        .style("background-color: rgb(54, 64, 87)"),
+        .style("background-color: #1a2a3f")
+        .props("elevated"),
     ):
         with (
             ui.element("a")
             .props(
                 "href='https://pyrocko.github.io/qseek/' target='_blank' rel='noopener'"
             )
-            .classes("p-2 pb-4")
+            .classes("p-2 pb-2")
         ):
-            ui.html(_LOGO_SVG, sanitize=False).classes("w-24")
+            ui.html(_LOGO_SVG, sanitize=False).classes("w-32")
 
         with ui.list().classes("w-full"):
             _drawer_button("Overview", "dashboard", "/")

@@ -6,11 +6,6 @@ from qseek.models.detection import EventDetection
 from qseek.ui.explorer import RunSource
 
 
-class Page:
-    async def render(self) -> None:
-        raise NotImplementedError
-
-
 class Component:
     name: str = "Component"
     description: str = ""

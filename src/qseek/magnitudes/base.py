@@ -7,6 +7,7 @@ import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko.trace import Trace
 
+from qseek.base import Model
 from qseek.utils import NSL
 
 if TYPE_CHECKING:
@@ -70,7 +71,7 @@ class EventStationMagnitude(BaseModel):
         }
 
 
-class EventMagnitudeCalculator(BaseModel):
+class EventMagnitudeCalculator(Model):
     magnitude: Literal["MagnitudeCalculator"] = "MagnitudeCalculator"
 
     @classmethod

@@ -4,14 +4,15 @@ from pathlib import Path
 
 from nicegui import app, core, ui
 
-from qseek.ui.components.header import header
-from qseek.ui.drawer import drawer
-from qseek.ui.pages.event import EventPage
-from qseek.ui.pages.magnitudes import MagnitudesPage
-from qseek.ui.pages.overview import OverviewPage
+from qseek.ui.layout import drawer, header
+from qseek.ui.pages.analysis import analysis_page
+from qseek.ui.pages.event import event_page
+from qseek.ui.pages.magnitudes import magnitudes_page
+from qseek.ui.pages.overview import overview_page
 from qseek.ui.state import TabState, get_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
+_LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
 load_insights()
 
 from qseek.ui.manager import SourceManager  # noqa: E402
@@ -53,20 +54,27 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
             .classes("w-full items-stretch mx-auto")
             .style("max-width: 1290px; min-height: 85vh")
         ):
-            with ui.column().classes(
-                "flex-1 gap-3 items-center justify-center text-center"
-                " text-lg opacity-60"
-            ) as column:
-                ui.spinner("audio", size="lg", color="darkgray")
-                ui.label().bind_text_from(state, "loading")
+            with (
+                ui.column().classes(
+                    "flex-1 gap-3 items-center justify-center text-center text-lg"
+                ) as column,
+                ui.card()
+                .classes("rounded-lg shadow-2 items-center justify-center p-8")
+                .style("background-color: #1a2a3f"),
+            ):
+                ui.html(_LOGO_SVG, sanitize=False).classes("w-32")
+                ui.label().bind_text_from(state, "loading").classes(
+                    "text-lg font-medium mt-2 text-white"
+                )
                 column.bind_visibility_from(state, "loading")
 
             sub_pages = (
                 ui.sub_pages(
                     {
-                        "/": OverviewPage().render,
-                        "/magnitudes": MagnitudesPage().render,
-                        "/event/{event_id}": EventPage().render,
+                        "/": overview_page,
+                        "/magnitudes": magnitudes_page,
+                        "/analysis": analysis_page,
+                        "/event/{event_id}": event_page,
                     },
                     show_404=False,
                 )

@@ -154,7 +154,7 @@ corresponds to magnitude and color corresponds to depth (light = shallow, dark =
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Time",
-            yaxis_title="Distance to Center (km)",
+            yaxis_title="Distance to Center (m)",
         )
 
         plot = ui.plotly(fig).classes("w-full h-64")
@@ -206,7 +206,7 @@ Color corresponds to time and size corresponds to semblance.
         fig.update_layout(
             margin={"l": 0, "r": 55, "t": 0, "b": 0},
             template="plotly_white",
-            xaxis_title="Distance to Center (km)",
+            xaxis_title="Distance to Center (m)",
             yaxis_title="Depth (m)",
             yaxis={"autorange": "reversed"},
         )

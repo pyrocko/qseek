@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
 
 import numpy as np
 from pydantic import (
-    BaseModel,
     DirectoryPath,
     Field,
     FilePath,
@@ -18,6 +17,7 @@ from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
 
+from qseek.base import Model
 from qseek.utils import _NSL, NSL
 
 if TYPE_CHECKING:
@@ -101,24 +101,27 @@ class Station(Location):
         return hash((super().__hash__(), self.nsl))
 
 
-class StationInventory(BaseModel):
+class StationInventory(Model):
     pyrocko_station_yamls: list[FilePath] = Field(
-        default=[],
+        default_factory=list,
         description="List of [Pyrocko station YAML]"
         "(https://pyrocko.org/docs/current/formats/yaml.html) files.",
     )
     station_xmls: list[FilePath | DirectoryPath] = Field(
-        default=[],
+        default_factory=list,
         description="List of StationXML files or "
         "directories containing StationXML (.xml) files.",
     )
 
     blacklist: Blacklist = Field(
-        default=Blacklist(),
+        default_factory=Blacklist,
         description="Blacklist stations and exclude from detecion. "
         "Format is `['NET.STA.LOC', ...]`.",
     )
-    stations: list[Station] = []
+    stations: list[Station] = Field(
+        default_factory=list,
+        description="List of stations in the inventory.",
+    )
 
     max_distance: PositiveFloat | None = Field(
         default=None,

@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Sequence, TypeVar
 
 import numpy as np
-from pydantic import BaseModel
 
+from qseek.base import Model
 from qseek.models.location import Location
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ class ModelledArrival:
     tracer: str = ""
 
 
-class RayTracer(BaseModel):
+class RayTracer(Model):
     tracer: Literal["RayTracer"] = "RayTracer"
 
     @classmethod
