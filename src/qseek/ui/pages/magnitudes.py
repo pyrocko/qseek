@@ -25,14 +25,28 @@ class MagnitudesPage(Page):
             ).classes("text-grey-6 text-body2")
             return
 
-        with ui.row().classes("items-center gap-4 w-full"):
-            await magnitude_components.MagnitudeRate().render()
+        with ui.row().classes("w-full flex-1 items-stretch"):
+            with ui.card().classes("col-12"):
+                rate = magnitude_components.MagnitudeRate()
+                rate.header()
+                await rate.view()
 
-        with ui.row().classes("items-start gap-4 w-full"):
-            with ui.column().classes("w-[calc(50%-0.5rem)]"):
-                await magnitude_components.MagnitudeFrequency().render()
-            with ui.column().classes("w-[calc(50%-0.5rem)]"):
-                await magnitude_components.MagnitudeSemblance().render()
-        with ui.row().classes("items-start gap-4 w-full"):
-            await magnitude_components.StationMagnitudesOverStation().render()
-            await magnitude_components.StationMagnitudeOverDistance().render()
+            with ui.card().classes("col-12 col-md"):
+                freq = magnitude_components.MagnitudeFrequency()
+                freq.header()
+                await freq.view()
+
+            with ui.card().classes("col-12 col-md"):
+                semblance = magnitude_components.MagnitudeSemblance()
+                semblance.header()
+                await semblance.view()
+
+            with ui.card().classes("col-12 col-md"):
+                over_station = magnitude_components.StationMagnitudesOverStation()
+                over_station.header()
+                await over_station.view()
+
+            with ui.card().classes("col-12 col-md"):
+                over_distance = magnitude_components.StationMagnitudeOverDistance()
+                over_distance.header()
+                await over_distance.view()

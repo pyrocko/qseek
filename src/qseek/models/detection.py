@@ -382,7 +382,7 @@ class EventReceivers(BaseModel):
         If a receiver has only one phase, it is set to None.
 
         Returns:
-            dict[PhaseDescription, list[datetime]]: A dictionary with phase descriptions as keys and lists of observed arrival times as values.
+            dict[PhaseDescription, list[float]]: A dictionary with phase descriptions as keys and lists of observed travel time differences (in seconds) as values.
         """
         origin_timestamp = origin_time.timestamp()
         arrival_time_pairs = defaultdict(list)

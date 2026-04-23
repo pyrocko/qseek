@@ -60,7 +60,7 @@ class OverviewPage(Page):
                 icon="schedule",
             ).props("outline").classes("text-xs font-mono text-grey-9")
 
-        with ui.row().classes("items-center gap-4 w-full"):
+        with ui.row().classes("w-full items-stretch"):
             stat_card(
                 "Total Events",
                 str(catalog.n_events),
@@ -98,7 +98,7 @@ class OverviewPage(Page):
                     tooltip="Maximum magnitude among all detected events.",
                 )
 
-        with ui.row().classes("w-full items-center"):
+        with ui.row().classes("w-full flex-1 items-stretch"):
             with ui.card().classes("col-12"):
                 overview = OverviewMap()
                 overview.header()
@@ -117,12 +117,12 @@ class OverviewPage(Page):
                 await depth_section.view(direction="north-south")
                 await depth_section.view(direction="east-west")
 
-            with ui.card().classes("col-12 col-md-[49%]"):
+            with ui.card().classes("col-12 col-md"):
                 wadati_plot = WadatiDiagram()
                 wadati_plot.header()
                 await wadati_plot.view()
 
-            with ui.card().classes("col-12 col-md-[49%]"):
+            with ui.card().classes("col-12 col-md"):
                 npicks_dist = NPicksDistribution()
                 npicks_dist.header()
                 await npicks_dist.view()

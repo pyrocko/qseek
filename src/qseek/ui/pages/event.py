@@ -11,6 +11,7 @@ from qseek.ui.components.event import (
     EventStationMagnitudes,
     ObservationsAzimuthsPlot,
     TravelTimeResidualPlot,
+    WadatiDiagramEvent,
 )
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
@@ -39,7 +40,7 @@ class EventPage(Page):
         ui.separator().classes("mb-4")
 
         # Stat cards
-        with ui.row().classes("w-full flex-wrap gap-2 mb-5"):
+        with ui.row().classes("w-full items-stretch"):
             mag = ev.magnitude
             if (
                 mag is not None
@@ -119,17 +120,30 @@ class EventPage(Page):
                 "a better fit to the velocity model. Note that Qseek is using the "
                 "full annotation information and is not working on picked arrival times",
             )
-        with ui.row().classes("w-full flex-wrap gap-2 mb-5"):
-            with ui.card().classes("w-full shadow-2 gap-2"):
-                await EventMap(event.event).view()
+        phases = list(ev.receivers.get_available_phases())
 
-            phases = list(ev.receivers.get_available_phases())
+        with ui.row().classes("w-full flex-1 items-stretch"):
+            with ui.card().classes("col-12"):
+                event_map = EventMap(event.event)
+                event_map.header()
+                await event_map.view()
+            with ui.card().classes("col-12 col-md"):
+                wadati = WadatiDiagramEvent(event.event)
+                wadati.header()
+                await wadati.view()
 
-            with ui.card().classes("w-full flex-wrap gap-2"):
-                await TravelTimeResidualPlot(event.event).view(phases)
-            with ui.card().classes("w-full flex-wrap gap-2"):
-                await ObservationsAzimuthsPlot(event.event).view(phases)
+            with ui.card().classes("col-12 col-md"):
+                tt_residual = TravelTimeResidualPlot(event.event)
+                tt_residual.header()
+                await tt_residual.view(phases)
+
+            with ui.card().classes("col-12"):
+                obs_azimuth = ObservationsAzimuthsPlot(event.event)
+                obs_azimuth.header()
+                await obs_azimuth.view(phases)
 
             for ev_mag in ev.magnitudes:
-                with ui.card().classes("w-full flex-wrap gap-2"):
-                    await EventStationMagnitudes(ev).view(ev_mag)
+                with ui.card().classes("col-12"):
+                    sta_mag = EventStationMagnitudes(ev)
+                    sta_mag.header()
+                    await sta_mag.view(ev_mag)

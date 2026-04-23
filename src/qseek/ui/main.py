@@ -15,8 +15,6 @@ load_insights()
 
 from qseek.ui.manager import SourceManager  # noqa: E402
 
-ui.card.default_classes = "shadow-2"
-
 
 def start_ui(uris: list[str], reload: bool = True) -> None:
     app.add_static_files("/static", Path(__file__).parent / "static")
@@ -47,16 +45,17 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         state = get_tab_state()
 
         await Header().render(manager)
-
-        with ui.row().classes("w-full").style("max-width: 1290px").classes("mx-auto"):
+        with (
+            ui.row()
+            .classes("w-full items-stretch mx-auto")
+            .style("max-width: 1290px; min-height: 85vh")
+        ):
             with ui.column().classes(
-                "gap-3 w-full items-center justify-center text-center"
-                " text-lg pt-40 pb-40 opacity-60"
+                "flex-1 gap-3 items-center justify-center text-center"
+                " text-lg opacity-60"
             ) as column:
-                ui.spinner("audio", size="lg", color="gray")
-                ui.label().bind_text_from(
-                    state, "run_name", backward=lambda n: f"Loading run {n}..."
-                )
+                ui.spinner("audio", size="lg", color="darkgray")
+                ui.label().bind_text_from(state, "loading")
                 column.bind_visibility_from(state, "loading")
 
             sub_pages = (
@@ -85,7 +84,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
             )
 
         async def on_run_changed():
-            ui.navigate.to("/")
+            # ui.navigate.to("/")
             sub_pages.refresh()
 
         state.filtered_catalog.updated.subscribe(on_run_changed)

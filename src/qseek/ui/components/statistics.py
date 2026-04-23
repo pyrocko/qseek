@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from collections import defaultdict
+import asyncio
 
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
+from plotly.subplots import make_subplots
 from scipy.stats import gaussian_kde
 
+from qseek.ui.analysis.vpvs import PSCollection
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import attach_plotly_navigate
+from qseek.utils import async_weighted_median
 
 
 class EventRateSemblance(Component):
@@ -23,27 +26,22 @@ markers corresponds to semblance value.
     async def view(self) -> None:
         state = get_tab_state()
 
-        fig = go.Figure()
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            shared_xaxes=True,
+            row_heights=[0.72, 0.28],
+            vertical_spacing=0.04,
+        )
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
-            xaxis_title="Time",
-            yaxis_title="Semblance",
-            legend={
-                "x": 0.02,
-                "y": 0.98,
-                "xanchor": "left",
-                "yanchor": "top",
-                "bgcolor": "rgba(255,255,255,0.75)",
-            },
-            yaxis2={
-                "title": "Cumulative Semblance",
-                "overlaying": "y",
-                "side": "right",
-                "showgrid": False,
-            },
+            showlegend=False,
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
+        fig.update_yaxes(title_text="Semblance", row=1)
+        fig.update_yaxes(title_text="N Events", row=2)
+        fig.update_xaxes(title_text="Time", row=2)
+        plot = ui.plotly(fig).classes("w-full h-80")
         attach_plotly_navigate(plot)
 
         async def update_plot():
@@ -60,7 +58,6 @@ markers corresponds to semblance value.
 
             time_order = np.argsort(times)
             times_sorted = times[time_order]
-            semblances_sorted = semblances[time_order]
 
             point_density = None
             try:
@@ -104,21 +101,31 @@ markers corresponds to semblance value.
                         "line": {"width": 0},
                         "opacity": 0.3,
                     },
-                    # hovertemplate="Time: %{x}<br>Semblance: %{y:.3f}<extra></extra>",
-                )
+                ),
+                row=1,
+                col=1,
             )
-            cumulative_semblance = np.cumsum(semblances_sorted)
+            cumulative_events = np.arange(1, len(times_sorted) + 1)
+            time_numeric_sorted = np.array(
+                [t.timestamp() for t in times_sorted], dtype=float
+            )
             fig.add_trace(
                 go.Scattergl(
                     x=times_sorted,
-                    y=cumulative_semblance,
-                    mode="lines",
-                    name="Cumulative Semblance",
+                    y=cumulative_events,
+                    mode="markers",
                     hoverinfo="none",
                     hovertemplate=None,
-                    line={"color": "rgba(0,0,0,0.7)", "dash": "solid", "width": 3},
-                    yaxis="y2",
-                )
+                    marker={
+                        "color": time_numeric_sorted,
+                        "colorscale": "Jet",
+                        "showscale": False,
+                        "size": 4,
+                        "line": {"width": 0},
+                    },
+                ),
+                row=2,
+                col=1,
             )
             plot.update()
 
@@ -201,6 +208,7 @@ Color corresponds to time and size corresponds to semblance.
             template="plotly_white",
             xaxis_title="Distance to Center (km)",
             yaxis_title="Depth (m)",
+            yaxis={"autorange": "reversed"},
         )
 
         plot = ui.plotly(fig).classes("w-full h-64")
@@ -222,7 +230,7 @@ Color corresponds to time and size corresponds to semblance.
             fig.add_trace(
                 go.Scattergl(
                     x=distances,
-                    y=-catalog.depths,
+                    y=catalog.depths,
                     mode="markers",
                     name=self.name,
                     customdata=catalog.uids,
@@ -332,6 +340,8 @@ corresponds to event time.
             template="plotly_white",
             xaxis_title="P Travel Time (s)",
             yaxis_title="S-P Travel Time (s)",
+            xaxis={"rangemode": "nonnegative"},
+            yaxis={"scaleanchor": "x", "scaleratio": 1, "rangemode": "nonnegative"},
             legend={
                 "x": 0.02,
                 "y": 0.98,
@@ -346,38 +356,53 @@ corresponds to event time.
         async def update_plot():
             catalog = await state.get_filtered_catalog()
 
-            arrivals = defaultdict(list)
-            event_times = []
-            event_semblances = []
-            event_uids = []
+            ps_collection = PSCollection()
 
             for ev in catalog.events:
-                event = ev.event
-                if not event.receivers:
-                    continue
+                ps_collection.add_event(ev.event)
 
-                travel_time_pairs = event.receivers.get_travel_time_pairs(
-                    origin_time=event.time
-                )
-                if len(travel_time_pairs) != 2:
-                    continue
+            p_arr = ps_collection.get_travel_times("P")
+            s_arr = ps_collection.get_travel_times("S")
+            event_uids = [tt.event.uid for tt in ps_collection.travel_times]
+            pick_confidences = np.min(
+                [
+                    ps_collection.get_confidences("P"),
+                    ps_collection.get_confidences("S"),
+                ],
+                axis=0,
+            )
 
-                for phase, arrival_times in travel_time_pairs.items():
-                    arrivals[phase].extend(arrival_times)
-                    n_travel_times = len(arrival_times)
-
-                event_times.extend([event.time.timestamp()] * n_travel_times)
-                event_semblances.extend([event.semblance] * n_travel_times)
-                event_uids.extend([event.uid] * n_travel_times)
-
-            p_key = next((ph for ph in arrivals if ph.endswith("P")), None)
-            s_key = next((ph for ph in arrivals if ph.endswith("S")), None)
-            if not p_key or not s_key:
-                return
-
-            p_arr = np.array(arrivals[p_key])
-            s_arr = np.array(arrivals[s_key])
             sp_arr = s_arr - p_arr
+
+            point_density = None
+            n_picks = s_arr.size
+            if n_picks >= 3:
+                try:
+                    pts = np.vstack([p_arr, sp_arr])
+                    max_samples = 5_000
+                    if n_picks > max_samples:
+                        rng = np.random.default_rng(0)
+                        sample_idx = rng.choice(n_picks, max_samples, replace=False)
+                        kde = await asyncio.to_thread(
+                            gaussian_kde, pts[:, sample_idx], bw_method="scott"
+                        )
+                    else:
+                        kde = await asyncio.to_thread(
+                            gaussian_kde, pts, bw_method="scott"
+                        )
+                    density = await asyncio.to_thread(kde, pts)
+                    point_density = np.empty(len(p_arr))
+                    point_density[:] = np.nan
+                    point_density = density
+                    order = np.argsort(point_density)
+                    idx = order
+                    p_arr = p_arr[idx]
+                    sp_arr = sp_arr[idx]
+                    point_density = point_density[idx]
+                    event_uids = [event_uids[i] for i in idx]
+                    pick_confidences = pick_confidences[idx]
+                except (ValueError, np.linalg.LinAlgError):
+                    point_density = None
 
             plot.clear()
             fig.add_trace(
@@ -389,12 +414,14 @@ corresponds to event time.
                     hovertemplate=None,
                     customdata=event_uids,
                     marker={
-                        "color": np.array(event_times),
-                        "colorscale": "Turbo",
+                        "color": point_density
+                        if point_density is not None
+                        else "black",
+                        "colorscale": "viridis",
                         "showscale": False,
-                        "size": np.array(event_semblances) / max(event_semblances) * 15,
+                        "size": pick_confidences / pick_confidences.max() * 10,
                         "line": {"width": 0},
-                        "opacity": 0.3,
+                        "opacity": 0.1,
                     },
                     showlegend=False,
                     name="Wadati Plot",
@@ -405,10 +432,14 @@ corresponds to event time.
             if mask.sum() > 1:
                 p_clean = p_arr[mask]
                 sp_clean = sp_arr[mask]
-                vp_vs_median = float(np.median(sp_clean / p_clean) + 1)
+                median = await async_weighted_median(
+                    sp_clean / p_clean,
+                    weights=pick_confidences[mask],
+                )
+                vp_vs_median = float(median + 1)
                 p_range = np.array([0.0, p_clean.max()])
                 fig.add_trace(
-                    go.Scatter(
+                    go.Scattergl(
                         x=p_range,
                         y=(vp_vs_median - 1) * p_range,
                         mode="lines",

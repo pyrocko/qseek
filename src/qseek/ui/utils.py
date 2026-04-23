@@ -56,7 +56,7 @@ def stat_card(
         tooltip: Optional tooltip text to display when hovering over the info icon.
     """
     with (
-        ui.card().classes("flex-1 min-w-40 shadow-2"),
+        ui.card().classes("flex-1 min-w-40"),
         ui.column().classes("p-1 pb-0 gap-1 w-full"),
     ):
         with ui.row().classes("items-center gap-2 w-full"):

@@ -168,8 +168,9 @@ def catalog_filter_dialog():
             with ui.row().classes("gap-2"):
 
                 def apply():
-                    catalog._refresh_event_data()
-                    dialog.close()
+                    with state.loading_message("Applying filters..."):
+                        dialog.close()
+                        catalog.refresh_event_data()
 
                 ui.button("Reset", on_click=catalog.reset_filters).props(
                     "flat dense color=grey-7"

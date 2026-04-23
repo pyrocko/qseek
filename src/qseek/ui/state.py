@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TypedDict
 from uuid import UUID
@@ -64,12 +65,16 @@ class FilteredCatalog:
         self.updated = Event()
 
     async def set_run(self, run: RunSource):
-        self._catalog = await run.get_catalog()
-        self._all_events = [EventMinimal.from_event(ev) for ev in self._catalog.events]
-        self.reset_filters()
-        self._refresh_event_data()
+        state = get_tab_state()
+        with state.loading_message(f"Loading run {run.name}..."):
+            self._catalog = await run.get_catalog()
+            self._all_events = [
+                EventMinimal.from_event(ev) for ev in self._catalog.events
+            ]
+            self.reset_filters()
+            self.refresh_event_data()
 
-    def _refresh_event_data(self):
+    def refresh_event_data(self):
         if self._catalog is None:
             raise RuntimeError("No catalog set for filtering")
 
@@ -167,7 +172,7 @@ class FilteredCatalog:
 class TabState:
     run: RunSource
     run_name: str = binding.BindableProperty()
-    loading: bool = binding.BindableProperty()
+    loading: bool | str = binding.BindableProperty()
 
     filtered_catalog: FilteredCatalog
 
@@ -177,10 +182,9 @@ class TabState:
         if self._default_run is None:
             raise RuntimeError("No default run set")
 
-        self.loading = True
-
         self.run = self._default_run
         self.run_name = self._default_run.name
+        self.loading = False
 
         self.filtered_catalog = FilteredCatalog()
 
@@ -190,14 +194,18 @@ class TabState:
     async def set_run(self, run: RunSource):
         self.run = run
         self.run_name = run.name
-        self.loading = True
         await self.filtered_catalog.set_run(run)
         self.run_changed.emit()
         self.loading = False
 
+    @contextmanager
+    def loading_message(self, message: str):
+        self.loading = message
+        yield
+        self.loading = False
+
     async def get_filtered_catalog(self) -> FilteredCatalog:
         if self.filtered_catalog._catalog is None:
-            self.loading = True
             await self.filtered_catalog.set_run(self.run)
             self.loading = False
         return self.filtered_catalog

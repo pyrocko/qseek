@@ -12,7 +12,7 @@ KM = 1e3
 
 
 class ObservationsAzimuthsPlot(EventComponent):
-    name = "Station Observations"
+    name = "Azimuthal Observations"
     description = """
 Azimuthal plot of station observations for each phase. Colored diamonds = observed
 (color is delay), size is pick confidence. No modelled arrivals shown here since
@@ -144,7 +144,7 @@ azimuths are not meaningful without a reference event.
             margin={"l": 60, "r": 40, "t": 30, "b": 60},
             template="plotly_white",
         )
-        self.header()
+
         ui.plotly(fig).classes("w-full h-96")
 
 
@@ -291,7 +291,200 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
             margin={"l": 60, "r": 40, "t": 40, "b": 40},
             template="plotly_white",
         )
-        self.header()
+        ui.plotly(fig).classes("w-full h-80")
+
+
+class WadatiDiagramEvent(EventComponent):
+    name = "Wadati Diagram"
+    description = """
+P travel time vs. S-P travel time per station. The slope gives
+<i>V<sub>P</sub>/V<sub>S</sub></i>. Filled markers = both picks observed
+(size and opacity scale with the weaker pick's confidence; color encodes the P residual).
+Open grey markers = modelled arrivals for reference.
+"""
+
+    async def view(self) -> None:
+        ev = self.event
+        origin_ts = ev.time.timestamp()
+
+        model_stations: list[dict] = []
+        obs_stations: list[dict] = []
+
+        for rcv in ev.receivers:
+            p_key = next((ph for ph in rcv.phase_arrivals if ph.endswith("P")), None)
+            s_key = next((ph for ph in rcv.phase_arrivals if ph.endswith("S")), None)
+            if p_key is None or s_key is None:
+                continue
+
+            p_arr = rcv.phase_arrivals[p_key]
+            s_arr = rcv.phase_arrivals[s_key]
+            tp_model = (p_arr.model.time - ev.time).total_seconds()
+            ts_model = (s_arr.model.time - ev.time).total_seconds()
+            label = f"{rcv.network}.{rcv.station}.{rcv.location}"
+            dist_km = ev.surface_distance_to(rcv) / 1000.0
+
+            model_stations.append(
+                {
+                    "label": label,
+                    "dist_km": dist_km,
+                    "tp": tp_model,
+                    "sp": ts_model - tp_model,
+                }
+            )
+
+            if p_arr.observed is not None and s_arr.observed is not None:
+                tp_obs = p_arr.observed.time.timestamp() - origin_ts
+                ts_obs = s_arr.observed.time.timestamp() - origin_ts
+                p_conf = p_arr.observed.detection_value
+                s_conf = s_arr.observed.detection_value
+                p_delay = (
+                    p_arr.traveltime_delay.total_seconds()
+                    if p_arr.traveltime_delay
+                    else 0.0
+                )
+                obs_stations.append(
+                    {
+                        "label": label,
+                        "dist_km": dist_km,
+                        "tp": tp_obs,
+                        "sp": ts_obs - tp_obs,
+                        "p_conf": p_conf,
+                        "s_conf": s_conf,
+                        "p_delay": p_delay,
+                        "min_conf": min(p_conf, s_conf),
+                    }
+                )
+
+        fig = go.Figure()
+
+        # Modelled arrivals — open grey markers for reference
+        if model_stations:
+            fig.add_trace(
+                go.Scattergl(
+                    x=[d["tp"] for d in model_stations],
+                    y=[d["sp"] for d in model_stations],
+                    mode="markers",
+                    name="Modelled",
+                    opacity=0.45,
+                    marker={
+                        "symbol": "circle-open",
+                        "size": 7,
+                        "color": "grey",
+                        "line": {"width": 1.5, "color": "grey"},
+                    },
+                    hovertext=[
+                        f"<b>{d['label']}</b> ({d['dist_km']:.1f} km)<br>"
+                        f"tP (model): {d['tp']:.2f} s<br>"
+                        f"S-P (model): {d['sp']:.2f} s"
+                        for d in model_stations
+                    ],
+                    hovertemplate="%{hovertext}<extra></extra>",
+                )
+            )
+
+        # Modelled Vp/Vs reference line
+        if len(model_stations) > 1:
+            tp_m = np.array([d["tp"] for d in model_stations])
+            sp_m = np.array([d["sp"] for d in model_stations])
+            mask_m = (tp_m > 0) & np.isfinite(tp_m) & np.isfinite(sp_m)
+            if mask_m.sum() > 1:
+                ratio_m = float(np.median(sp_m[mask_m] / tp_m[mask_m]))
+                p_range_m = np.array([0.0, tp_m[mask_m].max()])
+                fig.add_trace(
+                    go.Scattergl(
+                        x=p_range_m,
+                        y=ratio_m * p_range_m,
+                        mode="lines",
+                        name=f"Model Vp/Vs = {ratio_m + 1:.2f}",
+                        line={
+                            "color": "darkred",
+                            "dash": "dash",
+                            "width": 1.5,
+                        },
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
+        # Observed arrivals — filled, colored by P residual
+        if obs_stations:
+            max_conf = max(d["min_conf"] for d in obs_stations) or 1.0
+            max_delay = max(abs(d["p_delay"]) for d in obs_stations) or 1.0
+
+            fig.add_trace(
+                go.Scattergl(
+                    x=[d["tp"] for d in obs_stations],
+                    y=[d["sp"] for d in obs_stations],
+                    mode="markers",
+                    name="Observed",
+                    marker={
+                        "symbol": "circle",
+                        "size": [
+                            max(d["min_conf"] / max_conf * 14, 5) for d in obs_stations
+                        ],
+                        "color": [d["p_delay"] for d in obs_stations],
+                        "colorscale": "RdBu_r",
+                        "cmin": -max_delay,
+                        "cmax": max_delay,
+                        "showscale": False,
+                        "opacity": [
+                            max(d["min_conf"] / max_conf * 0.7 + 0.3, 0.3)
+                            for d in obs_stations
+                        ],
+                        "line": {"color": "black", "width": 1.2},
+                    },
+                    hovertext=[
+                        f"<b>{d['label']}</b> ({d['dist_km']:.1f} km)<br>"
+                        f"tP: {d['tp']:.2f} s  |  S-P: {d['sp']:.2f} s<br>"
+                        f"P residual: {d['p_delay']:+.3f} s<br>"
+                        f"Confidence: P={d['p_conf']:.2f}, S={d['s_conf']:.2f}"
+                        for d in obs_stations
+                    ],
+                    hovertemplate="%{hovertext}<extra></extra>",
+                )
+            )
+
+            # Vp/Vs from observed (weighted median)
+            tp_o = np.array([d["tp"] for d in obs_stations])
+            sp_o = np.array([d["sp"] for d in obs_stations])
+            mask_o = (tp_o > 0) & np.isfinite(tp_o) & np.isfinite(sp_o)
+            if mask_o.sum() > 1:
+                ratio_o = float(np.median(sp_o[mask_o] / tp_o[mask_o]))
+                p_range_o = np.array([0.0, tp_o[mask_o].max()])
+                fig.add_trace(
+                    go.Scattergl(
+                        x=p_range_o,
+                        y=ratio_o * p_range_o,
+                        mode="lines",
+                        name=f"Obs. Vp/Vs = {ratio_o + 1:.2f}",
+                        line={
+                            "color": "black",
+                            "dash": "dash",
+                            "width": 1.5,
+                        },
+                        hoverinfo="none",
+                        hovertemplate=None,
+                    )
+                )
+
+        fig.update_layout(
+            xaxis={"title": "P Travel Time (s)", "rangemode": "nonnegative"},
+            yaxis={
+                "title": "S-P Travel Time (s)",
+                "rangemode": "nonnegative",
+                "scaleanchor": "x",
+                "scaleratio": 1,
+            },
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "left",
+                "x": 0,
+            },
+            margin={"l": 60, "r": 40, "t": 40, "b": 90},
+            template="plotly_white",
+        )
         ui.plotly(fig).classes("w-full h-80")
 
 
@@ -304,8 +497,7 @@ Map showing event location and online stations contributing to the location.
     async def view(self) -> None:
         ev = self.event
 
-        self.header()
-        m = ui.leaflet(center=(ev.effective_lat, ev.effective_lon), zoom=9).classes(
+        m = ui.leaflet(center=(ev.effective_lat, ev.effective_lon), zoom=12).classes(
             "w-full h-96 rounded-lg shadow"
         )
         m.tile_layer(
@@ -382,13 +574,13 @@ Map showing event location and online stations contributing to the location.
                 className: ''
             }});
             var group = L.featureGroup();
-            group.addLayer(L.marker([{ev.effective_lat}, {ev.effective_lon}], {{icon: eventIcon}})
-                .bindTooltip('<b>Event</b><br>{ev.time.strftime("%Y-%m-%d %H:%M:%S")} UTC<br>Lat: {ev.effective_lat:.4f}°<br>Lon: {ev.effective_lon:.4f}°<br>Depth: {ev.effective_depth / 1000.0:.1f} km', {{permanent: false}}));
             {json.dumps(stations)}.forEach(function(s) {{
                 var icon = s.n_picks > 0 ? stationIconWithPick : stationIconNoPick;
                 group.addLayer(L.marker([s.lat, s.lon], {{icon: icon}})
                     .bindTooltip(`<b>${{s.label}}</b>` + '<br>Distance: ' + s.distance_km + ' km' + (s.n_picks ? `<br>Picks: ${{s.n_picks}}` : '<br><i>No picks</i>'), {{permanent: false}}));
             }});
+            group.addLayer(L.marker([{ev.effective_lat}, {ev.effective_lon}], {{icon: eventIcon, zIndexOffset: 1000}})
+                .bindTooltip('<b>Event</b><br>{ev.time.strftime("%Y-%m-%d %H:%M:%S")} UTC<br>Lat: {ev.effective_lat:.4f}°<br>Lon: {ev.effective_lon:.4f}°<br>Depth: {ev.effective_depth / 1000.0:.1f} km', {{permanent: false}}));
             group.addTo(map);
             map.fitBounds(group.getBounds(), {{padding: [30, 30]}});
         """)
@@ -505,5 +697,4 @@ for the event.
             template="plotly_white",
         )
 
-        self.header()
         ui.plotly(fig).classes("w-full h-80")
