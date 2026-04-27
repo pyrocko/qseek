@@ -70,10 +70,18 @@ class LocalRunExplorer(RunExplorer):
         self.runs_dir = runs_dir
 
     async def discover(self) -> AsyncIterator[RunSource]:
-        for search_json in self.runs_dir.glob("*/search.json"):
+        rundirs = sorted(
+            self.runs_dir.glob("*/search.json"),
+            key=lambda p: p.stat().st_ctime,
+            reverse=True,
+        )
+        for search_json in rundirs:
             run_dir = search_json.parent
             logger.info("Found run at %s", run_dir)
-            yield LocalRun(run_dir)
+            try:
+                yield LocalRun(run_dir)
+            except ValueError as e:
+                logger.warning("Skipping run at %s: %s", run_dir, e)
 
 
 if __name__ == "__main__":

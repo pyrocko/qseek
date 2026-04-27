@@ -131,9 +131,15 @@ class StationInventory(Model):
     def model_post_init(self, __context: Any) -> None:
         loaded_stations = []
         for file in self.pyrocko_station_yamls:
+            if not file.exists():
+                logger.error("could not find Pyrocko station YAML file: %s", file)
+                continue
             loaded_stations += load_stations(filename=str(file.expanduser()))
 
         for path in self.station_xmls:
+            if not path.exists():
+                logger.error("could not find StationXML file or directory: %s", path)
+                continue
             if path.is_dir():
                 station_xmls = list(path.glob("*.[xX][mM][lL]"))
             elif path.is_file():

@@ -49,7 +49,7 @@ class StationMap(StationComponent):
         await m.initialized()
 
         async def add_marker():
-            tip = f"<b>{station.nsl.pretty}</b><br>Elevation: {station.elevation:.0f} m"
+            tip = f"<b>{station.nsl.pretty_str(strip=True)}</b><br>Elevation: {station.elevation:.0f} m"
             if station.depth > 0:
                 tip += f"<br>Depth: {station.depth:.0f} m"
             marker_info = json.dumps(
@@ -87,7 +87,7 @@ class StationDetails(StationComponent):
         station = self.station
 
         rows = [
-            {"property": "NSL", "value": station.nsl.pretty},
+            {"property": "NSL", "value": station.nsl.pretty_str(strip=True)},
             {"property": "Network", "value": station.network},
             {"property": "Station", "value": station.station},
             {"property": "Location", "value": station.location or "—"},

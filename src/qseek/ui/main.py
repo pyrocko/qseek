@@ -16,6 +16,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
     from qseek.ui.layout import drawer, header
     from qseek.ui.manager import SourceManager
     from qseek.ui.pages.analysis import analysis_page
+    from qseek.ui.pages.config import config_page
     from qseek.ui.pages.event import event_page
     from qseek.ui.pages.magnitudes import magnitudes_page
     from qseek.ui.pages.network import network_page
@@ -79,6 +80,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
                         "/magnitudes": magnitudes_page,
                         "/analysis": analysis_page,
                         "/network": network_page,
+                        "/config": config_page,
                         "/event/{event_id}": event_page,
                         "/station/{station_nsl}": station_page,
                     },

@@ -132,13 +132,6 @@ markers corresponds to semblance value.
         background_tasks.create(update_plot())
 
 
-class StationCoverage(Component):
-    name = "Station Coverage"
-    description = """Number of stations contributing to each detected event."""
-
-    async def view(self) -> None: ...
-
-
 class MigrationPlot(Component):
     name = "Migration Plot"
     description = """
@@ -310,6 +303,62 @@ Distribution of number of picks associated with detected events.
                 },
                 annotation={
                     "text": f"Median:\n{median:.0f} Picks",
+                    "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
+                    "xanchor": "left",
+                    "yanchor": "top",
+                    "showarrow": False,
+                    "yref": "paper",
+                    "y": 0.98,
+                },
+            )
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class SemblanceDistribution(Component):
+    name = "Semblance Distribution"
+    description = """
+Distribution of semblance values of detected events.
+"""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Semblance",
+            yaxis_title="Number of Events",
+        )
+        plot = ui.plotly(fig).classes("w-full h-full")
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+            semblances = catalog.semblances
+            semblances = semblances[np.isfinite(semblances)]
+            if not semblances.size:
+                return
+
+            counts, edges = np.histogram(semblances, bins=50)
+            centers = (edges[:-1] + edges[1:]) / 2
+            median = float(np.median(semblances))
+
+            plot.clear()
+            fig.add_bar(
+                x=centers,
+                y=counts,
+                name="Semblance Distribution",
+                marker_color="gray",
+                hoverinfo="none",
+                hovertemplate=None,
+            )
+            fig.add_vline(
+                x=median,
+                line={"dash": "dash", "color": "rgba(0,0,0,0.4)", "width": 1.5},
+                annotation={
+                    "text": f"Median: {median:.3f}",
                     "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
                     "xanchor": "left",
                     "yanchor": "top",

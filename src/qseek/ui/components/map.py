@@ -43,9 +43,8 @@ class OverviewMap(Component):
             },
         )
 
-        await m.initialized()
-
         async def add_markers():
+            await m.initialized()
             data = await asyncio.to_thread(json.dumps, marker_data)
             with m:
                 ui.run_javascript(
@@ -53,6 +52,7 @@ class OverviewMap(Component):
                 const map = getElement({m.id}).map;
                 const data = {data};
                 const canvasRenderer = L.canvas(); // Use canvas for high-performance rendering
+                L.control.scale().addTo(map);
 
                 var group = L.featureGroup();
                 data.forEach(point => {{
@@ -76,7 +76,7 @@ class OverviewMap(Component):
                 {
                     "lat": float(sta.effective_lat),
                     "lon": float(sta.effective_lon),
-                    "label": sta.nsl.pretty,
+                    "label": sta.nsl.pretty_str(strip=True),
                     "elevation": sta.elevation,
                     "depth": sta.depth,
                 }

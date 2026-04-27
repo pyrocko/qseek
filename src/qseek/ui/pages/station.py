@@ -9,7 +9,12 @@ async def station_page(station_nsl: str) -> None:
     state = get_tab_state()
     search = await state.run.get_search()
     station = next(
-        (sta for sta in search.stations if sta.nsl.pretty == station_nsl), None
+        (
+            sta
+            for sta in search.stations
+            if sta.nsl.pretty_str(strip=True) == station_nsl
+        ),
+        None,
     )
 
     if station is None:
@@ -27,26 +32,17 @@ async def station_page(station_nsl: str) -> None:
     with ui.row().classes("w-full items-center gap-2 mb-1"):
         ui.button(icon="arrow_back", on_click=ui.navigate.back).props("flat round")
         ui.icon("sensors").classes("text-grey-7 text-2xl")
-        ui.label(station.nsl.pretty).classes("text-h5 font-mono")
+        ui.label("Station Details").classes("text-h5")
 
     ui.separator().classes("mb-4")
 
     # Stat cards
     with ui.row().classes("w-full items-stretch"):
         stat_card(
-            "Network",
-            station.network,
-            "hub",
-        )
-        stat_card(
-            "Station",
-            station.station,
+            "Code",
+            f"{station.nsl.pretty_str(strip=True)}",
             "sensors",
-        )
-        stat_card(
-            "Location",
-            station.location or "—",
-            "label",
+            tooltip="Network-Station-Location code (NSL)",
         )
         stat_card(
             "Latitude",

@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+import numpy as np
+import plotly.graph_objects as go
 from nicegui import background_tasks, ui
 
 from qseek.ui.base import Component
@@ -53,7 +55,7 @@ class StationMap(Component):
                 {
                     "lat": float(sta.effective_lat),
                     "lon": float(sta.effective_lon),
-                    "label": sta.nsl.pretty,
+                    "label": sta.nsl.pretty_str(strip=True),
                     "elevation": sta.elevation,
                     "depth": sta.depth,
                 }
@@ -206,25 +208,79 @@ class StationTable(Component):
                 columns=columns,
                 rows=rows,
                 row_key="id",
-                pagination={"rowsPerPage": 20},
+                pagination={"rowsPerPage": 15},
             )
             .classes("w-full text-sm")
             .props("dense flat bordered")
-        )
-        table.add_slot(
-            "body-row",
-            """
-            <q-tr :props="props"
-                  :class="props.rowIndex % 2 === 0 ? 'bg-grey-1' : ''"
-                  style="cursor: pointer">
-                <q-td v-for="col in props.cols" :key="col.name" :props="props">
-                    {{ col.value }}
-                </q-td>
-            </q-tr>
-            """,
         )
         table.on(
             "row-click",
             lambda e: ui.navigate.to(f"/station/{e.args[1]['id']}"),
         )
         filter_input.bind_value_to(table, "filter")
+
+
+class StationCoverage(Component):
+    name = "Station Coverage"
+    description = """Number of stations contributing to each detected event."""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+        catalog = await state.run.get_catalog()
+
+        events = sorted(catalog.events, key=lambda e: e.time)
+        if not events:
+            ui.label("No events detected yet.").classes("text-grey-6 italic")
+            return
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis_title="Number of Stations",
+            showlegend=False,
+            yaxis={"rangemode": "tozero"},
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+
+        async def update_plot():
+            n_stations = np.array([ev.receivers.n_receivers for ev in events])
+            times = [ev.time for ev in events]
+            median_n = float(np.median(n_stations))
+
+            plot.clear()
+            fig.add_trace(
+                go.Scattergl(
+                    x=times,
+                    y=n_stations,
+                    mode="markers",
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    marker={
+                        "color": "#5C8FA3",
+                        "size": 4,
+                        "opacity": 0.5,
+                        "line": {"width": 0},
+                    },
+                )
+            )
+            fig.add_hline(
+                y=median_n,
+                line={
+                    "dash": "dash",
+                    "color": "rgba(0,0,0,0.35)",
+                    "width": 1.5,
+                },
+                annotation={
+                    "text": f"Median: {median_n:.0f}",
+                    "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
+                    "xanchor": "right",
+                    "yanchor": "bottom",
+                    "showarrow": False,
+                    "x": 0.99,
+                },
+            )
+            plot.update()
+
+        background_tasks.create(update_plot(), name="station-coverage-plot")

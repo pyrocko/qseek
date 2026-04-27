@@ -80,13 +80,9 @@ class SshSource(RunSource):
         return cls.from_metadata(connection, remote_path, hash, mtime, n_events)
 
     async def get_search_json(self) -> Path:
-        await asyncssh.scp(
-            (self.connection, str(self.remote_path / "search.json")),
-            self._tempfolder.name,
-        )
         return Path(self._tempfolder.name) / "search.json"
 
-    async def _copy_catalog_files(self, force: bool = False) -> None:
+    async def _copy_files(self, force: bool = False) -> None:
         detections_json = Path(self._tempfolder.name) / "detections.json"
         receivers_json = Path(self._tempfolder.name) / "detections_receivers.json"
 
@@ -97,17 +93,17 @@ class SshSource(RunSource):
             )
             return
         await asyncssh.scp(
-            (self.connection, str(self.remote_path / "detections.json")),
-            self._tempfolder.name,
-        )
-        await asyncssh.scp(
-            (self.connection, str(self.remote_path / "detections_receivers.json")),
+            [
+                (self.connection, str(self.remote_path / "search.json")),
+                (self.connection, str(self.remote_path / "detections.json")),
+                (self.connection, str(self.remote_path / "detections_receivers.json")),
+            ],
             self._tempfolder.name,
         )
         logger.info("Catalog files copied to %s", self._tempfolder.name)
 
     async def get_catalog_path(self) -> Path:
-        await self._copy_catalog_files(force=False)
+        await self._copy_files(force=False)
         return Path(self._tempfolder.name)
 
     async def watch_for_updates(self, poll_interval: float = 60.0):
@@ -130,7 +126,7 @@ class SshSource(RunSource):
                 logger.info("Run %s has been updated, refreshing...", self.name)
                 self.n_events = int(parts[1])
                 self.last_update = modified
-                await self._copy_catalog_files(force=True)
+                await self._copy_files(force=True)
 
                 self.updated.set()
                 self.updated.clear()

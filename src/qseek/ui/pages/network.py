@@ -1,6 +1,6 @@
 from nicegui import ui
 
-from qseek.ui.components.network import StationMap, StationTable
+from qseek.ui.components.network import StationCoverage, StationMap, StationTable
 
 
 async def network_page() -> None:
@@ -9,7 +9,10 @@ async def network_page() -> None:
             station_map = StationMap()
             station_map.header()
             await station_map.view()
-        with ui.card().classes("w-full"):
             station_table = StationTable()
-            station_table.header()
             await station_table.view()
+
+        with ui.card().classes("w-full"):
+            station_coverage = StationCoverage()
+            station_coverage.header()
+            await station_coverage.view()

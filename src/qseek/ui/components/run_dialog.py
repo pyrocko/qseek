@@ -10,13 +10,63 @@ def run_selection_dialog(manager: SourceManager) -> None:
     state = get_tab_state()
     active_hash = state.run.hash if state.run else None
 
+    columns = [
+        {
+            "name": "name",
+            "label": "Run",
+            "field": "name",
+            "align": "left",
+            "sortable": True,
+        },
+        {
+            "name": "source",
+            "label": "Source",
+            "field": "source",
+            "align": "center",
+            "sortable": True,
+        },
+        {
+            "name": "last_update_ts",
+            "label": "Last Modified",
+            "field": "last_update_ts",
+            "sortable": True,
+            "align": "right",
+        },
+        {
+            "name": "n_events",
+            "label": "Events",
+            "field": "n_events",
+            "sortable": True,
+            "align": "right",
+        },
+    ]
+
+    rows = sorted(
+        [
+            {
+                "hash": run.hash,
+                "name": run.name,
+                "source": run.source,
+                "last_update_ts": int(run.last_update.timestamp()),
+                "last_update_str": run.last_update.strftime("%b %d, %Y  %H:%M"),
+                "n_events": run.n_events,
+                "is_active": run.hash == active_hash,
+            }
+            for run in manager.runs.values()
+        ],
+        key=lambda r: r["last_update_ts"],
+        reverse=True,
+    )
+
     with (
         ui.dialog() as dialog,
-        ui.card().classes("w-[560px] gap-0 !p-0 overflow-hidden rounded-xl shadow-2xl"),
+        ui.card().classes(
+            "!max-w-none gap-0 !p-0 overflow-hidden rounded-xl shadow-2xl"
+        ),
     ):
         # ── Header ──────────────────────────────────────────────────────────
         with ui.row().classes("items-center w-full px-5 pt-5 pb-4 gap-3"):
-            ui.icon("folder_open", size="sm").classes("text-primary")
+            ui.icon("folder_open", size="lg").classes("text-primary")
             with ui.column().classes("gap-0 flex-1"):
                 ui.label("Switch Run").classes("text-base font-bold leading-snug")
                 ui.label("Select a run to explore").classes(
@@ -28,64 +78,74 @@ def run_selection_dialog(manager: SourceManager) -> None:
 
         ui.separator().classes("opacity-20")
 
-        # ── Run list ────────────────────────────────────────────────────────
-        with (
-            ui.scroll_area().classes("w-full").style("max-height: 420px"),
-            ui.column().classes("w-full gap-0"),
-        ):
-            runs = sorted(
-                manager.runs.values(),
-                key=lambda r: r.last_update,
-                reverse=True,
-            )
-            for run in runs:
-                is_active = run.hash == active_hash
-                card_classes = (
-                    "w-full px-5 py-3.5 cursor-pointer gap-3 items-center "
-                    "transition-colors duration-100 rounded-none border-0 "
-                    + ("bg-blue-1" if is_active else "hover:bg-grey-1")
-                )
-
-                async def change_run(_, h=run.hash):
-                    dialog.close()
-                    await manager.set_active_run(h)
-
-                with ui.row().classes(card_classes).on("click", change_run):
-                    # Active indicator dot
-                    ui.element("div").classes(
-                        "w-2 h-2 rounded-full flex-shrink-0 "
-                        + ("bg-primary" if is_active else "bg-transparent")
-                    )
-
-                    with ui.column().classes("gap-0.5 flex-1 min-w-0"):
-                        ui.label(run.name).classes(
-                            "text-sm font-medium truncate "
-                            + (
-                                "text-blue-9 font-semibold"
-                                if is_active
-                                else "text-grey-9"
-                            )
-                        )
-                        ui.label(
-                            f"Last updated {run.last_update.strftime('%Y-%m-%d %H:%M')}"
-                        ).classes("text-xs text-grey-5 font-mono")
-
-                    # Right side: source chip + event count (fixed widths to prevent jumping)
-                    with ui.row().classes("items-center gap-3 flex-shrink-0"):
-                        source_color = "positive" if run.source == "local" else "info"
-                        ui.chip(run.source, icon="hub").props(
-                            f"dense outline color={source_color}"
-                        ).classes("text-xs w-16 justify-center")
-
-                        ui.label(f"{run.n_events:,} events").classes(
-                            "text-xs text-grey-6 font-mono text-right w-24"
-                        )
-
-                ui.separator().classes("opacity-10 mx-4")
-
-        if not runs:
+        # ── Empty state ──────────────────────────────────────────────────────
+        if not rows:
             with ui.column().classes("items-center gap-3 py-12 w-full"):
                 ui.icon("folder_off", size="3em").classes("text-grey-3")
                 ui.label("No runs loaded").classes("text-sm text-grey-5")
+        else:
+            # ── Table ────────────────────────────────────────────────────────
+            # virtual-scroll requires a fixed height class (h-*), not max-height
+            table = (
+                ui.table(
+                    columns=columns,
+                    rows=rows,
+                    row_key="hash",
+                    pagination={
+                        "rowsPerPage": 0,
+                        "sortBy": "last_update_ts",
+                        "descending": True,
+                    },
+                )
+                .classes("w-full h-[480px]")
+                .props("flat dense virtual-scroll hide-bottom")
+            )
+
+            table.add_slot(
+                "body",
+                r"""
+                <q-tr
+                    :props="props"
+                    :class="props.row.is_active
+                        ? 'bg-blue-1 cursor-default'
+                        : 'cursor-pointer hover:bg-grey-1 transition-colors duration-100'"
+                    @click="$emit('run-selected', props.row.hash)"
+                >
+                    <q-td key="name" :props="props">
+                        <div class="flex items-center gap-2.5">
+                            <div :class="[
+                                'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                                props.row.is_active ? 'bg-primary' : 'bg-transparent'
+                            ]" />
+                            <span :class="[
+                                'text-sm',
+                                props.row.is_active
+                                    ? 'text-primary font-semibold'
+                                    : 'text-grey-9 font-medium'
+                            ]">{{ props.row.name }}</span>
+                        </div>
+                    </q-td>
+                    <q-td key="source" :props="props" class="text-center">
+                        <q-chip
+                            outline size="sm"
+                            :color="{local:'positive',ssh:'info',qseek:'secondary'}[props.row.source] || 'grey'"
+                            :icon="{local:'computer',ssh:'terminal',qseek:'travel_explore'}[props.row.source] || 'circle'"
+                        >{{ props.row.source }}</q-chip>
+                    </q-td>
+                    <q-td key="last_update_ts" :props="props" class="text-right font-mono text-xs text-grey-6">
+                        {{ props.row.last_update_str }}
+                    </q-td>
+                    <q-td key="n_events" :props="props" class="text-right font-mono text-xs font-medium">
+                        {{ props.row.n_events.toLocaleString() }}
+                    </q-td>
+                </q-tr>
+                """,
+            )
+
+            async def on_selected(e) -> None:
+                dialog.close()
+                await manager.set_active_run(e.args)
+
+            table.on("run-selected", on_selected)
 
         dialog.open()

@@ -109,7 +109,7 @@ async def event_search() -> None:
 
         with (
             ui.input(
-                placeholder="Search date or event ID  (Ctrl+K)",
+                placeholder="Search event by date or ID (Ctrl+K)",
                 on_change=lambda e: asyncio.create_task(on_search(e.value)),
             )
             .props("outlined dense")

@@ -11,14 +11,11 @@ def catalog_filter_dialog():
 
     with (
         ui.dialog() as dialog,
-        ui.card().classes("w-[500px] gap-0 !p-0 overflow-hidden rounded-xl shadow-2xl"),
+        ui.card().classes("w-[760px] gap-0 !p-0 overflow-hidden rounded-xl shadow-2xl"),
     ):
         # ── Header ─────────────────────────────────────────────────────────
         with ui.row().classes("items-center w-full px-5 pt-5 pb-4 gap-3"):
-            ui.element("div").classes(
-                "flex items-center justify-center w-8 h-8 rounded-lg"
-            ).style("background: rgba(25,118,210,0.10)")
-            ui.icon("filter_alt", size="sm").classes("text-primary absolute")
+            ui.icon("filter_alt", size="lg").classes("text-primary")
 
             with ui.column().classes("gap-0 flex-1"):
                 ui.label("Filter Catalog").classes("text-base font-bold leading-snug")
@@ -58,28 +55,6 @@ def catalog_filter_dialog():
             # ── Magnitude ──
             with ui.column().classes("gap-2 w-full"):
                 with ui.row().classes("items-center gap-1.5"):
-                    ui.icon("sensors", size="xs").classes("text-grey-5")
-                    ui.label("N Picks").classes(
-                        "text-sm font-semibold text-grey-8 tracking-wide"
-                    )
-                ui.range(
-                    min=catalog.n_picks_range["min"],
-                    max=catalog.n_picks_range["max"],
-                    step=1.0,
-                ).classes("w-full").props("color=secondary").bind_value(
-                    catalog, "n_picks_range"
-                )
-                ui.label().classes(
-                    "text-xs text-grey-6 font-mono text-right"
-                ).bind_text_from(
-                    catalog,
-                    "n_picks_range",
-                    backward=lambda r: f"{round(r['min'])} - {round(r['max'])}",
-                )
-
-            # ── Magnitude ──
-            with ui.column().classes("gap-2 w-full"):
-                with ui.row().classes("items-center gap-1.5"):
                     ui.icon("bar_chart", size="xs").classes("text-grey-5")
                     ui.label("Magnitude").classes(
                         "text-sm font-semibold text-grey-8 tracking-wide"
@@ -104,6 +79,28 @@ def catalog_filter_dialog():
                         "text-xs text-grey-4 italic"
                     )
 
+            # ── N Picks ──
+            with ui.column().classes("gap-2 w-full"):
+                with ui.row().classes("items-center gap-1.5"):
+                    ui.icon("sensors", size="xs").classes("text-grey-5")
+                    ui.label("N Picks").classes(
+                        "text-sm font-semibold text-grey-8 tracking-wide"
+                    )
+                ui.range(
+                    min=catalog.n_picks_range["min"],
+                    max=catalog.n_picks_range["max"],
+                    step=1.0,
+                ).classes("w-full").props("color=secondary").bind_value(
+                    catalog, "n_picks_range"
+                )
+                ui.label().classes(
+                    "text-xs text-grey-6 font-mono text-right"
+                ).bind_text_from(
+                    catalog,
+                    "n_picks_range",
+                    backward=lambda r: f"{round(r['min'])} - {round(r['max'])}",
+                )
+
             # ── Date Range ──
             with ui.column().classes("gap-2 w-full"):
                 with ui.row().classes("items-center gap-1.5"):
@@ -115,9 +112,7 @@ def catalog_filter_dialog():
                     min=catalog.depth_range["min"],
                     max=catalog.depth_range["max"],
                     step=10.0,
-                ).classes("w-full").props("color=indigo").bind_value(
-                    catalog, "depth_range"
-                )
+                ).classes("w-full").bind_value(catalog, "depth_range")
                 ui.label().classes(
                     "text-xs text-grey-6 font-mono text-right"
                 ).bind_text_from(

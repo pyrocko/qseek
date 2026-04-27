@@ -55,14 +55,16 @@ def drawer(manager: SourceManager) -> None:
             _drawer_button("Analysis", "analytics", "/analysis")
             _drawer_button("Events", "crisis_alert", "/events")
             _drawer_button("Magnitudes", "equalizer", "/magnitudes")
+            _drawer_button("Config", "settings", "/config")
 
         ui.space()
 
         with ui.button_group().classes("w-full"):
-            ui.button(
+            with ui.button(
                 icon="folder_open",
                 on_click=lambda: run_selection_dialog(manager),
-            ).bind_text_from(tab_state, "run_name").classes("w-full")
+            ).classes("w-full"):
+                ui.label().bind_text_from(tab_state, "run_name").classes("ellipsis")
             ui.button(
                 icon="filter_alt",
                 on_click=catalog_filter_dialog,

@@ -88,7 +88,14 @@ class LayeredEarthModel1D(Model):
                     "Using default velocity model - Consider specifying a custom model!"
                 )
             logger.info("loading velocity model from %s", self.filename)
-            self._raw_file_data = self.filename.read_text()
+            if self.filename.exists():
+                self._raw_file_data = self.filename.read_text()
+            else:
+                logger.error(
+                    "velocity model file not found: %s, using default model",
+                    self.filename,
+                )
+                self._raw_file_data = DEFAULT_VELOCITY_MODEL
 
         if self.raw_file_data is not None:
             self._raw_file_data = self.raw_file_data
