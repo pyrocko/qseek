@@ -21,7 +21,7 @@ from qseek.magnitudes.local_magnitude_model import (
     ModelName,
     StationLocalMagnitude,
 )
-from qseek.utils import time_to_path
+from qseek.utils import NSL, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -234,6 +234,8 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
         grouped_traces = []
         receivers = []
         for nsl, grp_traces in itertools.groupby(traces, key=lambda tr: tr.nslc_id[:3]):
+            if NSL.parse(nsl) in self.exclude_stations:
+                continue
             grouped_traces.append(list(grp_traces))
             receivers.append(event.receivers.get_receiver(nsl))
 
@@ -245,5 +247,15 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             min_snr=self.min_signal_noise_ratio,
             max_station_std=self.max_station_std,
         )
+
+        if local_magnitude.n_stations < self.min_stations:
+            logger.warning(
+                "Only %d station magnitudes found for event %s, which is less than"
+                "the minimum required %d. The average magnitude cannot be calculated.",
+                local_magnitude.n_stations,
+                event.time,
+                self.min_stations,
+            )
+            return
 
         event.add_magnitude(local_magnitude)

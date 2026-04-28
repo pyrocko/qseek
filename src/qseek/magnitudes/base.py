@@ -4,7 +4,7 @@ import math
 from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PositiveInt
 from pyrocko.trace import Trace
 
 from qseek.base import Model
@@ -73,6 +73,17 @@ class EventStationMagnitude(BaseModel):
 
 class EventMagnitudeCalculator(Model):
     magnitude: Literal["MagnitudeCalculator"] = "MagnitudeCalculator"
+
+    min_stations: PositiveInt = Field(
+        default=3,
+        description="Minimum number of station magnitudes required to calculate "
+        "the network magnitude.",
+    )
+
+    exclude_stations: list[NSL] = Field(
+        default=[],
+        description="List of station NSLs to exclude from magnitude calculation.",
+    )
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[EventMagnitudeCalculator], ...]:
