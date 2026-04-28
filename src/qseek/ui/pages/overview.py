@@ -33,6 +33,12 @@ async def overview_page() -> None:
     semblance_max = np.nanmax(catalog.semblances)
     semblance_min = np.nanmin(catalog.semblances)
 
+    rms_values = np.array(
+        [ev.event.rms for ev in catalog.events if ev.event.rms is not None],
+        dtype=float,
+    )
+    has_rms = rms_values.size > 0
+
     if catalog.has_magnitudes():
         magnitude_max = np.nanmax(catalog.magnitudes)
         magnitude_min = np.nanmin(catalog.magnitudes)
@@ -74,6 +80,17 @@ async def overview_page() -> None:
             subtitle=f"Min {semblance_min:.2f}",
             tooltip="Maximum semblance value among all detected events.",
         )
+        if has_rms:
+            rms_median_ms = float(np.nanmedian(rms_values)) * 1e3
+            rms_min_ms = float(np.nanmin(rms_values)) * 1e3
+            rms_max_ms = float(np.nanmax(rms_values)) * 1e3
+            stat_card(
+                "Median RMS",
+                f"{rms_median_ms:.1f} ms",
+                icon="manage_history",
+                subtitle=f"Min {rms_min_ms:.1f} / Max {rms_max_ms:.1f} ms",
+                tooltip="Median RMS of traveltime delays across all detected events.",
+            )
         if catalog.has_magnitudes():
             stat_card(
                 "Max Magnitude",
