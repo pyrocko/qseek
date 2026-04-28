@@ -11,7 +11,7 @@ from scipy.stats import gaussian_kde
 from qseek.ui.analysis.vpvs import PSCollection
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import attach_plotly_navigate
+from qseek.ui.utils import attach_plotly_events
 from qseek.utils import async_weighted_median
 
 
@@ -42,7 +42,7 @@ markers corresponds to semblance value.
         fig.update_yaxes(title_text="N Events", row=2)
         fig.update_xaxes(title_text="Time", row=2)
         plot = ui.plotly(fig).classes("w-full h-80")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -151,7 +151,7 @@ corresponds to magnitude and color corresponds to depth (light = shallow, dark =
         )
 
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         catalog = await state.get_filtered_catalog()
 
@@ -205,7 +205,7 @@ Color corresponds to time and size corresponds to semblance.
         )
 
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -272,7 +272,7 @@ Distribution of number of picks associated with detected events.
             yaxis_title="Number of Events",
         )
         plot = ui.plotly(fig).classes("w-full h-full")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -400,7 +400,7 @@ corresponds to event time.
             },
         )
         plot = ui.plotly(fig).classes("w-full h-full")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()

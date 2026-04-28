@@ -253,6 +253,12 @@ class Receiver(Station):
             arrival.observed is not None for arrival in self.phase_arrivals.values()
         )
 
+    def get_arrival(self, phase: str) -> PhaseDetection:
+        for arrival_phase, arrival in self.phase_arrivals.items():
+            if arrival_phase.endswith(phase):
+                return arrival
+        raise KeyError(f"cannot find arrival for phase {phase}")
+
     def as_pyrocko_markers(
         self,
         modelled: bool = True,

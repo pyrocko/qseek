@@ -10,7 +10,7 @@ def on_click_plotly_event(event: GenericEventArguments) -> None:
             ui.navigate.to(f"event/{uid}")
 
 
-def attach_plotly_navigate(plot: ui.plotly) -> None:
+def attach_plotly_events(plot: ui.plotly) -> None:
     """Attach a plotly_click → navigate handler entirely in the browser.
 
     Reads `customdata` (event uid) from the clicked point and navigates to
@@ -29,7 +29,7 @@ def attach_plotly_navigate(plot: ui.plotly) -> None:
                 gd.on('plotly_click', function(data) {{
                     if (data.points && data.points.length > 0) {{
                         var uid = data.points[0].customdata;
-                        if (uid) window.location.href = 'event/' + uid;
+                        if (uid) window.location.href = '/event/' + uid;
                     }}
                 }});
             }} else if (retries > 0) {{

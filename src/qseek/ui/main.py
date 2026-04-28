@@ -37,7 +37,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         if manager.n_runs == 0:
             app.shutdown()
             raise EnvironmentError("No runs found at the specified URIs")
-        default_run = list(manager.runs.values())[1]
+        default_run = next(iter(manager.runs.values()))
         TabState.set_default_run(default_run)
         ready.set()
 

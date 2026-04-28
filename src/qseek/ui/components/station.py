@@ -1,9 +1,14 @@
+import asyncio
 import json
 
+import numpy as np
+import plotly.graph_objects as go
 from nicegui import background_tasks, ui
 
 from qseek.models.station import Station
 from qseek.ui.base import Component
+from qseek.ui.state import get_tab_state
+from qseek.ui.utils import attach_plotly_events
 
 _STATION_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">'
@@ -80,8 +85,10 @@ class StationMap(StationComponent):
 
 
 class StationDetails(StationComponent):
-    name = "Station details"
-    description = ""
+    name = "Station Details"
+    description = """
+Essential metadata about the station.
+"""
 
     async def view(self) -> None:
         station = self.station
@@ -134,3 +141,138 @@ class StationDetails(StationComponent):
             </q-tr>
             """,
         )
+
+
+class StationPickPerformance(StationComponent):
+    name = "Pick Performance"
+    description = (
+        "Detection confidence of P and S arrivals at this station over time. "
+        "P picks are shown above zero, S picks below."
+    )
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis_title="Detection Value",
+            showlegend=True,
+            yaxis={
+                "zeroline": True,
+                "zerolinewidth": 2,
+                "zerolinecolor": "rgba(0,0,0,0.25)",
+            },
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "right",
+                "x": 1,
+            },
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_events(plot)
+
+        nsl = self.station.nsl
+
+        async def update_plot():
+            catalog = await state.run.get_catalog()
+
+            def collect():
+                p_times, p_vals, p_uids = [], [], []
+                s_times, s_vals, s_uids = [], [], []
+                for ev in catalog.events:
+                    uid = str(ev.uid)
+                    for rcv in ev.receivers:
+                        if rcv.nsl != nsl:
+                            continue
+                        try:
+                            arrival = rcv.get_arrival("P")
+                            if arrival.observed is not None:
+                                p_times.append(ev.time)
+                                p_vals.append(arrival.observed.detection_value)
+                                p_uids.append(uid)
+                        except KeyError:
+                            pass
+                        try:
+                            arrival = rcv.get_arrival("S")
+                            if arrival.observed is not None:
+                                s_times.append(ev.time)
+                                s_vals.append(arrival.observed.detection_value)
+                                s_uids.append(uid)
+                        except KeyError:
+                            pass
+                return p_times, p_vals, p_uids, s_times, s_vals, s_uids
+
+            p_times, p_vals, p_uids, s_times, s_vals, s_uids = await asyncio.to_thread(
+                collect
+            )
+
+            fig.data = []
+            if p_vals:
+                med_p = float(np.median(p_vals))
+                fig.add_trace(
+                    go.Scattergl(
+                        name="P",
+                        x=p_times,
+                        y=p_vals,
+                        mode="markers",
+                        marker={
+                            "color": "#5C8FA3",
+                            "size": np.clip(np.array(p_vals) * 12, 2, 14).tolist(),
+                            "opacity": 0.6,
+                            "line": {"width": 0},
+                        },
+                        customdata=p_uids,
+                        hovertemplate="%{x|%Y-%m-%d %H:%M:%S}<br>P: %{y:.3f}<extra></extra>",
+                    )
+                )
+                fig.add_hline(
+                    y=med_p,
+                    line={"dash": "dash", "color": "#5C8FA3", "width": 1.5},
+                    annotation={
+                        "text": f"P med: {med_p:.3f}",
+                        "font": {"size": 10, "color": "#5C8FA3"},
+                        "xanchor": "left",
+                        "yanchor": "bottom",
+                        "showarrow": False,
+                        "x": 0.01,
+                    },
+                )
+            if s_vals:
+                med_s = float(np.median(s_vals))
+                neg_s = [-v for v in s_vals]
+                fig.add_trace(
+                    go.Scattergl(
+                        name="S",
+                        x=s_times,
+                        y=neg_s,
+                        mode="markers",
+                        marker={
+                            "color": "#E07B54",
+                            "size": np.clip(np.array(s_vals) * 12, 2, 14).tolist(),
+                            "opacity": 0.6,
+                            "line": {"width": 0},
+                        },
+                        customdata=s_uids,
+                        hovertemplate="%{x|%Y-%m-%d %H:%M:%S}<br>S: %{y:.3f}<extra></extra>",
+                    )
+                )
+                fig.add_hline(
+                    y=-med_s,
+                    line={"dash": "dash", "color": "#E07B54", "width": 1.5},
+                    annotation={
+                        "text": f"S med: {med_s:.3f}",
+                        "font": {"size": 10, "color": "#E07B54"},
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "showarrow": False,
+                        "x": 0.01,
+                    },
+                )
+            plot.update()
+
+        background_tasks.create(update_plot(), name=f"station-pick-perf-{nsl.pretty}")

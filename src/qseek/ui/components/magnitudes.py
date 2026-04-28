@@ -9,7 +9,7 @@ from scipy.stats import gaussian_kde
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import attach_plotly_navigate
+from qseek.ui.utils import attach_plotly_events
 
 
 def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
@@ -179,7 +179,7 @@ class MagnitudeSemblance(Component):
         )
         # fig.update_yaxes(scaleanchor="x", scaleratio=1)
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -272,7 +272,7 @@ to magnitude value.
             },
         )
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -380,7 +380,7 @@ class StationMagnitudes(Component):
             yaxis_title="Magnitude",
         )
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -436,7 +436,7 @@ class NPicksVsMagnitude(Component):
             yaxis_title="Magnitude",
         )
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()
@@ -494,7 +494,7 @@ class SemblanceVsNPicks(Component):
             yaxis_title="Semblance",
         )
         plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_navigate(plot)
+        attach_plotly_events(plot)
 
         async def update_plot():
             catalog = await state.get_filtered_catalog()

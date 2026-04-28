@@ -1,6 +1,10 @@
 from nicegui import ui
 
-from qseek.ui.components.station import StationDetails, StationMap
+from qseek.ui.components.station import (
+    StationDetails,
+    StationMap,
+    StationPickPerformance,
+)
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
 
@@ -77,3 +81,8 @@ async def station_page(station_nsl: str) -> None:
             details = StationDetails(station)
             details.header()
             await details.view()
+
+        with ui.card().classes("w-full"):
+            pick_perf = StationPickPerformance(station)
+            pick_perf.header()
+            await pick_perf.view()
