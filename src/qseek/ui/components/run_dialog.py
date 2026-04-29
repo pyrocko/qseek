@@ -39,6 +39,13 @@ def run_selection_dialog(manager: SourceManager) -> None:
             "sortable": True,
             "align": "right",
         },
+        {
+            "name": "action",
+            "label": "",
+            "field": "action",
+            "align": "center",
+            "sortable": False,
+        },
     ]
 
     rows = sorted(
@@ -102,43 +109,53 @@ def run_selection_dialog(manager: SourceManager) -> None:
             )
 
             table.add_slot(
-                "body",
+                "body-cell-name",
                 r"""
-                <q-tr
-                    :props="props"
-                    :class="props.row.is_active
-                        ? 'bg-blue-1 cursor-default'
-                        : 'cursor-pointer hover:bg-grey-1 transition-colors duration-100'"
-                    @click="$emit('run-selected', props.row.hash)"
-                >
-                    <q-td key="name" :props="props">
-                        <div class="flex items-center gap-2.5">
-                            <div :class="[
-                                'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                                props.row.is_active ? 'bg-primary' : 'bg-transparent'
-                            ]" />
-                            <span :class="[
-                                'text-sm',
-                                props.row.is_active
-                                    ? 'text-primary font-semibold'
-                                    : 'text-grey-9 font-medium'
-                            ]">{{ props.row.name }}</span>
-                        </div>
-                    </q-td>
-                    <q-td key="source" :props="props" class="text-center">
-                        <q-chip
-                            outline size="sm"
-                            :color="{local:'positive',ssh:'info',qseek:'secondary'}[props.row.source] || 'grey'"
-                            :icon="{local:'computer',ssh:'terminal',qseek:'travel_explore'}[props.row.source] || 'circle'"
-                        >{{ props.row.source }}</q-chip>
-                    </q-td>
-                    <q-td key="last_update_ts" :props="props" class="text-right font-mono text-xs text-grey-6">
-                        {{ props.row.last_update_str }}
-                    </q-td>
-                    <q-td key="n_events" :props="props" class="text-right font-mono text-xs font-medium">
-                        {{ props.row.n_events.toLocaleString() }}
-                    </q-td>
-                </q-tr>
+                <q-td :props="props">
+                    <div class="flex items-center gap-2.5">
+                        <div :class="[
+                            'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                            props.row.is_active ? 'bg-primary' : 'bg-transparent'
+                        ]" />
+                        <span :class="[
+                            'text-sm',
+                            props.row.is_active
+                                ? 'text-primary font-semibold'
+                                : 'text-grey-9 font-medium'
+                        ]">{{ props.row.name }}</span>
+                    </div>
+                </q-td>
+                """,
+            )
+
+            table.add_slot(
+                "body-cell-source",
+                r"""
+                <q-td :props="props" class="text-center">
+                    <q-chip
+                        outline size="sm"
+                        :color="{local:'positive',ssh:'info',qseek:'secondary'}[props.row.source] || 'grey'"
+                        :icon="{local:'computer',ssh:'terminal',qseek:'travel_explore'}[props.row.source] || 'circle'"
+                    >{{ props.row.source }}</q-chip>
+                </q-td>
+                """,
+            )
+
+            table.add_slot(
+                "body-cell-last_update_ts",
+                r"""
+                <q-td :props="props" class="text-right font-mono text-xs text-grey-6">
+                    {{ props.row.last_update_str }}
+                </q-td>
+                """,
+            )
+
+            table.add_slot(
+                "body-cell-n_events",
+                r"""
+                <q-td :props="props" class="text-right font-mono text-xs font-medium">
+                    {{ props.row.n_events.toLocaleString() }}
+                </q-td>
                 """,
             )
 
@@ -146,6 +163,11 @@ def run_selection_dialog(manager: SourceManager) -> None:
                 dialog.close()
                 await manager.set_active_run(e.args)
 
-            table.on("run-selected", on_selected)
+            with table.add_slot("body-cell-action"), table.cell("action"):
+                ui.button("Select").props("dense size=sm color=primary").on(
+                    "click",
+                    js_handler="() => emit(props.row.hash)",
+                    handler=on_selected,
+                )
 
         dialog.open()

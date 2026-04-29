@@ -71,7 +71,8 @@ class LocalRunExplorer(RunExplorer):
 
     async def discover(self) -> AsyncIterator[RunSource]:
         rundirs = sorted(
-            self.runs_dir.glob("*/search.json"),
+            list(self.runs_dir.glob("*/search.json"))
+            + list(self.runs_dir.glob("search.json")),
             key=lambda p: p.stat().st_ctime,
             reverse=True,
         )
