@@ -69,6 +69,7 @@ if not CACHE_DIR.exists():
 
 
 MeasurementUnit = Literal[
+    "counts",
     "displacement",
     "velocity",
     "acceleration",
@@ -744,12 +745,14 @@ class ChannelSelector:
 
         if self.absolute:
             traces_norm = traces_flt[0].copy()
+            traces_norm.set_channel("ABS")
             data = np.atleast_2d(np.array([tr.ydata for tr in traces_flt]))
             traces_norm.ydata = np.linalg.norm(data, axis=0)
             return [traces_norm]
 
         if self.average:
             traces_avg = traces_flt[0].copy()
+            traces_avg.set_channel("AVG")
             data = np.atleast_2d(np.array([tr.ydata for tr in traces_flt]))
             traces_avg.ydata = np.mean(data, axis=0)
             return [traces_avg]

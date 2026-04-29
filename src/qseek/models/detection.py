@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from qseek.features.base import EventFeature
-    from qseek.magnitudes.base import EventStationMagnitude
+    from qseek.magnitudes.base import EventMagnitude
 
 
 logger = logging.getLogger(__name__)
@@ -542,6 +542,11 @@ class EventReceivers(BaseModel):
         if not traces:
             return []
 
+        if quantity == "counts":
+            if cut_off_taper:
+                raise ValueError("cut_off_taper cannot be True when quantity is counts")
+            return traces
+
         tmin = min(tr.tmin for tr in traces)
         tmax = max(tr.tmax for tr in traces)
         responses = await asyncio.to_thread(
@@ -721,7 +726,7 @@ class EventDetection(Location):
         self._receiver_cache = ReceiverCache.get_instance(rundir / FILENAME_RECEIVERS)
 
     @property
-    def magnitude(self) -> EventStationMagnitude | None:
+    def magnitude(self) -> EventMagnitude | None:
         """Returns the magnitude of the event.
 
         If there are no magnitudes available, returns None.
@@ -860,7 +865,7 @@ class EventDetection(Location):
         """
         self.uncertainty = uncertainty
 
-    def add_magnitude(self, magnitude: EventStationMagnitude) -> None:
+    def add_magnitude(self, magnitude: EventMagnitude) -> None:
         """Add magnitude to detection.
 
         Args:

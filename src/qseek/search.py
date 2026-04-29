@@ -647,7 +647,18 @@ class Search(Model):
                 if not recalculate and mag_calculator.has_magnitude(event):
                     continue
                 logger.debug("adding magnitude from %s", mag_calculator.magnitude)
-                await mag_calculator.add_magnitude(self.data_provider, event)
+                try:
+                    magnitude = await mag_calculator.get_magnitude(
+                        self.data_provider,
+                        event,
+                    )
+                    event.add_magnitude(magnitude)
+                except Exception as e:
+                    logger.error(
+                        "Error adding magnitude from %s: %s",
+                        mag_calculator.magnitude,
+                        e,
+                    )
 
             for feature_calculator in self.features:
                 logger.debug("adding features from %s", feature_calculator.feature)

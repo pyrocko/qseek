@@ -11,12 +11,14 @@ from pydantic import Field, PositiveFloat, PrivateAttr, model_validator
 from pyrocko import io
 
 from qseek.magnitudes.base import (
+    EventMagnitude,
     EventMagnitudeCalculator,
-    EventStationMagnitude,
+    StationAmplitudes,
 )
-from qseek.magnitudes.local_magnitude_model import (
+from qseek.magnitudes.local_magnitude_models import (
     WOOD_ANDERSON,
     WOOD_ANDERSON_OLD,
+    CustomLocalMagnitudeModel,
     LocalMagnitudeModel,
     ModelName,
     StationLocalMagnitude,
@@ -27,66 +29,20 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
     from qseek.models.detection import EventDetection, Receiver
+    from qseek.models.station import StationInventory
     from qseek.waveforms.providers import WaveformProvider
 
 logger = logging.getLogger(__name__)
 
-KM = 1e3
-MM = 1e3
 
-
-class LocalMagnitude(EventStationMagnitude):
+class EventLocalMagnitude(EventMagnitude):
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
-    model: ModelName = Field(
+    model: str = Field(
         default="iaspei-southern-california",
         description="The attenuation model to use for calculating the local magnitude.",
     )
-    station_magnitudes: list[StationLocalMagnitude] = []
-
-    @classmethod
-    async def from_model(
-        cls,
-        model: LocalMagnitudeModel,
-        event: EventDetection,
-        receivers: list[Receiver],
-        grouped_traces: list[list[Trace]],
-        min_snr: float = 3.0,
-        max_station_std: float = 3.0,
-    ) -> Self:
-        self = cls(model=model.model_name())
-
-        for traces, receiver in zip(grouped_traces, receivers, strict=True):
-            mag = model.get_station_magnitude(
-                event=event,
-                traces=traces,
-                receiver=receiver,
-                min_snr=min_snr,
-            )
-            if mag is None:
-                continue
-            self.station_magnitudes.append(mag)
-
-        if not self.station_magnitudes:
-            logger.warning("No station magnitudes found for event %s", event.time)
-            return self
-
-        std = np.std([sta.magnitude for sta in self.station_magnitudes])
-        unclean_mean = np.mean([sta.magnitude for sta in self.station_magnitudes])
-
-        for mag in self.station_magnitudes.copy():
-            if np.abs(mag.magnitude - unclean_mean) > max_station_std * std:
-                logger.warning(
-                    "%s magnitude removed due to high std",
-                    mag.station,
-                )
-                self.station_magnitudes.remove(mag)
-
-        magnitudes = np.array([sta.magnitude for sta in self.station_magnitudes])
-        median = np.median(magnitudes)
-        self.average = float(median)
-        self.error = float(np.median(np.abs(magnitudes - median)))  # MAD
-        return self
+    station_magnitudes: list[StationLocalMagnitude] = Field(default=[])
 
     @property
     def n_stations(self) -> int:
@@ -98,8 +54,55 @@ class LocalMagnitude(EventStationMagnitude):
             f"ML-error-{self.model}": self.error,
         }
 
+    @classmethod
+    def from_station_magnitudes(
+        cls,
+        model_name: str,
+        station_magnitudes: list[StationLocalMagnitude],
+        max_station_std: float = 3.0,
+        min_stations: int = 3,
+    ) -> Self:
+        ml = cls(model=model_name)
 
-class LocalMagnitudeExtractor(EventMagnitudeCalculator):
+        if not station_magnitudes:
+            raise ValueError("No station magnitudes provided")
+
+        std = np.std([sta.magnitude for sta in station_magnitudes])
+        unclean_mean = np.mean([sta.magnitude for sta in station_magnitudes])
+
+        for mag in station_magnitudes.copy():
+            if np.abs(mag.magnitude - unclean_mean) > max_station_std * std:
+                logger.warning(
+                    "%s magnitude removed due to high std",
+                    mag.station,
+                )
+                station_magnitudes.remove(mag)
+
+        if len(station_magnitudes) < min_stations:
+            raise ValueError(
+                "Not enough station magnitudes available for local magnitude "
+                "calculation after removing outliers."
+            )
+
+        ml.station_magnitudes = station_magnitudes
+        magnitudes = np.array([sta.magnitude for sta in ml.station_magnitudes])
+        station_errors = np.array([sta.error for sta in ml.station_magnitudes])
+        n = len(magnitudes)
+        median = np.median(magnitudes)
+
+        ml.average = float(median)
+        # Combine inter-station scatter (MAD) and per-station measurement noise,
+        # both normalized by sqrt(N) to give the precision of the median estimate.
+        mad = np.median(np.abs(magnitudes - median))
+        ml.error = float(
+            np.sqrt(
+                (mad / np.sqrt(n)) ** 2 + (np.median(station_errors) / np.sqrt(n)) ** 2
+            )
+        )
+        return ml
+
+
+class LocalMagnitude(EventMagnitudeCalculator):
     """Local magnitude calculator for different regional models."""
 
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
@@ -134,10 +137,10 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
         "in the local magnitude estimation.",
     )
 
-    model: ModelName = Field(
+    model: ModelName | CustomLocalMagnitudeModel = Field(
         default="iaspei-southern-california",
         description="The amplitude attenuation model to "
-        "use for calculating the local magnitude.",
+        "use for calculating the local magnitude, or a custom local magnitude model.",
     )
 
     export_mseed: Path | None = Field(
@@ -149,22 +152,52 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
-        self._model = LocalMagnitudeModel.get_subclass_by_name(self.model)()
+        if isinstance(self.model, str):
+            self._model = LocalMagnitudeModel.get_subclass_by_name(self.model)()
+        elif isinstance(self.model, CustomLocalMagnitudeModel):
+            self._model = self.model.get_model()
+        else:
+            raise ValueError(
+                "model must be either a ModelName or a CustomLocalMagnitudeModel"
+            )
         return self
+
+    def csv_header(self) -> list[str]:
+        return [
+            f"ML-{self._model.model_name()}",
+            f"ML-error-{self._model.model_name()}",
+        ]
 
     def has_magnitude(self, event: EventDetection) -> bool:
         for mag in event.magnitudes:
-            if type(mag) is LocalMagnitude and mag.model == self.model:
+            if type(mag) is EventLocalMagnitude and mag.model == self.model:
                 return True
         return False
 
-    async def add_magnitude(
-        self, waveform_provider: WaveformProvider, event: EventDetection
-    ) -> None:
+    async def get_magnitude(
+        self,
+        waveform_provider: WaveformProvider,
+        stations: StationInventory,
+        event: EventDetection,
+    ) -> EventLocalMagnitude:
+        """Calculate the local magnitude for the given event.
+
+        The local magnitude is calculated by extracting the restituted waveforms for
+        the event, applying the appropriate transfer function for the model, and
+        then calculating the station magnitudes and average magnitude using the model.
+
+        Args:
+            waveform_provider: The waveform provider to use for extracting the
+                waveforms.
+            stations: The station inventory to use for calculating the station
+                magnitudes.
+            event: The event for which to calculate the local magnitude.
+        """
         model = self._model
 
         traces = await event.receivers.get_waveforms_restituted(
-            waveform_provider.get_squirrel(),
+            waveform_provider,
+            stations,
             seconds_before=self.noise_window,
             seconds_after=self.seconds_after,
             seconds_taper=self.taper_seconds,
@@ -176,8 +209,7 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             want_incomplete=False,
         )
         if not traces:
-            logger.warning("No restituted traces found for event %s", event.time)
-            return
+            raise ValueError("No traces found for event")
 
         if model.max_amplitude == "wood-anderson":
             traces = await asyncio.gather(
@@ -211,51 +243,176 @@ class LocalMagnitudeExtractor(EventMagnitudeCalculator):
             )
 
         if model.highpass_freq is not None:
-            for tr in traces:
-                await asyncio.to_thread(
-                    tr.highpass, order=4, corner=model.highpass_freq
-                )
+            await asyncio.gather(
+                *[
+                    asyncio.to_thread(
+                        tr.highpass,
+                        order=4,
+                        corner=model.highpass_freq,
+                    )
+                    for tr in traces
+                ]
+            )
         if model.lowpass_freq is not None:
-            for tr in traces:
-                await asyncio.to_thread(tr.lowpass, order=4, corner=model.lowpass_freq)
+            await asyncio.gather(
+                *[
+                    asyncio.to_thread(
+                        tr.lowpass,
+                        order=4,
+                        corner=model.lowpass_freq,
+                    )
+                    for tr in traces
+                ]
+            )
+
+        await asyncio.gather(
+            *[
+                asyncio.to_thread(
+                    tr.chop,
+                    tr.tmin + self.taper_seconds,
+                    tr.tmax - self.taper_seconds,
+                )
+                for tr in traces
+            ]
+        )
 
         for tr in traces:
-            await asyncio.to_thread(
-                tr.chop,
-                tr.tmin + self.taper_seconds,
-                tr.tmax - self.taper_seconds,
-            )
+            tr.ydata -= np.mean(tr.ydata)
 
         if self.export_mseed is not None:
             file_name = self.export_mseed / f"{time_to_path(event.time)}.mseed"
             logger.debug("saving restituted mseed traces to %s", file_name)
             await asyncio.to_thread(io.save, traces, str(file_name))
 
-        grouped_traces = []
-        receivers = []
-        for nsl, grp_traces in itertools.groupby(traces, key=lambda tr: tr.nslc_id[:3]):
-            if NSL.parse(nsl) in self.exclude_stations:
+        sorted_traces = sorted(traces, key=lambda tr: tr.nslc_id[:3])
+        station_magnitudes = []
+        for nsl, grp_traces in itertools.groupby(
+            sorted_traces,
+            key=lambda tr: tr.nslc_id[:3],
+        ):
+            if any(NSL.parse(nsl).match(sta) for sta in self.exclude_stations):
+                logger.debug("Excluding station %s from magnitude calculation", nsl)
                 continue
-            grouped_traces.append(list(grp_traces))
-            receivers.append(event.receivers.get_receiver(nsl))
 
-        local_magnitude = await LocalMagnitude.from_model(
-            model=model,
-            grouped_traces=grouped_traces,
-            receivers=receivers,
-            event=event,
-            min_snr=self.min_signal_noise_ratio,
+            try:
+                sta_mag = self.get_station_magnitude(
+                    model=model,
+                    event=event,
+                    receiver=event.receivers.get_receiver(nsl),
+                    traces=list(grp_traces),
+                )
+            except ValueError as exc:
+                logger.debug(
+                    "Could not calculate station magnitude for receiver %s: %s",
+                    nsl,
+                    exc,
+                )
+                continue
+
+            if sta_mag.snr < self.min_signal_noise_ratio:
+                logger.debug(
+                    "Excluding station %s from local magnitude calculation due to low "
+                    "SNR: %.2f",
+                    nsl,
+                    sta_mag.snr,
+                )
+                continue
+            station_magnitudes.append(sta_mag)
+
+        return EventLocalMagnitude.from_station_magnitudes(
+            model_name=model.model_name(),
+            station_magnitudes=station_magnitudes,
             max_station_std=self.max_station_std,
+            min_stations=self.min_stations,
         )
 
-        if local_magnitude.n_stations < self.min_stations:
-            logger.warning(
-                "Only %d station magnitudes found for event %s, which is less than"
-                "the minimum required %d. The average magnitude cannot be calculated.",
-                local_magnitude.n_stations,
-                event.time,
-                self.min_stations,
-            )
-            return
+    def get_station_magnitude(
+        self,
+        model: LocalMagnitudeModel,
+        event: EventDetection,
+        receiver: Receiver,
+        traces: list[Trace],
+    ) -> StationLocalMagnitude:
+        """Calculate the local magnitude for a given event and receiver.
 
-        event.add_magnitude(local_magnitude)
+        Args:
+            model (LocalMagnitudeModel): The local magnitude model to use for the
+                calculation.
+            event (EventDetection): The event to calculate the magnitude for.
+            receiver (Receiver): The seismic station to calculate the magnitude for.
+            traces (list[Trace]): The traces to calculate the magnitude for.
+
+        Returns:
+            StationLocalMagnitude: The calculated magnitude or None if the magnitude
+                could not be determined.
+        """
+        try:
+            traces = model.get_amplitude_traces(traces)
+        except (KeyError, AttributeError) as exc:
+            raise ValueError(
+                f"Could not get {model.component} component for receiver "
+                f"{receiver.nsl.pretty}"
+            ) from exc
+        if not traces:
+            raise ValueError(
+                f"No traces found for receiver {receiver.nsl.pretty} and component "
+                f"{model.component}"
+            )
+
+        sta_amp = StationAmplitudes.create(
+            receiver=receiver,
+            traces=traces,
+            event=event,
+            measurement=model.peak_measurement,
+        )
+
+        nsl_pretty = receiver.nsl.pretty_str(strip=True)
+        if model.epicentral_range and not model.epicentral_range.inside(
+            sta_amp.distance_epi
+        ):
+            raise ValueError(f"Receiver {nsl_pretty} is outside the epicentral range")
+        if model.hypocentral_range and not model.hypocentral_range.inside(
+            sta_amp.distance_hypo
+        ):
+            raise ValueError(f"Receiver {nsl_pretty} is outside the hypocentral range")
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            magnitude = model.get_magnitude(
+                sta_amp.peak_amp,
+                sta_amp.distance_hypo,
+                sta_amp.distance_epi,
+                receiver.nsl,
+            )
+            mag_error_upper = model.get_magnitude(
+                sta_amp.peak_amp + sta_amp.noise,
+                sta_amp.distance_hypo,
+                sta_amp.distance_epi,
+                receiver.nsl,
+            )
+            mag_error_lower = model.get_magnitude(
+                sta_amp.peak_amp - sta_amp.noise,
+                sta_amp.distance_hypo,
+                sta_amp.distance_epi,
+                receiver.nsl,
+            )
+
+        if not np.isfinite(magnitude):
+            raise ValueError(
+                f"Could not calculate magnitude for receiver {nsl_pretty}"
+                f" due to non-finite magnitude value"
+            )
+
+        if not np.isfinite(mag_error_lower):
+            mag_error_lower = magnitude - (mag_error_upper - magnitude)
+
+        return StationLocalMagnitude(
+            station=sta_amp.station_nsl,
+            magnitude=float(magnitude),
+            error=float(
+                ((mag_error_upper - magnitude) + abs(magnitude - mag_error_lower)) / 2
+            ),
+            peak_amp=sta_amp.peak_amp,
+            snr=sta_amp.snr,
+            distance_epi=sta_amp.distance_epi,
+            distance_hypo=sta_amp.distance_hypo,
+        )

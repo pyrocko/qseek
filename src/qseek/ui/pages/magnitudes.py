@@ -20,12 +20,12 @@ async def magnitudes_page() -> None:
             ).classes("text-grey-5 text-body2 text-center").style("max-width: 380px")
         return
 
-    with ui.row().classes("w-full flex-1 items-stretch"):
-        with ui.card().classes("col-12"):
-            rate = magnitude_components.MagnitudeRate()
-            rate.header()
-            await rate.view()
+    with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
+        rate = magnitude_components.MagnitudeRate()
+        rate.header()
+        await rate.view()
 
+    with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12 col-md"):
             freq = magnitude_components.MagnitudeFrequency()
             freq.header()
@@ -36,6 +36,7 @@ async def magnitudes_page() -> None:
             semblance.header()
             await semblance.view()
 
+    with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12 col-md"):
             over_station = magnitude_components.StationMagnitudesOverStation()
             over_station.header()

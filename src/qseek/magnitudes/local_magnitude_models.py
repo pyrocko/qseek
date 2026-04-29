@@ -2,18 +2,15 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Type
+from typing import ClassVar, Literal, NamedTuple, Self, Type
 
 import numpy as np
-from pyrocko.trace import PoleZeroResponse
+from pydantic import Field, PrivateAttr, model_validator
+from pyrocko.trace import PoleZeroResponse, Trace
 
-from qseek.magnitudes.base import PeakMeasurement, StationAmplitudes
+from qseek.base import Model
+from qseek.magnitudes.base import PeakMeasurement
 from qseek.utils import NSL, ChannelSelector, ChannelSelectors, MeasurementUnit
-
-if TYPE_CHECKING:
-    from pyrocko.trace import Trace
-
-    from qseek.models.detection import EventDetection, Receiver
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +25,12 @@ Component = Literal[
     "horizontal-abs",
     "horizontal-avg",
     "vertical",
+    "horizontal-separate",
     "north-east-separate",
 ]
 
 MaxAmplitudeQuantity = Literal[
+    "counts",
     "acceleration",
     "velocity",
     "displacement",
@@ -41,16 +40,18 @@ MaxAmplitudeQuantity = Literal[
 # All models from Bormann (2012) https://doi.org/10.2312/GFZ.NMSOP-2_DS_3.1
 # Page 5
 
-_COMPONENT_MAP: dict[Component, ChannelSelector] = {
+COMPONENT_MAP: dict[Component, ChannelSelector] = {
     "all": ChannelSelectors.All,
     "all-abs": ChannelSelectors.AllAbsolute,
     "horizontal-abs": ChannelSelectors.HorizontalAbs,
     "horizontal-avg": ChannelSelectors.HorizontalAvg,
     "vertical": ChannelSelectors.Vertical,
+    "horizontal-separate": ChannelSelectors.Horizontal,
     "north-east-separate": ChannelSelectors.NorthEast,
 }
 
 _QUANTITY_MAP: dict[MaxAmplitudeQuantity, MeasurementUnit] = {
+    "counts": "counts",
     "acceleration": "acceleration",
     "velocity": "velocity",
     "displacement": "displacement",
@@ -112,14 +113,15 @@ class LocalMagnitudeModel:
 
     max_amplitude: ClassVar[MaxAmplitudeQuantity] = "wood-anderson"
 
-    author: ClassVar[str] = "Unknown"
-    doi: ClassVar[str] = ""
     component: ClassVar[Component] = "vertical"
     peak_measurement: ClassVar[PeakMeasurement] = "peak-to-peak"
 
     # Used only for non-Wood-Anderson models
     highpass_freq: ClassVar[float | None] = None
     lowpass_freq: ClassVar[float | None] = None
+
+    author: ClassVar[str] = "Unknown"
+    doi: ClassVar[str] = ""
 
     @classmethod
     def get_subclass_by_name(cls, name: str) -> Type[LocalMagnitudeModel]:
@@ -141,86 +143,17 @@ class LocalMagnitudeModel:
     def restitution_quantity(self) -> MeasurementUnit:
         return _QUANTITY_MAP[self.max_amplitude]
 
+    def get_amplitude_traces(self, traces: list[Trace]) -> list[Trace]:
+        return COMPONENT_MAP[self.component].get_traces(traces)
+
     def get_magnitude(
-        self, amplitude: float, distance_hypo: float, distance_epi: float
+        self,
+        amplitude: float,
+        distance_hypo: float,
+        distance_epi: float,
+        station_nsl: NSL,
     ) -> float:
         raise NotImplementedError
-
-    def get_station_magnitude(
-        self,
-        event: EventDetection,
-        receiver: Receiver,
-        traces: list[Trace],
-        min_snr: float = 3.0,
-    ) -> StationLocalMagnitude | None:
-        """Calculate the local magnitude for a given event and receiver.
-
-        Args:
-            event (EventDetection): The event to calculate the magnitude for.
-            receiver (Receiver): The seismic station to calculate the magnitude for.
-            traces (list[Trace]): The traces to calculate the magnitude for.
-            min_snr (float, optional): The minimum amplitude to noise ratio.
-                Defaults to 3.0.
-
-        Returns:
-            StationMagnitude | None: The calculated magnitude or None if the magnitude.
-        """
-        if self.epicentral_range and not self.epicentral_range.inside(
-            receiver.surface_distance_to(event)
-        ):
-            return None
-        if self.hypocentral_range and not self.hypocentral_range.inside(
-            receiver.distance_to(event)
-        ):
-            return None
-
-        try:
-            traces = _COMPONENT_MAP[self.component](traces)
-        except (KeyError, AttributeError) as exc:
-            logger.warning(
-                "Could get all required channels for %s: %s",
-                receiver.nsl.pretty,
-                str(exc),
-            )
-            return None
-        if not traces:
-            return None
-
-        sta = StationAmplitudes.create(
-            receiver=receiver,
-            traces=traces,
-            event=event,
-            measurement=self.peak_measurement,
-        )
-        if sta.snr < min_snr:
-            return None
-
-        with np.errstate(divide="ignore"):
-            magnitude = self.get_magnitude(
-                sta.peak, sta.distance_hypo, sta.distance_epi
-            )
-            magnitude_error_upper = self.get_magnitude(
-                sta.peak + sta.noise, sta.distance_hypo, sta.distance_epi
-            )
-            magnitude_error_lower = self.get_magnitude(
-                sta.peak - sta.noise, sta.distance_hypo, sta.distance_epi
-            )
-
-        if not np.isfinite(magnitude):
-            return None
-
-        if not np.isfinite(magnitude_error_lower):
-            magnitude_error_lower = magnitude - (magnitude_error_upper - magnitude)
-
-        return StationLocalMagnitude(
-            station=sta.station_nsl,
-            magnitude=magnitude,
-            error=(magnitude_error_upper + abs(magnitude_error_lower)) / 2,
-            peak_amp=sta.peak,
-            snr=sta.snr,
-            distance_epi=sta.distance_epi,
-            distance_hypo=sta.distance_hypo,
-        )
 
 
 class WebnetWesternBohemia(LocalMagnitudeModel):
@@ -239,6 +172,7 @@ class WebnetWesternBohemia(LocalMagnitudeModel):
         amplitude: float,
         distance_hypo: float,
         distance_epi: float,
+        station_nsl: NSL,
     ) -> float:
         return (
             np.log10(amplitude * UM)
@@ -261,11 +195,35 @@ class WoodAnderson:
         amplitude: float,
         distance_hypo: float,
         distance_epi: float,
+        station_nsl: NSL,
     ) -> float:
         """Get the magnitude from a given amplitude."""
         amplitude = amplitude * MM  # m to mm
         return np.log10(amplitude) + self.get_amp_attenuation(
             distance_hypo / KM, distance_epi / KM
+        )
+
+
+class IaspeiSouthernCalifornia(LocalMagnitudeModel):
+    author = "Hutton and Boore (1987)"
+
+    hypocentral_range = Range(10.0 * KM, 700.0 * KM)
+    component = "north-east-separate"
+    max_amplitude = "wood-anderson-old"
+
+    def get_magnitude(
+        self,
+        amplitude: float,
+        distance_hypo: float,
+        distance_epi: float,
+        station_nsl: NSL,
+    ) -> float:
+        amp = amplitude * M2NM  # m to nm
+        return (
+            np.log10(amp / WOOD_ANDERSON.constant)
+            + 1.11 * np.log10(distance_hypo / KM)
+            + 0.00189 * (distance_hypo / KM)
+            - 2.09
         )
 
 
@@ -292,25 +250,6 @@ class CentralCalifornia(WoodAnderson, LocalMagnitudeModel):
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
         return np.log10(dist_hypo_km) + 0.00301 * dist_hypo_km + 0.7
-
-
-class IaspeiSouthernCalifornia(WoodAnderson, LocalMagnitudeModel):
-    author = "Hutton and Boore (1987)"
-
-    hypocentral_range = Range(10.0 * KM, 700.0 * KM)
-    component = "north-east-separate"
-    max_amplitude = "wood-anderson-old"
-
-    def get_magnitude(
-        self, amplitude: float, distance_hypo: float, distance_epi: float
-    ) -> float:
-        amp = amplitude * M2NM  # m to nm
-        return (
-            np.log10(amp / WOOD_ANDERSON.constant)
-            + 1.11 * np.log10(distance_hypo / KM)
-            + 0.00189 * (distance_hypo / KM)
-            - 2.09
-        )
 
 
 class EasternNorthAmerica(WoodAnderson, LocalMagnitudeModel):
@@ -446,3 +385,86 @@ class NetherlandsGroningen(WoodAnderson, LocalMagnitudeModel):
 
 
 ModelName = Literal[LocalMagnitudeModel.model_names()]
+
+
+class AttenuationModel(Model):
+    a: float
+    b: float
+    c: float
+
+    def get_amp_attenuation(
+        self,
+        dist_hypo_km: float,
+        dist_epi_km: float,
+        distance: Literal["epicentral", "hypocentral"] = "epicentral",
+    ) -> float:
+        distance = (
+            dist_hypo_km
+            if (distance or self.distance) == "hypocentral"
+            else dist_epi_km
+        )
+        return self.a * np.log10(distance) + self.b * distance + self.c
+
+
+class CustomLocalMagnitudeModel(Model):
+    max_amplitude: MaxAmplitudeQuantity = "wood-anderson"
+
+    distance: Literal["epicentral", "hypocentral"] = "hypocentral"
+    epicentral_range: Range | None = None
+    hypocentral_range: Range | None = None
+
+    component: Component = "horizontal-abs"
+    peak_measurement: PeakMeasurement = "peak-to-peak"
+
+    # Used only for non-Wood-Anderson models
+    highpass_freq: float | None = None
+    lowpass_freq: float | None = None
+
+    attenuation_models: dict[NSL, AttenuationModel] = Field(default_factory=dict)
+
+    _model: LocalMagnitudeModel = PrivateAttr()
+
+    @model_validator(mode="after")
+    def validate_model(self) -> Self:
+        _attenuation_models = self.attenuation_models
+        if not _attenuation_models:
+            raise ValueError("At least one attenuation model must be provided.")
+
+        class CustomModel(LocalMagnitudeModel):
+            max_amplitude = self.max_amplitude
+
+            distance = self.distance
+            epicentral_range = self.epicentral_range
+            hypocentral_range = self.hypocentral_range
+
+            component = self.component
+            peak_measurement = self.peak_measurement
+
+            highpass_freq = self.highpass_freq
+            lowpass_freq = self.lowpass_freq
+
+            def get_magnitude(
+                self,
+                amplitude: float,
+                distance_hypo: float,
+                distance_epi: float,
+                station_nsl: NSL,
+            ) -> float:
+                if self.max_amplitude in ("wood-anderson", "wood-anderson-old"):
+                    amplitude = amplitude * MM
+
+                for nsl, model in _attenuation_models.items():
+                    if nsl.match(station_nsl):
+                        return np.log10(amplitude) + model.get_amp_attenuation(
+                            distance_hypo / KM,
+                            distance_epi / KM,
+                            self.distance,
+                        )
+                else:
+                    raise ValueError(f"No attenuation model for {station_nsl.pretty}")
+
+        self._model = CustomModel()
+        return self
+
+    def get_model(self) -> LocalMagnitudeModel:
+        return self._model

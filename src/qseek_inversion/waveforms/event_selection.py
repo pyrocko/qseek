@@ -16,7 +16,7 @@ from qseek.images.images import ImageFunctions, WaveformImages
 from qseek.pre_processing.module import PreProcessing
 from qseek.search import Search
 from qseek.utils import NSLC
-from qseek.waveforms.base import WaveformBatch
+from qseek.waveforms.base import WaveformBatch, WaveformProvider
 from qseek_inversion.waveforms.base import WaveformSelection
 
 if TYPE_CHECKING:
@@ -137,6 +137,7 @@ class EventWaveformsSelection(WaveformSelection):
 
     _pre_processing: PreProcessing = PrivateAttr()
     _image_functions: ImageFunctions = PrivateAttr()
+    _data_provider: WaveformProvider = PrivateAttr()
     _squirrel: Squirrel = PrivateAttr()
 
     async def prepare(
@@ -156,6 +157,7 @@ class EventWaveformsSelection(WaveformSelection):
         self._pre_processing = search.pre_processing
         self._image_functions = search.image_functions
         self._squirrel = search.data_provider.get_squirrel()
+        self._data_provider = search.data_provider
 
         search.stations.sanitize_stations()
         search.stations.filter_stations(search.data_provider.available_nsls())
@@ -201,12 +203,11 @@ class EventWaveformsSelection(WaveformSelection):
             outpath (Path): Path to output CSV file.
         """
         for ev in self._events:
-            ev.export_csv_line(outpath)
+            ev.write_csv_line(outpath)
         logger.info("exported selected events to %s", outpath)
 
     async def get_images(self, window_padding: timedelta) -> list[WaveformImages]:
         batches = await self.get_batches(
-            self._squirrel,
             edge_padding=window_padding,  # Why 2x?
         )
         batch_images = []
@@ -220,13 +221,12 @@ class EventWaveformsSelection(WaveformSelection):
 
     async def get_batches(
         self,
-        squirrel: Squirrel,
         edge_padding: timedelta = timedelta(seconds=0),
     ) -> list[WaveformBatch]:
         batches = []
 
         for events in _chunk_iterator(self._events, self.events_per_batch):
-            traces = await self._get_contatenated_traces(events, squirrel)
+            traces = await self._get_contatenated_traces(events)
             for trace in traces:
                 padding_seconds = edge_padding.total_seconds()
                 trace.extend(
@@ -250,9 +250,7 @@ class EventWaveformsSelection(WaveformSelection):
         return batches
 
     async def _get_contatenated_traces(
-        self,
-        events: list[EventDetection],
-        squirrel: Squirrel,
+        self, events: list[EventDetection]
     ) -> list[Trace]:
         concatenated_traces: dict[NSLC, ConcatenatedTrace] = {}
         event_groups: list[EventTraceGroup] = []
@@ -260,7 +258,6 @@ class EventWaveformsSelection(WaveformSelection):
         for event in events:
             traces = await self._get_event_traces(
                 event,
-                squirrel,
                 seconds_before=self.seconds_before_event,
                 seconds_after=self.seconds_after_event,
             )
@@ -285,12 +282,11 @@ class EventWaveformsSelection(WaveformSelection):
     async def _get_event_traces(
         self,
         event: EventDetection,
-        squirrel: Squirrel,
         seconds_before: float = 2.0,
         seconds_after: float = 2.0,
     ) -> EventTraceGroup:
         traces = await event.receivers.get_waveforms(
-            squirrel=squirrel,
+            self._data_provider,
             seconds_before=seconds_before,
             seconds_after=seconds_after,
             want_incomplete=False,

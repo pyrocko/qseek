@@ -11,8 +11,8 @@ from pydantic import Field, PositiveFloat, PrivateAttr
 from pyrocko import gf, io
 
 from qseek.magnitudes.base import (
+    EventMagnitude,
     EventMagnitudeCalculator,
-    EventStationMagnitude,
     StationAmplitudes,
 )
 from qseek.magnitudes.moment_magnitude_store import (
@@ -135,7 +135,7 @@ class StationMomentMagnitude(NamedTuple):
     snr: float = 0.0
 
 
-class MomentMagnitude(EventStationMagnitude):
+class EventMomentMagnitude(EventMagnitude):
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
     station_magnitudes: list[StationMomentMagnitude] = Field(
@@ -208,12 +208,12 @@ class MomentMagnitude(EventStationMagnitude):
                 logger.warning("No modelled amplitude for receiver %s", receiver.nsl)
                 continue
 
-            magnitude = model.estimate_magnitude(station.peak)
+            magnitude = model.estimate_magnitude(station.peak_amp)
             error_upper = (
-                model.estimate_magnitude(station.peak + station.noise) - magnitude
+                model.estimate_magnitude(station.peak_amp + station.noise) - magnitude
             )
             error_lower = (
-                model.estimate_magnitude(station.peak - station.noise) - magnitude
+                model.estimate_magnitude(station.peak_amp - station.noise) - magnitude
             )
             if not np.isfinite(error_lower):
                 error_lower = error_upper
@@ -224,7 +224,7 @@ class MomentMagnitude(EventStationMagnitude):
                 distance_epi=station.distance_epi,
                 magnitude=magnitude,
                 error=(error_upper + abs(error_lower)) / 2,
-                peak_amp=station.peak,
+                peak_amp=station.peak_amp,
                 snr=station.snr,
             )
             self.station_magnitudes.append(station_magnitude)
@@ -250,7 +250,7 @@ class MomentMagnitude(EventStationMagnitude):
         self.error = float(np.median(np.abs(magnitudes - median)))  # MAD
 
 
-class MomentMagnitudeExtractor(EventMagnitudeCalculator):
+class MomentMagnitude(EventMagnitudeCalculator):
     """Moment magnitude calculator from peak amplitudes."""
 
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
@@ -321,14 +321,15 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
     def has_magnitude(self, event: EventDetection) -> bool:
         if not event.magnitudes:
             return False
-        return any(type(mag) is MomentMagnitude for mag in event.magnitudes)
+        return any(type(mag) is EventMomentMagnitude for mag in event.magnitudes)
 
     async def add_magnitude(
         self,
         waveform_provider: WaveformProvider,
+        stations: StationInventory,
         event: EventDetection,
     ) -> None:
-        moment_magnitude = MomentMagnitude()
+        moment_magnitude = EventMomentMagnitude()
         receivers = list(event.receivers)
 
         for store, definition in zip(self._stores, self.models, strict=True):
@@ -352,7 +353,8 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
                 continue
 
             traces = await event.receivers.get_waveforms_restituted(
-                waveform_provider.get_squirrel(),
+                waveform_provider,
+                stations,
                 receivers=store_receivers,
                 quantity=store.quantity,
                 seconds_before=self.noise_window,
@@ -416,6 +418,8 @@ class MomentMagnitudeExtractor(EventMagnitudeCalculator):
             )
 
         if not moment_magnitude.magnitude:
-            logger.warning("No moment magnitude for event %s", event.time)
+            raise ValueError(
+                "Could not calculate moment magnitude for event %s", event.time
+            )
 
-        event.add_magnitude(moment_magnitude)
+        return moment_magnitude

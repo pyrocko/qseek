@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 KM = 1e3
 
-PeakMeasurement = Literal["peak-to-peak", "max-amplitude"]
+PeakMeasurement = Literal["peak-to-peak", "max-amplitude", "max-amplitude-separate"]
 
 
 class StationLocalMagnitude(NamedTuple):
@@ -31,7 +31,7 @@ class StationLocalMagnitude(NamedTuple):
     snr: float = 0.0
 
 
-class EventStationMagnitude(BaseModel):
+class EventMagnitude(BaseModel):
     magnitude: Literal["EventMagnitude"] = "EventMagnitude"
 
     average: float | None = Field(
@@ -48,7 +48,7 @@ class EventStationMagnitude(BaseModel):
     )
 
     @classmethod
-    def get_subclasses(cls) -> tuple[type[EventStationMagnitude], ...]:
+    def get_subclasses(cls) -> tuple[type[EventMagnitude], ...]:
         """Get all subclasses of this class.
 
         Returns:
@@ -105,15 +105,17 @@ class EventMagnitudeCalculator(Model):
         """
         raise NotImplementedError
 
-    async def add_magnitude(
+    async def get_magnitude(
         self,
         waveform_provider: WaveformProvider,
+        stations: StationInventory,
         event: EventDetection,
-    ) -> None:
-        """Adds a magnitude to the squirrel for the given event.
+    ) -> EventMagnitude:
+        """Calculates the magnitude for the given event.
 
         Args:
             waveform_provider (WaveformProvider): The waveform provider.
+            stations (StationInventory): The station inventory.
             event (EventDetection): The event detection object.
 
         Raises:
@@ -137,10 +139,18 @@ class EventMagnitudeCalculator(Model):
         """
         ...
 
+    def csv_header(self) -> list[str]:
+        """Get the CSV header for the magnitude data.
+
+        Returns:
+            list[str]: The CSV header as a list of column names.
+        """
+        return []
+
 
 class StationAmplitudes(NamedTuple):
     station_nsl: NSL
-    peak: float
+    peak_amp: float
     noise: float
     noise_std: float
 
@@ -152,7 +162,7 @@ class StationAmplitudes(NamedTuple):
         """Signal-to-noise ratio."""
         if self.noise == 0.0:
             return 0.0
-        return self.peak / self.noise
+        return self.peak_amp / self.noise
 
     @classmethod
     def create(
@@ -163,6 +173,9 @@ class StationAmplitudes(NamedTuple):
         noise_padding: float = 1.0,
         measurement: PeakMeasurement = "max-amplitude",
     ) -> Self:
+        if not traces:
+            raise ValueError("No traces provided for amplitude calculation")
+
         first_arrival = min(receiver.get_arrivals_time_window()).timestamp()
 
         noise_traces = [
@@ -180,6 +193,17 @@ class StationAmplitudes(NamedTuple):
         elif measurement == "max-amplitude":
             peak_amp = max(np.max(np.abs(tr.ydata)) for tr in signal_traces)
             noise_amp = max(np.max(np.abs(tr.ydata)) for tr in noise_traces)
+
+        # Nobody ever really does this, custom implementation for legacy reasons
+        elif measurement == "max-amplitude-separate":
+            if len(signal_traces) == 1:
+                raise ValueError(
+                    "max-amplitude-separate measurement requires at least 2 traces"
+                )
+            data = np.atleast_2d(np.array([tr.ydata for tr in signal_traces]))
+            data_noise = np.atleast_2d(np.array([tr.ydata for tr in noise_traces]))
+            peak_amp = np.sqrt(np.max(np.abs(data)) ** 2)
+            noise_amp = np.max(np.linalg.norm(data_noise, axis=0))
         else:
             raise ValueError(f"Invalid peak measurement: {measurement}")
 
@@ -187,9 +211,9 @@ class StationAmplitudes(NamedTuple):
 
         return cls(
             station_nsl=receiver.nsl,
-            peak=peak_amp,
-            noise=noise_amp,
-            noise_std=noise_std,
+            peak_amp=float(peak_amp),
+            noise=float(noise_amp),
+            noise_std=float(noise_std),
             distance_hypo=receiver.distance_to(event),
             distance_epi=receiver.surface_distance_to(event),
         )

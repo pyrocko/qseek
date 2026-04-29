@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from nicegui import ui
 from plotly.subplots import make_subplots
 
-from qseek.magnitudes.base import EventStationMagnitude
+from qseek.magnitudes.base import EventMagnitude
 from qseek.ui.base import EventComponent
 
 KM = 1e3
@@ -594,7 +594,7 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
 for the event.
 """
 
-    async def view(self, magnitudes: EventStationMagnitude) -> None:
+    async def view(self, magnitudes: EventMagnitude) -> None:
         # self.header()
 
         if not magnitudes:

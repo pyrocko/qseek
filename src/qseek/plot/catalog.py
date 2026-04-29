@@ -6,8 +6,8 @@ from typing import ClassVar, Literal
 import matplotlib.pyplot as plt
 import numpy as np
 
-from qseek.magnitudes.local_magnitude import LocalMagnitude
-from qseek.magnitudes.moment_magnitude import MomentMagnitude
+from qseek.magnitudes.local_magnitude import EventLocalMagnitude
+from qseek.magnitudes.moment_magnitude import EventMomentMagnitude
 from qseek.models.catalog import EventCatalog
 from qseek.plot.base import BasePlot, LassieFigure
 
@@ -89,9 +89,9 @@ def plot_magnitudes(catalog: EventCatalog):
         for mag in ev.magnitudes[::-1]:
             if local_mag and mw_mag:
                 break
-            if isinstance(mag, LocalMagnitude) and not local_mag:
+            if isinstance(mag, EventLocalMagnitude) and not local_mag:
                 local_mag = mag
-            elif isinstance(mag, MomentMagnitude) and not mw_mag:
+            elif isinstance(mag, EventMomentMagnitude) and not mw_mag:
                 mw_mag = mag
         if not local_mag or not mw_mag:
             continue

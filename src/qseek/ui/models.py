@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Self
 from uuid import UUID
 
-from qseek.magnitudes.base import EventStationMagnitude
+from qseek.magnitudes.base import EventMagnitude
 from qseek.models.detection import EventDetection
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class EventMinimal:
     time: datetime
     semblance: float
     n_picks: int
-    magnitude: EventStationMagnitude | None
+    magnitude: EventMagnitude | None
     event: EventDetection
 
     def as_tuple(
@@ -35,7 +35,7 @@ class EventMinimal:
         datetime,
         float,
         float,
-        EventStationMagnitude | None,
+        EventMagnitude | None,
     ]:
         return (
             self.lat,
