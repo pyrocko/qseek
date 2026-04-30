@@ -38,6 +38,7 @@ from qseek.octree import Octree
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import Downsample, PreProcessing
 from qseek.reduce import DelaySumReduce
+from qseek.server import WebServer
 from qseek.signals import Signal
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
@@ -284,6 +285,10 @@ class Search(Model):
         default_factory=list,
         description="Event features to extract.",
     )
+    webserver: WebServer | None = Field(
+        default_factory=WebServer,
+        description="Web server for serving search results and monitoring.",
+    )
 
     semblance_sampling_rate: SamplingRate = Field(
         default=100,
@@ -512,6 +517,10 @@ class Search(Model):
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
 
+        if self.webserver:
+            await self.webserver.prepare(search=self)
+            BackgroundTasks.create_task(self.webserver.start())
+
         csv_header = EventDetection.csv_header()
         for m in self.magnitudes:
             csv_header.extend(m.csv_header())
@@ -605,6 +614,8 @@ class Search(Model):
         await self._catalog.export_detections(
             jitter_location=self.octree.smallest_node_size()
         )
+        if self.webserver:
+            self.webserver.stop()
         console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
@@ -626,6 +637,9 @@ class Search(Model):
                 jitter_location=self.octree.smallest_node_size(),
             )
             await self._new_detection.emit(detection)
+
+        if self.webserver:
+            BackgroundTasks.create_task(self.webserver.new_detections(detections))
 
         if not catalog.n_events:
             return

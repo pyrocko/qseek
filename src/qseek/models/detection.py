@@ -651,17 +651,16 @@ class EventDetection(Location):
                 Defaults to 0.0.
         """
         detection = self.jitter_location(jitter_location) if jitter_location else self
-        csv_line = detection.get_csv_dict()
-        if not header:
-            header = list(csv_line.keys())
+        csv_dict = detection.get_csv_dict()
+        header = header or list(csv_dict.keys())
 
         if not file.exists():
             header = ",".join(header)
-            file.write_text(f"{header}\n")
+            file.write_text(header + "\n")
 
         with file.open("a") as f:
-            line = ",".join(str(csv_line.get(key, '""')) for key in header)
-            f.write(f"{line}\n")
+            line = ",".join(str(csv_dict.get(key, '""')) for key in header)
+            f.write(line + "\n")
 
     def write_pyrocko_event(self, file: Path, jitter_location: float = 0.0) -> None:
         """Write the detection as a Pyrocko event to a file.

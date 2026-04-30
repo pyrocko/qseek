@@ -255,26 +255,20 @@ def main() -> None:
         case "search":
             nest_asyncio.apply()
             from qseek.search import Search
-            from qseek.server import WebServer
 
             search = Search.from_config(args.config)
 
-            webserver = WebServer(search)
-
-            async def run() -> None:
-                http = asyncio.create_task(webserver.start())
-                await search.start(
+            asyncio.run(
+                search.start(
                     force_rundir=args.force,
                     create_backup=not args.no_backup,
-                )
-                await http
-
-            asyncio.run(run(), debug=loop_debug)
+                ),
+                debug=loop_debug,
+            )
 
         case "continue":
             nest_asyncio.apply()
             from qseek.search import Search
-            from qseek.server import WebServer
 
             search = Search.load_rundir(args.rundir)
             if search._progress.time_progress:
@@ -282,14 +276,7 @@ def main() -> None:
             else:
                 console.rule("Starting search from scratch")
 
-            webserver = WebServer(search)
-
-            async def run() -> None:
-                http = asyncio.create_task(webserver.start())
-                await search.start()
-                await http
-
-            asyncio.run(run(), debug=loop_debug)
+            asyncio.run(search.start(), debug=loop_debug)
 
         case "snuffler":
             from qseek.search import Search
@@ -379,18 +366,6 @@ def main() -> None:
             from qseek.ui.main import start_ui
 
             start_ui(args.uris, reload=False)
-
-        case "serve":
-            from qseek.search import Search
-            from qseek.server import WebServer
-
-            search = Search.load_rundir(args.rundir)
-            webserver = WebServer(search)
-
-            async def start() -> None:
-                await webserver.start()
-
-            asyncio.run(start(), debug=loop_debug)
 
         case "clear-cache":
             logger.info("clearing cache directory %s", CACHE_DIR)
