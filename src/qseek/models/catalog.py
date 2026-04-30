@@ -175,6 +175,14 @@ class EventCatalog(BaseModel):
         dir.mkdir(exist_ok=True)
         return dir
 
+    @property
+    def detections_file(self) -> Path:
+        return (self.rundir / FILENAME_DETECTIONS).absolute()
+
+    @property
+    def receivers_file(self) -> Path:
+        return (self.rundir / FILENAME_RECEIVERS).absolute()
+
     def set_csv_header(self, header: list[str]) -> None:
         self._csv_header = header
 
@@ -394,10 +402,6 @@ class EventCatalog(BaseModel):
         Raises:
             ValueError: If the detection index is not set and update is True.
         """
-        rundir = self.rundir
-        detection_file = rundir / FILENAME_DETECTIONS
-        receivers_file = rundir / FILENAME_RECEIVERS
-        detection.set_receiver_cache(rundir)
         json_data = detection.model_dump_json(exclude={"receivers"})
 
         if update:
@@ -406,42 +410,43 @@ class EventCatalog(BaseModel):
             logger.debug("updating detection %d", detection._detection_idx)
 
             async with UPDATE_LOCK:
-                async with aiofiles.open(detection_file, "r") as f:
+                async with aiofiles.open(self.detections_file, "r") as f:
                     lines = await f.readlines()
 
-                lines[detection._detection_idx] = f"{json_data}\n"
-                async with aiofiles.open(detection_file, "w") as f:
+                lines[detection._detection_idx] = json_data + "\n"
+                async with aiofiles.open(self.detections_file, "w") as f:
                     await asyncio.shield(f.writelines(lines))
             return
 
         logger.debug("appending detection %d", detection._detection_idx)
         async with UPDATE_LOCK:
-            async with aiofiles.open(detection_file, "a") as f:
-                await f.write(f"{json_data}\n")
+            async with aiofiles.open(self.detections_file, "a") as f:
+                await f.write(json_data + "\n")
                 await f.flush()
 
-            async with aiofiles.open(receivers_file, "a") as f:
-                await f.write(f"{detection.receivers.model_dump_json()}\n")
+            async with aiofiles.open(self.receivers_file, "a") as f:
+                await f.write(detection.receivers.model_dump_json() + "\n")
                 await f.flush()
 
             detection.write_csv_line(
-                rundir / "csv" / "detections.csv",
+                self.csv_dir / "detections.csv",
                 header=self._csv_header,
             )
             detection.write_pyrocko_event(
-                rundir / "pyrocko_detections.list",
+                self.rundir / "pyrocko_detections.list",
             )
             if jitter_location:
                 detection.write_csv_line(
-                    rundir / "csv" / "detections_jittered.csv",
+                    self.csv_dir / "detections_jittered.csv",
                     header=self._csv_header,
                     jitter_location=jitter_location,
                 )
                 detection.write_pyrocko_event(
-                    rundir / "pyrocko_detections_jittered.list",
+                    self.rundir / "pyrocko_detections_jittered.list",
                     jitter_location=jitter_location,
                 )
-            detection.clear_receivers()
+
+        detection.clear_receivers()
 
     async def save(self) -> None:
         """Save catalog to current rundir."""
@@ -451,13 +456,13 @@ class EventCatalog(BaseModel):
         lines_recv = []
         # Has to be the unsorted
         for detection in self.events:
-            lines_events.append(f"{detection.model_dump_json(exclude={'receivers'})}\n")
-            lines_recv.append(f"{detection.receivers.model_dump_json()}\n")
+            lines_events.append(detection.model_dump_json(exclude={"receivers"}) + "\n")
+            lines_recv.append(detection.receivers.model_dump_json() + "\n")
 
         async with UPDATE_LOCK:
-            async with aiofiles.open(self.rundir / FILENAME_DETECTIONS, "w") as f:
+            async with aiofiles.open(self.detections_file, "w") as f:
                 await f.writelines(lines_events)
-            async with aiofiles.open(self.rundir / FILENAME_RECEIVERS, "w") as f:
+            async with aiofiles.open(self.receivers_file, "w") as f:
                 await f.writelines(lines_recv)
 
     async def export_detections(self, jitter_location: float = 0.0) -> None:
