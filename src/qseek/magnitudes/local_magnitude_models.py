@@ -123,6 +123,8 @@ class LocalMagnitudeModel:
     author: ClassVar[str] = "Unknown"
     doi: ClassVar[str] = ""
 
+    hypo_depth_only: ClassVar[bool] = False
+
     @classmethod
     def get_subclass_by_name(cls, name: str) -> Type[LocalMagnitudeModel]:
         subclasses = {sub.model_name(): sub for sub in cls.__subclasses__()}
@@ -415,6 +417,7 @@ class CustomLocalMagnitudeModel(Model):
 
     component: Component = "horizontal-abs"
     peak_measurement: PeakMeasurement = "peak-to-peak"
+    hypo_depth_only_legacy: bool = Field(False, exclude=True)
 
     # Used only for non-Wood-Anderson models
     highpass_freq: float | None = None
@@ -442,6 +445,8 @@ class CustomLocalMagnitudeModel(Model):
 
             highpass_freq = self.highpass_freq
             lowpass_freq = self.lowpass_freq
+
+            hypo_depth_only_legacy = self.hypo_depth_only_legacy
 
             def get_magnitude(
                 self,

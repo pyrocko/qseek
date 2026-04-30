@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 import numpy as np
 from pydantic import BaseModel, Field, PositiveInt
+from pyrocko import orthodrome as od
 from pyrocko.trace import Trace
 
 from qseek.base import Model
+from qseek.models.location import Location
 from qseek.utils import NSL
 
 if TYPE_CHECKING:
@@ -148,6 +150,34 @@ class EventMagnitudeCalculator(Model):
         return []
 
 
+def hypo_distance_depth_only(location: Location, other: Location) -> float:
+    """Compute 3-dimensional distance [m] to other location object.
+
+    Ignoring elevation, this is for legacy reasons by re-implementing
+    operational bad code.
+
+    NEVER USE THIS!
+
+    Args:
+        location (Location): The location to compute the distance from.
+        other (Location): The other location.
+
+    Returns:
+        float: The distance in [m].
+    """
+    if location._same_origin(other):
+        return math.sqrt(
+            (location.north_shift - other.north_shift) ** 2
+            + (location.east_shift - other.east_shift) ** 2
+            + (location.depth - other.depth) ** 2
+        )
+
+    sx, sy, sz = od.geodetic_to_ecef(*location.effective_lat_lon, location.depth)
+    ox, oy, oz = od.geodetic_to_ecef(*other.effective_lat_lon, other.depth)
+
+    return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
+
+
 class StationAmplitudes(NamedTuple):
     station_nsl: NSL
     peak_amp: float
@@ -172,6 +202,7 @@ class StationAmplitudes(NamedTuple):
         event: EventDetection,
         noise_padding: float = 1.0,
         measurement: PeakMeasurement = "max-amplitude",
+        bad_hypo_distance_legacy: bool = False,
     ) -> Self:
         if not traces:
             raise ValueError("No traces provided for amplitude calculation")
@@ -195,6 +226,7 @@ class StationAmplitudes(NamedTuple):
             noise_amp = max(np.max(np.abs(tr.ydata)) for tr in noise_traces)
 
         # Nobody ever really does this, custom implementation for legacy reasons
+        # TODO: REMOVE!!!
         elif measurement == "max-amplitude-separate":
             if len(signal_traces) == 1:
                 raise ValueError(
@@ -214,6 +246,8 @@ class StationAmplitudes(NamedTuple):
             peak_amp=float(peak_amp),
             noise=float(noise_amp),
             noise_std=float(noise_std),
-            distance_hypo=receiver.distance_to(event),
+            distance_hypo=receiver.distance_to(event)
+            if not bad_hypo_distance_legacy
+            else hypo_distance_depth_only(receiver, event),
             distance_epi=receiver.surface_distance_to(event),
         )
