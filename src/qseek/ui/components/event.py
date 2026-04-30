@@ -594,22 +594,22 @@ Station magnitudes for each phase. Only shown if station magnitudes are availabl
 for the event.
 """
 
-    async def view(self, magnitudes: EventMagnitude) -> None:
+    async def view(self, magnitude: EventMagnitude) -> None:
         # self.header()
 
-        if not magnitudes:
+        if not magnitude or not magnitude.station_magnitudes:
             ui.label("No station magnitudes available for this event.").classes(
                 "text-gray-6"
             )
             return
 
         station_mags = []
-        for sta_mag in magnitudes.station_magnitudes:
+        for sta_mag in magnitude.station_magnitudes:
             station_mags.append(
                 {
                     "station": sta_mag.station.pretty,
                     "distance_epi": sta_mag.distance_epi / KM,
-                    "distnace_hypo": sta_mag.distance_hypo / KM,
+                    "distance_hypo": sta_mag.distance_hypo / KM,
                     "magnitude": sta_mag.magnitude,
                     "error": sta_mag.error,
                     "snr": sta_mag.snr,
@@ -640,9 +640,8 @@ for the event.
         )
         sizes = (6 + 10 * amp_norm).tolist()
 
-        magnitudes_arr = np.array([m["magnitude"] for m in station_mags])
-        median_mag = float(np.median(magnitudes_arr))
-        std_mag = float(np.std(magnitudes_arr))
+        median_mag = magnitude.average
+        mag_error = magnitude.error
 
         fig = go.Figure(
             data=[
@@ -678,8 +677,8 @@ for the event.
 
         # Median line with ±std_mag shadow
         fig.add_hrect(
-            y0=median_mag - std_mag,
-            y1=median_mag + std_mag,
+            y0=median_mag - mag_error,
+            y1=median_mag + mag_error,
             fillcolor="seagreen",
             opacity=0.08,
             line_width=0,
@@ -687,7 +686,7 @@ for the event.
         fig.add_hline(
             y=median_mag,
             line={"color": "seagreen", "width": 2},
-            annotation_text=f"Median: {median_mag:.2f} ± {std_mag:.2f}",
+            annotation_text=f"Median: {median_mag:.2f} ± {mag_error:.2f}",
             annotation_position="top left",
         )
         fig.update_layout(

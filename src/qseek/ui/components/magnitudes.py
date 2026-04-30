@@ -117,9 +117,13 @@ class MagnitudeFrequency(Component):
             plot.clear()
             counts = np.asarray(mc_params["bin_counts"], dtype=float)
             bin_edges = np.asarray(mc_params["bin_edges"], dtype=float)
+
+            with np.errstate(divide="ignore"):
+                log_counts = np.log10(counts)
+
             fig.add_bar(
                 x=mc_params["bin_edges"][:-1],
-                y=np.log10(counts),
+                y=log_counts,
                 name="Magnitude Distribution",
                 marker_color="gray",
                 hoverinfo="none",
@@ -347,13 +351,14 @@ to magnitude value.
                     hovertemplate=None,
                 )
             )
-            cumulative_magnitudes = np.cumsum(magnitudes_sorted)
+            moment_magnitudes = np.power(10, 1.5 * magnitudes_sorted + 9.1)
+            cumulative_magnitudes = np.cumsum(moment_magnitudes)
             fig.add_trace(
                 go.Scattergl(
                     x=times_sorted,
                     y=cumulative_magnitudes,
                     mode="lines",
-                    name="Cumulative Magnitude",
+                    name="Cumulative Magnitude M0",
                     line={"color": "rgba(0,0,0,0.7)", "dash": "solid", "width": 3},
                     hoverinfo="none",
                     hovertemplate=None,
@@ -656,7 +661,7 @@ class StationMagnitudeOverDistance(Component):
         background_tasks.create(update_plot())
 
 
-class StationMagnitudesOverStation(Component):
+class StationMagnitudesResiduals(Component):
     name = "Station Magnitude Residuals"
     description = """Distance-corrected station magnitude residuals per station."""
 
@@ -677,42 +682,20 @@ class StationMagnitudesOverStation(Component):
         async def update_plot():
             catalog = await state.get_filtered_catalog()
 
-            rows = []
-
-            # --- Collect global data for model fit ---
-            dists = []
-            mags = []
+            station_dict: dict[str, list[float]] = {}
 
             for ev in catalog.events:
-                if ev.magnitude is None or not ev.magnitude.station_magnitudes:
+                if (
+                    ev.magnitude is None
+                    or ev.magnitude.average is None
+                    or not ev.magnitude.station_magnitudes
+                ):
                     continue
 
+                ev_mag = ev.magnitude.average
                 for sm in ev.magnitude.station_magnitudes:
-                    dist_km = sm.distance_epi / 1000.0
-                    if dist_km <= 0:
-                        continue
-                    if np.isfinite(dist_km) and np.isfinite(sm.magnitude):
-                        dists.append(dist_km)
-                        mags.append(sm.magnitude)
-
-            if len(dists) < 10:
-                return
-
-            dists = np.asarray(dists)
-            mags = np.asarray(mags)
-
-            # --- Fit attenuation model ---
-            magnitude_attenuation = np.vstack([np.log10(dists), np.ones_like(dists)]).T
-            a, b = np.linalg.lstsq(magnitude_attenuation, mags, rcond=None)[0]
-
-            # --- Compute residuals per station ---
-            for ev in catalog.events:
-                if ev.magnitude is None or not ev.magnitude.station_magnitudes:
-                    continue
-
-                for sm in ev.magnitude.station_magnitudes:
-                    dist_km = sm.distance_epi / 1000.0
-                    if dist_km <= 0:
+                    res = ev_mag - sm.magnitude
+                    if not np.isfinite(res):
                         continue
 
                     if hasattr(sm.station, "pretty"):
@@ -720,37 +703,16 @@ class StationMagnitudesOverStation(Component):
                     else:
                         name = ".".join(str(p) for p in sm.station)
 
-                    model = a * np.log10(dist_km) + b
-                    res = sm.magnitude - model
+                    station_dict.setdefault(name, []).append(res)
 
-                    if np.isfinite(res):
-                        rows.append((name, res))
-
-            if not rows:
+            stations = [k for k, v in station_dict.items() if len(v) >= 5]
+            if not stations:
                 return
 
-            # --- Group by station ---
-            station_dict = {}
-            for name, res in rows:
-                station_dict.setdefault(name, []).append(res)
-
-            # --- Filter + sort by median bias ---
-            stations = []
-            medians = []
-
-            for k, v in station_dict.items():
-                if len(v) < 5:
-                    continue
-                med = np.median(v)
-                stations.append(k)
-                medians.append(med)
-
-            order = np.argsort(medians)
-            stations = [stations[i] for i in order]
+            stations.sort(key=lambda k: float(np.median(station_dict[k])))
 
             plot.clear()
 
-            # --- Violin plots ---
             for st in stations:
                 fig.add_trace(
                     go.Violin(

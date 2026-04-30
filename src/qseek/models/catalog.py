@@ -418,11 +418,11 @@ class EventCatalog(BaseModel):
         async with UPDATE_LOCK:
             async with aiofiles.open(detection_file, "a") as f:
                 await f.write(f"{json_data}\n")
+                await f.flush()
 
             async with aiofiles.open(receivers_file, "a") as f:
-                await asyncio.shield(
-                    f.write(f"{detection.receivers.model_dump_json()}\n")
-                )
+                await f.write(f"{detection.receivers.model_dump_json()}\n")
+                await f.flush()
 
             detection.write_csv_line(
                 rundir / "csv" / "detections.csv",

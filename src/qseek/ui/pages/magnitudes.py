@@ -38,7 +38,7 @@ async def magnitudes_page() -> None:
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12 col-md"):
-            over_station = magnitude_components.StationMagnitudesOverStation()
+            over_station = magnitude_components.StationMagnitudesResiduals()
             over_station.header()
             await over_station.view()
 
