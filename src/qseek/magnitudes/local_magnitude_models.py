@@ -36,6 +36,7 @@ MaxAmplitudeQuantity = Literal[
     "displacement",
     "wood-anderson",
     "wood-anderson-old",
+    "wood-anderson-2800",
 ]
 # All models from Bormann (2012) https://doi.org/10.2312/GFZ.NMSOP-2_DS_3.1
 # Page 5
@@ -57,6 +58,7 @@ _QUANTITY_MAP: dict[MaxAmplitudeQuantity, MeasurementUnit] = {
     "displacement": "displacement",
     "wood-anderson": "displacement",
     "wood-anderson-old": "displacement",
+    "wood-anderson-2800": "displacement",
 }
 
 # New corrections from NMSOP 3.3
@@ -384,6 +386,19 @@ class NetherlandsGroningen(WoodAnderson, LocalMagnitudeModel):
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
         return 1.33 * np.log10(dist_hypo_km) + 0.00139 * dist_hypo_km + 0.424
+
+
+class CampiFlegrei(WoodAnderson, LocalMagnitudeModel):
+    author = "Petrosino et al. (2008)"
+    doi = "10.1785/0120070131"
+
+    max_amplitude = "wood-anderson-2800"
+    epicentral_range = Range(0.0 * KM, 10.0 * KM)  # The paper says 0.2 - 8 km
+    component = "horizontal-avg"
+
+    @staticmethod
+    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        return 0.95 * np.log10(dist_hypo_km) + 0.09 * dist_hypo_km - 0.1
 
 
 ModelName = Literal[LocalMagnitudeModel.model_names()]

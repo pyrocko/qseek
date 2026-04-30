@@ -18,6 +18,7 @@ from qseek.magnitudes.base import (
 from qseek.magnitudes.local_magnitude_models import (
     WOOD_ANDERSON,
     WOOD_ANDERSON_OLD,
+    WOOD_ANDERSON_PIDSA,
     CustomLocalMagnitudeModel,
     LocalMagnitudeModel,
     ModelName,
@@ -211,27 +212,23 @@ class LocalMagnitude(EventMagnitudeCalculator):
         if not traces:
             raise ValueError("No traces found for event")
 
-        if model.max_amplitude == "wood-anderson":
+        if model.max_amplitude.startswith("wood-anderson"):
+            # This is a circus: Different versions of the wood-anderson
+            # transfer function are used
+            if model.max_amplitude == "wood-anderson":
+                transfer_function = WOOD_ANDERSON
+            elif model.max_amplitude == "wood-anderson-old":
+                transfer_function = WOOD_ANDERSON_OLD
+            elif model.max_amplitude == "wood-anderson-2800":
+                transfer_function = WOOD_ANDERSON_PIDSA
+            else:
+                raise ValueError(f"Unknown wood-anderson model: {model.max_amplitude}")
+
             traces = await asyncio.gather(
                 *[
                     asyncio.to_thread(
                         tr.transfer,
-                        transfer_function=WOOD_ANDERSON,
-                        freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
-                        tfade=self.taper_seconds,
-                        cut_off_fading=False,
-                        demean=True,
-                        invert=False,
-                    )
-                    for tr in traces
-                ]
-            )
-        elif model.max_amplitude == "wood-anderson-old":
-            traces = await asyncio.gather(
-                *[
-                    asyncio.to_thread(
-                        tr.transfer,
-                        transfer_function=WOOD_ANDERSON_OLD,
+                        transfer_function=transfer_function,
                         freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
                         tfade=self.taper_seconds,
                         cut_off_fading=False,
