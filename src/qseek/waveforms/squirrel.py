@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import glob
 import logging
+import math
 from datetime import datetime, timedelta
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal, Self
+from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal, Self, Sequence
 
 from pydantic import (
     Field,
@@ -33,9 +34,12 @@ from qseek.waveforms.base import WaveformBatch, WaveformProvider
 
 if TYPE_CHECKING:
     from pyrocko.squirrel.base import Batch
+    from pyrocko.trace import Trace
     from rich.table import Table
 
 logger = logging.getLogger(__name__)
+
+_SQUIRREL_SEM = asyncio.Semaphore(8)
 
 
 class SquirrelPrefetcher:
@@ -211,10 +215,6 @@ class PyrockoSquirrel(WaveformProvider):
             if self.waveform_dirs:
                 self.scan_waveform_dirs(squirrel)
 
-            if self._stations:
-                for path in self._stations.station_xmls:
-                    logger.info("loading StationXML responses from %s", path)
-                    squirrel.add(str(path), check=False)
             self._squirrel = squirrel
         return self._squirrel
 
@@ -354,3 +354,29 @@ class PyrockoSquirrel(WaveformProvider):
             yield batch
 
             prefetcher.queue.task_done()
+
+    async def get_traces(
+        self,
+        nsls: Sequence[NSL],
+        start_time: datetime,
+        end_time: datetime,
+        channel_priorities: Sequence[str] | None = None,
+        want_incomplete: bool = False,
+    ) -> list[Trace]:
+        squirrel = self.get_squirrel()
+
+        accessor_id = "waveforms.squirrel"
+        nslc_ids = [(*nsl, "*") for nsl in nsls]
+        async with _SQUIRREL_SEM:
+            traces = await asyncio.to_thread(
+                squirrel.get_waveforms,
+                codes=nslc_ids,
+                tmin=start_time.timestamp(),
+                tmax=end_time.timestamp(),
+                snap=(math.ceil, math.floor),
+                accessor_id=accessor_id,
+                want_incomplete=want_incomplete,
+                channel_priorities=channel_priorities or self.channel_selector,
+            )
+        squirrel.advance_accessor(accessor_id, cache_id="waveform")
+        return traces

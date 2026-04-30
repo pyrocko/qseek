@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 from uuid import UUID
 
 import aiofiles
@@ -20,7 +21,6 @@ from qseek.console import console
 from qseek.models.detection import (
     FILENAME_DETECTIONS,
     FILENAME_RECEIVERS,
-    UPDATE_LOCK,
     EventDetection,
     logger,
 )
@@ -29,6 +29,80 @@ from qseek.utils import Symbols, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.gui.marker import EventMarker, PhaseMarker
+
+UPDATE_LOCK = asyncio.Lock()
+
+
+class ReceiverCache:
+    file: Path
+    lines: list[str] = []
+    mtime: float | None = None
+
+    def __init__(self, file: Path) -> None:
+        self.file = file
+        self.load()
+
+    def load(self) -> None:
+        if not self.file.exists():
+            logger.debug("receiver cache %s does not exist", self.file)
+            return
+        logger.debug("loading receiver cache from %s", self.file)
+        self.lines = self.file.read_text().splitlines()
+        self.mtime = self.file.stat().st_mtime
+
+    def _check_mtime(self) -> None:
+        if self.mtime is None or self.mtime != self.file.stat().st_mtime:
+            self.load()
+
+    def get_line(self, row_index: int) -> str:
+        """Retrieves the line at the specified row index.
+
+        Args:
+            row_index (int): The index of the row to retrieve.
+
+        Returns:
+            str: The line at the specified row index.
+        """
+        self._check_mtime()
+        return self.lines[row_index]
+
+    def find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
+        """Find the given UID in the lines and return its index and value.
+
+        get_line should be prefered over this method.
+
+        Args:
+            uid (UUID): The UID to search for.
+            start_idx (int, optional): The detection index to start the search from.
+                Defaults to 0.
+
+        Raises:
+            KeyError: If the UID is not found in the lines.
+
+        Returns:
+            tuple[int, str]: A tuple containing the index and value of the found UID.
+        """
+        self._check_mtime()
+        find_uid = str(uid)
+
+        offset = 0
+        n_lines = len(self.lines)
+
+        # Search in both directions
+        while True:
+            left_idx = start_idx - offset
+            right_idx = start_idx + offset
+            if start_idx + offset >= n_lines and start_idx - offset < 0:
+                break
+            with suppress(IndexError):
+                if left_idx >= 0 and find_uid in self.lines[left_idx]:
+                    return left_idx, self.lines[left_idx]
+            with suppress(IndexError):
+                if right_idx < n_lines and find_uid in self.lines[right_idx]:
+                    return right_idx, self.lines[right_idx]
+            offset += 1
+
+        raise KeyError(f"UID {find_uid} not found in receiver cache.")
 
 
 class EventCatalogStats(Stats):
@@ -78,6 +152,11 @@ class EventCatalog(BaseModel):
     events: list[EventDetection] = []
 
     _stats: ClassVar[EventCatalogStats] = EventCatalogStats()
+    _receiver_cache: ReceiverCache = PrivateAttr()
+    _csv_header: list[str] = PrivateAttr([])
+
+    def model_post_init(self, context: Any) -> None:
+        self._receiver_cache = ReceiverCache(self.rundir / FILENAME_RECEIVERS)
 
     @property
     def n_events(self) -> int:
@@ -95,6 +174,9 @@ class EventCatalog(BaseModel):
         dir = self.rundir / "csv"
         dir.mkdir(exist_ok=True)
         return dir
+
+    def set_csv_header(self, header: list[str]) -> None:
+        self._csv_header = header
 
     def get_stats(self) -> EventCatalogStats:
         if not self._stats:
@@ -159,6 +241,7 @@ class EventCatalog(BaseModel):
                 and Pyrocko detections. Defaults to 0.0.
         """
         detection.set_index(self.n_events)
+        detection.set_receiver_cache(self._receiver_cache)
 
         markers_file = self.markers_dir / f"{time_to_path(detection.time)}.list"
         self.markers_dir.mkdir(exist_ok=True)
@@ -178,7 +261,7 @@ class EventCatalog(BaseModel):
         )
         self.get_stats().new_detection(detection)
         # This has to happen after the markers are saved, cache is cleared
-        await detection.save(self.rundir, jitter_location=jitter_location)
+        await self.save_detection(detection, jitter_location=jitter_location)
 
     async def save_semblance_trace(self, trace: Trace) -> None:
         """Add semblance trace to detection and save to file.
@@ -229,7 +312,7 @@ class EventCatalog(BaseModel):
                 try:
                     detection = EventDetection.model_validate_json(line)
                     detection.set_index(idx)
-                    detection.set_receiver_cache(rundir)
+                    detection.set_receiver_cache(catalog._receiver_cache)
                     catalog.events.append(detection)
                 except ValidationError as e:
                     logger.error("error loading detection %d: %s", idx, e)
@@ -281,13 +364,84 @@ class EventCatalog(BaseModel):
         else:
             logger.info("all detections are ok")
 
-    def prepare(self) -> None:
+    def prepare(self, csv_header: list[str] | None = None) -> None:
         """Prepare the search run."""
         logger.debug("preparing catalog")
         stats = self.get_stats()
         stats.n_detections = self.n_events
         if self and self.n_events:
             stats.max_semblance = max(detection.semblance for detection in self)
+        if csv_header is not None:
+            self._csv_header = csv_header
+
+    async def save_detection(
+        self,
+        detection: EventDetection,
+        update: bool = False,
+        jitter_location: float = 0.0,
+    ) -> None:
+        """Dump a detection data to file.
+
+        After the detection is dumped, the receivers are dumped to a separate file and
+        the receivers cache is cleared.
+
+        Args:
+            detection (EventDetection): The detection to save.
+            update (bool): Whether to update an existing detection or append a new one.
+            jitter_location (float, optional): The amount of spatial jitter to apply to
+                the exported detection. Defaults to 0.0.
+
+        Raises:
+            ValueError: If the detection index is not set and update is True.
+        """
+        rundir = self.rundir
+        detection_file = rundir / FILENAME_DETECTIONS
+        receivers_file = rundir / FILENAME_RECEIVERS
+        detection.set_receiver_cache(rundir)
+        json_data = detection.model_dump_json(exclude={"receivers"})
+
+        if update:
+            if detection._detection_idx is None:
+                raise AttributeError("cannot update detection without set index")
+            logger.debug("updating detection %d", detection._detection_idx)
+
+            async with UPDATE_LOCK:
+                async with aiofiles.open(detection_file, "r") as f:
+                    lines = await f.readlines()
+
+                lines[detection._detection_idx] = f"{json_data}\n"
+                async with aiofiles.open(detection_file, "w") as f:
+                    await asyncio.shield(f.writelines(lines))
+            return
+
+        logger.debug("appending detection %d", detection._detection_idx)
+        async with UPDATE_LOCK:
+            async with aiofiles.open(detection_file, "a") as f:
+                await f.write(f"{json_data}\n")
+
+            async with aiofiles.open(receivers_file, "a") as f:
+                await asyncio.shield(
+                    f.write(f"{detection.receivers.model_dump_json()}\n")
+                )
+
+            detection.write_csv_line(
+                rundir / "csv" / "detections.csv",
+                header=self._csv_header,
+            )
+            detection.write_pyrocko_event(
+                rundir / "pyrocko_detections.list",
+            )
+            if jitter_location:
+                detection.write_csv_line(
+                    rundir / "csv" / "detections_jittered.csv",
+                    header=self._csv_header,
+                    jitter_location=jitter_location,
+                )
+                detection.write_pyrocko_event(
+                    rundir / "pyrocko_detections_jittered.list",
+                    jitter_location=jitter_location,
+                )
+            detection.clear_receivers()
 
     async def save(self) -> None:
         """Save catalog to current rundir."""
@@ -345,18 +499,19 @@ class EventCatalog(BaseModel):
         else:
             detections = self.events
 
-        csv_dicts: list[dict] = []
+        csv_lines: list[dict] = []
         for detection in detections:
             csv = detection.get_csv_dict()
             for key in csv:
                 if key not in header:
                     header.append(key)
-            csv_dicts.append(csv)
+            csv_lines.append(csv)
 
+        header = header or self._csv_header
         header_line = [",".join(header) + "\n"]
         rows = [
-            ",".join(str(csv.get(key, "")) for key in header) + "\n"
-            for csv in csv_dicts
+            ",".join(str(csv.get(key, '""')) for key in header) + "\n"
+            for csv in csv_lines
         ]
 
         async with aiofiles.open(file, "w") as f:

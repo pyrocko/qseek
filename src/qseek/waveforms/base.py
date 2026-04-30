@@ -4,7 +4,7 @@ import logging
 from asyncio import Queue
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal
+from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal, Sequence
 
 import numpy as np
 from pydantic import Field, PrivateAttr, StringConstraints
@@ -132,4 +132,14 @@ class WaveformProvider(Model):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> AsyncIterator[WaveformBatch]:
+        raise NotImplementedError
+
+    async def get_traces(
+        self,
+        nsls: Sequence[NSL],
+        start_time: datetime,
+        end_time: datetime,
+        channel_priorities: Sequence[str] | None = None,
+        want_incomplete: bool = False,
+    ) -> list[Trace]:
         raise NotImplementedError

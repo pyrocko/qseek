@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
 
@@ -9,11 +11,13 @@ from pydantic import (
     Field,
     GetCoreSchemaHandler,
     PositiveFloat,
+    PrivateAttr,
 )
 from pydantic_core import CoreSchema, core_schema
 from pyrocko.io.stationxml import load_xml
 from pyrocko.model import Station as PyrockoStation
 from pyrocko.model import dump_stations_yaml, load_stations
+from pyrocko.squirrel import Squirrel
 
 from qseek.base import Model
 from qseek.types import DirectoryPath, FilePath
@@ -128,7 +132,10 @@ class StationInventory(Model):
         "include stations for detection. If None, all stations are included.",
     )
 
+    _squirrel: Squirrel = PrivateAttr()
+
     def model_post_init(self, __context: Any) -> None:
+        squirrel = Squirrel()
         loaded_stations = []
         for file in self.pyrocko_station_yamls:
             if not file.exists():
@@ -154,11 +161,16 @@ class StationInventory(Model):
                     continue
                 loaded_stations += station_xml.get_pyrocko_stations()
 
+            logger.info("loading StationXML responses from %s", path)
+            for file in station_xmls:
+                squirrel.add(str(file.expanduser()), check=False)
+
         for sta in loaded_stations:
             sta = Station.from_pyrocko_station(sta)
             self.stations.append(sta)
 
         self.sanitize_stations()
+        self._squirrel = squirrel
 
     def __iter__(self) -> Iterator[Station]:
         return (sta for sta in self.stations if sta.nsl not in self.blacklist)
@@ -357,6 +369,26 @@ class StationInventory(Model):
                     f"{sta.effective_lat},{sta.effective_lon},{sta.elevation},"
                     f"{sta.depth},{sta.as_wkt()}\n"
                 )
+
+    async def get_responses(
+        self, start_time: datetime, end_time: datetime, traces: list[Trace]
+    ) -> Any:
+        """Get station responses from the Squirrel.
+
+        Args:
+            start_time (datetime): Start time of the responses.
+            end_time (datetime): End time of the responses.
+            traces (list[Trace]): List of Pyrocko Traces to get responses for.
+
+        Returns:
+            Any: Station responses.
+        """
+        return await asyncio.to_thread(
+            self._squirrel.get_responses,
+            tmin=start_time.timestamp(),
+            tmax=end_time.timestamp(),
+            codes=[tr.nslc_id for tr in traces],
+        )
 
     def export_vtk(self, reference: Location | None = None) -> None: ...
 

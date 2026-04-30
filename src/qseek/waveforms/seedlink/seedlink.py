@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import subprocess
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Literal
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Sequence
 
 from pydantic import Field, PrivateAttr, computed_field
 from pyrocko.io import save
@@ -33,6 +34,8 @@ SDS_TEMPLATE = (
     "/%(network)s.%(station)s.%(location)s.%(channel)s.D"
     ".%(tmin_year)s.%(julianday)s"
 )
+
+_SQUIRREL_SEM = asyncio.Semaphore(16)
 
 
 def slinktool_available() -> bool:
@@ -297,3 +300,29 @@ class SeedLink(WaveformProvider):
         if self._squirrel is None:
             raise RuntimeError("Squirrel instance not initialized")
         return self._squirrel
+
+    async def get_traces(
+        self,
+        nsls: Sequence[NSL],
+        start_time: datetime,
+        end_time: datetime,
+        channel_priorities: Sequence[str] | None = None,
+        want_incomplete: bool = False,
+    ) -> list[Trace]:
+        squirrel = self.get_squirrel()
+
+        accessor_id = "waveforms.squirrel"
+        nslc_ids = [(*nsl, "*") for nsl in nsls]
+        async with _SQUIRREL_SEM:
+            traces = await asyncio.to_thread(
+                squirrel.get_waveforms,
+                codes=nslc_ids,
+                tmin=start_time.timestamp(),
+                tmax=end_time.timestamp(),
+                snap=(math.ceil, math.floor),
+                accessor_id=accessor_id,
+                want_incomplete=want_incomplete,
+                channel_priorities=channel_priorities or self.channel_selector,
+            )
+        squirrel.advance_accessor(accessor_id, cache_id="waveform")
+        return traces

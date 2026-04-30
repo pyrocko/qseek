@@ -512,7 +512,10 @@ class Search(Model):
         for magnitude in self.magnitudes:
             await magnitude.prepare(self.octree, self.stations)
 
-        self._catalog.prepare()
+        csv_header = EventDetection.csv_header()
+        for m in self.magnitudes:
+            csv_header.extend(m.csv_header())
+        self._catalog.prepare(csv_header=csv_header)
 
     async def start(
         self,
@@ -650,15 +653,12 @@ class Search(Model):
                 try:
                     magnitude = await mag_calculator.get_magnitude(
                         self.data_provider,
+                        self.stations,
                         event,
                     )
                     event.add_magnitude(magnitude)
                 except Exception as e:
-                    logger.error(
-                        "Error adding magnitude from %s: %s",
-                        mag_calculator.magnitude,
-                        e,
-                    )
+                    logger.warning("Error adding magnitude: %s", e)
 
             for feature_calculator in self.features:
                 logger.debug("adding features from %s", feature_calculator.feature)

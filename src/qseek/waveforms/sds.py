@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from functools import partial
@@ -346,6 +346,8 @@ class SDSArchive(WaveformProvider):
         nsl: NSL,
         date: date,
         remove_duplicate_orientations: bool = True,
+        channel_selector: Sequence[str] | None = None,
+        channel_orientations: str = "ENZ0123",
     ) -> set[Path]:
         julian_day = date.timetuple().tm_yday
         base_path = self.archive / str(date.year) / nsl.network / nsl.station
@@ -359,9 +361,9 @@ class SDSArchive(WaveformProvider):
             channel = folder.name.rstrip(".D")
             channel_type = channel[:2]
             channel_orientation = channel[-1]
-            if self.channel_selector and channel_type not in self.channel_selector:
+            if channel_selector and channel_type not in channel_selector:
                 continue
-            if channel_orientation not in self.channel_orientations:
+            if channel_orientation not in channel_orientations:
                 continue
 
             file = folder / f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
@@ -372,10 +374,10 @@ class SDSArchive(WaveformProvider):
                     continue
             available_files[channel] = file
 
-        if self.channel_selector:
+        if channel_selector:
             sorting = sorted(
                 available_files,
-                key=lambda cha: self.channel_selector.index(cha[:2]),
+                key=lambda cha: channel_selector.index(cha[:2]),
             )
             available_files = {cha: available_files[cha] for cha in sorting}
 
@@ -389,14 +391,23 @@ class SDSArchive(WaveformProvider):
 
         return set(available_files.values())
 
-    def _get_file_paths(self, dates: Iterable[date]) -> set[Path]:
-        if not self._station_selection:
-            raise RuntimeError("Station selection not prepared.")
-
+    def _get_file_paths(
+        self,
+        nsls: Iterable[NSL],
+        dates: Iterable[date],
+        channel_selector: Sequence[str] | None = None,
+        channel_orientations: str = "ENZ0123",
+    ) -> set[Path]:
         paths: set[Path] = set()
-        for sta in self._station_selection:
+        for nsl in nsls:
             for _date in dates:
-                files = self._get_available_files(sta.nsl, _date)
+                files = self._get_available_files(
+                    nsl,
+                    _date,
+                    channel_selector=channel_selector or self.channel_selector,
+                    channel_orientations=channel_orientations
+                    or self.channel_orientations,
+                )
                 paths.update(files)
 
         logger.debug(
@@ -415,12 +426,16 @@ class SDSArchive(WaveformProvider):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> None:
+        if not self._station_selection:
+            raise RuntimeError("Station selection not prepared.")
+
         logger.info("starting SDS waveform reader, queue size %d", self.queue_size)
         stats = self._stats
 
         archive_start, archive_end = self.available_time_span()
         start_time = start_time or archive_start + window_padding
         end_time = end_time or archive_end
+        nsls = {sta.nsl for sta in self._station_selection}
 
         n_batches = int((end_time - start_time) // window_increment)
         i_batch = 0
@@ -437,7 +452,7 @@ class SDSArchive(WaveformProvider):
             dates = {trace_start.date(), trace_end.date()}
 
             begin_load = datetime_now()
-            paths = self._get_file_paths(dates)
+            paths = self._get_file_paths(nsls, dates)
             if not paths:
                 logger.warning("no waveform files found for %s, skipping", trace_start)
                 i_batch += 1
@@ -528,6 +543,34 @@ class SDSArchive(WaveformProvider):
             self._queue.task_done()
 
         await worker
+
+    async def get_traces(
+        self,
+        nsls: Sequence[NSL],
+        start_time: datetime,
+        end_time: datetime,
+        channel_priorities: Sequence[str] | None = None,
+        want_incomplete: bool = False,
+    ) -> list[Trace]:
+        dates = {start_time.date(), end_time.date()}
+        paths = self._get_file_paths(
+            nsls,
+            dates,
+            channel_selector=channel_priorities,
+            channel_orientations=self.channel_orientations,
+        )
+
+        if not paths:
+            logger.warning("no waveform files found for %s, skipping", start_time)
+            return []
+
+        return await _load_files(
+            paths,
+            start_time=start_time,
+            end_time=end_time,
+            want_incomplete=want_incomplete,
+            executor=self._executor,
+        )
 
 
 if __name__ == "__main__":

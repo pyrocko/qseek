@@ -2,19 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from collections import defaultdict
-from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from random import uniform
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Self, Sequence
 from uuid import UUID, uuid4
-from weakref import WeakValueDictionary
 
-import aiofiles
 import numpy as np
 from pydantic import (
     AwareDatetime,
@@ -44,111 +40,19 @@ from qseek.utils import (
 )
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
     from qseek.features.base import EventFeature
     from qseek.magnitudes.base import EventMagnitude
+    from qseek.models.catalog import ReceiverCache
+    from qseek.models.station import StationInventory
+    from qseek.waveforms.base import WaveformProvider
 
 
 logger = logging.getLogger(__name__)
 
 FILENAME_DETECTIONS = "detections.json"
 FILENAME_RECEIVERS = "detections_receivers.json"
-
-UPDATE_LOCK = asyncio.Lock()
-SQUIRREL_SEM = asyncio.Semaphore(16)
-
-
-RECEIVER_CACHE: WeakValueDictionary[Path, ReceiverCache] = WeakValueDictionary()
-
-
-class ReceiverCache:
-    file: Path
-    lines: list[str] = []
-    mtime: float | None = None
-
-    def __init__(self, file: Path) -> None:
-        self.file = file
-        self.load()
-
-    def load(self) -> None:
-        if not self.file.exists():
-            logger.debug("receiver cache %s does not exist", self.file)
-            return
-        logger.debug("loading receiver cache from %s", self.file)
-        self.lines = self.file.read_text().splitlines()
-        self.mtime = self.file.stat().st_mtime
-
-    def _check_mtime(self) -> None:
-        if self.mtime is None or self.mtime != self.file.stat().st_mtime:
-            self.load()
-
-    def get_line(self, row_index: int) -> str:
-        """Retrieves the line at the specified row index.
-
-        Args:
-            row_index (int): The index of the row to retrieve.
-
-        Returns:
-            str: The line at the specified row index.
-        """
-        self._check_mtime()
-        return self.lines[row_index]
-
-    def find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
-        """Find the given UID in the lines and return its index and value.
-
-        get_line should be prefered over this method.
-
-        Args:
-            uid (UUID): The UID to search for.
-            start_idx (int, optional): The detection index to start the search from.
-                Defaults to 0.
-
-        Raises:
-            KeyError: If the UID is not found in the lines.
-
-        Returns:
-            tuple[int, str]: A tuple containing the index and value of the found UID.
-        """
-        self._check_mtime()
-        find_uid = str(uid)
-
-        offset = 0
-        n_lines = len(self.lines)
-
-        # Search in both directions
-        while True:
-            left_idx = start_idx - offset
-            right_idx = start_idx + offset
-            if start_idx + offset >= n_lines and start_idx - offset < 0:
-                break
-            with suppress(IndexError):
-                if left_idx >= 0 and find_uid in self.lines[left_idx]:
-                    return left_idx, self.lines[left_idx]
-            with suppress(IndexError):
-                if right_idx < n_lines and find_uid in self.lines[right_idx]:
-                    return right_idx, self.lines[right_idx]
-            offset += 1
-
-        raise KeyError(f"UID {find_uid} not found in receiver cache.")
-
-    @classmethod
-    def get_instance(cls, file: Path) -> ReceiverCache:
-        """Get the receiver cache instance for the specified file.
-
-        Args:
-            file (Path): The path to the receiver cache file.
-
-        Returns:
-            ReceiverCache: The receiver cache instance.
-        """
-        if file not in RECEIVER_CACHE:
-            receiver_cache = cls(file)
-            RECEIVER_CACHE[file] = receiver_cache
-            return receiver_cache
-        return RECEIVER_CACHE[file]
 
 
 class PhaseDetection(BaseModel):
@@ -411,7 +315,7 @@ class EventReceivers(BaseModel):
 
     async def get_waveforms(
         self,
-        squirrel: Squirrel,
+        waveform_provider: WaveformProvider,
         seconds_before: float = 3.0,
         seconds_after: float = 5.0,
         phase: PhaseDescription | None = None,
@@ -420,10 +324,10 @@ class EventReceivers(BaseModel):
         want_incomplete: bool = True,
         crop_receivers: bool = True,
     ) -> list[Trace]:
-        """Retrieves and restitutes waveforms for a given squirrel.
+        """Retrieves and restitutes waveforms for a given waveform provider.
 
         Args:
-            squirrel (Squirrel): The squirrel waveform organizer.
+            waveform_provider (WaveformProvider): The waveform provider.
             seconds_before (float, optional): Number of seconds before phase arrival
                 to retrieve. Defaults to 2.0.
             seconds_after (float, optional): Number of seconds after phase arrival
@@ -450,23 +354,13 @@ class EventReceivers(BaseModel):
         if not times:
             return []
 
-        accessor_id = "qseek.event"
-
-        tmin = min(times).timestamp() - seconds_before
-        tmax = max(times).timestamp() + seconds_after
-        nslc_ids = [(*receiver.nsl, "*") for receiver in receivers]
-        async with SQUIRREL_SEM:
-            traces = await asyncio.to_thread(
-                squirrel.get_waveforms,
-                codes=nslc_ids,
-                tmin=tmin,
-                tmax=tmax,
-                snap=(math.ceil, math.floor),
-                accessor_id=accessor_id,
-                want_incomplete=want_incomplete,
-                channel_priorities=channels,
-            )
-        squirrel.advance_accessor(accessor_id, cache_id="waveform")
+        traces = await waveform_provider.get_traces(
+            nsls=[receiver.nsl for receiver in receivers],
+            start_time=min(times) - timedelta(seconds=seconds_before),
+            end_time=max(times) + timedelta(seconds=seconds_after),
+            want_incomplete=want_incomplete,
+            channel_priorities=channels,
+        )
 
         if crop_receivers:
             for tr in traces:
@@ -482,7 +376,8 @@ class EventReceivers(BaseModel):
 
     async def get_waveforms_restituted(
         self,
-        squirrel: Squirrel,
+        waveform_provider: WaveformProvider,
+        stations: StationInventory,
         seconds_before: float = 2.0,
         seconds_after: float = 5.0,
         seconds_taper: float = 5.0,
@@ -499,7 +394,9 @@ class EventReceivers(BaseModel):
         """Retrieves and restitutes waveforms for a given squirrel.
 
         Args:
-            squirrel (Squirrel): The squirrel waveform organizer.
+            waveform_provider (WaveformProvider): The waveform provider.
+            stations (StationInventory): The station inventory to use for calculating
+                the station responses.
             seconds_before (float, optional): Number of seconds before phase arrival
                 to retrieve. Defaults to 2.0.
             seconds_after (float, optional): Number of seconds after phase arrival
@@ -530,7 +427,7 @@ class EventReceivers(BaseModel):
             list[Trace]: The restituted waveforms.
         """
         traces = await self.get_waveforms(
-            squirrel,
+            waveform_provider=waveform_provider,
             phase=phase,
             seconds_after=seconds_after + seconds_taper,
             seconds_before=seconds_before + seconds_taper,
@@ -538,7 +435,10 @@ class EventReceivers(BaseModel):
             channels=channels,
             want_incomplete=want_incomplete,
         )
-        traces = filter_clipped_traces(traces) if filter_clipped else traces
+        try:
+            traces = filter_clipped_traces(traces) if filter_clipped else traces
+        except TypeError as exc:
+            logger.warning("cannot filter for clipped traces, %s", exc)
         if not traces:
             return []
 
@@ -547,13 +447,11 @@ class EventReceivers(BaseModel):
                 raise ValueError("cut_off_taper cannot be True when quantity is counts")
             return traces
 
-        tmin = min(tr.tmin for tr in traces)
-        tmax = max(tr.tmax for tr in traces)
-        responses = await asyncio.to_thread(
-            squirrel.get_responses,
-            tmin=tmin,
-            tmax=tmax,
-            codes=[tr.nslc_id for tr in traces],
+        utc = timezone.utc
+        responses = await stations.get_responses(
+            traces=traces,
+            start_time=datetime.fromtimestamp(min(tr.tmin for tr in traces), tz=utc),
+            end_time=datetime.fromtimestamp(max(tr.tmax for tr in traces), tz=utc),
         )
 
         def get_response(tr: Trace) -> Any:
@@ -717,13 +615,13 @@ class EventDetection(Location):
             return v.get("features", [])
         return v
 
-    def set_receiver_cache(self, rundir: Path) -> None:
-        """Set the rundir for the detection model.
+    def set_receiver_cache(self, receiver_cache: ReceiverCache) -> None:
+        """Set the receiver cache for the detection model.
 
         Args:
-            rundir (Path): The path to the rundir.
+            receiver_cache (ReceiverCache): The receiver cache instance.
         """
-        self._receiver_cache = ReceiverCache.get_instance(rundir / FILENAME_RECEIVERS)
+        self._receiver_cache = receiver_cache
 
     @property
     def magnitude(self) -> EventMagnitude | None:
@@ -733,100 +631,39 @@ class EventDetection(Location):
         """
         return self.magnitudes[0] if self.magnitudes else None
 
-    async def update(self, rundir: Path) -> None:
-        """Update detection in database.
+    def clear_receivers(self):
+        """Clear the receivers associated with the detection to free memory."""
+        self._receivers = None
 
-        Doing this often requires a lot of I/O.
-        """
-        await self.save(rundir, update=True)
-
-    async def save(
+    def write_csv_line(
         self,
-        rundir: Path,
-        update: bool = False,
+        file: Path,
+        header: list[str] | None = None,
         jitter_location: float = 0.0,
     ) -> None:
-        """Dump the detection data to a file.
-
-        After the detection is dumped, the receivers are dumped to a separate file and
-        the receivers cache is cleared.
-
-        Args:
-            rundir (Path): The path to the rundir.
-            update (bool): Whether to update an existing detection or append a new one.
-            jitter_location (float, optional): The amount of spatial jitter to apply to
-                the exported detection. Defaults to 0.0.
-
-        Raises:
-            ValueError: If the detection index is not set and update is True.
-        """
-        detection_file = rundir / FILENAME_DETECTIONS
-        self.set_receiver_cache(rundir)
-
-        json_data = self.model_dump_json(exclude={"receivers"})
-
-        if update:
-            if self._detection_idx is None:
-                raise AttributeError("cannot update detection without set index")
-            logger.debug("updating detection %d", self._detection_idx)
-
-            async with UPDATE_LOCK:
-                async with aiofiles.open(detection_file, "r") as f:
-                    lines = await f.readlines()
-
-                lines[self._detection_idx] = f"{json_data}\n"
-                async with aiofiles.open(detection_file, "w") as f:
-                    await asyncio.shield(f.writelines(lines))
-        else:
-            logger.debug("appending detection %d", self._detection_idx)
-            async with UPDATE_LOCK:
-                async with aiofiles.open(detection_file, "a") as f:
-                    await f.write(f"{json_data}\n")
-
-                receiver_file = rundir / FILENAME_RECEIVERS
-                async with aiofiles.open(receiver_file, "a") as f:
-                    await asyncio.shield(
-                        f.write(f"{self.receivers.model_dump_json()}\n")
-                    )
-
-        if not update:
-            self.export_csv_line(
-                rundir / "csv" / "detections.csv",
-            )
-            self.export_pyrocko_event(
-                rundir / "pyrocko_detections.list",
-            )
-            if jitter_location:
-                self.export_csv_line(
-                    rundir / "csv" / "detections_jittered.csv",
-                    jitter_location=jitter_location,
-                )
-                self.export_pyrocko_event(
-                    rundir / "pyrocko_detections_jittered.list",
-                    jitter_location=jitter_location,
-                )
-
-        self._receivers = None  # Free memory
-
-    def export_csv_line(self, file: Path, jitter_location: float = 0.0) -> None:
         """Save the detection as a CSV line.
 
         Args:
             file (Path): The path to the CSV file.
+            header (list[str], optional): The header to include in the CSV line.
+                Defaults to None.
             jitter_location (float, optional): The amount of spatial jitter to apply.
                 Defaults to 0.0.
         """
         detection = self.jitter_location(jitter_location) if jitter_location else self
         csv_line = detection.get_csv_dict()
+        if not header:
+            header = list(csv_line.keys())
 
         if not file.exists():
-            header = ",".join(csv_line.keys())
+            header = ",".join(header)
             file.write_text(f"{header}\n")
+
         with file.open("a") as f:
-            line = ",".join(str(value) for value in csv_line.values())
+            line = ",".join(str(csv_line.get(key, '""')) for key in header)
             f.write(f"{line}\n")
 
-    def export_pyrocko_event(self, file: Path, jitter_location: float = 0.0) -> None:
+    def write_pyrocko_event(self, file: Path, jitter_location: float = 0.0) -> None:
         """Write the detection as a Pyrocko event to a file.
 
         Args:
@@ -1053,11 +890,35 @@ class EventDetection(Location):
                     "uncertainty_vertical": self.uncertainty.vertical,
                 }
             )
-        csv_line["WKT_geom"] = self.as_wkt()
-
         for magnitude in self.magnitudes:
             csv_line.update(magnitude.csv_row())
+        csv_line["WKT_geom"] = self.as_wkt()
         return csv_line
+
+    @classmethod
+    def csv_header(cls) -> list[str]:
+        """Get CSV header for the detection.
+
+        Returns:
+            list[str]: CSV header
+        """
+        return [
+            "time",
+            "lat",
+            "lon",
+            "depth",
+            "east_shift",
+            "north_shift",
+            "distance_border",
+            "semblance",
+            "azimuthal_coverage",
+            "n_stations",
+            "n_picks",
+            "rms",
+            "uncertainty_horizontal",
+            "uncertainty_vertical",
+            "WKT_geom",
+        ]
 
     def get_pyrocko_markers(
         self, modelled: bool = True, observed: bool = True
@@ -1109,23 +970,29 @@ class EventDetection(Location):
 
     def snuffle(
         self,
-        squirrel: Squirrel,
+        waveform_provider: WaveformProvider,
+        stations: StationInventory | None = None,
         restituted: bool | MeasurementUnit = False,
     ) -> None:
         """Open snuffler for detection.
 
         Args:
-            squirrel (Squirrel): The squirrel, holding the data
+            waveform_provider (WaveformProvider): The waveform provider to use for
+                retrieving waveforms.
+            stations (StationInventory): The station inventory to use for retrieving
             restituted (bool, optional): Restitude the data. Defaults to False.
         """
         from pyrocko.trace import snuffle
 
+        if restituted and not stations:
+            raise ValueError("stations must be provided when restituting data")
+
         restitute_unit = "velocity" if restituted is True else restituted
         traces = (
-            self.receivers.get_waveforms(squirrel)
+            self.receivers.get_waveforms(waveform_provider, want_incomplete=False)
             if not restitute_unit
             else self.receivers.get_waveforms_restituted(
-                squirrel, quantity=restitute_unit
+                waveform_provider, stations, quantity=restitute_unit
             )
         )
         snuffle(
