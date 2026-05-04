@@ -615,7 +615,7 @@ class Search(Model):
             jitter_location=self.octree.smallest_node_size()
         )
         if self.webserver:
-            self.webserver.stop()
+            await self.webserver.stop()
         console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)

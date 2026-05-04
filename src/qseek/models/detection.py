@@ -655,8 +655,7 @@ class EventDetection(Location):
         header = header or list(csv_dict.keys())
 
         if not file.exists():
-            header = ",".join(header)
-            file.write_text(header + "\n")
+            file.write_text(",".join(header) + "\n")
 
         with file.open("a") as f:
             line = ",".join(str(csv_dict.get(key, '""')) for key in header)
