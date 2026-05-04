@@ -150,7 +150,7 @@ class EventMagnitudeCalculator(Model):
         return []
 
 
-def hypo_distance_depth_only(location: Location, other: Location) -> float:
+def hypo_distance_only_station_depth(location: Location, other: Location) -> float:
     """Compute 3-dimensional distance [m] to other location object.
 
     Ignoring elevation, this is for legacy reasons by re-implementing
@@ -169,11 +169,11 @@ def hypo_distance_depth_only(location: Location, other: Location) -> float:
         return math.sqrt(
             (location.north_shift - other.north_shift) ** 2
             + (location.east_shift - other.east_shift) ** 2
-            + (location.depth - other.depth) ** 2
+            + (location.depth - other.effective_depth) ** 2
         )
 
     sx, sy, sz = od.geodetic_to_ecef(*location.effective_lat_lon, location.depth)
-    ox, oy, oz = od.geodetic_to_ecef(*other.effective_lat_lon, other.depth)
+    ox, oy, oz = od.geodetic_to_ecef(*other.effective_lat_lon, other.effective_depth)
 
     return math.sqrt((sx - ox) ** 2 + (sy - oy) ** 2 + (sz - oz) ** 2)
 
@@ -202,7 +202,7 @@ class StationAmplitudes(NamedTuple):
         event: EventDetection,
         noise_padding: float = 1.0,
         measurement: PeakMeasurement = "max-amplitude",
-        bad_hypo_distance_legacy: bool = False,
+        station_depth_only: bool = False,
     ) -> Self:
         if not traces:
             raise ValueError("No traces provided for amplitude calculation")
@@ -247,7 +247,7 @@ class StationAmplitudes(NamedTuple):
             noise=float(noise_amp),
             noise_std=float(noise_std),
             distance_hypo=receiver.distance_to(event)
-            if not bad_hypo_distance_legacy
-            else hypo_distance_depth_only(receiver, event),
+            if not station_depth_only
+            else hypo_distance_only_station_depth(receiver, event),
             distance_epi=receiver.surface_distance_to(event),
         )

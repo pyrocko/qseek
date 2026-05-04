@@ -361,7 +361,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
             traces=traces,
             event=event,
             measurement=model.peak_measurement,
-            bad_hypo_distance_legacy=model.hypo_depth_only_legacy,
+            station_depth_only=model.station_depth_only,
         )
 
         nsl_pretty = receiver.nsl.pretty_str(strip=True)
