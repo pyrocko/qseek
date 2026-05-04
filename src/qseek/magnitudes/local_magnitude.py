@@ -134,8 +134,8 @@ class LocalMagnitude(EventMagnitudeCalculator):
     max_station_std: float = Field(
         default=3.0,
         ge=0.0,
-        description="Maximum standard deviation of the station magnitudes to include "
-        "in the local magnitude estimation.",
+        description="Maximum allowed standard deviation of a station magnitude before "
+        "it is disregarded relative to the network magnitude.",
     )
 
     model: ModelName | CustomLocalMagnitudeModel = Field(

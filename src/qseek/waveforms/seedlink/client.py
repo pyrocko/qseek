@@ -48,14 +48,14 @@ async def call_slinktool(cmd_args: list[str]) -> bytes:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    ret = await proc.stdout.read(-1)
+    stdout, stderr = await proc.communicate()
+
     await proc.wait()
     if proc.returncode != 0:
-        stderr = await proc.stderr.read()
         raise RuntimeError(
             f"Command failed with code {proc.returncode}: {stderr.decode()}"
         )
-    return ret
+    return stdout
 
 
 class SeedLinkStation(BaseModel):
@@ -95,7 +95,7 @@ class StationSelection(BaseModel):
         default="???",
         min_length=3,
         max_length=3,
-        pattern="[A-Z?]",
+        pattern="^[A-Z?]{3}$",
     )
 
     @property
@@ -159,7 +159,9 @@ class SeedLinkStream:
         self._trace = new_trace
 
         since_last_data = datetime_now() - self._last_data
-        self._fill_rate = (trace.tmax - trace.tmin) / since_last_data.total_seconds()
+        self._fill_rate = (trace.tmax - trace.tmin) / max(
+            since_last_data.total_seconds(), 1e-6
+        )
 
         self._last_data = _as_datetime(trace.tmax)
 
@@ -435,10 +437,12 @@ class SeedLinkClient(BaseModel):
     )
 
     _stream_data: defaultdict[tuple[str, str, str, str], SeedLinkStream] = PrivateAttr(
-        default_factory=lambda: defaultdict(SeedLinkStream)
+        default_factory=lambda: defaultdict(SeedLinkStream),
     )
     _task: asyncio.Task | None = PrivateAttr(default=None)
-    _stats: SeedLinkClientStats = PrivateAttr(default_factory=SeedLinkClientStats)
+    _stats: SeedLinkClientStats = PrivateAttr(
+        default_factory=SeedLinkClientStats,
+    )
 
     @property
     def _slink_host(self) -> str:
@@ -513,7 +517,7 @@ class SeedLinkClient(BaseModel):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        self._stats.connected_at = self._stats.connected_at
+        self._stats.connected_at = datetime_now()
         try:
             while True:
                 try:
@@ -527,7 +531,9 @@ class SeedLinkClient(BaseModel):
                         self._slink_host,
                     )
                     self._stats.reconnects += 1
-                    asyncio.get_running_loop().call_soon(self.restart_stream)
+                    asyncio.get_running_loop().call_soon(
+                        lambda: self.restart_stream(None)
+                    )
                     break
                 self._stats.add_bytes(len(data))
 
@@ -560,7 +566,7 @@ class SeedLinkClient(BaseModel):
             proc.terminate()
             self._stats.connected_at = None
 
-    def is_backfilliung(self) -> bool:
+    def is_backfilling(self) -> bool:
         return any(sta.is_backfilling() for sta in self.streams)
 
     def start_streams(self, start_time: datetime | None = None) -> None:
@@ -574,7 +580,7 @@ class SeedLinkClient(BaseModel):
             self._task = None
         self._stream_data.clear()
 
-    def restart_stream(self) -> None:
+    def restart_stream(self, start_time: datetime | None = None) -> None:
         logger.info("restarting streaming %s", self._slink_host)
         self.stop_stream()
-        self.start_streams()
+        self.start_streams(start_time=start_time)

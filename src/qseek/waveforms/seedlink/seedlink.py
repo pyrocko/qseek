@@ -197,7 +197,7 @@ class SeedLink(WaveformProvider):
                 break
 
         while True:
-            if not any(client.is_backfilliung() for client in self.clients):
+            if not any(client.is_backfilling() for client in self.clients):
                 break
             logger.info("stations still backfilling, waiting...")
             await asyncio.sleep(1.0)
@@ -290,6 +290,7 @@ class SeedLink(WaveformProvider):
                     batch.i_batch,
                     batch.duration,
                 )
+                start_time += window_increment
                 continue
 
             yield batch

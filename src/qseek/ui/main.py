@@ -96,7 +96,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
 
         state.filtered_catalog.updated.subscribe(on_run_changed)
 
-    ui.run(title="Qseek Explorer", favicon="🚀", reload=reload)
+    ui.run(title="Qseek Explorer", favicon="🚀", port=2213, reload=reload)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
