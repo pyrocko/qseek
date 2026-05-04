@@ -298,6 +298,7 @@ class SeedLink(WaveformProvider):
                     batch.i_batch,
                     batch.duration,
                 )
+                start_time += window_increment
                 continue
 
             yield batch
