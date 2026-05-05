@@ -77,12 +77,12 @@ search.add_argument(
 continue_run = subparsers.add_parser(
     "continue",
     help="continue an existing search",
-    description="Continue a run from an existing rundir",
+    description="Continue a run from an existing rundir or JSON config file.",
 )
 continue_rundir = continue_run.add_argument(
     "rundir",
     type=Path,
-    help="existing runding to continue",
+    help="existing rundir or JSON config to continue",
 )
 
 snuffler = subparsers.add_parser(
@@ -270,7 +270,22 @@ def main() -> None:
             nest_asyncio.apply()
             from qseek.search import Search
 
-            search = Search.load_rundir(args.rundir)
+            if args.rundir.is_file() and args.rundir.suffix in {".json", ".JSON"}:
+                search_file = args.rundir
+                rundir = args.rundir.parent / args.rundir.stem
+                if not rundir.is_dir():
+                    raise FileNotFoundError(
+                        f"JSON config provided, but rundir {rundir} does not exist"
+                    )
+            elif args.rundir.is_dir():
+                search_file = None
+                rundir = args.rundir
+            else:
+                raise FileNotFoundError(
+                    f"rundir {args.rundir} does not exist or is not a valid config file"
+                )
+
+            search = Search.load_rundir(rundir, search_file=search_file)
             if search._progress.time_progress:
                 console.rule(f"Continuing search from {search._progress.time_progress}")
             else:
