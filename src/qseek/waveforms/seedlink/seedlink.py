@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, AsyncIterator, Literal, Sequence
 
 from pydantic import Field, PrivateAttr, computed_field
 from pyrocko.io import save
-from pyrocko.squirrel import Squirrel
+from pyrocko.squirrel import Squirrel, SquirrelError
+from pyrocko.squirrel import environment as sq_environment
 from pyrocko.trace import Trace
 from rich.table import Table
 
@@ -35,7 +36,7 @@ SDS_TEMPLATE = (
     ".%(tmin_year)s.%(julianday)s"
 )
 
-_SQUIRREL_SEM = asyncio.Semaphore(16)
+_SQUIRREL_SEM = asyncio.Semaphore(8)
 
 
 def slinktool_available() -> bool:
@@ -71,11 +72,12 @@ async def save_traces_sds(
     if not sds_directory.is_dir():
         raise ValueError(f"{sds_directory} is not a directory")
 
-    saved_filenames = []
+    saved_filenames: list[Path] = []
     for trace in traces:
+        # We need data at the end to have enough waveform data for magnitudes
         trace = trace.chop(
-            tmin=trace.tmin + crop_padding.total_seconds(),
-            tmax=trace.tmax - crop_padding.total_seconds(),
+            tmin=trace.tmin + 2 * crop_padding.total_seconds(),
+            tmax=trace.tmax,
             want_incomplete=True,
             inplace=False,
         )
@@ -92,7 +94,7 @@ async def save_traces_sds(
             append=True,
         )
         saved_filenames.extend(tuple(map(Path, fns)))
-    return saved_filenames
+    return [f.absolute() for f in saved_filenames]
 
 
 class SeedLinkStats(Stats):
@@ -136,8 +138,8 @@ class SeedLink(WaveformProvider):
         description="List of SeedLink clients to connect to. "
         "If multiple clients are given, they will be used in parallel.",
     )
-    save_sds_archive: Path = Field(
-        default=Path("./sds-seedlink"),
+    sds_archive: Path = Field(
+        default=Path("./sds"),
         description="Path to save MiniSeed in an SDS structure. Give a path to save "
         "the archive, or True to use the default path. If False, no saving is done.",
     )
@@ -162,9 +164,14 @@ class SeedLink(WaveformProvider):
     def prepare(self, stations: StationInventory) -> None:
         logger.info("preparing SeedLink streaming")
         self._stats.set_seedlink(self)
-        self.save_sds_archive.mkdir(parents=True, exist_ok=True)
+        self.sds_archive.mkdir(parents=True, exist_ok=True)
 
-        self._squirrel = Squirrel()
+        try:
+            sq_environment.init_environment(str(self.sds_archive))
+            logger.info("initialized Squirrel environment at %s", self.sds_archive)
+        except SquirrelError:
+            ...
+        self._squirrel = Squirrel(env=str(self.sds_archive))
         # This is disabled for now to avoid issues with large backfills
         # self._squirrel.add(str(self.save_sds_archive), check=False)
 
@@ -258,7 +265,7 @@ class SeedLink(WaveformProvider):
             logger.debug("received %d traces", len(batch_traces))
             filenames = await save_traces_sds(
                 traces=batch_traces,
-                sds_directory=self.save_sds_archive,
+                sds_directory=self.sds_archive,
                 crop_padding=window_padding,
             )
             self._saved_filenames.update(filenames)
@@ -267,22 +274,23 @@ class SeedLink(WaveformProvider):
                     partial(
                         self._squirrel.add,
                         map(str, filenames),
-                        check=False,
+                        check=True,
                     )
                 )
 
-            i_batch += 1
             batch = WaveformBatch(
                 traces=batch_traces,
                 start_time=start_time,
                 end_time=start_time + window_increment,
                 i_batch=i_batch,
             )
-
             batch.clean_traces()
+            i_batch += 1
+
+            start_time += window_increment
+
             if not batch.is_healthy(min_stations=min_stations):
                 logger.warning("batch is not healthy, skipping")
-                start_time += window_increment
                 continue
             if min_length and batch.duration < min_length:
                 logger.warning(
@@ -290,11 +298,9 @@ class SeedLink(WaveformProvider):
                     batch.i_batch,
                     batch.duration,
                 )
-                start_time += window_increment
                 continue
 
             yield batch
-            start_time += window_increment
 
     def get_squirrel(self) -> Squirrel:
         """Get the Squirrel instance."""
