@@ -18,7 +18,6 @@ from pydantic import (
     Field,
     PositiveFloat,
     PrivateAttr,
-    ValidationError,
     computed_field,
     field_validator,
 )
@@ -738,40 +737,16 @@ class EventDetection(Location):
             return self._receivers
 
         if self._detection_idx is None:
-            self._receivers = EventReceivers(event_uid=self.uid)
-        elif self._detection_idx is not None:
-            if self._receiver_cache is None:
-                raise AttributeError("cannot fetch receivers without set rundir")
+            raise AttributeError("cannot fetch receivers without set detection index")
 
-            try:
-                line = self._receiver_cache.get_line(self._detection_idx)
-                receivers = EventReceivers.model_validate_json(line)
-            except IndexError:
-                receivers = None
-            except ValidationError:
-                logger.warning("Could not parse receiver: %s", line)
-                receivers = None
+        if self._receiver_cache is None:
+            raise AttributeError("cannot fetch receivers without set rundir")
 
-            if not receivers or receivers.event_uid != self.uid:
-                try:
-                    idx, line = self._receiver_cache.find_uid(
-                        self.uid,
-                        start_idx=self._detection_idx,
-                    )
-                    receivers = EventReceivers.model_validate_json(line)
-                    self.set_index(idx, force=True)
-                    logger.debug(
-                        "found receivers for event %d by UID search",
-                        self._detection_idx,
-                    )
-                except KeyError as exc:
-                    raise ValueError(f"UID mismatch for event {self.time}") from exc
+        self._receivers = self._receiver_cache.get_receivers(
+            self.uid,
+            self._detection_idx,
+        )
 
-            self._receivers = receivers
-        else:
-            raise AttributeError(
-                "cannot fetch receivers without set receiver cache directory"
-            )
         return self._receivers
 
     @computed_field

@@ -9,6 +9,7 @@ from uuid import UUID
 
 import aiofiles
 import numpy as np
+from lru import LRU
 from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field
 from pyrocko import io
 from pyrocko.gui import marker
@@ -22,6 +23,7 @@ from qseek.models.detection import (
     FILENAME_DETECTIONS,
     FILENAME_RECEIVERS,
     EventDetection,
+    EventReceivers,
     logger,
 )
 from qseek.stats import Stats
@@ -37,6 +39,7 @@ class ReceiverCache:
     file: Path
     lines: list[str] = []
     mtime: float | None = None
+    _cache: LRU[UUID, EventReceivers] = LRU(1000)
 
     def __init__(self, file: Path) -> None:
         self.file = file
@@ -54,19 +57,27 @@ class ReceiverCache:
         if self.mtime is None or self.mtime != self.file.stat().st_mtime:
             self.load()
 
-    def get_line(self, row_index: int) -> str:
-        """Retrieves the line at the specified row index.
+    def get_receivers(self, event_uid: UUID, row_index: int) -> EventReceivers:
+        """Retrieves the EventReceivers for the given UID.
 
         Args:
-            row_index (int): The index of the row to retrieve.
+            event_uid (UUID): The UID of the event for which to retrieve the receivers.
+            row_index (int): The index of the row to use as a fallback if
+                the UID is not found in the cache.
 
         Returns:
-            str: The line at the specified row index.
+            EventReceivers: The EventReceivers associated with the given UID.
         """
-        self._check_mtime()
-        return self.lines[row_index]
+        if event_uid in self._cache:
+            return self._cache[event_uid]
+        _, line = self._find_uid(event_uid, start_idx=row_index)
+        receivers = EventReceivers.model_validate_json(line)
+        if receivers.event_uid != event_uid:
+            raise KeyError(f"UID {event_uid} not found in receiver cache.")
+        self._cache[receivers.event_uid] = receivers
+        return receivers
 
-    def find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
+    def _find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
         """Find the given UID in the lines and return its index and value.
 
         get_line should be prefered over this method.
@@ -88,7 +99,7 @@ class ReceiverCache:
         offset = 0
         n_lines = len(self.lines)
 
-        # Search in both directions
+        # Search for uid in both directions from start_idx
         while True:
             left_idx = start_idx - offset
             right_idx = start_idx + offset
@@ -158,6 +169,7 @@ class EventCatalog(BaseModel):
     def model_post_init(self, context: Any) -> None:
         self._receiver_cache = ReceiverCache(self.rundir / FILENAME_RECEIVERS)
 
+    @computed_field
     @property
     def n_events(self) -> int:
         """Number of detections."""
