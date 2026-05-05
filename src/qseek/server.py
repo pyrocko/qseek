@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from importlib.metadata import version
 from ipaddress import IPv4Address
 from typing import TYPE_CHECKING, Literal
 from weakref import WeakSet
 
-import aiofiles
 import aiohttp_cors
 from aiohttp import web
-from pydantic import Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 from qseek.base import Model
 
@@ -20,6 +20,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_TRIES = 5
+
+
+class WebsocketMessage(BaseModel):
+    type: Literal["NewDetections"] = Field(..., description="Type of the message")
+    data: DetectionCollection
+
+
+class DetectionCollection(BaseModel):
+    detections: list[EventDetection]
+
+    @property
+    def n_detections(self) -> int:
+        return len(self.detections)
 
 
 class WebServer(Model):
@@ -48,9 +61,11 @@ class WebServer(Model):
     def add_routes(self) -> None:
         router = self._app.router
         router.add_get("/", self.get_index)
-        router.add_get("/api/v1/detections", self.get_detections)
-        router.add_get("/api/v1/receivers", self.get_receivers)
         router.add_get("/api/v1/search", self.get_search)
+        router.add_get("/api/v1/catalog", self.get_catalog)
+        router.add_get("/api/v1/detections", self.get_detections)
+        router.add_get("/api/v1/detections_receivers", self.get_receivers)
+        router.add_get("/api/v1/ws", self.websocket_handler)
 
         # Configure default CORS settings.
         cors = aiohttp_cors.setup(
@@ -76,26 +91,31 @@ class WebServer(Model):
         qseek_version = version("qseek")
         return web.Response(text=f"{qseek_version} HTTP server running...")
 
-    async def get_detections(
-        self, request: web.Request, n_detections: int = -1
-    ) -> web.Response:
-        async with aiofiles.open(self._search._catalog.detections_file, "r") as f:
-            lines = await f.readlines()
-        data = "{" + lines + "}"
-        await web.Response(text=data, content_type="application/json")
-
-    async def get_receivers(
-        self, request: web.Request, n_detections: int = -1
-    ) -> web.Response:
-        async with aiofiles.open(self._search._catalog.receivers_file, "r") as f:
-            lines = await f.readlines()
-        data = "{" + lines + "}"
-        await web.Response(text=data, content_type="application/json")
-
     async def get_search(self, request: web.Request) -> web.Response:
         return web.Response(
-            self._search.model_dump_json(),
+            body=self._search.model_dump_json(),
             content_type="application/json",
+        )
+
+    async def get_catalog(self, request: web.Request) -> web.Response:
+        catalog = self._search._catalog
+        return web.Response(
+            body=catalog.model_dump_json(exclude={"events"}),
+            content_type="application/json",
+        )
+
+    async def get_detections(self, request: web.Request) -> web.Response:
+        catalog = self._search._catalog
+        return web.FileResponse(
+            catalog.detections_file,
+            headers={"Content-Type": "text/plain"},
+        )
+
+    async def get_receivers(self, request: web.Request) -> web.Response:
+        catalog = self._search._catalog
+        return web.FileResponse(
+            catalog.receivers_file,
+            headers={"Content-Type": "text/plain"},
         )
 
     async def websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
@@ -117,11 +137,12 @@ class WebServer(Model):
         if not self._open_websockets:
             return
 
-        data = {
-            "type": "new_detections",
-            "detections": [d.model_dump(exclude={"receivers"}) for d in detections],
-            "receivers": [d.receivers.model_dump() for d in detections],
-        }
+        websocket_message = WebsocketMessage(
+            type="NewDetections",
+            data=DetectionCollection(detections=detections),
+        )
+
+        data = await asyncio.to_thread(websocket_message.model_dump_json)
 
         for ws in self._open_websockets:
             await ws.send_json(data)

@@ -680,8 +680,18 @@ class Search(Model):
         return event
 
     @classmethod
-    def load_rundir(cls, rundir: Path) -> Self:
-        search_file = rundir / "search.json"
+    def load_rundir(cls, rundir: Path, search_file: Path | None = None) -> Self:
+        """Loads a search from a rundir.
+
+        Args:
+            rundir (Path): Path to the rundir to load the search from.
+            search_file (Path | None, optional): Path to the search file, if different
+                from the default `rundir/search.json`. Defaults to None.
+
+        Returns:
+            Self: The loaded search object.
+        """
+        search_file = search_file or rundir / "search.json"
         search = cls.model_validate_json(search_file.read_bytes())
         search._rundir = rundir
         search._catalog = EventCatalog.load_rundir(rundir)
