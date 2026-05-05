@@ -7,6 +7,7 @@ from nicegui import app
 
 from qseek.ui.explorer import LocalRunExplorer, SshExplorer
 from qseek.ui.explorer.base import RunSource
+from qseek.ui.explorer.qseek import QseekHttpExplorer
 from qseek.ui.state import get_tab_state
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ class SourceManager:
             explorer = LocalRunExplorer(uri_path)
         elif uri.startswith("ssh://"):
             explorer = SshExplorer(uri)
+        elif uri.startswith("qseek://"):
+            explorer = QseekHttpExplorer(uri)
         else:
             raise ValueError(f"Invalid URI: {uri}")
         async for run_source in explorer.discover():

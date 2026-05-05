@@ -17,10 +17,10 @@ class RunExplorer(Protocol):
     """Provides an interface to explore runs from local dir / SSH / WebSocket.
 
     Args:
-        source (str): Name of the source, e.g. "local", "ssh", "websocket".
+        source (str): Name of the source, e.g. "local", "ssh", "qseek-http".
     """
 
-    source: Literal["local", "ssh"]
+    source: Literal["local", "ssh", "qseek-http"]
 
     async def discover(self) -> AsyncIterator[RunSource]: ...
 
@@ -29,10 +29,10 @@ class RunSource(Protocol):
     """Provides an interface to get run details from local dir / SSH / WebSocket.
 
     Args:
-        source (str): Name of the source, e.g. "local", "ssh", "websocket".
+        source (str): Name of the source, e.g. "local", "ssh", "qseek-http".
     """
 
-    source: Literal["local", "ssh"]
+    source: Literal["local", "ssh", "qseek-http"]
 
     name: str
 
@@ -41,6 +41,7 @@ class RunSource(Protocol):
 
     hash: str
     updated: asyncio.Event
+    tags: list[str] = []
 
     _catalog: EventCatalog | None = None
     _search: Search | None = None

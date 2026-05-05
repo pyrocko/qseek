@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TypedDict
 from uuid import UUID
 
@@ -46,16 +46,16 @@ class FilteredCatalog:
             "max": 2.0,
         }
         self.magnitude_range = {
-            "min": -1.0,
+            "min": -2.0,
             "max": 9.0,
         }
         self.depth_range = {
-            "min": 0.0,
+            "min": -10000.0,
             "max": 50_000.0,
         }
         self.n_picks_range = {
-            "min": 0.0,
-            "max": 100.0,
+            "min": 0,
+            "max": 100,
         }
         self.date_range = {
             "from": "1970-01-01",
@@ -92,7 +92,7 @@ class FilteredCatalog:
             <= self.semblance_range["max"]
             and self.depth_range["min"] <= ev.depth <= self.depth_range["max"]
             and self.n_picks_range["min"] <= ev.n_picks <= self.n_picks_range["max"]
-            and date_min <= ev.time <= date_max
+            and date_min <= ev.time <= date_max + timedelta(days=1)
         ]
 
         self.times = [ev.time for ev in self.events]
@@ -103,7 +103,6 @@ class FilteredCatalog:
             for ev in self.events
         ]
         self.magnitudes = np.array(mags, dtype=float)
-
         (
             self.lats,
             self.lons,
@@ -135,27 +134,32 @@ class FilteredCatalog:
 
     def reset_filters(self):
         semblances = np.array([ev.semblance for ev in self._all_events])
+        magnitudes = np.array(
+            [
+                ev.magnitude.average if ev.magnitude is not None else np.nan
+                for ev in self._all_events
+            ]
+        )
         depths = np.array([ev.depth for ev in self._all_events])
         n_picks = np.array([ev.n_picks for ev in self._all_events])
         times = [ev.time for ev in self._all_events]
 
         self.semblance_range = {
-            "min": semblances.min(),
-            "max": semblances.max(),
+            "min": float(semblances.min()),
+            "max": float(semblances.max()),
         }
         self.magnitude_range = {
-            "min": -1,
-            "max": 7,
+            "min": float(np.nanmin(magnitudes)),
+            "max": float(np.nanmax(magnitudes)),
         }
         self.depth_range = {
-            "min": depths.min(),
-            "max": depths.max(),
+            "min": float(depths.min()),
+            "max": float(depths.max()),
         }
         self.n_picks_range = {
-            "min": n_picks.min(),
-            "max": n_picks.max(),
+            "min": int(n_picks.min()),
+            "max": int(n_picks.max()),
         }
-
         self.date_range = {
             "from": min(times).strftime("%Y-%m-%d"),
             "to": max(times).strftime("%Y-%m-%d"),

@@ -59,26 +59,6 @@ class SshSource(RunSource):
         created = datetime.fromtimestamp(mtime)  # noqa: DTZ006
         return cls(connection, remote_path, n_events, hash, created)
 
-    @classmethod
-    async def create(cls, connection: asyncssh.SSHClientConnection, remote_path: Path):
-        """Create by fetching metadata in a single SSH channel."""
-        search_json = remote_path / "search.json"
-        detections_json = remote_path / "detections.json"
-
-        result = await connection.run(
-            f'python3 -c "'
-            f"import hashlib, os; "
-            f"h = hashlib.sha1(open('{search_json}', 'rb').read()).hexdigest(); "
-            f"s = os.stat('{detections_json}'); "
-            f"n = sum(1 for _ in open('{detections_json}')); "
-            f"print(h, int(s.st_mtime), n)"
-            f'"',
-            check=True,
-        )
-        parts = result.stdout.strip().split()
-        hash, mtime, n_events = parts[0], int(parts[1]), int(parts[2])
-        return cls.from_metadata(connection, remote_path, hash, mtime, n_events)
-
     async def get_search_json(self) -> Path:
         return Path(self._tempfolder.name) / "search.json"
 

@@ -58,6 +58,7 @@ def run_selection_dialog(manager: SourceManager) -> None:
                 "last_update_str": run.last_update.strftime("%b %d, %Y  %H:%M"),
                 "n_events": run.n_events,
                 "is_active": run.hash == active_hash,
+                "tags": getattr(run, "tags", []),
             }
             for run in manager.runs.values()
         ],
@@ -132,10 +133,17 @@ def run_selection_dialog(manager: SourceManager) -> None:
                 "body-cell-source",
                 r"""
                 <q-td :props="props" class="text-center">
-                    <q-chip
+                    <div v-if="props.row.source === 'qseek-http'" class="flex items-center justify-center gap-1.5">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                        <span class="text-xs text-red-500 font-medium">live</span>
+                    </div>
+                    <q-chip v-else
                         outline size="sm"
-                        :color="{local:'positive',ssh:'info',qseek:'secondary'}[props.row.source] || 'grey'"
-                        :icon="{local:'computer',ssh:'terminal',qseek:'travel_explore'}[props.row.source] || 'circle'"
+                        :color="{local:'positive',ssh:'info'}[props.row.source] || 'grey'"
+                        :icon="{local:'computer',ssh:'terminal'}[props.row.source] || 'circle'"
                     >{{ props.row.source }}</q-chip>
                 </q-td>
                 """,

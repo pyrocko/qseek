@@ -21,7 +21,7 @@ def _count_lines(path: Path) -> int:
         return sum(1 for _ in f)
 
 
-class LocalRun(RunSource):
+class LocalSource(RunSource):
     source = "local"
 
     def __init__(self, run_dir: Path):
@@ -80,7 +80,7 @@ class LocalRunExplorer(RunExplorer):
             run_dir = search_json.parent
             logger.info("Found run at %s", run_dir)
             try:
-                yield LocalRun(run_dir)
+                yield LocalSource(run_dir)
             except ValueError as e:
                 logger.warning("Skipping run at %s: %s", run_dir, e)
 

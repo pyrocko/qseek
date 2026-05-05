@@ -74,7 +74,7 @@ class MagnitudeFrequency(Component):
 
     async def _b_positive_estimation(self, magnitudes, delta_m=0.1):
         mags = np.asarray(magnitudes)
-        mags, _ = magnitude_outlier_filer(mags)
+        # mags, _ = magnitude_outlier_filer(mags)
         if len(mags) < 2:
             return np.nan, np.nan
         dm = np.diff(mags)
@@ -111,7 +111,7 @@ class MagnitudeFrequency(Component):
             )
             if len(magnitudes) == 0:
                 return
-            magnitudes, _ = magnitude_outlier_filer(magnitudes)
+            # magnitudes, _ = magnitude_outlier_filer(magnitudes)
             mc_value, mc_params = await self._maximum_curvature(magnitudes)
             b_value, b_std_err = await self._b_positive_estimation(magnitudes)
             plot.clear()
@@ -201,9 +201,9 @@ class MagnitudeSemblance(Component):
             uids = uids[finite_mask]
             if len(magnitudes) == 0:
                 return
-            magnitudes, mask = magnitude_outlier_filer(magnitudes)
-            semblances = semblances[mask]
-            uids = uids[mask]
+            # magnitudes, mask = magnitude_outlier_filer(magnitudes)
+            # semblances = semblances[mask]
+            # uids = uids[mask]
 
             point_density = None
             if len(magnitudes) >= 3:
@@ -291,9 +291,9 @@ to magnitude value.
                 return
             times, uids, magnitudes = map(np.asarray, zip(*records, strict=True))
             magnitudes = np.asarray(magnitudes, dtype=float)
-            magnitudes, mask = magnitude_outlier_filer(magnitudes)
-            times = times[mask]
-            uids = uids[mask]
+            # magnitudes, mask = magnitude_outlier_filer(magnitudes)
+            # times = times[mask]
+            # uids = uids[mask]
             if len(magnitudes) == 0:
                 return
 

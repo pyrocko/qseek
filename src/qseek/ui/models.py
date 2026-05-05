@@ -57,7 +57,7 @@ class EventMinimal:
             lon=event.effective_lon,
             north_shift=event.north_shift,
             east_shift=event.east_shift,
-            depth=event.depth,
+            depth=event.effective_depth,
             time=event.time,
             semblance=event.semblance,
             n_picks=event.n_picks,
