@@ -29,6 +29,7 @@ pipx install git+https://github.com/pyrocko/qseek
     ```
 
     **Solution:** Run `module load gcc` (or your cluster's equivalent) before installing.
+    Alternatively, you can explicitly specify the compiler when installing: `CC=gcc pip install git+https://github.com/pyrocko/qseek`
 ## Running Qseek
 
 The main entry point in the executeable is the `qseek` command. The provided command line interface (CLI) and a JSON config file is all what is needed to run the program.
