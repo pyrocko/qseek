@@ -393,7 +393,7 @@ class CampiFlegrei(WoodAnderson, LocalMagnitudeModel):
     doi = "10.1785/0120070131"
 
     max_amplitude = "wood-anderson-2800"
-    epicentral_range = Range(0.0 * KM, 10.0 * KM)  # The paper says 0.2 - 8 km
+    epicentral_range = Range(0.2 * KM, 8.0 * KM)
     component = "horizontal-avg"
 
     @staticmethod
