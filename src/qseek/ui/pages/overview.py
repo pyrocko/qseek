@@ -6,8 +6,9 @@ from nicegui import ui
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.components.statistics import (
     DepthSection,
-    EventRateSemblance,
+    EventRate,
     MigrationPlot,
+    SemblanceRate,
 )
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
@@ -110,7 +111,11 @@ async def overview_page() -> None:
             migration_plot.header()
             await migration_plot.view()
         with ui.card().classes("col-12"):
-            semblance_rate = EventRateSemblance()
+            event_rate = EventRate()
+            event_rate.header()
+            await event_rate.view()
+        with ui.card().classes("col-12"):
+            semblance_rate = SemblanceRate()
             semblance_rate.header()
             await semblance_rate.view()
         with ui.card().classes("col-12"):

@@ -96,6 +96,7 @@ class MagnitudeFrequency(Component):
             template="plotly_white",
             xaxis_title="Magnitude",
             yaxis_title="log(Frequency)",
+            legend={"x": 1, "y": 1, "xanchor": "right", "yanchor": "top"},
         )
         plot = ui.plotly(fig).classes("w-full h-64")
 
@@ -128,9 +129,11 @@ class MagnitudeFrequency(Component):
                 marker_color="gray",
                 hoverinfo="none",
                 hovertemplate=None,
+                showlegend=False,
             )
             fig.add_vline(
                 x=mc_value,
+                y0=0,
                 line_dash="dash",
                 line_color="red",
                 annotation_text=f"MC={mc_value:.2f}",
@@ -141,28 +144,19 @@ class MagnitudeFrequency(Component):
                 fit = self._b_value_fit_line(bin_edges, counts, b_value, mc_value)
                 if fit is not None:
                     fit_x, fit_y, _, _ = fit
+                    mask = fit_y >= 0
+                    fit_x, fit_y = fit_x[mask], fit_y[mask]
                     fig.add_trace(
                         go.Scattergl(
                             x=fit_x,
                             y=fit_y,
                             mode="lines",
-                            name="b-value fit",
-                            line={"color": "blue", "width": 2},
+                            name=f"b-value={b_value:.2f} ± {b_std_err:.2f}",
+                            line={"color": "black", "width": 2, "dash": "dash"},
                             hoverinfo="none",
                             hovertemplate=None,
                         )
                     )
-                fig.add_annotation(
-                    x=1.38,
-                    y=0.7,
-                    xref="paper",
-                    yref="paper",
-                    text=f"b-value={b_value:.2f} ± {b_std_err:.2f}",
-                    showarrow=False,
-                    bgcolor="white",
-                    bordercolor="black",
-                    borderwidth=1,
-                )
             plot.update()
 
         background_tasks.create(update_plot())
@@ -235,7 +229,7 @@ class MagnitudeSemblance(Component):
                         "showscale": False,
                         "size": 10,
                         "line": {"width": 0},
-                        "opacity": 0.1,
+                        "opacity": 0.3,
                     },
                     hoverinfo="none",
                     hovertemplate=None,
@@ -345,7 +339,7 @@ to magnitude value.
                         if scatter_magnitudes.max() != min_mag
                         else 10,
                         "line": {"width": 0},
-                        "opacity": 0.1,
+                        "opacity": 0.3,
                     },
                     hoverinfo="none",
                     hovertemplate=None,

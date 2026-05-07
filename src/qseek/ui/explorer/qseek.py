@@ -1,17 +1,24 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import AsyncIterator
 from hashlib import sha1
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import aiofiles
 import aiohttp
 import rfc3986
+from pydantic import ValidationError
 
+from qseek.server import WebsocketMessage
 from qseek.ui.explorer.base import RunExplorer, RunSource
 from qseek.utils import datetime_now
+
+if TYPE_CHECKING:
+    from qseek.ui.state import ProxyCatalog
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +40,8 @@ class QseekWebSource(RunSource):
         self.tags = ["live"]
         self.n_events = 0
 
+        self._attached_proxies = set()
+        self._websocket_task = None
         self.updated = asyncio.Event()
 
     async def get_search_json(self) -> Path:
@@ -49,6 +58,71 @@ class QseekWebSource(RunSource):
             return search_path
 
     async def get_catalog_path(self) -> Path:
+        await self._download_catalog_data()
+        return self._tmp_path
+
+    async def _listen_websocket(self):
+        while True:
+            async with (
+                aiohttp.ClientSession(
+                    base_url=f"{self.name}/api/v1/",
+                    raise_for_status=True,
+                ) as session,
+                session.ws_connect("ws") as ws,
+            ):
+                logger.info(
+                    "listening for WebSocket messages from %s", session._base_url
+                )
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        try:
+                            msg = WebsocketMessage.model_validate_json(msg.data)
+                            await self._new_websocket_message(msg)
+                        except ValidationError as exc:
+                            logger.error(
+                                "Failed to parse WebSocket message from %s: %s",
+                                self.name,
+                                exc,
+                            )
+                    elif msg.type == aiohttp.WSMsgType.ERROR:
+                        logger.error(
+                            "WebSocket error from %s: %s",
+                            self.name,
+                            msg.data,
+                        )
+                        break
+                    elif msg.type == aiohttp.WSMsgType.CLOSED:
+                        logger.info(
+                            "WebSocket connection to %s closed by server",
+                            self.name,
+                        )
+                        break
+
+            logger.warning(
+                "WebSocket connection to %s closed, reconnecting...",
+                self.name,
+            )
+            await asyncio.sleep(5)  # Wait before trying to reconnect
+
+    async def _new_websocket_message(self, msg: WebsocketMessage):
+        logger.debug("Received WebSocket message")
+        if msg.type == "NewDetections":
+            collection = msg.data
+            logger.info(
+                "Received %d new detections from %s",
+                collection.n_detections(),
+                self.name,
+            )
+
+            self.n_events += collection.n_detections()
+            self.last_update = datetime_now()
+            if self._catalog:
+                for detection in collection.detections:
+                    self._catalog.add(detection)
+            self.updated.set()
+            self.updated.clear()
+
+    async def _download_catalog_data(self) -> Path:
         logger.info("Fetching detections and receivers from %s", self.name)
         async with aiohttp.ClientSession(
             base_url=f"{self.name}/api/v1/",
@@ -76,7 +150,7 @@ class QseekWebSource(RunSource):
 
             print(self._tmp_path)  # noqa
 
-            return self._tmp_path
+        return self._tmp_path
 
     @classmethod
     async def from_remote(cls, remote: str) -> Self:
@@ -93,6 +167,16 @@ class QseekWebSource(RunSource):
             hash = sha1(resp.encode()).hexdigest()
 
         return cls(remote, tmp_dir, hash=hash)
+
+    async def attach(self, proxy: ProxyCatalog):
+        self._attached_proxies.add(proxy)
+        if self._websocket_task is None:
+            self._websocket_task = asyncio.create_task(self._listen_websocket())
+
+    async def detach(self, proxy: ProxyCatalog):
+        self._attached_proxies.discard(proxy)
+        if not self._attached_proxies and self._websocket_task is not None:
+            self._websocket_task.cancel()
 
     def __del__(self):
         self._tmp_dir.cleanup()

@@ -13,16 +13,16 @@ from qseek.ui.explorer.base import RunSource
 from qseek.ui.models import EventMinimal
 
 
-class NiceGuiRange(TypedDict):
+class GuiRange(TypedDict):
     min: float
     max: float
 
 
-class FilteredCatalog:
-    semblance_range: NiceGuiRange = binding.BindableProperty()
-    magnitude_range: NiceGuiRange = binding.BindableProperty()
-    depth_range: NiceGuiRange = binding.BindableProperty()
-    n_picks_range: NiceGuiRange = binding.BindableProperty()
+class ProxyCatalog:
+    semblance_range: GuiRange = binding.BindableProperty()
+    magnitude_range: GuiRange = binding.BindableProperty()
+    depth_range: GuiRange = binding.BindableProperty()
+    n_picks_range: GuiRange = binding.BindableProperty()
     date_range: dict = binding.BindableProperty()
 
     events: list[EventMinimal] = []
@@ -39,6 +39,7 @@ class FilteredCatalog:
 
     _all_events: list[EventMinimal] = []
     _catalog: EventCatalog | None = None
+    _run: RunSource | None = None
 
     def __init__(self):
         self.semblance_range = {
@@ -66,13 +67,20 @@ class FilteredCatalog:
 
     async def set_run(self, run: RunSource):
         state = get_tab_state()
+        if self._run is not None:
+            await self._run.detach(self)
+
         with state.loading_message(f"Loading run {run.name}..."):
             self._catalog = await run.get_catalog()
+            await run.attach(self)
             self._all_events = [
                 EventMinimal.from_event(ev) for ev in self._catalog.events
             ]
             self.reset_filters()
             self.refresh_event_data()
+
+    def has_catalog(self) -> bool:
+        return self._catalog is not None
 
     def refresh_event_data(self):
         if self._catalog is None:
@@ -85,15 +93,22 @@ class FilteredCatalog:
             tzinfo=timezone.utc
         )
         self.events = [
-            ev
-            for ev in self._all_events
-            if self.semblance_range["min"]
-            <= ev.semblance
-            <= self.semblance_range["max"]
-            and self.depth_range["min"] <= ev.depth <= self.depth_range["max"]
-            and self.n_picks_range["min"] <= ev.n_picks <= self.n_picks_range["max"]
-            and date_min <= ev.time <= date_max + timedelta(days=1)
+            e
+            for e in self._all_events
+            if self.semblance_range["min"] <= e.semblance <= self.semblance_range["max"]
+            and self.depth_range["min"] <= e.depth <= self.depth_range["max"]
+            and self.n_picks_range["min"] <= e.n_picks <= self.n_picks_range["max"]
+            and date_min <= e.time <= date_max + timedelta(days=1)
         ]
+
+        if self.has_magnitudes():
+            self.events = [
+                e
+                for e in self.events
+                if self.magnitude_range["min"]
+                <= (e.magnitude.average if e.magnitude is not None else np.nan)
+                <= self.magnitude_range["max"]
+            ]
 
         self.times = [ev.time for ev in self.events]
         self.uids = [ev.uid for ev in self.events]
@@ -176,9 +191,9 @@ class FilteredCatalog:
 class TabState:
     run: RunSource
     run_name: str = binding.BindableProperty()
-    loading: bool | str = binding.BindableProperty()
+    loading: str = binding.BindableProperty()
 
-    filtered_catalog: FilteredCatalog
+    filtered_catalog: ProxyCatalog
 
     _default_run: RunSource | None = None
 
@@ -188,30 +203,29 @@ class TabState:
 
         self.run = self._default_run
         self.run_name = self._default_run.name
-        self.loading = False
+        self.loading = ""
 
-        self.filtered_catalog = FilteredCatalog()
+        self.filtered_catalog = ProxyCatalog()
 
         self.run_changed = Event()
-        self.catalog_updated = Event()
 
     async def set_run(self, run: RunSource):
         self.run = run
         self.run_name = run.name
-        await self.filtered_catalog.set_run(run)
         self.run_changed.emit()
-        self.loading = False
+        self.loading = ""
 
     @contextmanager
     def loading_message(self, message: str):
         self.loading = message
         yield
-        self.loading = False
+        self.loading = ""
 
-    async def get_filtered_catalog(self) -> FilteredCatalog:
-        if self.filtered_catalog._catalog is None:
+    async def get_filtered_catalog(self) -> ProxyCatalog:
+        if self.run is None:
+            raise RuntimeError("No run set for filtering")
+        if not self.filtered_catalog.has_catalog():
             await self.filtered_catalog.set_run(self.run)
-            self.loading = False
         return self.filtered_catalog
 
     @classmethod

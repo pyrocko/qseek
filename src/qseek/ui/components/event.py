@@ -642,11 +642,12 @@ for the event.
 
         median_mag = magnitude.average
         mag_error = magnitude.error
+        mean_mag = float(np.mean([m["magnitude"] for m in station_mags]))
 
         fig = go.Figure(
             data=[
                 go.Scattergl(
-                    x=[m["distance_epi"] for m in station_mags],
+                    x=[m["distance_hypo"] for m in station_mags],
                     y=[m["magnitude"] for m in station_mags],
                     mode="markers",
                     marker={
@@ -675,6 +676,12 @@ for the event.
             ]
         )
 
+        fig.add_hline(
+            y=mean_mag,
+            line={"color": "seagreen", "width": 1.5, "dash": "dash"},
+            annotation_text=f"Mean: {mean_mag:.2f}",
+            annotation_position="top right",
+        )
         # Median line with ±std_mag shadow
         fig.add_hrect(
             y0=median_mag - mag_error,
@@ -690,7 +697,7 @@ for the event.
             annotation_position="top left",
         )
         fig.update_layout(
-            xaxis_title="Epicentral Distance (km)",
+            xaxis_title="Hypocentral Distance (km)",
             yaxis_title="Magnitude",
             margin={"l": 60, "r": 40, "t": 40, "b": 80},
             template="plotly_white",

@@ -152,7 +152,7 @@ def run_selection_dialog(manager: SourceManager) -> None:
             table.add_slot(
                 "body-cell-last_update_ts",
                 r"""
-                <q-td :props="props" class="text-right font-mono text-xs text-grey-6">
+                <q-td :props="props" class="text-right text-xs text-grey-6">
                     {{ props.row.last_update_str }}
                 </q-td>
                 """,
@@ -161,7 +161,7 @@ def run_selection_dialog(manager: SourceManager) -> None:
             table.add_slot(
                 "body-cell-n_events",
                 r"""
-                <q-td :props="props" class="text-right font-mono text-xs font-medium">
+                <q-td :props="props" class="text-right text-xs font-medium">
                     {{ props.row.n_events.toLocaleString() }}
                 </q-td>
                 """,

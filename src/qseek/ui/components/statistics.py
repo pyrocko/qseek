@@ -5,7 +5,6 @@ import asyncio
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
-from plotly.subplots import make_subplots
 from scipy.stats import gaussian_kde
 
 from qseek.ui.analysis.vpvs import PSCollection
@@ -15,8 +14,8 @@ from qseek.ui.utils import attach_plotly_events
 from qseek.utils import async_weighted_median
 
 
-class EventRateSemblance(Component):
-    name = "Event Rate"
+class SemblanceRate(Component):
+    name = "Semblance Rate"
     icon = ""
     description = """
 Semblance of detected events over time. Color corresponds to event density, size of
@@ -26,21 +25,14 @@ markers corresponds to semblance value.
     async def view(self) -> None:
         state = get_tab_state()
 
-        fig = make_subplots(
-            rows=2,
-            cols=1,
-            shared_xaxes=True,
-            row_heights=[0.72, 0.28],
-            vertical_spacing=0.04,
-        )
+        fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             showlegend=False,
+            yaxis_title="Semblance",
+            xaxis_title="Time",
         )
-        fig.update_yaxes(title_text="Semblance", row=1)
-        fig.update_yaxes(title_text="N Events", row=2)
-        fig.update_xaxes(title_text="Time", row=2)
         plot = ui.plotly(fig).classes("w-full h-80")
         attach_plotly_events(plot)
 
@@ -55,9 +47,6 @@ markers corresponds to semblance value.
                 return
             times, uids, semblances = map(np.asarray, zip(*records, strict=True))
             semblances = np.asarray(semblances, dtype=float)
-
-            time_order = np.argsort(times)
-            times_sorted = times[time_order]
 
             point_density = None
             try:
@@ -101,31 +90,91 @@ markers corresponds to semblance value.
                         "line": {"width": 0},
                         "opacity": 0.3,
                     },
-                ),
-                row=1,
-                col=1,
+                )
             )
-            cumulative_events = np.arange(1, len(times_sorted) + 1)
-            time_numeric_sorted = np.array(
-                [t.timestamp() for t in times_sorted], dtype=float
+            plot.update()
+
+        background_tasks.create(update_plot())
+
+
+class EventRate(Component):
+    name = "Event Rate"
+    description = """
+Number of detected events per day/hour/minute and cumulative number of events over time.
+"""
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis_title="Events / bin",
+            yaxis2={
+                "title": "Cumulative Events",
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
+            showlegend=False,
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+
+        async def update_plot():
+            from datetime import datetime, timedelta, timezone
+
+            catalog = await state.get_filtered_catalog()
+            if not catalog.events:
+                return
+
+            times = catalog.times
+            duration = times[-1] - times[0]
+
+            if duration > timedelta(days=7):
+                bin_sec = int(timedelta(days=1).total_seconds())
+                bin_label = "Events / day"
+            elif duration > timedelta(hours=24):
+                bin_sec = int(timedelta(hours=1).total_seconds())
+                bin_label = "Events / hour"
+            else:
+                bin_sec = int(timedelta(minutes=1).total_seconds())
+                bin_label = "Events / minute"
+
+            time_numeric = np.array([t.timestamp() for t in times])
+            t0 = np.floor(time_numeric.min() / bin_sec) * bin_sec
+            bin_edges = np.arange(t0, time_numeric.max() + bin_sec, bin_sec)
+            counts, _ = np.histogram(time_numeric, bins=bin_edges)
+
+            bin_starts = [
+                datetime.fromtimestamp(e, tz=timezone.utc) for e in bin_edges[:-1]
+            ]
+            cumulative = np.cumsum(counts)
+
+            plot.clear()
+            fig.update_layout(yaxis_title=bin_label)
+            fig.add_bar(
+                x=bin_starts,
+                y=counts,
+                name=bin_label,
+                marker={"color": "gray", "line": {"width": 0}},
+                width=bin_sec * 1000,
+                hoverinfo="none",
+                hovertemplate=None,
+                showlegend=False,
             )
             fig.add_trace(
                 go.Scattergl(
-                    x=times_sorted,
-                    y=cumulative_events,
-                    mode="markers",
+                    x=bin_starts,
+                    y=cumulative,
+                    mode="lines",
+                    name="Cumulative",
+                    line={"color": "black", "width": 1.5},
                     hoverinfo="none",
                     hovertemplate=None,
-                    marker={
-                        "color": time_numeric_sorted,
-                        "colorscale": "Jet",
-                        "showscale": False,
-                        "size": 4,
-                        "line": {"width": 0},
-                    },
-                ),
-                row=2,
-                col=1,
+                    yaxis="y2",
+                )
             )
             plot.update()
 
@@ -172,7 +221,7 @@ corresponds to magnitude and color corresponds to depth (light = shallow, dark =
                     customdata=catalog.uids,
                     marker={
                         "color": catalog.depths,
-                        "colorscale": "Magma",
+                        "colorscale": "Magma_r",
                         "size": catalog.semblances / catalog.semblances.max() * 15,
                         "line": {"width": 0},
                         "opacity": 0.3,

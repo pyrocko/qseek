@@ -4,13 +4,16 @@ import asyncio
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from nicegui import binding
 
 from qseek.models.catalog import EventCatalog
 from qseek.search import Search
 from qseek.types import allow_non_existing_paths
+
+if TYPE_CHECKING:
+    from qseek.ui.state import ProxyCatalog
 
 
 class RunExplorer(Protocol):
@@ -46,11 +49,28 @@ class RunSource(Protocol):
     _catalog: EventCatalog | None = None
     _search: Search | None = None
 
-    async def get_search_json(self) -> Path: ...
+    async def get_search_json(self) -> Path:
+        """Get the path to the search JSON file.
 
-    async def get_catalog_path(self) -> Path: ...
+        Returns:
+            Path: The path to the search JSON file.
+        """
+
+    async def get_catalog_path(self) -> Path:
+        """Get the path to the catalog directory.
+
+        Holding detections.json and detections_receivers.json.
+
+        Returns:
+            Path: The path to the catalog directory.
+        """
 
     async def get_catalog(self) -> EventCatalog:
+        """Get the catalog for the run.
+
+        Returns:
+            EventCatalog: The catalog for the run.
+        """
         if not self._catalog:
             catalog_dir = await self.get_catalog_path()
             self._catalog = await asyncio.to_thread(
@@ -59,8 +79,25 @@ class RunSource(Protocol):
         return self._catalog
 
     async def get_search(self) -> Search:
+        """Get the search object for the run.
+
+        Returns:
+            Search: The search object for the run.
+        """
         allow_non_existing_paths(True)
         if not self._search:
             search_file = await self.get_search_json()
             self._search = Search.model_validate_json(search_file.read_bytes())
         return self._search
+
+    async def attach(self, proxy: ProxyCatalog):
+        """Attach to the run source for updates.
+
+        This method should be called to start listening for updates from the run source.
+        """
+
+    async def detach(self, proxy: ProxyCatalog):
+        """Detach from the run source for updates.
+
+        This method should be called to stop listening for updates from the run source.
+        """
