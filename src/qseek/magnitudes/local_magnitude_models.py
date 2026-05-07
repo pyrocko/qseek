@@ -415,11 +415,7 @@ class AttenuationModel(Model):
         dist_epi_km: float,
         distance: Literal["epicentral", "hypocentral"] = "epicentral",
     ) -> float:
-        distance = (
-            dist_hypo_km
-            if (distance or self.distance) == "hypocentral"
-            else dist_epi_km
-        )
+        distance = dist_hypo_km if distance == "hypocentral" else dist_epi_km
         return self.a * np.log10(distance) + self.b * distance + self.c
 
 
