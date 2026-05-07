@@ -90,7 +90,7 @@ async def save_traces_sds(
             filename_template=filename,
             steim=2,
             record_length=4096,
-            additional={"julianday": tr_julianday},
+            additional={"julianday": f"{tr_julianday:03d}"},
             append=True,
         )
         saved_filenames.extend(tuple(map(Path, fns)))
@@ -221,7 +221,7 @@ class SeedLink(WaveformProvider):
 
             wait_time = end_time_padded - datetime_now()
             if wait_time > timedelta(seconds=0):
-                logger.info("next batch %s", end_time_padded)
+                logger.info("next batch %s, waiting %s", end_time_padded, wait_time)
                 await asyncio.sleep(wait_time.total_seconds())
             else:
                 await asyncio.sleep(0.1)
