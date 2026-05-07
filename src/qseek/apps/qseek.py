@@ -126,6 +126,19 @@ explore.add_argument(
     nargs="+",
     help="URIs to explore, can be local paths or SSH URIs (e.g. ssh://user@host/path/to/rundir)",
 )
+explore.add_argument(
+    "--reload",
+    action="store_true",
+    default=False,
+    help="enable auto-reload of the UI when source data changes, "
+    "this is not recommended for remote sources",
+)
+explore.add_argument(
+    "--port",
+    type=int,
+    default=2213,
+    help="port to run the web UI on (default: 2213)",
+)
 
 features_extract = subparsers.add_parser(
     "feature-extraction",
@@ -380,7 +393,7 @@ def main() -> None:
         case "explore":
             from qseek.ui.main import start_ui
 
-            start_ui(args.uris, reload=False)
+            start_ui(args.uris, reload=args.reload, port=args.port)
 
         case "clear-cache":
             logger.info("clearing cache directory %s", CACHE_DIR)
