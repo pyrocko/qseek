@@ -537,8 +537,8 @@ class Search(Model):
             self.init_rundir(force=force_rundir, create_backup=create_backup)
 
         self.create_folders()
+        n.notify("STATUS=Preparing search...")
         await self.prepare()
-        n.notify("READY=1")
         self.write_config()
 
         if self._progress.time_progress:
@@ -584,6 +584,8 @@ class Search(Model):
             ignore_boundary=self.ignore_boundary,
             ignore_boundary_width=self.ignore_boundary_width,
         )
+        n.notify("READY=1")
+        n.notify("STATUS=Starting search...")
 
         async for images, batch in self.image_functions.iter_images(
             pre_processed_batches
@@ -646,7 +648,7 @@ class Search(Model):
         if self.webserver:
             BackgroundTasks.create_task(self.webserver.new_detections(detections))
 
-        n.notify(f"STATUS=Detected {catalog.n_events} events")
+        n.notify(f"STATUS=Searching - detected {catalog.n_events} events")
         if not catalog.n_events:
             return
 
