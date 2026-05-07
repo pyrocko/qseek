@@ -737,7 +737,7 @@ class EventDetection(Location):
             return self._receivers
 
         if self._detection_idx is None:
-            raise AttributeError("cannot fetch receivers without set detection index")
+            self._receivers = EventReceivers(event_uid=self.uid, receivers=[])
 
         if self._receiver_cache is None:
             raise AttributeError("cannot fetch receivers without set rundir")
