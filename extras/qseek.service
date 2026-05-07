@@ -1,0 +1,25 @@
+[Unit]
+Description=Qseek - Earthquake detection and localisation
+After=network.target
+Documentation=https://github.com/pyrocko/qseek
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+
+WorkingDirectory=/path/to/working/directory
+
+# uv — use the venv binary directly:
+#   ExecStart=/path/to/project/.venv/bin/qseek continue project.json
+# uv — or let uv resolve the environment:
+#   ExecStart=uv run --project /path/to/project qseek continue project.json
+# conda:
+#   ExecStart=/opt/conda/envs/myenv/bin/qseek continue project.json
+ExecStart=/path/to/env/bin/qseek continue project.json
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
