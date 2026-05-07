@@ -234,8 +234,8 @@ class StationAmplitudes(NamedTuple):
                 )
             data = np.atleast_2d(np.array([tr.ydata for tr in signal_traces]))
             data_noise = np.atleast_2d(np.array([tr.ydata for tr in noise_traces]))
-            peak_amp = np.sqrt(np.max(np.abs(data)) ** 2)
-            noise_amp = np.max(np.linalg.norm(data_noise, axis=0))
+            peak_amp = np.linalg.norm(np.max(np.abs(data), axis=1))
+            noise_amp = np.linalg.norm(np.max(np.abs(data_noise), axis=1))
         else:
             raise ValueError(f"Invalid peak measurement: {measurement}")
 

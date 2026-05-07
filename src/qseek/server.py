@@ -12,12 +12,13 @@ from aiohttp import web
 from pydantic import BaseModel, Field, PrivateAttr
 
 from qseek.base import Model
+from qseek.models.detection import EventDetection
 
 if TYPE_CHECKING:
-    from qseek.models.detection import EventDetection
     from qseek.search import Search
 
 logger = logging.getLogger(__name__)
+# logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
 MAX_TRIES = 5
 
@@ -81,11 +82,7 @@ class WebServer(Model):
         )
 
         for route in list(router.routes()):
-            try:
-                cors.add(route)
-            except ValueError as exc:
-                logger.exception(exc)
-                continue
+            cors.add(route)
 
     async def get_index(self, request: web.Request) -> web.Response:
         qseek_version = version("qseek")
@@ -122,19 +119,35 @@ class WebServer(Model):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self._open_websockets.add(ws)
-        logger.info("New WebSocket connection established: %s", request.remote)
+        logger.info("new WebSocket connection established to %s", request.remote)
 
-        for msg in ws:
-            if msg.type == web.WSMsgType.TEXT:
-                # Handle incoming messages from the client if needed
-                pass
-            elif msg.type == web.WSMsgType.ERROR:
-                logger.error(
-                    "WebSocket connection closed with exception %s", ws.exception()
-                )
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.TEXT:
+                    # Handle incoming messages from the client if needed
+                    pass
+                elif msg.type == web.WSMsgType.ERROR:
+                    logger.error(
+                        "WebSocket connection closed with exception %s", ws.exception()
+                    )
+                elif msg.data == "close":
+                    logger.info(
+                        "WebSocket connection closed by client: %s", request.remote
+                    )
+                    await ws.close()
+                    break
+        finally:
+            self._open_websockets.discard(ws)
+            logger.info("WebSocket connection closed: %s", request.remote)
+
+        return ws
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
+        logger.info("New detections received, sending to WebSocket clients...")
         if not self._open_websockets:
+            logger.debug(
+                "No WebSocket clients connected, skipping sending new detections"
+            )
             return
 
         websocket_message = WebsocketMessage(
@@ -143,9 +156,13 @@ class WebServer(Model):
         )
 
         data = await asyncio.to_thread(websocket_message.model_dump_json)
-
         for ws in self._open_websockets:
-            await ws.send_json(data)
+            try:
+                await ws.send_json(data)
+            except Exception:
+                logger.exception(
+                    "Error sending WebSocket message to client, closing connection"
+                )
 
     async def start(self) -> None:
         runner = web.AppRunner(self._app)
