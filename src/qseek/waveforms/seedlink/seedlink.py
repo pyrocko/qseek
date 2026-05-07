@@ -226,7 +226,7 @@ class SeedLink(WaveformProvider):
             else:
                 await asyncio.sleep(0.1)
 
-            logger.info("waiting for waveforms up to %s", end_time_padded)
+            logger.info("awaiting incoming waveforms until %s", end_time_padded)
             try:
                 seedlink_traces = await asyncio.gather(
                     *(
