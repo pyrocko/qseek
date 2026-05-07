@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TypedDict
@@ -11,6 +14,8 @@ from nicegui import Event, app, binding
 from qseek.models.catalog import EventCatalog
 from qseek.ui.explorer.base import RunSource
 from qseek.ui.models import EventMinimal
+
+logger = logging.getLogger(__name__)
 
 
 class GuiRange(TypedDict):
@@ -63,6 +68,7 @@ class ProxyCatalog:
             "to": "2050-01-01",
         }
 
+        self._run_watcher: asyncio.Task | None = None
         self.updated = Event()
 
     async def set_run(self, run: RunSource):
@@ -79,8 +85,30 @@ class ProxyCatalog:
             self.reset_filters()
             self.refresh_event_data()
 
+            logger.debug("Run %s loaded with %d events", run.name, self.n_events)
+
+            if self._run_watcher is not None:
+                self._run_watcher.cancel()
+            logger.debug("Starting run watcher for run %s", run.name)
+            self._run_watcher = asyncio.create_task(self._watch_run())
+
     def has_catalog(self) -> bool:
         return self._catalog is not None
+
+    async def _watch_run(self, refresh_interval: float = 10.0):
+        if self._run is None:
+            raise RuntimeError("No run set for watching")
+        last_update = time.time()
+        while True:
+            await self._run.updated.wait()
+
+            time_since_update = time.time() - last_update
+            if time_since_update < refresh_interval:
+                await asyncio.sleep(refresh_interval - time_since_update)
+
+            self.refresh_event_data()
+            last_update = time.time()
+            self.updated.emit()
 
     def refresh_event_data(self):
         if self._catalog is None:
@@ -232,8 +260,18 @@ class TabState:
     def set_default_run(cls, run: RunSource):
         cls._default_run = run
 
+    def clear(self):
+        if self.run is not None:
+            self.run.detach(self.filtered_catalog)
+
 
 def get_tab_state() -> TabState:
+    """Get the state for the current tab."""
     if "state" not in app.storage.tab:
         app.storage.tab["state"] = TabState()
     return app.storage.tab["state"]
+
+
+def clear_tab_state():
+    """Clear tab state."""
+    get_tab_state().clear()

@@ -698,7 +698,7 @@ for the event.
         )
         fig.update_layout(
             xaxis_title="Hypocentral Distance (km)",
-            yaxis_title="Magnitude",
+            yaxis_title="Station Magnitude",
             margin={"l": 60, "r": 40, "t": 40, "b": 80},
             template="plotly_white",
         )

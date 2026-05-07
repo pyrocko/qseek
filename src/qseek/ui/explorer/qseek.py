@@ -102,25 +102,25 @@ class QseekWebSource(RunSource):
                 "WebSocket connection to %s closed, reconnecting...",
                 self.name,
             )
-            await asyncio.sleep(5)  # Wait before trying to reconnect
+            # Wait before trying to reconnect
+            await asyncio.sleep(5.0)
 
     async def _new_websocket_message(self, msg: WebsocketMessage):
         logger.debug("Received WebSocket message")
-        if msg.type == "NewDetections":
-            collection = msg.data
-            logger.info(
-                "Received %d new detections from %s",
-                collection.n_detections(),
-                self.name,
-            )
+        collection = msg.data
+        logger.info(
+            "Received %d new detections from %s", collection.n_detections, self.name
+        )
+        if self._catalog is None:
+            return
 
-            self.n_events += collection.n_detections()
-            self.last_update = datetime_now()
-            if self._catalog:
-                for detection in collection.detections:
-                    self._catalog.add(detection)
-            self.updated.set()
-            self.updated.clear()
+        for detection in collection.detections:
+            await self._catalog.add(detection)
+        self.last_update = datetime_now()
+        self.n_events += collection.n_detections
+
+        self.updated.set()
+        self.updated.clear()
 
     async def _download_catalog_data(self) -> Path:
         logger.info("Fetching detections and receivers from %s", self.name)

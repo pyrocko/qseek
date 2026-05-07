@@ -31,8 +31,6 @@ async def overview_page() -> None:
     n_picks_median = np.nanmedian(n_picks_values) if n_picks_values else np.nan
     n_picks_max = np.nanmax(n_picks_values) if n_picks_values else np.nan
     n_picks_min = np.nanmin(n_picks_values) if n_picks_values else np.nan
-    semblance_max = np.nanmax(catalog.semblances)
-    semblance_min = np.nanmin(catalog.semblances)
 
     rms_values = np.array(
         [ev.event.rms for ev in catalog.events if ev.event.rms is not None],
@@ -73,13 +71,6 @@ async def overview_page() -> None:
             icon="scatter_plot",
             subtitle=f"Min {n_picks_min} / Max {n_picks_max}",
             tooltip="Median number of picks per event.",
-        )
-        stat_card(
-            "Max Semblance",
-            f"{semblance_max:.2f}",
-            icon="stacked_line_chart",
-            subtitle=f"Min {semblance_min:.2f}",
-            tooltip="Maximum semblance value among all detected events.",
         )
         if has_rms:
             rms_median_ms = float(np.nanmedian(rms_values)) * 1e3

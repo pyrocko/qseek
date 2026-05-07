@@ -8,11 +8,10 @@ from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
 
-
 _LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
 
 
-def start_ui(uris: list[str], reload: bool = True) -> None:
+def start_ui(uris: list[str], reload: bool = True, port: int = 2213) -> None:
     from qseek.ui.layout import drawer, header
     from qseek.ui.manager import SourceManager
     from qseek.ui.pages.analysis import analysis_page
@@ -23,8 +22,6 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
     from qseek.ui.pages.overview import overview_page
     from qseek.ui.pages.station import station_page
     from qseek.ui.state import TabState, get_tab_state
-
-    app.add_static_files("/static", Path(__file__).parent / "static")
 
     manager = SourceManager()
     ready = asyncio.Event()
@@ -41,6 +38,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         TabState.set_default_run(default_run)
         ready.set()
 
+    app.add_static_files("/static", Path(__file__).parent / "static")
     app.on_startup(load_runs)
 
     @ui.page("/")
@@ -50,7 +48,6 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
         await ui.context.client.connected()
 
         state = get_tab_state()
-
         drawer(manager)
         await header()
 
@@ -96,7 +93,7 @@ def start_ui(uris: list[str], reload: bool = True) -> None:
 
         state.filtered_catalog.updated.subscribe(on_run_changed)
 
-    ui.run(title="Qseek Explorer", favicon="🚀", port=2213, reload=reload)
+    ui.run(title="Qseek Explorer", favicon="🚀", port=port, reload=reload)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
@@ -112,4 +109,4 @@ if __name__ in {"__main__", "__mp_main__"}:
     )
     args = parser.parse_args()
     setup_rich_logging(level=logging.INFO)
-    start_ui(args.uris)
+    start_ui(args.uris, reload=True)
