@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from qseek.search import Search
 
 logger = logging.getLogger(__name__)
-# logging.getLogger("aiohttp").setLevel(logging.WARNING)
+logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
 MAX_TRIES = 5
 
@@ -143,7 +143,7 @@ class WebServer(Model):
         return ws
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
-        logger.info("New detections received, sending to WebSocket clients...")
+        logger.debug("New detections received, sending to WebSocket clients...")
         if not self._open_websockets:
             logger.debug(
                 "No WebSocket clients connected, skipping sending new detections"
@@ -158,7 +158,7 @@ class WebServer(Model):
         data = await asyncio.to_thread(websocket_message.model_dump_json)
         for ws in self._open_websockets:
             try:
-                await ws.send_json(data)
+                await ws.send_str(data)
             except Exception:
                 logger.exception(
                     "Error sending WebSocket message to client, closing connection"
