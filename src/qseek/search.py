@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Deque, Literal, Self, Sequence
 
 import numpy as np
 import psutil
+import sdnotify
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -68,6 +69,7 @@ SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
 IgnoreBoundary = Literal[False, "with_surface", "without_surface"]
 
 KM = 1e3
+n = sdnotify.SystemdNotifier()
 
 
 class SearchStats(Stats):
@@ -536,6 +538,7 @@ class Search(Model):
 
         self.create_folders()
         await self.prepare()
+        n.notify("READY=1")
         self.write_config()
 
         if self._progress.time_progress:
@@ -608,7 +611,9 @@ class Search(Model):
                 show_log=True,
             )
             self.set_progress(batch.end_time)
+            n.notify("WATCHDOG=1")
 
+        n.notify("STOPPING=1")
         await BackgroundTasks.wait_all()
         await self._catalog.save()
         await self._catalog.export_detections(
@@ -641,6 +646,7 @@ class Search(Model):
         if self.webserver:
             BackgroundTasks.create_task(self.webserver.new_detections(detections))
 
+        n.notify(f"STATUS=Detected {catalog.n_events} events")
         if not catalog.n_events:
             return
 
@@ -1009,7 +1015,6 @@ class OctreeSearch:
             )
 
         detections = []
-        logger.info("detected %d events", len(detection_idx))
         for time_idx, semblance_detection in zip(
             detection_idx, detection_semblance, strict=True
         ):
