@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from pydantic import Field, PositiveFloat
@@ -20,9 +20,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# TODO make nthreads configurable
-THREAD_POOL = ThreadPoolExecutor(max_workers=4)
-
 
 def downsample(
     traces: list[Trace],
@@ -34,7 +31,9 @@ def downsample(
 
     try:
         upscale_sratio, decimation_sequence = _configure_downsampling(
-            trace_deltat, delta_t, allow_upsample_max=5
+            trace_deltat,
+            delta_t,
+            allow_upsample_max=5,
         )
     except UnavailableDecimation:
         logger.warning(
@@ -52,7 +51,7 @@ def downsample(
 
     for n_decimate in decimation_sequence:
         b, a, n = decimate_coeffs(n_decimate, None, "fir-remez")
-        data = signal.lfilter(b, a, data, axis=1)
+        data = signal.sosfilt(signal.tf2sos(b, a), data, axis=1)
         data = data[:, n // 2 :: n_decimate].copy()
 
     for trace, trace_data in zip(traces, data, strict=True):
@@ -71,6 +70,15 @@ class Downsample(BatchPreProcessing):
         default=100.0,
         description="The new sampling frequency in Hz.",
     )
+    n_threads: int = Field(
+        default=8,
+        description="The number of threads to use for downsampling.",
+    )
+
+    _thread_pool: ThreadPoolExecutor
+
+    def model_post_init(self, context: Any):
+        self._thread_pool = ThreadPoolExecutor(max_workers=self.n_threads)
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         desired_delta_t = 1.0 / self.sampling_frequency
@@ -88,7 +96,7 @@ class Downsample(BatchPreProcessing):
                     continue
                 trace_groups.append(list(trace_group))
 
-            THREAD_POOL.map(
+            self._thread_pool.map(
                 downsample,
                 trace_groups,
                 [desired_delta_t] * len(trace_groups),
