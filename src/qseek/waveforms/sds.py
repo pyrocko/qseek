@@ -574,24 +574,50 @@ class SDSArchive(WaveformProvider):
 
 
 if __name__ == "__main__":
+    import argparse
     from cProfile import Profile
 
     from qseek.models.station import StationInventory
 
     p = Profile()
 
-    setup_rich_logging(logging.DEBUG)
-    stations = StationInventory(
-        station_xmls=[Path("/project/elise-info/sds/ELISE.xml")]
+    parser = argparse.ArgumentParser(description="Test SDSArchive waveform provider.")
+    parser.add_argument(
+        "path",
+        type=Path,
+        help="Path to the root of the SDS archive.",
     )
+    args = parser.parse_args()
+
+    setup_rich_logging(logging.DEBUG)
 
     sds = SDSArchive(
-        archive=Path("/project/elise-info/sds/"),
+        archive=args.path,
         n_threads=16,
-        start_time=datetime(2025, 8, 20, tzinfo=timezone.utc),
     )
 
-    async def run():
+    async def print_archive_stats():
+        sds.scan_sds_archive()
+        archive_start, archive_end = sds.available_time_span()
+        logger.info(
+            "SDS archive time span: %s to %s",
+            archive_start.date(),
+            archive_end.date(),
+        )
+        logger.info("available stations in SDS archive: %d", sds.n_stations)
+        logger.info(
+            "%d available NSLs in SDS archive: %s",
+            sds.n_stations,
+            ", ".join(
+                nsl.pretty
+                for nsl in sorted(sds.available_nsls(), key=lambda s: s.pretty)
+            ),
+        )
+
+    async def profile():
+        stations = StationInventory(
+            station_xmls=[Path("/project/elise-info/sds/ELISE.xml")]
+        )
         sds.prepare(stations)
         # return
         p.enable()
@@ -604,4 +630,4 @@ if __name__ == "__main__":
         p.disable()
         p.dump_stats("/tmp/sds.prof")
 
-    asyncio.run(run())
+    asyncio.run(profile())
