@@ -54,7 +54,7 @@ from qseek.utils import (
     time_to_path,
 )
 from qseek.waveforms.base import WaveformBatch
-from qseek.waveforms.providers import PyrockoSquirrel, WaveformProviderType
+from qseek.waveforms.providers import SDSArchive, WaveformProviderType
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -245,7 +245,7 @@ class Search(Model):
         description="Station inventory from StationXML or Pyrocko Station YAML.",
     )
     data_provider: WaveformProviderType = Field(
-        default_factory=PyrockoSquirrel.model_construct,
+        default_factory=SDSArchive.model_construct,
         description="Data provider for waveform data.",
     )
     pre_processing: PreProcessing = Field(
@@ -314,7 +314,7 @@ class Search(Model):
         " detection and localization.",
     )
     ignore_boundary: IgnoreBoundary = Field(
-        default=False,
+        default="without_surface",
         description="Ignore events that are inside the first root node layer of"
         " the octree. If `with_surface`, all events inside the boundaries of the volume"
         " are absorbed. If `without_surface`, events at the surface are not absorbed.",
