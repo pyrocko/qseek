@@ -75,7 +75,7 @@ class EventLocalMagnitude(EventMagnitude):
             if np.abs(mag.magnitude - unclean_mean) > max_station_std * std:
                 logger.warning(
                     "%s magnitude removed due to high std",
-                    mag.station,
+                    mag.station.pretty,
                 )
                 station_magnitudes.remove(mag)
 
