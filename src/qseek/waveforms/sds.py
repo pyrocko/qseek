@@ -630,4 +630,4 @@ if __name__ == "__main__":
         p.disable()
         p.dump_stats("/tmp/sds.prof")
 
-    asyncio.run(profile())
+    asyncio.run(print_archive_stats())
