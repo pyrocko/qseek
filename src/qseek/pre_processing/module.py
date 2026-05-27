@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Annotated, AsyncIterator, ClassVar, Iterator, 
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
 from qseek.pre_processing.base import BatchPreProcessing
-from qseek.pre_processing.deep_denoiser import DeepDenoiser  # noqa: F401
-from qseek.pre_processing.downsample import Downsample  # noqa: F401
-from qseek.pre_processing.frequency_filters import (  # noqa: F401
+from qseek.pre_processing.deep_denoiser import DeepDenoiser
+from qseek.pre_processing.frequency_filters import (
     Bandpass,
     Highpass,
     Lowpass,
 )
+from qseek.pre_processing.resample import Downsample, Resample
 from qseek.stats import Stats
 from qseek.utils import QUEUE_SIZE, datetime_now, human_readable_bytes
 
@@ -133,3 +133,14 @@ class PreProcessing(RootModel):
 
         logger.debug("waiting for pre-processing to finish")
         await task
+
+
+__all__ = [
+    "Bandpass",
+    "DeepDenoiser",
+    "Downsample",
+    "Highpass",
+    "Lowpass",
+    "PreProcessing",
+    "Resample",
+]

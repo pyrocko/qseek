@@ -77,5 +77,5 @@ def group_traces(traces: list[Trace]) -> groupby[tuple[float, int], Trace]:
     return groupby(traces, key=lambda trace: (trace.deltat, trace.ydata.size))
 
 
-def traces_data(traces: list[Trace], dtype=np.float64) -> np.ndarray:
+def traces_data(traces: list[Trace], dtype=np.float32) -> np.ndarray:
     return np.array([trace.ydata for trace in traces], dtype=dtype)

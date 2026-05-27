@@ -37,7 +37,7 @@ from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.station import Station
 from qseek.octree import Octree
 from qseek.pre_processing.frequency_filters import Bandpass
-from qseek.pre_processing.module import Downsample, PreProcessing
+from qseek.pre_processing.module import PreProcessing, Resample
 from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
 from qseek.signals import Signal
@@ -249,7 +249,7 @@ class Search(Model):
         description="Data provider for waveform data.",
     )
     pre_processing: PreProcessing = Field(
-        default_factory=lambda: PreProcessing(root=[Downsample(), Bandpass()]),
+        default_factory=lambda: PreProcessing(root=[Resample(), Bandpass()]),
         description="Pre-processing steps for waveform data.",
     )
 
