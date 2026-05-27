@@ -82,4 +82,10 @@ def group_traces(traces: list[Trace]) -> groupby[tuple[float, int], Trace]:
 
 
 def traces_data(traces: list[Trace], dtype=np.float32) -> np.ndarray:
-    return np.array([trace.ydata for trace in traces], dtype=dtype)
+    data_sizes = {trace.ydata.size for trace in traces}
+    if len(data_sizes) != 1:
+        raise ValueError("Traces have different number of samples.")
+    out = np.empty((len(traces), data_sizes.pop()), dtype=dtype)
+    for itr, trace in enumerate(traces):
+        np.copyto(out[itr], trace.ydata, casting="unsafe")
+    return out

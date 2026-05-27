@@ -27,7 +27,7 @@ def butter_sos(
     Wn: float | tuple[float, float],  # noqa: N803
     btype: Literal["lowpass", "highpass", "bandpass"],
     fs: float,
-    dtype: np.dtype = float,
+    dtype: np.dtype = np.float32,
 ) -> np.ndarray:
     return signal.butter(
         N=N,
@@ -102,6 +102,13 @@ class Bandpass(BatchPreProcessing):
                         sampling_rate / 2,
                     )
                     continue
+                if self.bandpass.start >= sampling_rate / 2:
+                    logger.debug(
+                        "Lowpass frequency is higher than Nyquist frequency %s. "
+                        "No filtering is applied.",
+                        sampling_rate / 2,
+                    )
+                    continue
                 sos = butter_sos(
                     N=self.corners,
                     Wn=self.bandpass,
@@ -172,7 +179,7 @@ class Lowpass(BatchPreProcessing):
     )
     frequency: PositiveFloat = Field(
         default=0.1,
-        description="The highpass frequency.",
+        description="The lowpass frequency.",
     )
     demean: bool = Field(
         default=True,
@@ -186,8 +193,9 @@ class Lowpass(BatchPreProcessing):
                 sampling_rate = 1.0 / deltat
                 if self.frequency >= sampling_rate / 2:
                     logger.debug(
-                        "Lowpass frequency is higher than Nyquist frequency. "
-                        "No filtering is applied."
+                        "Lowpass frequency is higher than Nyquist frequency %s. "
+                        "No filtering is applied.",
+                        sampling_rate / 2,
                     )
                     continue
                 sos = butter_sos(
