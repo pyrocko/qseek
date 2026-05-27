@@ -73,8 +73,12 @@ class BatchPreProcessing(BaseModel):
         raise NotImplementedError
 
 
+def _trace_group_key(trace: Trace) -> tuple[float, int]:
+    return (trace.deltat, trace.ydata.size)
+
+
 def group_traces(traces: list[Trace]) -> groupby[tuple[float, int], Trace]:
-    return groupby(traces, key=lambda trace: (trace.deltat, trace.ydata.size))
+    return groupby(sorted(traces, key=_trace_group_key), key=_trace_group_key)
 
 
 def traces_data(traces: list[Trace], dtype=np.float32) -> np.ndarray:

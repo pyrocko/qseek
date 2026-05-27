@@ -135,42 +135,7 @@ class StationInventory(Model):
     _squirrel: Squirrel = PrivateAttr()
 
     def model_post_init(self, __context: Any) -> None:
-        squirrel = Squirrel()
-        loaded_stations = []
-        for file in self.pyrocko_station_yamls:
-            if not file.exists():
-                logger.error("could not find Pyrocko station YAML file: %s", file)
-                continue
-            loaded_stations += load_stations(filename=str(file.expanduser()))
-
-        for path in self.station_xmls:
-            if not path.exists():
-                logger.error("could not find StationXML file or directory: %s", path)
-                continue
-            if path.is_dir():
-                station_xmls = list(path.glob("*.[xX][mM][lL]"))
-            elif path.is_file():
-                station_xmls = [path]
-            else:
-                continue
-            for file in station_xmls:
-                try:
-                    station_xml = load_xml(filename=str(file.expanduser()))
-                except StopIteration:
-                    logger.error("could not load StationXML file: %s", file)
-                    continue
-                loaded_stations += station_xml.get_pyrocko_stations()
-
-            logger.info("loading StationXML responses from %s", path)
-            for file in station_xmls:
-                squirrel.add(str(file.expanduser()), check=False)
-
-        for sta in loaded_stations:
-            sta = Station.from_pyrocko_station(sta)
-            self.stations.append(sta)
-
-        self.sanitize_stations()
-        self._squirrel = squirrel
+        self._squirrel = Squirrel()
 
     def __iter__(self) -> Iterator[Station]:
         return (sta for sta in self.stations if sta.nsl not in self.blacklist)
@@ -245,6 +210,41 @@ class StationInventory(Model):
             ValueError: If no stations are available after preparation.
         """
         logger.info("preparing station inventory")
+
+        loaded_stations = []
+        for file in self.pyrocko_station_yamls:
+            if not file.exists():
+                logger.error("could not find Pyrocko station YAML file: %s", file)
+                continue
+            loaded_stations += load_stations(filename=str(file.expanduser()))
+
+        for path in self.station_xmls:
+            if not path.exists():
+                logger.error("could not find StationXML file or directory: %s", path)
+                continue
+            if path.is_dir():
+                station_xmls = list(path.glob("*.[xX][mM][lL]"))
+            elif path.is_file():
+                station_xmls = [path]
+            else:
+                continue
+            for file in station_xmls:
+                try:
+                    station_xml = load_xml(filename=str(file.expanduser()))
+                except StopIteration:
+                    logger.error("could not load StationXML file: %s", file)
+                    continue
+                loaded_stations += station_xml.get_pyrocko_stations()
+
+            logger.info("loading StationXML responses from %s", path)
+            for file in station_xmls:
+                self._squirrel.add(str(file.expanduser()), check=False)
+
+        for sta in loaded_stations:
+            sta = Station.from_pyrocko_station(sta)
+            self.stations.append(sta)
+
+        self.sanitize_stations()
 
         if self.max_distance is not None:
             for sta in self.stations.copy():
