@@ -13,6 +13,7 @@ from pyrocko.util import UnavailableDecimation, decimate_coeffs
 from scipy import signal
 
 from qseek.pre_processing.base import BatchPreProcessing, group_traces, traces_data
+from qseek.utils import to_threadpool
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -20,11 +21,6 @@ if TYPE_CHECKING:
     from qseek.waveforms.base import WaveformBatch
 
 logger = logging.getLogger(__name__)
-
-
-def _next_pow2(n: int) -> int:
-    """Return the next power of 2 greater than or equal to n."""
-    return 1 << (n - 1).bit_length()
 
 
 def resample(
@@ -61,8 +57,8 @@ def resample(
     out_deltat = in_deltat * ratio.denominator / ratio.numerator
 
     for trace, trace_data in zip(traces, data_resampled, strict=True):
-        trace.set_ydata(trace_data)
         trace.deltat = out_deltat
+        trace.set_ydata(trace_data)
     return traces
 
 
@@ -82,7 +78,7 @@ def downsample(
     Returns:
         list[Trace]: The downsampled traces.
     """
-    if len({tr.deltat for tr in traces}) > 1:
+    if len({tr.deltat for tr in traces}) != 1:
         raise ValueError("Traces have different sampling rates, cannot downsample.")
 
     traces_deltat = traces[0].deltat
@@ -113,9 +109,8 @@ def downsample(
         data = data[:, n // 2 :: n_decimate].copy()
 
     for trace, trace_data in zip(traces, data, strict=True):
-        trace.set_ydata(trace_data)
-        trace.tmax = trace.tmin + (trace_data.size - 1) * delta_t
         trace.deltat = delta_t
+        trace.set_ydata(trace_data)
     return traces
 
 
@@ -140,27 +135,18 @@ class Downsample(BatchPreProcessing):
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         desired_delta_t = 1.0 / self.sampling_frequency
-
-        def worker() -> None:
-            traces = self.filter_traces(batch)
-            trace_groups = []
-            for (delta_t, _), trace_group in group_traces(traces):
-                if desired_delta_t <= delta_t:
-                    logger.debug(
-                        "The sampling rate of the traces is "
-                        "smaller or equal to the desired sampling rate of %s Hz.",
-                        1.0 / desired_delta_t,
-                    )
-                    continue
-                trace_groups.append(list(trace_group))
-
-            self._thread_pool.map(
-                downsample,
-                trace_groups,
-                [desired_delta_t] * len(trace_groups),
+        traces = self.filter_traces(batch)
+        groups = [
+            list(trace_group)
+            for (delta_t, _), trace_group in group_traces(traces)
+            if desired_delta_t < delta_t
+        ]
+        await asyncio.gather(
+            *(
+                to_threadpool(self._thread_pool, downsample, group, desired_delta_t)
+                for group in groups
             )
-
-        await asyncio.to_thread(worker)
+        )
         return batch
 
 
@@ -185,20 +171,16 @@ class Resample(BatchPreProcessing):
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         new_delta_t = 1.0 / self.sampling_frequency
-
-        def worker() -> None:
-            traces = self.filter_traces(batch)
-            trace_groups = []
-            for (delta_t, _), trace_group in group_traces(traces):
-                if delta_t == new_delta_t:
-                    continue
-                trace_groups.append(list(trace_group))
-
-            self._thread_pool.map(
-                resample,
-                trace_groups,
-                [new_delta_t] * len(trace_groups),
+        traces = self.filter_traces(batch)
+        groups = [
+            list(trace_group)
+            for (delta_t, _), trace_group in group_traces(traces)
+            if delta_t != new_delta_t
+        ]
+        await asyncio.gather(
+            *(
+                to_threadpool(self._thread_pool, resample, group, new_delta_t)
+                for group in groups
             )
-
-        await asyncio.to_thread(worker)
+        )
         return batch
