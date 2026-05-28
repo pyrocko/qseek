@@ -20,6 +20,7 @@ from pydantic import (
     PrivateAttr,
     computed_field,
     field_validator,
+    model_validator,
 )
 from pyrocko.gui import marker
 from pyrocko.model import Event
@@ -606,6 +607,14 @@ class EventDetection(Location):
     _detection_idx: int | None = PrivateAttr(None)
     _receiver_cache: ReceiverCache | None = PrivateAttr(None)
 
+    @model_validator(mode="wrap")
+    @classmethod
+    def materialize_receivers(cls, data: Any, handler) -> Self:
+        self = handler(data)
+        if "receivers" in data:
+            self._receivers = EventReceivers.model_validate(data["receivers"])
+        return self
+
     @field_validator("features", mode="before")
     @classmethod
     def migrate_features(cls, v: Any) -> list[EventFeaturesType]:
@@ -748,6 +757,10 @@ class EventDetection(Location):
         )
 
         return self._receivers
+
+    @receivers.setter
+    def receivers(self, receivers: EventReceivers) -> None:
+        self._receivers = receivers
 
     @computed_field
     @property
