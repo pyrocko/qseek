@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
+import functools
 import logging
 import os
 import re
 import sys
 import time
+from asyncio import events
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from fnmatch import fnmatch
@@ -586,6 +590,7 @@ def filter_clipped_traces(
     Returns:
         list[Trace]: The filtered list of traces.
     """
+    clipped_nslcs = set()
     for tr in traces.copy():
         if tr.ydata is None:
             continue
@@ -606,7 +611,12 @@ def filter_clipped_traces(
                     bits,
                     distance_counts,
                 )
-                traces.remove(tr)
+                clipped_nslcs.add(".".join(tr.nslc_id)[:-1])  # remove the orientation
+
+    for tr in traces.copy():
+        if ".".join(tr.nslc_id)[:-1] in clipped_nslcs:
+            traces.remove(tr)
+
     return traces
 
 
@@ -830,3 +840,19 @@ def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
     lines.extend(dump_json())
     lines += ["    ```"]
     return "\n".join(lines)
+
+
+async def to_threadpool(pool: ThreadPoolExecutor | None, func, *args, **kwargs):
+    """Asynchronously run function *func* in a separate thread.
+
+    Any *args and **kwargs supplied for this function are directly passed
+    to *func*. Also, the current :class:`contextvars.Context` is propagated,
+    allowing context variables from the main thread to be accessed in the
+    separate thread.
+
+    Return a coroutine that can be awaited to get the eventual result of *func*.
+    """
+    loop = events.get_running_loop()
+    ctx = contextvars.copy_context()
+    func_call = functools.partial(ctx.run, func, *args, **kwargs)
+    return await loop.run_in_executor(pool, func_call)
