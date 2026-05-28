@@ -314,7 +314,7 @@ class SDSArchive(WaveformProvider):
         logger.info(
             "available NSLs in SDS archive: %s",
             ", ".join(
-                nsl.pretty
+                nsl.pretty_str(strip=True)
                 for nsl in sorted(self.available_nsls(), key=lambda s: s.pretty)
             ),
         )
