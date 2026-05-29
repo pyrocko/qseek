@@ -24,6 +24,7 @@ from pydantic import (
 )
 from pyrocko.gui import marker
 from pyrocko.model import Event
+from pyrocko.squirrel.error import ConversionError
 
 from qseek.features import EventFeaturesType
 from qseek.images.base import ObservedArrival
@@ -464,22 +465,23 @@ class EventReceivers(BaseModel):
         for tr in traces:
             try:
                 response = get_response(tr)
-            except AttributeError:
-                logger.warning("cannot find response for %s", ".".join(tr.nslc_id))
-                continue
-
-            restituted_traces.append(
-                await asyncio.to_thread(
-                    tr.transfer,
-                    transfer_function=response.get_effective(input_quantity=quantity),
-                    freqlimits=freq_limits
-                    or (0.05, 0.1, 0.40 / tr.deltat, 0.45 / tr.deltat),
-                    tfade=seconds_taper,
-                    cut_off_fading=cut_off_taper,
-                    demean=demean,
-                    invert=True,
+                effective_response = response.get_effective(input_quantity=quantity)
+            except (AttributeError, ConversionError):
+                logger.warning(
+                    "cannot get effective response for %s", ".".join(tr.nslc_id)
                 )
+                continue
+            tr_restituded = await asyncio.to_thread(
+                tr.transfer,
+                transfer_function=effective_response,
+                freqlimits=freq_limits
+                or (0.05, 0.1, 0.40 / tr.deltat, 0.45 / tr.deltat),
+                tfade=seconds_taper,
+                cut_off_fading=cut_off_taper,
+                demean=demean,
+                invert=True,
             )
+            restituted_traces.append(tr_restituded)
 
         return restituted_traces
 
