@@ -24,7 +24,7 @@ from qseek.magnitudes.local_magnitude_models import (
     ModelName,
     StationLocalMagnitude,
 )
-from qseek.utils import NSL, time_to_path
+from qseek.utils import time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -204,6 +204,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
             seconds_taper=self.taper_seconds,
             quantity=model.restitution_quantity,
             channels=waveform_provider.channel_selector,
+            exclude_nsls=self.exclude_stations,
             phase=None,
             cut_off_taper=False,
             filter_clipped=True,
@@ -287,10 +288,6 @@ class LocalMagnitude(EventMagnitudeCalculator):
             sorted_traces,
             key=lambda tr: tr.nslc_id[:3],
         ):
-            if any(NSL.parse(nsl).match(sta) for sta in self.exclude_stations):
-                logger.debug("Excluding station %s from magnitude calculation", nsl)
-                continue
-
             try:
                 sta_mag = self.get_station_magnitude(
                     model=model,

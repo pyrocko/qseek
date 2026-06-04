@@ -320,6 +320,7 @@ class EventReceivers(BaseModel):
         seconds_before: float = 3.0,
         seconds_after: float = 5.0,
         phase: PhaseDescription | None = None,
+        exclude_nsls: Iterable[NSL] | None = None,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
         want_incomplete: bool = True,
@@ -335,6 +336,8 @@ class EventReceivers(BaseModel):
                 to retrieve. Defaults to 5.0.
             phase (PhaseDescription | None, optional): The phase description. If None,
                 the whole time window is retrieved. Defaults to None.
+            exclude_nsls (Iterable[NSL] | None, optional): NSLs to exclude from the
+                retrieval. Defaults to None.
             receivers (list[Receiver] | None, optional): The receivers to retrieve
                 waveforms for. If None, all receivers are retrieved. Defaults to None.
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
@@ -347,6 +350,14 @@ class EventReceivers(BaseModel):
             list[Trace]: The restituted waveforms.
         """
         receivers = receivers or list(self.receivers)
+        if exclude_nsls:
+            exclude_nsls_set = set(exclude_nsls)
+            receivers = [
+                receiver
+                for receiver in receivers
+                if not any(ex_nsl.match(receiver.nsl) for ex_nsl in exclude_nsls_set)
+            ]
+
         times = list(
             chain.from_iterable(
                 receiver.get_arrivals_time_window(phase) for receiver in receivers
@@ -388,6 +399,7 @@ class EventReceivers(BaseModel):
         demean: bool = True,
         freq_limits: tuple[float, float, float, float] | None = None,
         filter_clipped: bool = False,
+        exclude_nsls: Iterable[NSL] | None = None,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
         want_incomplete: bool = True,
@@ -416,6 +428,8 @@ class EventReceivers(BaseModel):
                 the default limits are used. Defaults to None.
             remove_clipped (bool, optional): Whether to remove clipped traces.
                 Defaults to False.
+            exclude_nsls (Iterable[NSL] | None, optional): NSLs to exclude from the
+                retrieval. Defaults to None.
             receivers (list[Receiver] | None, optional): The receivers to retrieve
                 waveforms for. If None, all receivers are retrieved. Defaults to None.
             filter_clipped (bool, optional): Whether to filter clipped traces.
@@ -432,6 +446,7 @@ class EventReceivers(BaseModel):
             phase=phase,
             seconds_after=seconds_after + seconds_taper,
             seconds_before=seconds_before + seconds_taper,
+            exclude_nsls=exclude_nsls,
             receivers=receivers,
             channels=channels,
             want_incomplete=want_incomplete,

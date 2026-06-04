@@ -8,7 +8,7 @@ import logging
 import shutil
 from importlib.metadata import version
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import nest_asyncio
 
@@ -481,7 +481,16 @@ def main() -> None:
                     for subclass in module.get_subclasses():
                         if subclass.__name__ == args.name:
                             console.print_json(subclass().model_dump_json(indent=2))
+
+                            if subclass.__name__ == "LocalMagnitude":
+                                from qseek.magnitudes.local_magnitude import ModelName
+
+                                models = get_args(ModelName)
+                                list = "\n".join(f"- {m}" for m in sorted(models))
+                                console.print(f"\nAvailable `model` options:\n{list}")
+
                             parser.exit()
+
                 else:
                     parser.error(f"unknown module: {args.name}")
 
