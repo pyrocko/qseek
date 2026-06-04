@@ -102,3 +102,18 @@ def test_nsl():
     code1 = _NSL(network="6E", station="TE", location="")
     code2 = _NSL(network="5E", station="TE234", location="")
     assert not code1.match(code2)
+
+
+def test_nsl_exclusion():
+    exclude_nsls = {_NSL.parse("6E.TE234."), _NSL.parse("6E.TE235.")}
+    nsls = [
+        _NSL.parse("6E.TE234."),
+        _NSL.parse("6E.TE235."),
+        _NSL.parse("6E.TE236."),
+        _NSL.parse("6E.TE237."),
+    ]
+    filtered_nsls = [
+        nsl for nsl in nsls if not any(ex_nsl.match(nsl) for ex_nsl in exclude_nsls)
+    ]
+
+    assert filtered_nsls == [_NSL.parse("6E.TE236."), _NSL.parse("6E.TE237.")]

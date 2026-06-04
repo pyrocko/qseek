@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import weakref
 from collections.abc import AsyncIterator
 from hashlib import sha1
 from pathlib import Path
@@ -42,7 +43,9 @@ class QseekWebSource(RunSource):
 
         self._attached_proxies = set()
         self._websocket_task = None
-        self.updated = asyncio.Event()
+        self.updated = asyncio.Condition()
+
+        weakref.finalize(self, tmp_dir.cleanup)
 
     async def get_search_json(self) -> Path:
         async with (
@@ -90,13 +93,11 @@ class QseekWebSource(RunSource):
                             self.name,
                             msg.data,
                         )
-                        break
                     elif msg.type == aiohttp.WSMsgType.CLOSED:
                         logger.info(
                             "WebSocket connection to %s closed by server",
                             self.name,
                         )
-                        break
 
             logger.warning(
                 "WebSocket connection to %s closed, reconnecting...",
@@ -106,24 +107,25 @@ class QseekWebSource(RunSource):
             await asyncio.sleep(5.0)
 
     async def _new_websocket_message(self, msg: WebsocketMessage):
-        logger.debug("Received WebSocket message")
         collection = msg.data
         logger.info(
-            "Received %d new detections from %s", collection.n_detections, self.name
+            "received %d new detections from %s", collection.n_detections, self.name
         )
         if self._catalog is None:
             return
 
         for detection in collection.detections:
             await self._catalog.add(detection)
+            logger.info("added detection %s to catalog", detection.uid)
         self.last_update = datetime_now()
         self.n_events += collection.n_detections
 
-        self.updated.set()
-        self.updated.clear()
+        logger.info("informing attached proxies about update from %s", self.name)
+        async with self.updated:
+            self.updated.notify_all()
 
     async def _download_catalog_data(self) -> Path:
-        logger.info("Fetching detections and receivers from %s", self.name)
+        logger.info("fetching detections and receivers from %s", self.name)
         async with aiohttp.ClientSession(
             base_url=f"{self.name}/api/v1/",
             raise_for_status=True,
@@ -131,7 +133,7 @@ class QseekWebSource(RunSource):
             detections_path = self._tmp_path / "detections.json"
             detections_receivers_path = self._tmp_path / "detections_receivers.json"
 
-            logger.debug("Fetching detections from %s", self.name)
+            logger.debug("fetching detections from %s", self.name)
             async with (
                 session.get("detections") as resp,
                 aiofiles.open(detections_path, "wb") as f,
@@ -139,7 +141,7 @@ class QseekWebSource(RunSource):
                 async for chunk, _ in resp.content.iter_chunks():
                     await f.write(chunk)
                 await f.flush()
-            logger.debug("Fetching detection receivers from %s", self.name)
+            logger.debug("fetching detection receivers from %s", self.name)
             async with (
                 session.get("detections_receivers") as resp,
                 aiofiles.open(detections_receivers_path, "wb") as f,
@@ -147,9 +149,7 @@ class QseekWebSource(RunSource):
                 async for chunk, _ in resp.content.iter_chunks():
                     await f.write(chunk)
                 await f.flush()
-
-            print(self._tmp_path)  # noqa
-
+        logger.info("finished fetching catalog data from %s", self.name)
         return self._tmp_path
 
     @classmethod
@@ -177,9 +177,6 @@ class QseekWebSource(RunSource):
         self._attached_proxies.discard(proxy)
         if not self._attached_proxies and self._websocket_task is not None:
             self._websocket_task.cancel()
-
-    def __del__(self):
-        self._tmp_dir.cleanup()
 
 
 class QseekHttpExplorer(RunExplorer):

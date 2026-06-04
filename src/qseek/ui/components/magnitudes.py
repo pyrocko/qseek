@@ -263,108 +263,107 @@ to magnitude value.
                 "showgrid": False,
             },
         )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_events(plot)
 
-        self._fig = fig
-        self._plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_events(self._plot)
-        self._state = state
+        async def update_plot() -> None:
+            catalog = await state.get_filtered_catalog()
+            records = [
+                (ev.time, ev.uid, ev.magnitude.average)
+                for ev in catalog.events
+                if ev.magnitude is not None
+                and ev.magnitude.average is not None
+                and np.isfinite(ev.magnitude.average)
+            ]
+            if not records:
+                return
+            times, uids, magnitudes = map(np.asarray, zip(*records, strict=True))
+            magnitudes = np.asarray(magnitudes, dtype=float)
+            # magnitudes, mask = magnitude_outlier_filer(magnitudes)
+            # times = times[mask]
+            # uids = uids[mask]
+            if len(magnitudes) == 0:
+                return
 
-        state.filtered_catalog.updated.subscribe(
-            lambda: background_tasks.create(self.update_plot())
-        )
-        background_tasks.create(self.update_plot())
+            # Keep a time-sorted copy for cumulative line computation.
+            time_order = np.argsort(times)
+            times_sorted = times[time_order]
+            magnitudes_sorted = magnitudes[time_order]
 
-    async def update_plot(self) -> None:
-        plot = self._plot
-        fig = self._fig
-        state = self._state
-
-        catalog = await state.get_filtered_catalog()
-        records = [
-            (ev.time, ev.uid, ev.magnitude.average)
-            for ev in catalog.events
-            if ev.magnitude is not None
-            and ev.magnitude.average is not None
-            and np.isfinite(ev.magnitude.average)
-        ]
-        if not records:
-            return
-        times, uids, magnitudes = map(np.asarray, zip(*records, strict=True))
-        magnitudes = np.asarray(magnitudes, dtype=float)
-        # magnitudes, mask = magnitude_outlier_filer(magnitudes)
-        # times = times[mask]
-        # uids = uids[mask]
-        if len(magnitudes) == 0:
-            return
-
-        # Keep a time-sorted copy for cumulative line computation.
-        time_order = np.argsort(times)
-        times_sorted = times[time_order]
-        magnitudes_sorted = magnitudes[time_order]
-
-        point_density = None
-        try:
-            time_numeric = np.asarray(
-                [time.timestamp() for time in times],
-                dtype=float,
-            )
-            scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-            kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
-            point_density = kde(time_numeric)
-        except (ValueError, np.linalg.LinAlgError):
             point_density = None
+            try:
+                time_numeric = np.asarray(
+                    [time.timestamp() for time in times],
+                    dtype=float,
+                )
+                scott_kde = gaussian_kde(time_numeric, bw_method="scott")
+                kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
+                point_density = kde(time_numeric)
+            except (ValueError, np.linalg.LinAlgError):
+                point_density = None
 
-        scatter_times = times
-        scatter_magnitudes = magnitudes
-        scatter_uids = uids
-        if point_density is not None:
-            density_order = np.argsort(point_density)
-            scatter_times = scatter_times[density_order]
-            scatter_magnitudes = scatter_magnitudes[density_order]
-            scatter_uids = scatter_uids[density_order]
-            point_density = point_density[density_order]
+            scatter_times = times
+            scatter_magnitudes = magnitudes
+            scatter_uids = uids
+            if point_density is not None:
+                density_order = np.argsort(point_density)
+                scatter_times = scatter_times[density_order]
+                scatter_magnitudes = scatter_magnitudes[density_order]
+                scatter_uids = scatter_uids[density_order]
+                point_density = point_density[density_order]
 
-        plot.clear()
-        min_mag = scatter_magnitudes.min() if len(scatter_magnitudes) > 0 else 0
-        fig.add_trace(
-            go.Scattergl(
-                x=scatter_times,
-                y=scatter_magnitudes,
-                mode="markers",
-                name="Event Magnitude",
-                customdata=scatter_uids,
-                marker={
-                    "color": point_density if point_density is not None else "black",
-                    "colorscale": "Viridis",
-                    "showscale": False,
-                    "size": (scatter_magnitudes - min_mag)
-                    / (scatter_magnitudes.max() - min_mag)
-                    * 15
-                    if scatter_magnitudes.max() != min_mag
-                    else 10,
-                    "line": {"width": 0},
-                    "opacity": 0.3,
-                },
-                hoverinfo="none",
-                hovertemplate=None,
+            fig.data = []
+            min_mag = scatter_magnitudes.min() if len(scatter_magnitudes) > 0 else 0
+            fig.add_trace(
+                go.Scattergl(
+                    x=scatter_times,
+                    y=scatter_magnitudes,
+                    mode="markers",
+                    name="Event Magnitude",
+                    customdata=scatter_uids,
+                    marker={
+                        "color": point_density
+                        if point_density is not None
+                        else "black",
+                        "colorscale": "Viridis",
+                        "showscale": False,
+                        "size": (scatter_magnitudes - min_mag)
+                        / (scatter_magnitudes.max() - min_mag)
+                        * 15
+                        if scatter_magnitudes.max() != min_mag
+                        else 10,
+                        "line": {"width": 0},
+                        "opacity": 0.3,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                )
             )
-        )
-        moment_magnitudes = np.power(10, 1.5 * magnitudes_sorted + 9.1)
-        cumulative_magnitudes = np.cumsum(moment_magnitudes)
-        fig.add_trace(
-            go.Scattergl(
-                x=times_sorted,
-                y=cumulative_magnitudes,
-                mode="lines",
-                name="Cumulative Magnitude M0",
-                line={"color": "rgba(0,0,0,0.7)", "dash": "solid", "width": 3},
-                hoverinfo="none",
-                hovertemplate=None,
-                yaxis="y2",
+            moment_magnitudes = np.power(10, 1.5 * magnitudes_sorted + 9.1)
+            cumulative_magnitudes = np.cumsum(moment_magnitudes)
+            fig.add_trace(
+                go.Scattergl(
+                    x=times_sorted,
+                    y=cumulative_magnitudes,
+                    mode="lines",
+                    name="Cumulative Magnitude M0",
+                    line={
+                        "color": "black",
+                        "dash": "solid",
+                        "width": 1.5,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    yaxis="y2",
+                )
             )
-        )
+            fig.update_layout(uirevision=True)
 
-        plot.update()
+            plot.update()
+
+        state.proxy_catalog.updated.subscribe(update_plot)
+
+        background_tasks.create(update_plot())
 
 
 class StationMagnitudes(Component):
@@ -530,128 +529,6 @@ class SemblanceVsNPicks(Component):
                     customdata=uids,
                 )
             )
-            plot.update()
-
-        background_tasks.create(update_plot())
-
-
-class StationMagnitudeOverDistance(Component):
-    name = "Station Magnitudes vs Distance"
-    description = """Distance-corrected residuals of station magnitudes."""
-
-    async def view(self) -> None:
-        state = get_tab_state()
-        fig = go.Figure()
-        fig.update_layout(
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
-            template="plotly_white",
-            xaxis_title="Distance to Event (km)",
-            yaxis_title="Magnitude Residual",
-        )
-        plot = ui.plotly(fig).classes("w-full h-64")
-
-        async def update_plot():
-            catalog = await state.get_filtered_catalog()
-
-            dists = []
-            mags = []
-
-            for ev in catalog.events:
-                if ev.magnitude is None or not ev.magnitude.station_magnitudes:
-                    continue
-
-                for sm in ev.magnitude.station_magnitudes:
-                    dist_km = sm.distance_epi / 1000.0
-                    if dist_km <= 0:
-                        continue
-                    if np.isfinite(dist_km) and np.isfinite(sm.magnitude):
-                        dists.append(dist_km)
-                        mags.append(sm.magnitude)
-
-            if len(dists) < 10:
-                return
-
-            dists = np.asarray(dists)
-            mags = np.asarray(mags)
-
-            # --- Fit attenuation model: M = a log10(r) + b ---
-            magnitude_attenuation = np.vstack([np.log10(dists), np.ones_like(dists)]).T
-            a, b = np.linalg.lstsq(magnitude_attenuation, mags, rcond=None)[0]
-
-            mag_model = a * np.log10(dists) + b
-            residuals = mags - mag_model
-
-            plot.clear()
-
-            # --- Scatter (transparent for density perception) ---
-            # fig.add_trace(
-            #     go.Scattergl(
-            #         x=dists,
-            #         y=residuals,
-            #         mode="markers",
-            #         marker=dict(size=4, opacity=0.3),
-            #         name="Residuals",
-            #     )
-            # )
-
-            # --- Binned robust trend ---
-            n_bins = int(np.clip(np.sqrt(len(dists)), 8, 40))
-            bins = np.linspace(dists.min(), dists.max(), n_bins + 1)
-            bin_ids = np.digitize(dists, bins) - 1
-
-            bx, by, bmad = [], [], []
-
-            for i in range(n_bins):
-                mask = bin_ids == i
-                if np.sum(mask) < 5:
-                    continue
-
-                res_bin = residuals[mask]
-
-                median = np.median(res_bin)
-                mad = np.median(np.abs(res_bin - median))
-
-                bx.append(0.5 * (bins[i] + bins[i + 1]))
-                by.append(median)
-                bmad.append(mad)
-
-            if bx:
-                fig.add_trace(
-                    go.Scattergl(
-                        x=bx,
-                        y=by,
-                        mode="lines",
-                        line={"width": 3},
-                        showlegend=False,
-                        hoverinfo="none",
-                        hovertemplate=None,
-                    )
-                )
-
-                fig.add_trace(
-                    go.Scattergl(
-                        x=bx,
-                        y=np.array(by) + np.array(bmad),
-                        mode="lines",
-                        line={"width": 1, "dash": "dot"},
-                        showlegend=False,
-                        hoverinfo="none",
-                        hovertemplate=None,
-                    )
-                )
-
-                fig.add_trace(
-                    go.Scattergl(
-                        x=bx,
-                        y=np.array(by) - np.array(bmad),
-                        mode="lines",
-                        line={"width": 1, "dash": "dot"},
-                        showlegend=False,
-                        hoverinfo="none",
-                        hovertemplate=None,
-                    )
-                )
-
             plot.update()
 
         background_tasks.create(update_plot())

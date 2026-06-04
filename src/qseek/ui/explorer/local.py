@@ -45,7 +45,7 @@ class LocalSource(RunSource):
         self.n_events = _count_lines(detections_json)
         self._task = asyncio.create_task(self.watch_for_updates())
 
-        self.updated = asyncio.Event()
+        self.updated = asyncio.Condition()
 
     async def get_search_json(self) -> Path:
         return self.run_dir / "search.json"
@@ -59,8 +59,8 @@ class LocalSource(RunSource):
             for _ in changes:
                 logger.info("Detected change in %s", detections_json)
                 self.n_events = _count_lines(detections_json)
-                self.updated.set()
-                self.updated.clear()
+                async with self.updated:
+                    self.updated.notify_all()
 
 
 class LocalRunExplorer(RunExplorer):

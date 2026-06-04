@@ -32,8 +32,14 @@ markers corresponds to semblance value.
             showlegend=False,
             yaxis_title="Semblance",
             xaxis_title="Time",
+            yaxis2={
+                "title": "Cumulative Semblance",
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
         )
-        plot = ui.plotly(fig).classes("w-full h-80")
+        plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_events(plot)
 
         async def update_plot():
@@ -47,6 +53,8 @@ markers corresponds to semblance value.
                 return
             times, uids, semblances = map(np.asarray, zip(*records, strict=True))
             semblances = np.asarray(semblances, dtype=float)
+            time_order = np.argsort(times)
+            cumulative_semblance = np.cumsum(semblances[time_order])
 
             point_density = None
             try:
@@ -70,7 +78,7 @@ markers corresponds to semblance value.
                 scatter_uids = scatter_uids[density_order]
                 point_density = point_density[density_order]
 
-            plot.clear()
+            fig.data = []
             fig.add_trace(
                 go.Scattergl(
                     x=scatter_times,
@@ -92,8 +100,24 @@ markers corresponds to semblance value.
                     },
                 )
             )
+            fig.add_trace(
+                go.Scattergl(
+                    x=times[time_order],
+                    y=cumulative_semblance,
+                    mode="lines",
+                    name="Cumulative Semblance",
+                    line={
+                        "color": "black",
+                        "width": 1.5,
+                    },
+                    hoverinfo="none",
+                    hovertemplate=None,
+                    yaxis="y2",
+                )
+            )
             plot.update()
 
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -138,6 +162,9 @@ Number of detected events per day/hour/minute and cumulative number of events ov
             elif duration > timedelta(hours=24):
                 bin_sec = int(timedelta(hours=1).total_seconds())
                 bin_label = "Events / hour"
+            elif duration > timedelta(hours=2):
+                bin_sec = int(timedelta(minutes=10).total_seconds())
+                bin_label = "Events / 10 min"
             else:
                 bin_sec = int(timedelta(minutes=1).total_seconds())
                 bin_label = "Events / minute"
@@ -152,7 +179,7 @@ Number of detected events per day/hour/minute and cumulative number of events ov
             ]
             cumulative = np.cumsum(counts)
 
-            plot.clear()
+            fig.data = []
             fig.update_layout(yaxis_title=bin_label)
             fig.add_bar(
                 x=bin_starts,
@@ -178,6 +205,7 @@ Number of detected events per day/hour/minute and cumulative number of events ov
             )
             plot.update()
 
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -209,7 +237,7 @@ corresponds to magnitude and color corresponds to depth (light = shallow, dark =
                 catalog.north_shifts**2 + catalog.east_shifts**2 + catalog.depths**2
             )
 
-            plot.clear()
+            fig.data = []
             fig.add_trace(
                 go.Scattergl(
                     x=catalog.times,
@@ -268,7 +296,7 @@ Color corresponds to time and size corresponds to semblance.
             times_num = np.array([(t - times[0]).total_seconds() for t in times]) / (
                 3600 * 24
             )
-            plot.clear()
+            fig.data = []
             fig.add_trace(
                 go.Scattergl(
                     x=distances,
@@ -301,6 +329,7 @@ Color corresponds to time and size corresponds to semblance.
             )
             plot.update()
 
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -334,7 +363,7 @@ Distribution of number of picks associated with detected events.
 
             median = float(np.median(n_picks))
 
-            plot.clear()
+            fig.data = []
             fig.add_bar(
                 x=x,
                 y=y,
@@ -362,6 +391,7 @@ Distribution of number of picks associated with detected events.
             )
             plot.update()
 
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 

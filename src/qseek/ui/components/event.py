@@ -7,6 +7,7 @@ from plotly.subplots import make_subplots
 
 from qseek.magnitudes.base import EventMagnitude
 from qseek.ui.base import EventComponent
+from qseek.ui.utils import EVENT_ANIMATED_SVG
 
 KM = 1e3
 
@@ -498,7 +499,7 @@ Map showing event location and online stations contributing to the location.
         ev = self.event
 
         m = ui.leaflet(center=(ev.effective_lat, ev.effective_lon), zoom=12).classes(
-            "w-full h-96 rounded-lg shadow"
+            "w-full h-128 rounded-lg shadow"
         )
         m.tile_layer(
             url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
@@ -519,28 +520,6 @@ Map showing event location and online stations contributing to the location.
             for r in ev.receivers
         ]
 
-        # Animated radiating-wave event icon — matches logo_light.svg language:
-        # same color (#e4004b), ease-out expansion, pause after burst, stagger 1s.
-        # 40x40 SVG, center at (20,20), rings expand r=5→18, dur=6s (3s on + 3s pause).
-        _ring = (
-            '<circle cx="20" cy="20" r="5" fill="none" stroke="#e4004b" stroke-width="2">'
-            '<animate attributeName="r"       values="5;18;18" keyTimes="0;0.5;1"'
-            ' calcMode="spline" keySplines="0.2 0 0.8 1; 0 0 1 1"'
-            ' dur="6s" repeatCount="indefinite" begin="{begin}"/>'
-            '<animate attributeName="opacity" values="0.8;0;0" keyTimes="0;0.5;1"'
-            ' calcMode="spline" keySplines="0.2 0 0.8 1; 0 0 1 1"'
-            ' dur="6s" repeatCount="indefinite" begin="{begin}"/>'
-            "</circle>"
-        )
-        event_svg = (
-            '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">'
-            + _ring.format(begin="0s")
-            + _ring.format(begin="1s")
-            + _ring.format(begin="2s")
-            + '<circle cx="20" cy="20" r="5" fill="#e4004b" stroke="black" stroke-width="1.5"/>'
-            + "</svg>"
-        )
-
         # Equilateral triangle (side=13, centered in 16x16): apex(8,0.5), base(1.5,11.75)-(14.5,11.75)
         _station_svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="{opacity}">'
@@ -556,7 +535,7 @@ Map showing event location and online stations contributing to the location.
             var map = getElement({m.id}).map;
 
             var eventIcon = L.divIcon({{
-                html: '{event_svg}',
+                html: '{EVENT_ANIMATED_SVG}',
                 iconSize: [50, 50],
                 iconAnchor: [25, 25],
                 className: ''

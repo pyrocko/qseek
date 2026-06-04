@@ -20,6 +20,11 @@ class SourceManager:
         self.explorers = []
         self.runs = {}
 
+    def get_default_run(self) -> RunSource:
+        if not self.runs:
+            raise ValueError("No runs available")
+        return next(iter(self.runs.values()))
+
     async def add_uri(self, uri: str):
         uri_path = Path(uri)
         if uri_path.exists():

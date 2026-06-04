@@ -7,7 +7,7 @@ from qseek.ui.state import get_tab_state
 
 def catalog_filter_dialog():
     state = get_tab_state()
-    catalog = state.filtered_catalog
+    catalog = state.proxy_catalog
 
     with (
         ui.dialog() as dialog,
@@ -167,7 +167,10 @@ def catalog_filter_dialog():
                         dialog.close()
                         catalog.refresh_event_data()
 
-                ui.button("Reset", on_click=catalog.reset_filters).props(
+                def reset_filters():
+                    catalog.reset_filters(reset_user_filters=True)
+
+                ui.button("Reset", on_click=reset_filters).props(
                     "flat dense color=grey-7"
                 ).classes("text-sm")
                 ui.button("Apply", on_click=apply).props(

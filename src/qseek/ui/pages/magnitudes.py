@@ -36,13 +36,10 @@ async def magnitudes_page() -> None:
             semblance.header()
             await semblance.view()
 
-    with ui.row().classes("w-full flex-1 items-stretch"):
-        with ui.card().classes("col-12 col-md"):
-            over_station = magnitude_components.StationMagnitudesResiduals()
-            over_station.header()
-            await over_station.view()
-
-        with ui.card().classes("col-12 col-md"):
-            over_distance = magnitude_components.StationMagnitudeOverDistance()
-            over_distance.header()
-            await over_distance.view()
+    with (
+        ui.row().classes("w-full flex-1 items-stretch"),
+        ui.card().classes("col-12 col-md"),
+    ):
+        over_station = magnitude_components.StationMagnitudesResiduals()
+        over_station.header()
+        await over_station.view()

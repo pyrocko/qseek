@@ -71,3 +71,27 @@ def stat_card(
         ui.label(value).classes("text-2xl font-bold text-grey-10 mt-1")
         # Always render subtitle line to keep card height uniform
         ui.label(subtitle or "\u00a0").classes("text-xs text-grey-8 leading-tight")
+
+
+# Animated radiating-wave event icon — matches logo_light.svg language:
+# same color (#e4004b), ease-out expansion, pause after burst, stagger 1s.
+# 40x40 SVG, center at (20,20), rings expand r=5→18, dur=6s (3s on + 3s pause).
+
+_event_ring = (
+    '<circle cx="20" cy="20" r="5" fill="none" stroke="#e4004b" stroke-width="2">'
+    '<animate attributeName="r"       values="5;18;18" keyTimes="0;0.5;1"'
+    ' calcMode="spline" keySplines="0.2 0 0.8 1; 0 0 1 1"'
+    ' dur="6s" repeatCount="indefinite" begin="{begin}"/>'
+    '<animate attributeName="opacity" values="0.8;0;0" keyTimes="0;0.5;1"'
+    ' calcMode="spline" keySplines="0.2 0 0.8 1; 0 0 1 1"'
+    ' dur="6s" repeatCount="indefinite" begin="{begin}"/>'
+    "</circle>"
+)
+EVENT_ANIMATED_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">'
+    + _event_ring.format(begin="0s")
+    + _event_ring.format(begin="1s")
+    + _event_ring.format(begin="2s")
+    + '<circle cx="20" cy="20" r="5" fill="#e4004b" stroke="black" stroke-width="1.5"/>'
+    + "</svg>"
+)

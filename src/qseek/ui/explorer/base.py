@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,9 @@ from qseek.types import allow_non_existing_paths
 
 if TYPE_CHECKING:
     from qseek.ui.state import ProxyCatalog
+
+
+logger = logging.getLogger(__name__)
 
 
 class RunExplorer(Protocol):
@@ -43,7 +47,7 @@ class RunSource(Protocol):
     last_update: datetime = binding.BindableProperty()
 
     hash: str
-    updated: asyncio.Event
+    updated: asyncio.Condition
     tags: list[str] = []
 
     _catalog: EventCatalog | None = None
@@ -76,6 +80,11 @@ class RunSource(Protocol):
             self._catalog = await asyncio.to_thread(
                 EventCatalog.load_rundir, catalog_dir
             )
+            logger.info(
+                "Loaded catalog with %d events from %s",
+                self._catalog.n_events,
+                self.name,
+            )
         return self._catalog
 
     async def get_search(self) -> Search:
@@ -87,7 +96,10 @@ class RunSource(Protocol):
         allow_non_existing_paths(True)
         if not self._search:
             search_file = await self.get_search_json()
-            self._search = Search.model_validate_json(search_file.read_bytes())
+            logger.info("Loading search from %s", search_file)
+            self._search = await asyncio.to_thread(
+                Search.model_validate_json, search_file.read_bytes()
+            )
         return self._search
 
     async def attach(self, proxy: ProxyCatalog):

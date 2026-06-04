@@ -4,6 +4,7 @@ from pathlib import Path
 
 from nicegui import app, core, ui
 
+from qseek.ui.state import create_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
@@ -11,7 +12,7 @@ load_insights()
 _LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
 
 
-def start_ui(uris: list[str], reload: bool = True, port: int = 2213) -> None:
+def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
     from qseek.ui.layout import drawer, header
     from qseek.ui.manager import SourceManager
     from qseek.ui.pages.analysis import analysis_page
@@ -21,7 +22,6 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2213) -> None:
     from qseek.ui.pages.network import network_page
     from qseek.ui.pages.overview import overview_page
     from qseek.ui.pages.station import station_page
-    from qseek.ui.state import TabState, get_tab_state
 
     manager = SourceManager()
     ready = asyncio.Event()
@@ -29,13 +29,12 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2213) -> None:
     async def load_runs():
         core.sio.eio.ping_interval = 30.0
         core.sio.eio.ping_timeout = 30.0
+        # asyncio.get_event_loop().set_debug(True)
         await manager.add_uris(uris)
 
         if manager.n_runs == 0:
             app.shutdown()
             raise EnvironmentError("No runs found at the specified URIs")
-        default_run = next(iter(manager.runs.values()))
-        TabState.set_default_run(default_run)
         ready.set()
 
     app.add_static_files("/static", Path(__file__).parent / "static")
@@ -47,7 +46,7 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2213) -> None:
         await ready.wait()
         await ui.context.client.connected()
 
-        state = get_tab_state()
+        state = create_tab_state(run=manager.get_default_run())
         drawer(manager)
         await header()
 
@@ -88,12 +87,20 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2213) -> None:
             )
 
         async def on_run_changed():
-            # ui.navigate.to("/")
+            ui.navigate.to("/")
             sub_pages.refresh()
 
-        state.filtered_catalog.updated.subscribe(on_run_changed)
+        state.run_changed.subscribe(on_run_changed)
+        await ui.context.client.disconnected()
+        await state.clear()
 
-    ui.run(title="Qseek Explorer", favicon="🚀", port=port, reload=reload)
+    ui.run(
+        title="Qseek Explorer",
+        favicon="🚀",
+        port=port,
+        reload=reload,
+        uvicorn_logging_level="debug",
+    )
 
 
 if __name__ in {"__main__", "__mp_main__"}:

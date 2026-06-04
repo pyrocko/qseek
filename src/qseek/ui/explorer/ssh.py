@@ -36,7 +36,7 @@ class SshSource(RunSource):
         self.n_events = n_events
         self.last_update = created
 
-        self.updated = asyncio.Event()
+        self.updated = asyncio.Condition()
 
         self._tempfolder = tempfile.TemporaryDirectory(prefix="qseek-ssh-")
         logger.debug(
@@ -108,8 +108,8 @@ class SshSource(RunSource):
                 self.last_update = modified
                 await self._copy_files(force=True)
 
-                self.updated.set()
-                self.updated.clear()
+                async with self.updated:
+                    self.updated.notify_all()
 
     def __del__(self):
         self._tempfolder.cleanup()

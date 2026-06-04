@@ -124,6 +124,12 @@ class PreProcessing(RootModel):
         logger.info("start pre-processing images")
         task = asyncio.create_task(worker())
 
+        def failed(task: asyncio.Task) -> None:
+            if task.exception():
+                logger.error("pre-processing failed: %s", task.exception())
+
+        task.add_done_callback(failed)
+
         while True:
             batch = await self._queue.get()
             if batch is None:

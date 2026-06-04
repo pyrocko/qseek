@@ -591,8 +591,10 @@ def filter_clipped_traces(
         list[Trace]: The filtered list of traces.
     """
     clipped_nslcs = set()
-    for tr in traces.copy():
+    for tr in traces:
         if tr.ydata is None:
+            continue
+        if ".".join(tr.nslc_id)[:-1] in clipped_nslcs:
             continue
         if tr.ydata.dtype not in (int, np.int32, np.int64):
             raise TypeError(

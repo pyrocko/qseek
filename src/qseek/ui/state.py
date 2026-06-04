@@ -29,6 +29,7 @@ class ProxyCatalog:
     depth_range: GuiRange = binding.BindableProperty()
     n_picks_range: GuiRange = binding.BindableProperty()
     date_range: dict = binding.BindableProperty()
+    user_defined_filters: bool = False
 
     events: list[EventMinimal] = []
     uids: list[UUID] = []
@@ -42,6 +43,7 @@ class ProxyCatalog:
     east_shifts: np.ndarray = np.array([])
     north_shifts: np.ndarray = np.array([])
 
+    updated: Event
     _all_events: list[EventMinimal] = []
     _catalog: EventCatalog | None = None
     _run: RunSource | None = None
@@ -71,26 +73,41 @@ class ProxyCatalog:
         self._run_watcher: asyncio.Task | None = None
         self.updated = Event()
 
-    async def set_run(self, run: RunSource):
-        state = get_tab_state()
+    async def attach(self, run: RunSource):
+        await self.detach()
+        self._catalog = await run.get_catalog()
+        await run.attach(self)
+        self._all_events = [EventMinimal.from_event(ev) for ev in self._catalog.events]
+        self.reset_filters(reset_user_filters=True)
+        self.refresh_event_data()
+
+        logger.debug("Run %s loaded with %d events", run.name, self.n_events)
+
+        if self._run_watcher is not None:
+            self._run_watcher.cancel()
+        self._run = run
+        self._run_watcher = asyncio.create_task(self._watch_run())
+
+    async def detach(self):
         if self._run is not None:
             await self._run.detach(self)
+        if self._run_watcher is not None:
+            self._run_watcher.cancel()
+            self._run_watcher = None
 
-        with state.loading_message(f"Loading run {run.name}..."):
-            self._catalog = await run.get_catalog()
-            await run.attach(self)
-            self._all_events = [
-                EventMinimal.from_event(ev) for ev in self._catalog.events
-            ]
-            self.reset_filters()
-            self.refresh_event_data()
-
-            logger.debug("Run %s loaded with %d events", run.name, self.n_events)
-
-            if self._run_watcher is not None:
-                self._run_watcher.cancel()
-            logger.debug("Starting run watcher for run %s", run.name)
-            self._run_watcher = asyncio.create_task(self._watch_run())
+        self._catalog = None
+        self._all_events = []
+        self.events = []
+        self.uids = []
+        self.times = []
+        self.semblances = np.array([])
+        self.magnitudes = np.array([])
+        self.lats = np.array([])
+        self.lons = np.array([])
+        self.depths = np.array([])
+        self.n_picks = np.array([])
+        self.east_shifts = np.array([])
+        self.north_shifts = np.array([])
 
     def has_catalog(self) -> bool:
         return self._catalog is not None
@@ -98,17 +115,22 @@ class ProxyCatalog:
     async def _watch_run(self, refresh_interval: float = 10.0):
         if self._run is None:
             raise RuntimeError("No run set for watching")
+        logger.info("Starting run watcher for run %s", self._run.name)
         last_update = time.time()
         while True:
             await self._run.updated.wait()
+            self._all_events += [
+                EventMinimal.from_event(ev)
+                for ev in self._catalog.events[len(self._all_events) :]
+            ]
+            self.reset_filters(reset_user_filters=False)
+            self.refresh_event_data()
 
             time_since_update = time.time() - last_update
+            last_update = time.time()
+
             if time_since_update < refresh_interval:
                 await asyncio.sleep(refresh_interval - time_since_update)
-
-            self.refresh_event_data()
-            last_update = time.time()
-            self.updated.emit()
 
     def refresh_event_data(self):
         if self._catalog is None:
@@ -166,7 +188,6 @@ class ProxyCatalog:
         self.semblances = self.semblances.astype(np.float32)
         self.n_picks = self.n_picks.astype(int)
 
-        self.reset_filters()
         self.updated.emit()
 
     def get_event_by_uid(self, uid: UUID) -> EventMinimal:
@@ -175,7 +196,13 @@ class ProxyCatalog:
                 return ev
         raise ValueError(f"Event with uid {uid} not found")
 
-    def reset_filters(self):
+    def reset_filters(self, reset_user_filters: bool = False):
+        if not reset_user_filters and self.user_defined_filters:
+            return
+
+        if reset_user_filters:
+            self.user_defined_filters = False
+
         semblances = np.array([ev.semblance for ev in self._all_events])
         magnitudes = np.array(
             [
@@ -221,19 +248,15 @@ class TabState:
     run_name: str = binding.BindableProperty()
     loading: str = binding.BindableProperty()
 
-    filtered_catalog: ProxyCatalog
+    proxy_catalog: ProxyCatalog
 
-    _default_run: RunSource | None = None
-
-    def __init__(self):
-        if self._default_run is None:
-            raise RuntimeError("No default run set")
-
-        self.run = self._default_run
-        self.run_name = self._default_run.name
+    def __init__(self, run: RunSource):
+        self._init_lock = asyncio.Lock()
+        self.run = run
+        self.run_name = run.name
         self.loading = ""
 
-        self.filtered_catalog = ProxyCatalog()
+        self.proxy_catalog = ProxyCatalog()
 
         self.run_changed = Event()
 
@@ -250,28 +273,28 @@ class TabState:
         self.loading = ""
 
     async def get_filtered_catalog(self) -> ProxyCatalog:
-        if self.run is None:
-            raise RuntimeError("No run set for filtering")
-        if not self.filtered_catalog.has_catalog():
-            await self.filtered_catalog.set_run(self.run)
-        return self.filtered_catalog
+        async with self._init_lock:
+            if self.run is None:
+                raise RuntimeError("No run set for filtering")
+            if not self.proxy_catalog.has_catalog():
+                with self.loading_message(f"Loading run {self.run.name}..."):
+                    await self.proxy_catalog.attach(self.run)
+        return self.proxy_catalog
 
-    @classmethod
-    def set_default_run(cls, run: RunSource):
-        cls._default_run = run
-
-    def clear(self):
-        if self.run is not None:
-            self.run.detach(self.filtered_catalog)
+    async def clear(self):
+        await self.proxy_catalog.detach()
 
 
 def get_tab_state() -> TabState:
     """Get the state for the current tab."""
     if "state" not in app.storage.tab:
-        app.storage.tab["state"] = TabState()
+        raise RuntimeError("Tab state does not exist")
     return app.storage.tab["state"]
 
 
-def clear_tab_state():
-    """Clear tab state."""
-    get_tab_state().clear()
+def create_tab_state(run: RunSource) -> TabState:
+    """Create a new tab state with the given default run."""
+    if "state" not in app.storage.tab:
+        state = TabState(run)
+        app.storage.tab["state"] = state
+    return app.storage.tab["state"]

@@ -3,11 +3,10 @@ from __future__ import annotations
 import numpy as np
 from nicegui import ui
 
+from qseek.ui.components.magnitudes import MagnitudeRate
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.components.statistics import (
-    DepthSection,
     EventRate,
-    MigrationPlot,
     SemblanceRate,
 )
 from qseek.ui.state import get_tab_state
@@ -97,20 +96,25 @@ async def overview_page() -> None:
             overview = OverviewMap()
             overview.header()
             await overview.view()
-        with ui.card().classes("col-12"):
-            migration_plot = MigrationPlot()
-            migration_plot.header()
-            await migration_plot.view()
-        with ui.card().classes("col-12"):
-            event_rate = EventRate()
-            event_rate.header()
-            await event_rate.view()
+        if catalog.has_magnitudes():
+            with ui.card().classes("col-12"):
+                rate = MagnitudeRate()
+                rate.header()
+                await rate.view()
         with ui.card().classes("col-12"):
             semblance_rate = SemblanceRate()
             semblance_rate.header()
             await semblance_rate.view()
         with ui.card().classes("col-12"):
-            depth_section = DepthSection()
-            depth_section.header()
-            await depth_section.view(direction="north-south")
-            await depth_section.view(direction="east-west")
+            event_rate = EventRate()
+            event_rate.header()
+            await event_rate.view()
+        # with ui.card().classes("col-12"):
+        #     migration_plot = MigrationPlot()
+        #     migration_plot.header()
+        #     await migration_plot.view()
+        # with ui.card().classes("col-12"):
+        #     depth_section = DepthSection()
+        #     depth_section.header()
+        #     await depth_section.view(direction="north-south")
+        #     await depth_section.view(direction="east-west")

@@ -4,6 +4,7 @@ from qseek.ui.components.station import (
     StationDetails,
     StationMap,
     StationPickPerformance,
+    StationTraveltimeResidual,
 )
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
@@ -81,6 +82,11 @@ async def station_page(station_nsl: str) -> None:
             details = StationDetails(station)
             details.header()
             await details.view()
+
+        with ui.card().classes("w-full"):
+            station_residual = StationTraveltimeResidual(station)
+            station_residual.header()
+            await station_residual.view()
 
         with ui.card().classes("w-full"):
             pick_perf = StationPickPerformance(station)

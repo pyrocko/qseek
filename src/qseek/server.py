@@ -143,9 +143,9 @@ class WebServer(Model):
         return ws
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
-        logger.debug("New detections received, sending to WebSocket clients...")
+        logger.info("New detections received, sending to WebSocket clients...")
         if not self._open_websockets:
-            logger.debug(
+            logger.info(
                 "No WebSocket clients connected, skipping sending new detections"
             )
             return

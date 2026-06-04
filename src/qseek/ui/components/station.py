@@ -4,6 +4,7 @@ import json
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
+from plotly.subplots import make_subplots
 
 from qseek.models.station import Station
 from qseek.ui.base import Component
@@ -213,7 +214,7 @@ class StationPickPerformance(StationComponent):
 
             fig.data = []
             if p_vals:
-                med_p = float(np.median(p_vals))
+                median_p = float(np.median(p_vals))
                 fig.add_trace(
                     go.Scattergl(
                         name="P",
@@ -231,19 +232,19 @@ class StationPickPerformance(StationComponent):
                     )
                 )
                 fig.add_hline(
-                    y=med_p,
+                    y=median_p,
                     line={"dash": "dash", "color": "#5C8FA3", "width": 1.5},
                     annotation={
-                        "text": f"P med: {med_p:.3f}",
+                        "text": f"P median: {median_p:.3f}",
                         "font": {"size": 10, "color": "#5C8FA3"},
-                        "xanchor": "left",
+                        "xanchor": "right",
                         "yanchor": "bottom",
                         "showarrow": False,
-                        "x": 0.01,
+                        "x": 0.99,
                     },
                 )
             if s_vals:
-                med_s = float(np.median(s_vals))
+                median_s = float(np.median(s_vals))
                 neg_s = [-v for v in s_vals]
                 fig.add_trace(
                     go.Scattergl(
@@ -262,17 +263,195 @@ class StationPickPerformance(StationComponent):
                     )
                 )
                 fig.add_hline(
-                    y=-med_s,
+                    y=-median_s,
                     line={"dash": "dash", "color": "#E07B54", "width": 1.5},
                     annotation={
-                        "text": f"S med: {med_s:.3f}",
+                        "text": f"S median: {median_s:.3f}",
                         "font": {"size": 10, "color": "#E07B54"},
-                        "xanchor": "left",
+                        "xanchor": "right",
                         "yanchor": "top",
                         "showarrow": False,
-                        "x": 0.01,
+                        "x": 0.99,
                     },
                 )
             plot.update()
 
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot(), name=f"station-pick-perf-{nsl.pretty}")
+
+
+class StationTraveltimeResidual(StationComponent):
+    name = "Traveltime Residuals"
+    description = (
+        "P and S traveltime residuals (observed - modelled) at this station over time. "
+        "Marker size reflects detection confidence. "
+        "The dashed trend line is a confidence-weighted linear fit; "
+        "a non-zero slope indicates a systematic timing drift."
+    )
+
+    async def view(self) -> None:
+        state = get_tab_state()
+
+        _zeroline = {
+            "zeroline": True,
+            "zerolinewidth": 1.5,
+            "zerolinecolor": "rgba(0,0,0,0.25)",
+        }
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.06,
+        )
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            showlegend=False,
+        )
+        fig.update_yaxes(title_text="P residual (s)", **_zeroline, row=1, col=1)
+        fig.update_yaxes(title_text="S residual (s)", **_zeroline, row=2, col=1)
+        fig.update_xaxes(title_text="Time", row=2, col=1)
+
+        plot = ui.plotly(fig).classes("w-full h-80")
+        attach_plotly_events(plot)
+
+        nsl = self.station.nsl
+
+        async def update_plot():
+            catalog = await state.run.get_catalog()
+
+            def collect():
+                p_times, p_vals, p_uids, p_confs = [], [], [], []
+                s_times, s_vals, s_uids, s_confs = [], [], [], []
+                for ev in catalog.events:
+                    uid = str(ev.uid)
+                    for rcv in ev.receivers:
+                        if rcv.nsl != nsl:
+                            continue
+                        try:
+                            arrival = rcv.get_arrival("P")
+                            if (
+                                arrival.traveltime_delay is not None
+                                and arrival.observed is not None
+                            ):
+                                p_times.append(ev.time)
+                                p_vals.append(arrival.traveltime_delay.total_seconds())
+                                p_uids.append(uid)
+                                p_confs.append(arrival.observed.detection_value)
+                        except KeyError:
+                            pass
+                        try:
+                            arrival = rcv.get_arrival("S")
+                            if (
+                                arrival.traveltime_delay is not None
+                                and arrival.observed is not None
+                            ):
+                                s_times.append(ev.time)
+                                s_vals.append(arrival.traveltime_delay.total_seconds())
+                                s_uids.append(uid)
+                                s_confs.append(arrival.observed.detection_value)
+                        except KeyError:
+                            pass
+                return (
+                    p_times,
+                    p_vals,
+                    p_uids,
+                    p_confs,
+                    s_times,
+                    s_vals,
+                    s_uids,
+                    s_confs,
+                )
+
+            (
+                p_times,
+                p_vals,
+                p_uids,
+                p_confs,
+                s_times,
+                s_vals,
+                s_uids,
+                s_confs,
+            ) = await asyncio.to_thread(collect)
+
+            if not p_vals and not s_vals:
+                return
+
+            fig.data = []
+            fig.layout.annotations = []
+
+            for times, vals, uids, confs, color, phase, row in (
+                (p_times, p_vals, p_uids, p_confs, "#5C8FA3", "P", 1),
+                (s_times, s_vals, s_uids, s_confs, "#E07B54", "S", 2),
+            ):
+                if not vals:
+                    continue
+                arr = np.array(vals)
+                conf_arr = np.array(confs)
+                lo, hi = np.percentile(arr, [2, 98])
+                mask = (arr >= lo) & (arr <= hi)
+                t_vis = [t for t, m in zip(times, mask, strict=True) if m]
+                y_vis = arr[mask]
+                u_vis = [u for u, m in zip(uids, mask, strict=True) if m]
+                c_vis = conf_arr[mask]
+
+                fig.add_trace(
+                    go.Scattergl(
+                        name=phase,
+                        x=t_vis,
+                        y=y_vis.tolist(),
+                        mode="markers",
+                        marker={
+                            "color": color,
+                            "size": np.clip(c_vis * 10, 2, 12).tolist(),
+                            "opacity": 0.4,
+                            "line": {"width": 0},
+                        },
+                        customdata=u_vis,
+                        hovertemplate=(
+                            f"%{{x|%Y-%m-%d %H:%M:%S}}<br>{phase}: %{{y:.3f}} s<extra></extra>"
+                        ),
+                    ),
+                    row=row,
+                    col=1,
+                )
+
+                if len(t_vis) >= 2:
+                    t_num = np.array([t.timestamp() for t in t_vis])
+                    slope, intercept = np.polyfit(t_num, y_vis, 1, w=c_vis)
+                    fit_y = slope * t_num + intercept
+                    slope_ms_per_day = slope * 86_400 * 1_000
+                    fig.add_trace(
+                        go.Scattergl(
+                            name=f"{phase} trend",
+                            x=t_vis,
+                            y=fit_y.tolist(),
+                            mode="lines",
+                            line={"color": color, "width": 1.5, "dash": "longdash"},
+                            hovertemplate=(
+                                f"{phase} trend: {slope_ms_per_day:+.2f} ms/day<extra></extra>"
+                            ),
+                        ),
+                        row=row,
+                        col=1,
+                    )
+                    fig.add_annotation(
+                        x=t_vis[-1],
+                        y=float(fit_y[-1]),
+                        text=f"{slope_ms_per_day:+.2f} ms/day",
+                        font={"size": 10, "color": color},
+                        showarrow=False,
+                        xanchor="right",
+                        yanchor="bottom",
+                        xref=f"x{row if row > 1 else ''}",
+                        yref=f"y{row if row > 1 else ''}",
+                    )
+
+                fig.update_yaxes(range=[lo, hi], row=row, col=1)
+
+            plot.update()
+
+        state.proxy_catalog.updated.subscribe(update_plot)
+        background_tasks.create(
+            update_plot(), name=f"station-traveltime-residual-{nsl.pretty}"
+        )
