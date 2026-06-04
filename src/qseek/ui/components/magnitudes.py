@@ -43,6 +43,7 @@ class MagnitudeFrequency(Component):
 
         x = centers[mask]
         y = np.log10(bin_counts[mask])
+        y = bin_counts[mask]
         slope = -b_value
         intercept = float(np.mean(y - slope * x))
 
@@ -53,12 +54,14 @@ class MagnitudeFrequency(Component):
     async def _maximum_curvature(self, magnitudes: np.ndarray) -> Tuple[float, Dict]:
         # Create magnitude bins
         bin_width = 0.1
-        min_mag = np.floor(magnitudes.min() * 10) / 10
-        max_mag = np.ceil(magnitudes.max() * 10) / 10
-        bins = np.arange(min_mag - bin_width / 2, max_mag + bin_width / 2, bin_width)
+        min_mag = magnitudes.min()
+        max_mag = magnitudes.max()
+        bins = np.arange(min_mag - bin_width / 2, max_mag + bin_width * 2, bin_width)
 
         # Calculate histogram
         counts, bin_edges = np.histogram(magnitudes, bins=bins)
+        print(counts)
+        print(bin_edges)
 
         # Find bin with maximum count
         max_idx = np.argmax(counts)
@@ -74,6 +77,7 @@ class MagnitudeFrequency(Component):
 
     async def _b_positive_estimation(self, magnitudes, delta_m=0.1):
         mags = np.asarray(magnitudes)
+        # mags = np.sort(mags[mags >= 0])  # Consider only non-negative magnitudes and sort them
         # mags, _ = magnitude_outlier_filer(mags)
         if len(mags) < 2:
             return np.nan, np.nan
@@ -82,9 +86,10 @@ class MagnitudeFrequency(Component):
         if len(dm_pos) < 5:
             return np.nan, np.nan
         mean_dm = np.mean(dm_pos)
-        if mean_dm <= delta_m / 2:
-            return np.nan, np.nan
+        # if mean_dm <= delta_m / 2:
+        #     return np.nan, np.nan
         b_hat = np.log10(np.e) / (mean_dm - delta_m / 2)
+        b_hat = 1.0 / (np.log(10.0) * mean_dm)
         std_err = b_hat / np.sqrt(len(dm_pos))
         return float(b_hat), float(std_err)
 
@@ -95,7 +100,8 @@ class MagnitudeFrequency(Component):
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Magnitude",
-            yaxis_title="log(Frequency)",
+            yaxis_title="Frequency",
+            yaxis_type="log",
             legend={"x": 1, "y": 1, "xanchor": "right", "yanchor": "top"},
         )
         plot = ui.plotly(fig).classes("w-full h-64")
@@ -115,16 +121,15 @@ class MagnitudeFrequency(Component):
             # magnitudes, _ = magnitude_outlier_filer(magnitudes)
             mc_value, mc_params = await self._maximum_curvature(magnitudes)
             b_value, b_std_err = await self._b_positive_estimation(magnitudes)
-            plot.clear()
+
+            fig.data = []
             counts = np.asarray(mc_params["bin_counts"], dtype=float)
             bin_edges = np.asarray(mc_params["bin_edges"], dtype=float)
 
-            with np.errstate(divide="ignore"):
-                log_counts = np.log10(counts)
 
             fig.add_bar(
                 x=mc_params["bin_edges"][:-1],
-                y=log_counts,
+                y=counts,
                 name="Magnitude Distribution",
                 marker_color="gray",
                 hoverinfo="none",
@@ -136,7 +141,7 @@ class MagnitudeFrequency(Component):
                 y0=0,
                 line_dash="dash",
                 line_color="red",
-                annotation_text=f"MC={mc_value:.2f}",
+                annotation_text=f"Mc={mc_value:.2f}",
                 annotation_position="top left",
             )
 
@@ -151,7 +156,7 @@ class MagnitudeFrequency(Component):
                             x=fit_x,
                             y=fit_y,
                             mode="lines",
-                            name=f"b-value={b_value:.2f} ± {b_std_err:.2f}",
+                            name=f"b-value={b_value:.2f} ±{b_std_err:.2f}",
                             line={"color": "black", "width": 2, "dash": "dash"},
                             hoverinfo="none",
                             hovertemplate=None,
@@ -159,6 +164,7 @@ class MagnitudeFrequency(Component):
                     )
             plot.update()
 
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -362,7 +368,109 @@ to magnitude value.
             plot.update()
 
         state.proxy_catalog.updated.subscribe(update_plot)
+        background_tasks.create(update_plot())
 
+
+class MagnitudeFrequencyBPositive(Component):
+    name = "Magnitude Frequency b-Positive"
+    description = ""
+
+    async def _calculate_dmag_bpositive(
+        self, times: np.ndarray, magnitudes: np.ndarray, d_mc: float
+    ):
+        idx = np.argsort(times)
+        times_sorted = times[idx]
+        magnitudes_sorted = magnitudes[idx]
+        times_diff = times_sorted[:-1]
+        mag_diff = magnitudes_sorted[1:] - magnitudes_sorted[:-1]
+        idx_pos = mag_diff >= d_mc
+        return times_diff[idx_pos], mag_diff[idx_pos] - d_mc
+
+    async def view(self):
+        state = get_tab_state()
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis_title="Magnitude",
+            showlegend=False,
+            yaxis2={
+                "title": "Cumulative Magnitude",
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_events(plot)
+
+        async def update_plot():
+            catalog = await state.get_filtered_catalog()
+            events = [
+                ev
+                for ev in catalog.events
+                if ev.magnitude is not None
+                and ev.magnitude.average is not None
+                and np.isfinite(ev.magnitude.average)
+                and ev.magnitude.average >= 0
+            ]
+            magnitudes = np.asarray([ev.magnitude.average for ev in events])
+            times = np.asarray([ev.time.timestamp() for ev in events])
+
+            if len(magnitudes) == 0:
+                return
+
+            d_mc = 0.1
+            _, mag_diff = await self._calculate_dmag_bpositive(
+                times, magnitudes, d_mc=d_mc,
+            )
+            if len(mag_diff) == 0:
+                return
+        
+            binedges = np.arange(min(mag_diff) - 0.05, max(mag_diff) + 0.05, 0.1)
+            bincenters = (binedges[:-1] + binedges[1:]) / 2
+
+            hist_vals, _ = np.histogram(mag_diff, bins=len(bincenters))
+            bvalue_pos = 1.0 / (np.log(10.0) * np.mean(mag_diff))
+            a = np.log10(np.max(hist_vals)) if np.max(hist_vals) > 0 else np.nan
+            log10_n_pred = a - bvalue_pos * bincenters
+            n_pred = 10 ** (log10_n_pred)
+
+            fig.data = []
+            fig.add_trace(
+                go.Bar(
+                    x=bincenters,
+                    y=hist_vals,
+                    name="Magnitude Histogram",
+                    marker={
+                        "color": "steelblue",
+                        "line": {"color": "black", "width": 1},
+                    },
+                    hoverinfo="none",
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scattergl(
+                    x=bincenters,
+                    y=n_pred,
+                    mode="lines",
+                    name=f"b+={bvalue_pos:.2f}, d_mc={d_mc:.2f}",
+                    line={"color": "black", "width": 2, "dash": "dash"},
+                    hoverinfo="none",
+                )
+            )
+            fig.update_layout(
+                xaxis_title="ΔM",
+                yaxis_title="Frequency",
+                yaxis_type="log",
+                showlegend=True,
+                legend={"x": 0.99, "y": 0.99, "xanchor": "right", "yanchor": "top", "bgcolor": "rgba(255,255,255,0.8)"},
+            )
+            plot.update()
+
+        state.proxy_catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
