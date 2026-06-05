@@ -5,11 +5,15 @@ from typing import Dict, Tuple
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
-from scipy.stats import gaussian_kde
+from scipy.stats import gaussian_kde, norm
+from scipy.optimize import minimize
+from scipy.special import erf
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import attach_plotly_events
+
+LOG_10 = np.log(10)
 
 
 def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
@@ -27,71 +31,54 @@ def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
 
 class MagnitudeFrequency(Component):
     name = "Magnitude Frequency Distribution"
-    description = """Frequency of detected events over magnitude bins."""
+    description = """
+Entire magnitude range (EMR) fit to the data using Ogata-Katsura (1993).
+Estimation of the magintude of completeness using maximum curvature (MaxC) and EMR fit.
+    """
 
-    def _b_value_fit_line(
+    def _log_likelihood_func(
         self,
-        bin_edges: np.ndarray,
-        bin_counts: np.ndarray,
-        b_value: float,
-        mc_value: float,
-    ) -> tuple[np.ndarray, np.ndarray, float, float] | None:
-        centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-        mask = (bin_counts > 0) & (centers >= mc_value)
-        if np.count_nonzero(mask) < 2:
-            return None
+        magnitude: float,
+        beta: float,
+        mu: float,
+        sigma: float,
+    ):
+        log_gr = np.log(beta) - beta * (magnitude - mu) - 0.5 * beta**2 * sigma**2
+        log_qm = norm.logcdf((magnitude - mu) / sigma)
+        return log_gr + log_qm
 
-        x = centers[mask]
-        y = np.log10(bin_counts[mask])
-        y = bin_counts[mask]
-        slope = -b_value
-        intercept = float(np.mean(y - slope * x))
+    def _neg_log_likelihood_func(
+        self,
+        args: tuple[float, float, float],
+        magnitudes: np.ndarray,
+    ):
+        b, mu, sigma = np.square(args)
+        beta = b * LOG_10
+        return -np.sum(self._log_likelihood_func(magnitudes, beta, mu, sigma))
 
-        fit_x = np.linspace(x.min(), x.max(), 100)
-        fit_y = slope * fit_x + intercept
-        return fit_x, fit_y, slope, intercept
+    async def _calculate_entire_magnitude_fit(self, magnitudes: np.ndarray):
+        x0 = [np.sqrt(1.0), np.min(magnitudes) + 1, np.sqrt(1.0)]
+        res = minimize(
+            self._neg_log_likelihood_func, x0, args=(magnitudes,), method="Powell"
+        )
+        sqrtb, sqrtmu, sqrtsigma = res.x
+        b = np.square(sqrtb)
+        mu = np.square(sqrtmu)
+        sigma = np.square(sqrtsigma)
+        return b, mu, sigma
 
-    async def _maximum_curvature(self, magnitudes: np.ndarray) -> Tuple[float, Dict]:
-        # Create magnitude bins
-        bin_width = 0.1
-        min_mag = magnitudes.min()
-        max_mag = magnitudes.max()
-        bins = np.arange(min_mag - bin_width / 2, max_mag + bin_width * 2, bin_width)
+    def _prob_ogata_katsura(self, mbinvalues, b, mu, sigma):
+        dum = (mbinvalues - mu) / (np.sqrt(2.0) * sigma)
+        return 0.5 * (1.0 + erf(dum))
 
-        # Calculate histogram
-        counts, bin_edges = np.histogram(magnitudes, bins=bins)
-        print(counts)
-        print(bin_edges)
-
-        # Find bin with maximum count
-        max_idx = np.argmax(counts)
-        mc_value = bin_edges[max_idx]
-
-        params = {
-            "bin_counts": counts.tolist(),
-            "bin_edges": bin_edges.tolist(),
-            "max_count": int(counts[max_idx]),
-        }
-
-        return mc_value, params
-
-    async def _b_positive_estimation(self, magnitudes, delta_m=0.1):
-        mags = np.asarray(magnitudes)
-        # mags = np.sort(mags[mags >= 0])  # Consider only non-negative magnitudes and sort them
-        # mags, _ = magnitude_outlier_filer(mags)
-        if len(mags) < 2:
-            return np.nan, np.nan
-        dm = np.diff(mags)
-        dm_pos = dm[dm > 0]
-        if len(dm_pos) < 5:
-            return np.nan, np.nan
-        mean_dm = np.mean(dm_pos)
-        # if mean_dm <= delta_m / 2:
-        #     return np.nan, np.nan
-        b_hat = np.log10(np.e) / (mean_dm - delta_m / 2)
-        b_hat = 1.0 / (np.log(10.0) * mean_dm)
-        std_err = b_hat / np.sqrt(len(dm_pos))
-        return float(b_hat), float(std_err)
+    def _ogata_katsura(self, mbinvalues, b, mu, sigma):
+        beta = LOG_10 * b
+        dum = (mbinvalues - mu) / (np.sqrt(2.0) * sigma)
+        qm = 0.5 * (1.0 + erf(dum))
+        gr = beta * np.exp(
+            -beta * (mbinvalues - mu) - np.square(beta) * np.square(sigma) / 2.0
+        )
+        return gr * qm
 
     async def view(self) -> None:
         state = get_tab_state()
@@ -100,8 +87,17 @@ class MagnitudeFrequency(Component):
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Magnitude",
-            yaxis_title="Frequency",
-            yaxis_type="log",
+            yaxis={
+                "title": "Probability Density",
+                "type": "log",
+                "exponentformat": "E",
+            },
+            yaxis2={
+                "title": "Ogata-Katsura Probability",
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
             legend={"x": 1, "y": 1, "xanchor": "right", "yanchor": "top"},
         )
         plot = ui.plotly(fig).classes("w-full h-64")
@@ -119,49 +115,92 @@ class MagnitudeFrequency(Component):
             if len(magnitudes) == 0:
                 return
             # magnitudes, _ = magnitude_outlier_filer(magnitudes)
-            mc_value, mc_params = await self._maximum_curvature(magnitudes)
-            b_value, b_std_err = await self._b_positive_estimation(magnitudes)
+            bin_width = 0.1
+            bin_edges = np.arange(
+                np.min(magnitudes) - bin_width / 2,
+                np.max(magnitudes) + bin_width / 2,
+                bin_width,
+            )
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            ev_count, _ = np.histogram(magnitudes, bins=bin_edges)
+            mc_max_curvature = bin_edges[np.argmax(ev_count)]
+
+            b_value, mu, sigma = await self._calculate_entire_magnitude_fit(magnitudes)
+            b_value_sigma = b_value / np.sqrt(magnitudes.size)
+            m = magnitudes
+            scale_fac = len(m[((m >= bin_edges[0]) & (m <= bin_edges[-1]))]) / np.sum(
+                self._ogata_katsura(bin_centers, b_value, mu, sigma)
+            )
+            ogata_katsura = scale_fac * self._ogata_katsura(
+                bin_centers, b_value, mu, sigma
+            )
+            ogata_katsura_prob = self._prob_ogata_katsura(
+                bin_centers, b_value, mu, sigma
+            )
+            og_mc_90 = mu + sigma * norm.ppf(0.9)
+            og_mc_99 = mu + sigma * norm.ppf(0.99)
 
             fig.data = []
-            counts = np.asarray(mc_params["bin_counts"], dtype=float)
-            bin_edges = np.asarray(mc_params["bin_edges"], dtype=float)
-
 
             fig.add_bar(
-                x=mc_params["bin_edges"][:-1],
-                y=counts,
+                x=bin_edges[:-1],
+                y=ev_count,
                 name="Magnitude Distribution",
-                marker_color="gray",
+                marker_color="lightgray",
                 hoverinfo="none",
                 hovertemplate=None,
                 showlegend=False,
             )
+            fig.add_trace(
+                go.Scattergl(
+                    x=bin_centers,
+                    y=ogata_katsura,
+                    mode="lines",
+                    line={"color": "red", "width": 1.5},
+                    hoverinfo="none",
+                    opacity=0.6,
+                    name=f"b={b_value:.2f} ±{b_value_sigma:.2f}",
+                    showlegend=True,
+                )
+            )
+            fig.add_trace(
+                go.Scattergl(
+                    x=bin_centers,
+                    y=ogata_katsura_prob,
+                    mode="lines",
+                    name="Ogata-Katsura Probability",
+                    yaxis="y2",
+                    line={"color": "blue", "width": 1.5},
+                    opacity=0.6,
+                    hoverinfo="none",
+                    showlegend=False,
+                )
+            )
             fig.add_vline(
-                x=mc_value,
+                x=mc_max_curvature,
                 y0=0,
                 line_dash="dash",
-                line_color="red",
-                annotation_text=f"Mc={mc_value:.2f}",
-                annotation_position="top left",
+                line_color="darkgreen",
+                name=f"MaxC: {mc_max_curvature:.2f}",
+                showlegend=True,
+            )
+            fig.add_vline(
+                x=og_mc_90,
+                y0=0,
+                line_dash="dash",
+                line_color="blue",
+                name=f"EMR (90%): {og_mc_90:.2f}",
+                showlegend=True,
+            )
+            fig.add_vline(
+                x=og_mc_99,
+                y0=0,
+                line_dash="dot",
+                line_color="blue",
+                name=f"EMR (99%): {og_mc_99:.2f}",
+                showlegend=True,
             )
 
-            if not np.isnan(b_value):
-                fit = self._b_value_fit_line(bin_edges, counts, b_value, mc_value)
-                if fit is not None:
-                    fit_x, fit_y, _, _ = fit
-                    mask = fit_y >= 0
-                    fit_x, fit_y = fit_x[mask], fit_y[mask]
-                    fig.add_trace(
-                        go.Scattergl(
-                            x=fit_x,
-                            y=fit_y,
-                            mode="lines",
-                            name=f"b-value={b_value:.2f} ±{b_std_err:.2f}",
-                            line={"color": "black", "width": 2, "dash": "dash"},
-                            hoverinfo="none",
-                            hovertemplate=None,
-                        )
-                    )
             plot.update()
 
         state.proxy_catalog.updated.subscribe(update_plot)
@@ -373,7 +412,7 @@ to magnitude value.
 
 class MagnitudeFrequencyBPositive(Component):
     name = "Magnitude Frequency b-Positive"
-    description = ""
+    description = """Frequency of positive magnitude differences between consecutive events, which can be used to estimate the b-value of the magnitude distribution."""
 
     async def _calculate_dmag_bpositive(
         self, times: np.ndarray, magnitudes: np.ndarray, d_mc: float
@@ -421,18 +460,22 @@ class MagnitudeFrequencyBPositive(Component):
             if len(magnitudes) == 0:
                 return
 
-            d_mc = 0.1
+            delta_mc = 0.5
             _, mag_diff = await self._calculate_dmag_bpositive(
-                times, magnitudes, d_mc=d_mc,
+                times,
+                magnitudes,
+                d_mc=delta_mc,
             )
             if len(mag_diff) == 0:
                 return
-        
+
             binedges = np.arange(min(mag_diff) - 0.05, max(mag_diff) + 0.05, 0.1)
             bincenters = (binedges[:-1] + binedges[1:]) / 2
 
             hist_vals, _ = np.histogram(mag_diff, bins=len(bincenters))
             bvalue_pos = 1.0 / (np.log(10.0) * np.mean(mag_diff))
+            b_value_pos_uncertainty = bvalue_pos / np.sqrt(mag_diff.size)
+
             a = np.log10(np.max(hist_vals)) if np.max(hist_vals) > 0 else np.nan
             log10_n_pred = a - bvalue_pos * bincenters
             n_pred = 10 ** (log10_n_pred)
@@ -443,10 +486,7 @@ class MagnitudeFrequencyBPositive(Component):
                     x=bincenters,
                     y=hist_vals,
                     name="Magnitude Histogram",
-                    marker={
-                        "color": "steelblue",
-                        "line": {"color": "black", "width": 1},
-                    },
+                    marker={"color": "lightgray"},
                     hoverinfo="none",
                     showlegend=False,
                 )
@@ -456,8 +496,8 @@ class MagnitudeFrequencyBPositive(Component):
                     x=bincenters,
                     y=n_pred,
                     mode="lines",
-                    name=f"b+={bvalue_pos:.2f}, d_mc={d_mc:.2f}",
-                    line={"color": "black", "width": 2, "dash": "dash"},
+                    name=f"b pos.={bvalue_pos:.2f} ±{b_value_pos_uncertainty:.2f}",
+                    line={"color": "red", "width": 1.5, "dash": "dash"},
                     hoverinfo="none",
                 )
             )
@@ -466,7 +506,13 @@ class MagnitudeFrequencyBPositive(Component):
                 yaxis_title="Frequency",
                 yaxis_type="log",
                 showlegend=True,
-                legend={"x": 0.99, "y": 0.99, "xanchor": "right", "yanchor": "top", "bgcolor": "rgba(255,255,255,0.8)"},
+                legend={
+                    "x": 0.99,
+                    "y": 0.99,
+                    "xanchor": "right",
+                    "yanchor": "top",
+                    "bgcolor": "rgba(255,255,255,0.8)",
+                },
             )
             plot.update()
 
