@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
-
 import numpy as np
 import plotly.graph_objects as go
 from nicegui import background_tasks, ui
-from scipy.stats import gaussian_kde, norm
 from scipy.optimize import minimize
 from scipy.special import erf
+from scipy.stats import gaussian_kde, norm
 
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
