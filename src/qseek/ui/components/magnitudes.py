@@ -14,17 +14,51 @@ from qseek.ui.utils import attach_plotly_events
 LOG_10 = np.log(10)
 
 
-def magnitude_outlier_filer(magnitudes: np.ndarray) -> np.ndarray:
-    """Filter out magnitude outliers using the z-score method."""
-    if len(magnitudes) == 0:
-        return magnitudes, np.array([], dtype=bool)
-    mean = np.mean(magnitudes)
-    std = np.std(magnitudes)
-    if std == 0:
-        return magnitudes, np.ones(len(magnitudes), dtype=bool)
-    z_scores = (magnitudes - mean) / std
-    mask = np.abs(z_scores) < 3
-    return magnitudes[mask], mask
+def _log_likelihood_func(magnitude: float, beta: float, mu: float, sigma: float):
+    log_gr = np.log(beta) - beta * (magnitude - mu) - 0.5 * beta**2 * sigma**2
+    log_qm = norm.logcdf((magnitude - mu) / sigma)
+    return log_gr + log_qm
+
+
+def _neg_log_likelihood_func(args: tuple[float, float, float], magnitudes: np.ndarray):
+    b, mu, sigma = np.square(args)
+    beta = b * LOG_10
+    return -np.sum(_log_likelihood_func(magnitudes, beta, mu, sigma))
+
+
+def _calculate_entire_magnitude_fit(magnitudes: np.ndarray):
+    x0 = [np.sqrt(1.0), np.min(magnitudes) + 1, np.sqrt(1.0)]
+    res = minimize(_neg_log_likelihood_func, x0, args=(magnitudes,), method="Powell")
+    sqrtb, sqrtmu, sqrtsigma = res.x
+    b = np.square(sqrtb)
+    mu = np.square(sqrtmu)
+    sigma = np.square(sqrtsigma)
+    return b, mu, sigma
+
+
+def _prob_ogata_katsura(mbinvalues: float, b: float, mu: float, sigma: float) -> float:
+    dum = (mbinvalues - mu) / (np.sqrt(2.0) * sigma)
+    return 0.5 * (1.0 + erf(dum))
+
+
+def _ogata_katsura(mbinvalues: float, b: float, mu: float, sigma: float) -> float:
+    beta = LOG_10 * b
+    dum = (mbinvalues - mu) / (np.sqrt(2.0) * sigma)
+    qm = 0.5 * (1.0 + erf(dum))
+    gr = beta * np.exp(
+        -beta * (mbinvalues - mu) - np.square(beta) * np.square(sigma) / 2.0
+    )
+    return gr * qm
+
+
+def _calculate_dmag_bpositive(times: np.ndarray, magnitudes: np.ndarray, d_mc: float):
+    idx = np.argsort(times)
+    times_sorted = times[idx]
+    magnitudes_sorted = magnitudes[idx]
+    times_diff = times_sorted[:-1]
+    mag_diff = magnitudes_sorted[1:] - magnitudes_sorted[:-1]
+    idx_pos = mag_diff >= d_mc
+    return times_diff[idx_pos], mag_diff[idx_pos] - d_mc
 
 
 class MagnitudeFrequency(Component):
@@ -33,50 +67,6 @@ class MagnitudeFrequency(Component):
 Entire magnitude range (EMR) fit to the data using Ogata-Katsura (1993).
 Estimation of the magintude of completeness using maximum curvature (MaxC) and EMR fit.
     """
-
-    def _log_likelihood_func(
-        self,
-        magnitude: float,
-        beta: float,
-        mu: float,
-        sigma: float,
-    ):
-        log_gr = np.log(beta) - beta * (magnitude - mu) - 0.5 * beta**2 * sigma**2
-        log_qm = norm.logcdf((magnitude - mu) / sigma)
-        return log_gr + log_qm
-
-    def _neg_log_likelihood_func(
-        self,
-        args: tuple[float, float, float],
-        magnitudes: np.ndarray,
-    ):
-        b, mu, sigma = np.square(args)
-        beta = b * LOG_10
-        return -np.sum(self._log_likelihood_func(magnitudes, beta, mu, sigma))
-
-    async def _calculate_entire_magnitude_fit(self, magnitudes: np.ndarray):
-        x0 = [np.sqrt(1.0), np.min(magnitudes) + 1, np.sqrt(1.0)]
-        res = minimize(
-            self._neg_log_likelihood_func, x0, args=(magnitudes,), method="Powell"
-        )
-        sqrtb, sqrtmu, sqrtsigma = res.x
-        b = np.square(sqrtb)
-        mu = np.square(sqrtmu)
-        sigma = np.square(sqrtsigma)
-        return b, mu, sigma
-
-    def _prob_ogata_katsura(self, mbinvalues, b, mu, sigma):
-        dum = (mbinvalues - mu) / (np.sqrt(2.0) * sigma)
-        return 0.5 * (1.0 + erf(dum))
-
-    def _ogata_katsura(self, mbinvalues, b, mu, sigma):
-        beta = LOG_10 * b
-        dum = (mbinvalues - mu) / (np.sqrt(2.0) * sigma)
-        qm = 0.5 * (1.0 + erf(dum))
-        gr = beta * np.exp(
-            -beta * (mbinvalues - mu) - np.square(beta) * np.square(sigma) / 2.0
-        )
-        return gr * qm
 
     async def view(self) -> None:
         state = get_tab_state()
@@ -112,7 +102,6 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
             )
             if len(magnitudes) == 0:
                 return
-            # magnitudes, _ = magnitude_outlier_filer(magnitudes)
             bin_width = 0.1
             bin_edges = np.arange(
                 np.min(magnitudes) - bin_width / 2,
@@ -123,18 +112,14 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
             ev_count, _ = np.histogram(magnitudes, bins=bin_edges)
             mc_max_curvature = bin_edges[np.argmax(ev_count)]
 
-            b_value, mu, sigma = await self._calculate_entire_magnitude_fit(magnitudes)
+            b_value, mu, sigma = _calculate_entire_magnitude_fit(magnitudes)
             b_value_sigma = b_value / np.sqrt(magnitudes.size)
             m = magnitudes
             scale_fac = len(m[((m >= bin_edges[0]) & (m <= bin_edges[-1]))]) / np.sum(
-                self._ogata_katsura(bin_centers, b_value, mu, sigma)
+                _ogata_katsura(bin_centers, b_value, mu, sigma)
             )
-            ogata_katsura = scale_fac * self._ogata_katsura(
-                bin_centers, b_value, mu, sigma
-            )
-            ogata_katsura_prob = self._prob_ogata_katsura(
-                bin_centers, b_value, mu, sigma
-            )
+            ogata_katsura = scale_fac * _ogata_katsura(bin_centers, b_value, mu, sigma)
+            ogata_katsura_prob = _prob_ogata_katsura(bin_centers, b_value, mu, sigma)
             og_mc_90 = mu + sigma * norm.ppf(0.9)
             og_mc_99 = mu + sigma * norm.ppf(0.99)
 
@@ -238,9 +223,6 @@ class MagnitudeSemblance(Component):
             uids = uids[finite_mask]
             if len(magnitudes) == 0:
                 return
-            # magnitudes, mask = magnitude_outlier_filer(magnitudes)
-            # semblances = semblances[mask]
-            # uids = uids[mask]
 
             point_density = None
             if len(magnitudes) >= 3:
@@ -322,9 +304,6 @@ to magnitude value.
                 return
             times, uids, magnitudes = map(np.asarray, zip(*records, strict=True))
             magnitudes = np.asarray(magnitudes, dtype=float)
-            # magnitudes, mask = magnitude_outlier_filer(magnitudes)
-            # times = times[mask]
-            # uids = uids[mask]
             if len(magnitudes) == 0:
                 return
 
@@ -410,18 +389,9 @@ to magnitude value.
 
 class MagnitudeFrequencyBPositive(Component):
     name = "Magnitude Frequency b-Positive"
-    description = """Frequency of positive magnitude differences between consecutive events, which can be used to estimate the b-value of the magnitude distribution."""
-
-    async def _calculate_dmag_bpositive(
-        self, times: np.ndarray, magnitudes: np.ndarray, d_mc: float
-    ):
-        idx = np.argsort(times)
-        times_sorted = times[idx]
-        magnitudes_sorted = magnitudes[idx]
-        times_diff = times_sorted[:-1]
-        mag_diff = magnitudes_sorted[1:] - magnitudes_sorted[:-1]
-        idx_pos = mag_diff >= d_mc
-        return times_diff[idx_pos], mag_diff[idx_pos] - d_mc
+    description = """Frequency of positive magnitude differences between consecutive
+events, which can be used to estimate the b-value of the magnitude distribution.
+"""
 
     async def view(self):
         state = get_tab_state()
@@ -459,11 +429,7 @@ class MagnitudeFrequencyBPositive(Component):
                 return
 
             delta_mc = 0.5
-            _, mag_diff = await self._calculate_dmag_bpositive(
-                times,
-                magnitudes,
-                d_mc=delta_mc,
-            )
+            _, mag_diff = _calculate_dmag_bpositive(times, magnitudes, d_mc=delta_mc)
             if len(mag_diff) == 0:
                 return
 
@@ -607,8 +573,6 @@ class NPicksVsMagnitude(Component):
             uids = np.asarray([str(ev.uid) for ev in catalog.events])
             if len(n_picks) == 0 or len(magnitudes) == 0:
                 return
-            # n_picks, mask = magnitude_outlier_filer(n_picks)
-            # magnitudes = magnitudes[mask]
             plot.clear()
             fig.add_trace(
                 go.Scattergl(
@@ -661,8 +625,6 @@ class SemblanceVsNPicks(Component):
             uids = np.asarray([str(ev.uid) for ev in catalog.events])[finite_mask]
             if len(n_picks) == 0 or len(semblances) == 0:
                 return
-            # n_picks, mask = magnitude_outlier_filer(n_picks)
-            # semblances = semblances[mask]
             plot.clear()
             fig.add_trace(
                 go.Scattergl(
