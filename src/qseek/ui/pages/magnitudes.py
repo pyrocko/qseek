@@ -32,7 +32,7 @@ async def magnitudes_page() -> None:
             await freq.view()
 
         with ui.card().classes("col-12 col-md"):
-            semblance = magnitude_components.MagnitudeSemblance()
+            semblance = magnitude_components.MagnitudeFrequencyBPositive()
             semblance.header()
             await semblance.view()
 
