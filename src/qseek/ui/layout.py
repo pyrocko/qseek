@@ -18,9 +18,33 @@ async def header() -> None:
         .props("bordered"),
         ui.row().classes("w-full").style("max-width: 1290px"),
     ):
+        state = get_tab_state()
+
         ui.space()
         await event_search()
         ui.space()
+        with ui.button_group():
+            ui.button(
+                icon="filter_alt",
+                on_click=catalog_filter_dialog,
+            ).props("push color=gray-700")
+
+            with ui.dropdown_button(icon="download", split=True, auto_close=True).props(
+                f"outline color=gray-400 href='/run/{state.run_id}/csv' target='_blank'"
+            ) as csv:
+                csv_button = ui.item("CSV").props(
+                    f"outline color=gray-400 href='/run/{state.run_id}/csv' target='_blank'"
+                )
+                gpkg = ui.item("GeoPackage").props(
+                    f"outline color=gray-400 href='/run/{state.run_id}/gpkg' target='_blank'"
+                )
+
+        def update_links():
+            csv.props.set_optional("href", f"/run/{state.run_id}/csv")
+            csv_button.props.set_optional("href", f"/run/{state.run_id}/csv")
+            gpkg.props.set_optional("href", f"/run/{state.run_id}/gpkg")
+
+        state.run_changed.subscribe(update_links)
 
 
 def _drawer_button(name: str, icon: str, link: str) -> None:
@@ -52,22 +76,21 @@ def drawer(manager: SourceManager) -> None:
         with ui.list().classes("w-full"):
             _drawer_button("Overview", "dashboard", "/")
             _drawer_button("Network", "hub", "/network")
-            _drawer_button("Analysis", "analytics", "/analysis")
             _drawer_button("Magnitudes", "equalizer", "/magnitudes")
+            _drawer_button("Analysis", "analytics", "/analysis")
+            _drawer_button("Clusters", "join_right", "/clusters")
             _drawer_button("Config", "settings", "/config")
 
         ui.space()
 
-        with ui.button_group().classes("w-full"):
-            with ui.button(
+        with (
+            ui.button_group().classes("w-full"),
+            ui.button(
                 icon="folder_open",
                 on_click=lambda: run_selection_dialog(manager),
-            ).classes("w-full"):
-                ui.label().bind_text_from(tab_state, "run_name").classes("ellipsis")
-            ui.button(
-                icon="filter_alt",
-                on_click=catalog_filter_dialog,
-            ).props("outline")
+            ).classes("w-full"),
+        ):
+            ui.label().bind_text_from(tab_state, "run_name").classes("ellipsis")
         ui.separator()
         with (
             ui.row().classes("items-center opacity-60 p-2 w-full justify-center"),
