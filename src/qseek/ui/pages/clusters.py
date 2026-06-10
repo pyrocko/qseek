@@ -1,6 +1,6 @@
 from nicegui import ui
 
-from qseek.ui.cluster import ClusterDBScan, labels_to_colors
+from qseek.ui.analysis.cluster import ClusterDBScan, labels_to_colors
 from qseek.ui.components.magnitudes import MagnitudeRate
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.state import get_tab_state
