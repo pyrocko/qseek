@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nicegui import ui
 
 from qseek.models.detection import EventDetection
 from qseek.ui.explorer import RunSource
+
+if TYPE_CHECKING:
+    from qseek.ui.state import CatalogStore
 
 
 class Component:
@@ -11,18 +16,16 @@ class Component:
     description: str = ""
     icon: str = ""
 
-    async def render(self) -> None:
-        with ui.card().classes("w-full flex-wrap col-6 shadow-2"):
-            with ui.row().classes("text-h5"):
-                if self.icon:
-                    ui.icon(self.icon)
-                ui.label(self.name)
-            ui.label(self.description).classes("text-body2 mb-2")
-            await self.view()
+    def __init__(self, catalog_store: CatalogStore):
+        self.catalog = catalog_store
 
-    def header(self) -> None:
-        ui.label(self.name).classes("text-h5")
-        ui.html(self.description, tag="div", sanitize=False).classes("text-body2 mb-2")
+    def header(self, title: str = "", description: str = "") -> None:
+        ui.label(title or self.name).classes("text-h5")
+        ui.html(
+            description or self.description,
+            tag="div",
+            sanitize=False,
+        ).classes("text-body2 mb-2")
 
     async def view(self) -> None:
         raise NotImplementedError

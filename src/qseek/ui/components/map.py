@@ -15,9 +15,13 @@ class OverviewMap(Component):
     name = "Event Map"
     description = """Map of detected events. Color corresponds to depth and size corresponds to magnitude."""
 
-    async def view(self) -> None:
+    async def view(
+        self,
+        show_events: bool = True,
+        marker_colors: list[str] | None = None,
+    ) -> None:
         state = get_tab_state()
-        catalog = await state.get_filtered_catalog()
+        catalog = self.catalog
         cmap = cm.get_cmap("magma_r")
 
         m = ui.leaflet(center=(np.mean(catalog.lats), np.mean(catalog.lons))).classes(
@@ -41,20 +45,32 @@ class OverviewMap(Component):
                 L.control.scale().addTo(map);
                 map._canvasRenderer = L.canvas();
                 map._eventGroup = L.featureGroup().addTo(map);
+                map._stationGroup = L.featureGroup().addTo(map);
                 """,
             )
 
         async def update_markers():
-            sorted_events = sorted(catalog.events, key=lambda ev: ev.depth)
-            if not sorted_events:
+            if not show_events:
                 return
-            depths = np.array([ev.depth for ev in sorted_events])
+
+            events = catalog.events
+            if not events:
+                return
+
+            depths = np.array([ev.depth for ev in events])
             norm = mcolors.Normalize(vmin=depths.min(), vmax=depths.max())
-            colors = [mcolors.to_hex(cmap(norm(d))) for d in depths]
+            colors = (
+                [mcolors.to_hex(cmap(norm(d))) for d in depths]
+                if marker_colors is None
+                else marker_colors
+            )
             marker_data = [
                 [float(ev.lat), float(ev.lon), float(ev.semblance), color, str(ev.uid)]
-                for ev, color in zip(sorted_events, colors, strict=True)
+                for ev, color in zip(events, colors, strict=True)
             ]
+            marker_data = sorted(
+                marker_data, key=lambda x: x[2]
+            )  # sort by depth for better layering
             latest = max(catalog.events, key=lambda ev: ev.time)
             latest_data = [float(latest.lat), float(latest.lon), str(latest.uid)]
             data, latest_json = await asyncio.to_thread(
@@ -76,18 +92,24 @@ class OverviewMap(Component):
                         }}).on('click', () => window.location.href = 'event/' + point[4])
                         .addTo(map._eventGroup);
                     }});
-                    const latest = {latest_json};
-                    const latestIcon = L.divIcon({{
-                        html: '{EVENT_ANIMATED_SVG}',
-                        iconSize: [40, 40],
-                        iconAnchor: [20, 20],
-                        className: ''
-                    }});
-                    L.marker([latest[0], latest[1]], {{icon: latestIcon}})
-                        .on('click', () => window.location.href = 'event/' + latest[2])
-                        .addTo(map._eventGroup);
-                    """,
+                    """
                 )
+                if state.run.live:
+                    ui.run_javascript(
+                        f"""
+                        const map = getElement({m.id}).map;
+                        const latest = {latest_json};
+                        const latestIcon = L.divIcon({{
+                            html: '{EVENT_ANIMATED_SVG}',
+                            iconSize: [40, 40],
+                            iconAnchor: [20, 20],
+                            className: ''
+                        }});
+                        L.marker([latest[0], latest[1]], {{icon: latestIcon}})
+                            .on('click', () => window.location.href = 'event/' + latest[2])
+                            .addTo(map._eventGroup);
+                        """
+                    )
 
         async def add_stations():
             search = await state.run.get_search()
@@ -126,7 +148,7 @@ class OverviewMap(Component):
                     L.marker([s.lat, s.lon], {{icon: stationIcon}})
                         .bindTooltip(tip, {{permanent: false}})
                         .on('click', function() {{ window.location.href = '/station/' + s.label; }})
-                        .addTo(map);
+                        .addTo(map._stationGroup);
                 }});
                 """,
                 )
@@ -140,9 +162,17 @@ class OverviewMap(Component):
                     f"""
                     const map = getElement({m.id}).map;
                     const b = map._eventGroup.getBounds();
-                    if (b.isValid()) map.fitBounds(b, {{padding: [20, 20]}});
+                    if (b.isValid()) {{
+                        map.fitBounds(b, {{padding: [20, 20]}});
+                    }}
+                    else {{
+                        const b = map._stationGroup.getBounds();
+                        if (b.isValid()) {{
+                            map.fitBounds(b, {{padding: [20, 20]}});
+                        }}
+                    }}
                     """,
                 )
 
-        state.proxy_catalog.updated.subscribe(update_markers)
+        self.catalog.updated.subscribe(update_markers)
         background_tasks.create(update_map(), name="update-map")

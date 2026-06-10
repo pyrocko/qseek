@@ -7,7 +7,7 @@ from qseek.ui.state import get_tab_state
 
 def catalog_filter_dialog():
     state = get_tab_state()
-    catalog = state.proxy_catalog
+    catalog = state.catalog_store
 
     with (
         ui.dialog() as dialog,
@@ -165,7 +165,7 @@ def catalog_filter_dialog():
                 def apply():
                     with state.loading_message("Applying filters..."):
                         dialog.close()
-                        catalog.refresh_event_data()
+                        catalog.filter_events()
 
                 def reset_filters():
                     catalog.reset_filters(reset_user_filters=True)

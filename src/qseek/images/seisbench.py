@@ -267,10 +267,10 @@ class SeisBench(ImageFunction):
                     self._seisbench_model.cuda()
                 else:
                     self._seisbench_model.cuda(self.torch_use_cuda)
-                logger.info("using CUDA for SeisBench model.")
+                logger.info("using CUDA for SeisBench model")
             except (RuntimeError, AssertionError) as exc:
                 logger.warning(
-                    "failed to use CUDA for SeisBench model, using CPU.",
+                    "failed to use CUDA for SeisBench model, using CPU",
                     exc_info=exc,
                 )
         self._rescale_input = self.sampling_rate / self._seisbench_model.sampling_rate

@@ -23,7 +23,7 @@ class GuiRange(TypedDict):
     max: float
 
 
-class ProxyCatalog:
+class CatalogStore:
     semblance_range: GuiRange = binding.BindableProperty()
     magnitude_range: GuiRange = binding.BindableProperty()
     depth_range: GuiRange = binding.BindableProperty()
@@ -73,15 +73,24 @@ class ProxyCatalog:
         self._run_watcher: asyncio.Task | None = None
         self.updated = Event()
 
+    @property
+    def full_catalog(self) -> EventCatalog:
+        if self._catalog is None:
+            raise RuntimeError("No catalog loaded")
+        return self._catalog
+
     async def attach(self, run: RunSource):
         await self.detach()
         self._catalog = await run.get_catalog()
         await run.attach(self)
         self._all_events = [EventMinimal.from_event(ev) for ev in self._catalog.events]
-        self.reset_filters(reset_user_filters=True)
-        self.refresh_event_data()
-
         logger.debug("Run %s loaded with %d events", run.name, self.n_events)
+
+        self.reset_filters(reset_user_filters=True)
+        self.filter_events()
+        self.refresh_caches()
+
+        self.updated.emit()
 
         if self._run_watcher is not None:
             self._run_watcher.cancel()
@@ -124,7 +133,10 @@ class ProxyCatalog:
                 for ev in self._catalog.events[len(self._all_events) :]
             ]
             self.reset_filters(reset_user_filters=False)
-            self.refresh_event_data()
+            self.filter_events()
+            self.refresh_caches()
+
+            self.updated.emit()
 
             time_since_update = time.time() - last_update
             last_update = time.time()
@@ -132,7 +144,7 @@ class ProxyCatalog:
             if time_since_update < refresh_interval:
                 await asyncio.sleep(refresh_interval - time_since_update)
 
-    def refresh_event_data(self):
+    def filter_events(self):
         if self._catalog is None:
             raise RuntimeError("No catalog set for filtering")
 
@@ -163,11 +175,14 @@ class ProxyCatalog:
         self.times = [ev.time for ev in self.events]
         self.uids = [ev.uid for ev in self.events]
 
-        mags = [
-            ev.magnitude.average if ev.magnitude is not None else np.nan
-            for ev in self.events
-        ]
-        self.magnitudes = np.array(mags, dtype=float)
+    def refresh_caches(self):
+        self.magnitudes = np.array(
+            [
+                ev.magnitude.average if ev.magnitude is not None else np.nan
+                for ev in self.events
+            ],
+            dtype=float,
+        )
         (
             self.lats,
             self.lons,
@@ -246,23 +261,26 @@ class ProxyCatalog:
 class TabState:
     run: RunSource
     run_name: str = binding.BindableProperty()
+    run_id: str = binding.BindableProperty()
     loading: str = binding.BindableProperty()
 
-    proxy_catalog: ProxyCatalog
+    catalog_store: CatalogStore
 
     def __init__(self, run: RunSource):
         self._init_lock = asyncio.Lock()
         self.run = run
         self.run_name = run.name
+        self.run_id = run.hash
         self.loading = ""
 
-        self.proxy_catalog = ProxyCatalog()
+        self.catalog_store = CatalogStore()
 
         self.run_changed = Event()
 
     async def set_run(self, run: RunSource):
         self.run = run
         self.run_name = run.name
+        self.run_id = run.hash
         self.run_changed.emit()
         self.loading = ""
 
@@ -272,17 +290,17 @@ class TabState:
         yield
         self.loading = ""
 
-    async def get_filtered_catalog(self) -> ProxyCatalog:
+    async def get_catalog(self) -> CatalogStore:
         async with self._init_lock:
             if self.run is None:
                 raise RuntimeError("No run set for filtering")
-            if not self.proxy_catalog.has_catalog():
+            if not self.catalog_store.has_catalog():
                 with self.loading_message(f"Loading run {self.run.name}..."):
-                    await self.proxy_catalog.attach(self.run)
-        return self.proxy_catalog
+                    await self.catalog_store.attach(self.run)
+        return self.catalog_store
 
     async def clear(self):
-        await self.proxy_catalog.detach()
+        await self.catalog_store.detach()
 
 
 def get_tab_state() -> TabState:

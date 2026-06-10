@@ -69,7 +69,6 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
     """
 
     async def view(self) -> None:
-        state = get_tab_state()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -91,7 +90,7 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
         plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = self.catalog
             magnitudes = np.asarray(
                 [
                     ev.magnitude.average
@@ -186,7 +185,7 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
 
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        self.catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -208,7 +207,7 @@ class MagnitudeSemblance(Component):
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
             magnitudes = np.asarray(
                 [
                     ev.magnitude.average if ev.magnitude is not None else np.nan
@@ -272,8 +271,12 @@ class MagnitudeRate(Component):
 to magnitude value.
 """
 
-    async def view(self) -> None:
-        state = get_tab_state()
+    async def view(
+        self,
+        show_semblance: bool = False,
+        show_density: bool = False,
+        marker_colors: list[str] | None = None,
+    ) -> None:
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -292,17 +295,21 @@ to magnitude value.
         attach_plotly_events(plot)
 
         async def update_plot() -> None:
-            catalog = await state.get_filtered_catalog()
-            records = [
-                (ev.time, ev.uid, ev.magnitude.average)
-                for ev in catalog.events
-                if ev.magnitude is not None
-                and ev.magnitude.average is not None
-                and np.isfinite(ev.magnitude.average)
-            ]
-            if not records:
+            catalog = self.catalog
+            if show_semblance:
+                events = [(ev.time, ev.uid, ev.semblance) for ev in catalog.events]
+            else:
+                events = [
+                    (ev.time, ev.uid, ev.magnitude.average)
+                    for ev in catalog.events
+                    if ev.magnitude is not None
+                    and ev.magnitude.average is not None
+                    and np.isfinite(ev.magnitude.average)
+                ]
+            if not events:
                 return
-            times, uids, magnitudes = map(np.asarray, zip(*records, strict=True))
+
+            times, uids, magnitudes = map(np.asarray, zip(*events, strict=True))
             magnitudes = np.asarray(magnitudes, dtype=float)
             if len(magnitudes) == 0:
                 return
@@ -313,20 +320,25 @@ to magnitude value.
             magnitudes_sorted = magnitudes[time_order]
 
             point_density = None
-            try:
-                time_numeric = np.asarray(
-                    [time.timestamp() for time in times],
-                    dtype=float,
-                )
-                scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-                kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
-                point_density = kde(time_numeric)
-            except (ValueError, np.linalg.LinAlgError):
-                point_density = None
+            if show_density:
+                try:
+                    time_numeric = np.asarray(
+                        [time.timestamp() for time in times],
+                        dtype=float,
+                    )
+                    scott_kde = gaussian_kde(time_numeric, bw_method="scott")
+                    kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
+                    point_density = kde(time_numeric)
+                except (ValueError, np.linalg.LinAlgError):
+                    ui.notify(
+                        "Could not compute point density for magnitude rate plot.",
+                        type="warn",
+                    )
 
             scatter_times = times
             scatter_magnitudes = magnitudes
             scatter_uids = uids
+
             if point_density is not None:
                 density_order = np.argsort(point_density)
                 scatter_times = scatter_times[density_order]
@@ -346,8 +358,10 @@ to magnitude value.
                     marker={
                         "color": point_density
                         if point_density is not None
+                        else marker_colors
+                        if marker_colors is not None
                         else "black",
-                        "colorscale": "Viridis",
+                        "colorscale": "Cividis",
                         "showscale": False,
                         "size": (scatter_magnitudes - min_mag)
                         / (scatter_magnitudes.max() - min_mag)
@@ -383,7 +397,7 @@ to magnitude value.
 
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        self.catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -413,7 +427,7 @@ events, which can be used to estimate the b-value of the magnitude distribution.
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
             events = [
                 ev
                 for ev in catalog.events
@@ -480,7 +494,7 @@ events, which can be used to estimate the b-value of the magnitude distribution.
             )
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        state.catalog_store.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -501,7 +515,7 @@ class StationMagnitudes(Component):
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
             sta_mags = [
                 ev.magnitude.station_magnitudes
                 for ev in catalog.events
@@ -557,7 +571,7 @@ class NPicksVsMagnitude(Component):
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
             n_picks = np.asarray(
                 [ev.n_picks for ev in catalog.events if ev.n_picks is not None],
                 dtype=float,
@@ -613,7 +627,7 @@ class SemblanceVsNPicks(Component):
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
             n_picks = np.asarray(
                 [ev.n_picks for ev in catalog.events if ev.n_picks is not None],
                 dtype=float,
@@ -667,7 +681,7 @@ class StationMagnitudesResiduals(Component):
         plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
 
             station_dict: dict[str, list[float]] = {}
 

@@ -19,13 +19,14 @@ from qseek.ui.explorer.base import RunExplorer, RunSource
 from qseek.utils import datetime_now
 
 if TYPE_CHECKING:
-    from qseek.ui.state import ProxyCatalog
+    from qseek.ui.state import CatalogStore
 
 logger = logging.getLogger(__name__)
 
 
 class QseekWebSource(RunSource):
     source = "qseek-http"
+    live = True
 
     def __init__(
         self,
@@ -168,12 +169,12 @@ class QseekWebSource(RunSource):
 
         return cls(remote, tmp_dir, hash=hash)
 
-    async def attach(self, proxy: ProxyCatalog):
+    async def attach(self, proxy: CatalogStore):
         self._attached_proxies.add(proxy)
         if self._websocket_task is None:
             self._websocket_task = asyncio.create_task(self._listen_websocket())
 
-    async def detach(self, proxy: ProxyCatalog):
+    async def detach(self, proxy: CatalogStore):
         self._attached_proxies.discard(proxy)
         if not self._attached_proxies and self._websocket_task is not None:
             self._websocket_task.cancel()

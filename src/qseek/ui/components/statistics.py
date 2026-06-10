@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import plotly.graph_objects as go
@@ -14,113 +15,6 @@ from qseek.ui.utils import attach_plotly_events
 from qseek.utils import async_weighted_median
 
 
-class SemblanceRate(Component):
-    name = "Semblance Rate"
-    icon = ""
-    description = """
-Semblance of detected events over time. Color corresponds to event density, size of
-markers corresponds to semblance value.
-"""
-
-    async def view(self) -> None:
-        state = get_tab_state()
-
-        fig = go.Figure()
-        fig.update_layout(
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
-            template="plotly_white",
-            showlegend=False,
-            yaxis_title="Semblance",
-            xaxis_title="Time",
-            yaxis2={
-                "title": "Cumulative Semblance",
-                "overlaying": "y",
-                "side": "right",
-                "showgrid": False,
-            },
-        )
-        plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_events(plot)
-
-        async def update_plot():
-            catalog = await state.get_filtered_catalog()
-            records = [
-                (ev.time, ev.uid, ev.semblance)
-                for ev in catalog.events
-                if ev.semblance is not None and np.isfinite(ev.semblance)
-            ]
-            if not records:
-                return
-            times, uids, semblances = map(np.asarray, zip(*records, strict=True))
-            semblances = np.asarray(semblances, dtype=float)
-            time_order = np.argsort(times)
-            cumulative_semblance = np.cumsum(semblances[time_order])
-
-            point_density = None
-            try:
-                time_numeric = np.asarray(
-                    [time.timestamp() for time in times],
-                    dtype=float,
-                )
-                scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-                kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
-                point_density = kde(time_numeric)
-            except (ValueError, np.linalg.LinAlgError):
-                point_density = None
-
-            scatter_times = times
-            scatter_semblances = semblances
-            scatter_uids = uids
-            if point_density is not None:
-                density_order = np.argsort(point_density)
-                scatter_times = scatter_times[density_order]
-                scatter_semblances = scatter_semblances[density_order]
-                scatter_uids = scatter_uids[density_order]
-                point_density = point_density[density_order]
-
-            fig.data = []
-            fig.add_trace(
-                go.Scattergl(
-                    x=scatter_times,
-                    y=scatter_semblances,
-                    mode="markers",
-                    name="Event Semblance",
-                    hoverinfo="none",
-                    hovertemplate=None,
-                    customdata=scatter_uids,
-                    marker={
-                        "color": point_density
-                        if point_density is not None
-                        else "black",
-                        "colorscale": "viridis",
-                        "showscale": False,
-                        "size": scatter_semblances / scatter_semblances.max() * 15,
-                        "line": {"width": 0},
-                        "opacity": 0.3,
-                    },
-                )
-            )
-            fig.add_trace(
-                go.Scattergl(
-                    x=times[time_order],
-                    y=cumulative_semblance,
-                    mode="lines",
-                    name="Cumulative Semblance",
-                    line={
-                        "color": "black",
-                        "width": 1.5,
-                    },
-                    hoverinfo="none",
-                    hovertemplate=None,
-                    yaxis="y2",
-                )
-            )
-            plot.update()
-
-        state.proxy_catalog.updated.subscribe(update_plot)
-        background_tasks.create(update_plot())
-
-
 class EventRate(Component):
     name = "Event Rate"
     description = """
@@ -128,8 +22,6 @@ Number of detected events per day/hour/minute and cumulative number of events ov
 """
 
     async def view(self) -> None:
-        state = get_tab_state()
-
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -147,18 +39,22 @@ Number of detected events per day/hour/minute and cumulative number of events ov
         plot = ui.plotly(fig).classes("w-full h-64")
 
         async def update_plot():
-            from datetime import datetime, timedelta, timezone
-
-            catalog = await state.get_filtered_catalog()
+            catalog = self.catalog
             if not catalog.events:
                 return
 
             times = catalog.times
             duration = times[-1] - times[0]
 
-            if duration > timedelta(days=7):
+            if duration > timedelta(days=180):
                 bin_sec = int(timedelta(days=1).total_seconds())
                 bin_label = "Events / day"
+            elif duration > timedelta(days=14):
+                bin_sec = int(timedelta(hours=12).total_seconds())
+                bin_label = "Events / 12 hours"
+            elif duration > timedelta(hours=72):
+                bin_sec = int(timedelta(hours=6).total_seconds())
+                bin_label = "Events / 6 hours"
             elif duration > timedelta(hours=24):
                 bin_sec = int(timedelta(hours=1).total_seconds())
                 bin_label = "Events / hour"
@@ -205,7 +101,7 @@ Number of detected events per day/hour/minute and cumulative number of events ov
             )
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        self.catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -230,7 +126,7 @@ corresponds to magnitude and color corresponds to depth (light = shallow, dark =
         plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_events(plot)
 
-        catalog = await state.get_filtered_catalog()
+        catalog = await state.get_catalog()
 
         async def update_plot():
             distances = np.sqrt(
@@ -285,7 +181,7 @@ Color corresponds to time and size corresponds to semblance.
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
 
             if direction == "north-south":
                 distances = catalog.north_shifts
@@ -329,7 +225,7 @@ Color corresponds to time and size corresponds to semblance.
             )
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        state.catalog_store.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -340,8 +236,6 @@ Distribution of number of picks associated with detected events.
 """
 
     async def view(self) -> None:
-        state = get_tab_state()
-
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -353,7 +247,7 @@ Distribution of number of picks associated with detected events.
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = self.catalog
             n_picks = catalog.n_picks
             n_picks = n_picks[~np.isnan(n_picks)].astype(int)
 
@@ -391,7 +285,7 @@ Distribution of number of picks associated with detected events.
             )
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        self.catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 
@@ -402,8 +296,6 @@ Distribution of semblance values of detected events.
 """
 
     async def view(self) -> None:
-        state = get_tab_state()
-
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -414,7 +306,7 @@ Distribution of semblance values of detected events.
         plot = ui.plotly(fig).classes("w-full h-full")
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = self.catalog
             semblances = catalog.semblances
             semblances = semblances[np.isfinite(semblances)]
             if not semblances.size:
@@ -460,8 +352,6 @@ corresponds to event time.
 """
 
     async def view(self) -> None:
-        state = get_tab_state()
-
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -482,7 +372,7 @@ corresponds to event time.
         attach_plotly_events(plot)
 
         async def update_plot():
-            catalog = await state.get_filtered_catalog()
+            catalog = self.catalog
 
             ps_collection = PSCollection()
 

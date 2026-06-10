@@ -85,7 +85,7 @@ async def event_search() -> None:
                 menu.close()
                 return
 
-            catalog = await state.get_filtered_catalog()
+            catalog = await state.get_catalog()
 
             results.clear()
             for event in catalog.events:

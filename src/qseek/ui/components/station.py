@@ -276,7 +276,7 @@ class StationPickPerformance(StationComponent):
                 )
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        state.catalog_store.updated.subscribe(update_plot)
         background_tasks.create(update_plot(), name=f"station-pick-perf-{nsl.pretty}")
 
 
@@ -451,7 +451,7 @@ class StationTraveltimeResidual(StationComponent):
 
             plot.update()
 
-        state.proxy_catalog.updated.subscribe(update_plot)
+        state.catalog_store.updated.subscribe(update_plot)
         background_tasks.create(
             update_plot(), name=f"station-traveltime-residual-{nsl.pretty}"
         )

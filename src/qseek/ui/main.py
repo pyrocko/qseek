@@ -1,10 +1,11 @@
 import asyncio
 import logging
 from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
+from fastapi import Response
 from nicegui import app, core, ui
 
-from qseek.ui.state import create_tab_state
 from qseek.utils import load_insights, setup_rich_logging
 
 load_insights()
@@ -16,12 +17,14 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
     from qseek.ui.layout import drawer, header
     from qseek.ui.manager import SourceManager
     from qseek.ui.pages.analysis import analysis_page
+    from qseek.ui.pages.clusters import clusters_page
     from qseek.ui.pages.config import config_page
     from qseek.ui.pages.event import event_page
     from qseek.ui.pages.magnitudes import magnitudes_page
     from qseek.ui.pages.network import network_page
     from qseek.ui.pages.overview import overview_page
     from qseek.ui.pages.station import station_page
+    from qseek.ui.state import create_tab_state
 
     manager = SourceManager()
     ready = asyncio.Event()
@@ -29,7 +32,6 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
     async def load_runs():
         core.sio.eio.ping_interval = 30.0
         core.sio.eio.ping_timeout = 30.0
-        # asyncio.get_event_loop().set_debug(True)
         await manager.add_uris(uris)
 
         if manager.n_runs == 0:
@@ -39,6 +41,46 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
 
     app.add_static_files("/static", Path(__file__).parent / "static")
     app.on_startup(load_runs)
+
+    @ui.page("/run/{run_id}/csv")
+    async def csv_page(run_id: str) -> None | Response:
+        try:
+            run = manager.get_run(run_id)
+        except KeyError:
+            ui.status_code(404)
+            ui.label("Run not found").classes("text-red-500")
+            return None
+
+        catalog = await run.get_catalog()
+        with NamedTemporaryFile() as tmp:
+            await catalog.export_csv(tmp.name)
+            tmp.seek(0)
+            return Response(
+                content=tmp.read(),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={run.name}.csv"},
+            )
+
+    @ui.page("/run/{run_id}/gpkg")
+    async def gpkg_page(run_id: str) -> None | Response:
+        try:
+            run = manager.get_run(run_id)
+        except KeyError:
+            ui.status_code(404)
+            ui.label("Run not found").classes("text-red-500")
+            return None
+
+        catalog = await run.get_catalog()
+        with TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir) / "catalog.gpkg"
+            await catalog.export_geopackage(tmp_path)
+            return Response(
+                content=tmp_path.read_bytes(),
+                media_type="application/geopackage+sqlite3",
+                headers={
+                    "Content-Disposition": f"attachment; filename={run.name}.gpkg"
+                },
+            )
 
     @ui.page("/")
     @ui.page("/{_:path}")
@@ -79,6 +121,7 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
                         "/config": config_page,
                         "/event/{event_id}": event_page,
                         "/station/{station_nsl}": station_page,
+                        "/clusters": clusters_page,
                     },
                     show_404=False,
                 )

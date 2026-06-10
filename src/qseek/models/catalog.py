@@ -596,3 +596,95 @@ class EventCatalog(BaseModel):
 
     def __iter__(self) -> Iterator[EventDetection]:
         return iter(sorted(self.events, key=lambda d: d.time))
+
+    async def export_geopackage(self, filename: Path) -> None:
+        """Save the catalog as a GeoPackage file.
+
+        Args:
+            filename (Path): The output filename.
+        """
+        from fudgeo import Field, GeoPackage, SpatialReferenceSystem
+        from fudgeo.context import ExecuteMany
+        from fudgeo.enumeration import FieldType, ShapeType
+        from fudgeo.extension.ogr import has_ogr_contents
+        from fudgeo.geometry import PointZ
+
+        logger.info("saving catalog to GeoPackage %s", filename)
+
+        gpkg = GeoPackage.create(filename)
+
+        event_rows = []
+        for ev in self.events:
+            event_rows.append(
+                (
+                    PointZ(
+                        x=ev.effective_lon,
+                        y=ev.effective_lat,
+                        z=-ev.depth,
+                        srs_id=4326,
+                    ),
+                    ev.time,
+                    ev.depth,
+                    ev.semblance,
+                    ev.magnitude.average if ev.magnitude else None,
+                )
+            )
+
+        sql = """
+        INSERT INTO events (SHAPE, time, depth, semblance, magnitude)
+        VALUES (?, ?, ?, ?, ?)
+        """
+
+        fc = gpkg.create_feature_class(
+            "events",
+            srs=SpatialReferenceSystem(
+                name="WGS 84",
+                organization="EPSG",
+                description="Latitude/Longitude coordinates with ellipsoidal height",
+                org_coord_sys_id=4326,
+                definition="""
+GEOGCRS["WGS 84",
+ENSEMBLE["World Geodetic System 1984 ensemble",
+    MEMBER["World Geodetic System 1984 (Transit)"],
+    MEMBER["World Geodetic System 1984 (G730)"],
+    MEMBER["World Geodetic System 1984 (G873)"],
+    MEMBER["World Geodetic System 1984 (G1150)"],
+    MEMBER["World Geodetic System 1984 (G1674)"],
+    MEMBER["World Geodetic System 1984 (G1762)"],
+    MEMBER["World Geodetic System 1984 (G2139)"],
+    MEMBER["World Geodetic System 1984 (G2296)"],
+    ELLIPSOID["WGS 84",6378137,298.257223563,
+        LENGTHUNIT["metre",1]],
+    ENSEMBLEACCURACY[2.0]],
+PRIMEM["Greenwich",0,
+    ANGLEUNIT["degree",0.0174532925199433]],
+CS[ellipsoidal,2],
+    AXIS["geodetic latitude (Lat)",north,
+        ORDER[1],
+        ANGLEUNIT["degree",0.0174532925199433]],
+    AXIS["geodetic longitude (Lon)",east,
+        ORDER[2],
+        ANGLEUNIT["degree",0.0174532925199433]],
+USAGE[
+    SCOPE["Horizontal component of 3D system."],
+    AREA["World."],
+    BBOX[-90,-180,90,180]],
+ID["EPSG",4326]]
+""",
+            ),
+            shape_type=ShapeType.point,
+            fields=[
+                Field("time", FieldType.datetime),
+                Field("depth", FieldType.double),
+                Field("semblance", FieldType.double),
+                Field("magnitude", FieldType.double),
+            ],
+            overwrite=True,
+            spatial_index=True,
+        )
+        with gpkg.connection as conn:
+            if has_ogr_contents(conn):
+                with ExecuteMany(conn, table=fc) as executor:
+                    executor(sql=sql, data=event_rows)
+            else:
+                conn.executemany(sql, event_rows)

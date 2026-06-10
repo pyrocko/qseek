@@ -14,7 +14,7 @@ from qseek.search import Search
 from qseek.types import allow_non_existing_paths
 
 if TYPE_CHECKING:
-    from qseek.ui.state import ProxyCatalog
+    from qseek.ui.state import CatalogStore
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,8 @@ class RunSource(Protocol):
     hash: str
     updated: asyncio.Condition
     tags: list[str] = []
+
+    live: bool = False
 
     _catalog: EventCatalog | None = None
     _search: Search | None = None
@@ -102,13 +104,13 @@ class RunSource(Protocol):
             )
         return self._search
 
-    async def attach(self, proxy: ProxyCatalog):
+    async def attach(self, proxy: CatalogStore):
         """Attach to the run source for updates.
 
         This method should be called to start listening for updates from the run source.
         """
 
-    async def detach(self, proxy: ProxyCatalog):
+    async def detach(self, proxy: CatalogStore):
         """Detach from the run source for updates.
 
         This method should be called to stop listening for updates from the run source.

@@ -1,5 +1,3 @@
-import asyncio
-import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -11,89 +9,6 @@ from plotly.subplots import make_subplots
 from qseek.ui.base import Component
 from qseek.ui.state import get_tab_state
 from qseek.utils import NSL
-
-_STATION_SVG = (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
-    '<polygon points="8,0.5 14.5,11.75 1.5,11.75"'
-    ' fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
-    "</svg>"
-)
-
-
-class StationMap(Component):
-    name = "Station Map"
-    description = "Map of all stations in the network inventory."
-
-    async def view(self) -> None:
-        state = get_tab_state()
-        search = await state.run.get_search()
-        stations = list(search.stations)
-
-        if not stations:
-            ui.label("No stations in inventory.").classes("text-grey-6 italic")
-            return
-
-        center_lat = sum(s.effective_lat for s in stations) / len(stations)
-        center_lon = sum(s.effective_lon for s in stations) / len(stations)
-
-        m = ui.leaflet(center=(center_lat, center_lon)).classes(
-            "w-full h-96 rounded-lg shadow"
-        )
-        m.clear_layers()
-        m.tile_layer(
-            url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-            options={
-                "attribution": (
-                    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    ' contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                ),
-                "subdomains": "abcd",
-                "maxZoom": 20,
-            },
-        )
-
-        await m.initialized()
-
-        async def add_markers():
-            station_data = [
-                {
-                    "lat": float(sta.effective_lat),
-                    "lon": float(sta.effective_lon),
-                    "label": sta.nsl.pretty_str(strip=True),
-                    "elevation": sta.elevation,
-                    "depth": sta.depth,
-                }
-                for sta in stations
-            ]
-            data = await asyncio.to_thread(json.dumps, station_data)
-            with m:
-                ui.run_javascript(
-                    f"""
-                const map = getElement({m.id}).map;
-                const stations = {data};
-                const stationIcon = L.divIcon({{
-                    html: '{_STATION_SVG}',
-                    iconSize: [16, 16],
-                    iconAnchor: [8, 12],
-                    className: ''
-                }});
-                var group = L.featureGroup();
-                stations.forEach(function(s) {{
-                    var tip = '<b>' + s.label + '</b>'
-                        + '<br>Elevation: ' + s.elevation.toFixed(0) + ' m';
-                    if (s.depth > 0) tip += '<br>Depth: ' + s.depth.toFixed(0) + ' m';
-                    group.addLayer(
-                        L.marker([s.lat, s.lon], {{icon: stationIcon}})
-                            .bindTooltip(tip, {{permanent: false}})
-                            .on('click', function() {{ window.location.href = '/station/' + s.label; }})
-                    );
-                }});
-                group.addTo(map);
-                map.fitBounds(group.getBounds(), {{padding: [30, 30]}});
-                """,
-                )
-
-        background_tasks.create(add_markers(), name="station-map-markers")
 
 
 class StationTable(Component):
@@ -229,8 +144,7 @@ class StationCoverage(Component):
     description = """Number of stations contributing to each detected event."""
 
     async def view(self) -> None:
-        state = get_tab_state()
-        catalog = await state.run.get_catalog()
+        catalog = self.catalog.full_catalog
 
         if not catalog.events:
             ui.label("No events detected yet.").classes("text-grey-6 italic")
@@ -299,8 +213,6 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
 """
 
     async def view(self) -> None:
-        state = get_tab_state()
-
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -357,7 +269,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
                 return (self.median_p() + self.median_s()) / 2
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = self.catalog.full_catalog
             station_counts: dict[NSL, StationStats] = defaultdict(StationStats)
 
             for ev in catalog.events:
@@ -403,7 +315,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
                     x=labels,
                     y=p_vals,
                     marker_color="#5C8FA3",
-                    hovertemplate="%{x}<br>P confidence: %{y:.1f}<extra></extra>",
+                    hovertemplate="%{x}<br>P cum. confidence: %{y:.1f}<extra></extra>",
                 )
             )
             fig.add_trace(
@@ -413,7 +325,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
                     y=s_vals,
                     marker_color="#E07B54",
                     customdata=[-v for v in s_vals],
-                    hovertemplate="%{x}<br>S confidence: %{customdata:.1f}<extra></extra>",
+                    hovertemplate="%{x}<br>S cum. confidence: %{customdata:.1f}<extra></extra>",
                 )
             )
             fig.add_trace(
@@ -424,7 +336,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
                     yaxis="y2",
                     marker_color="rgba(80,80,80,0.18)",
                     marker_line_width=0,
-                    hovertemplate="%{x}<br>P median: %{y:.3f}<extra></extra>",
+                    hovertemplate="%{x}<br>P median conf.: %{y:.3f}<extra></extra>",
                 )
             )
             fig.add_trace(
@@ -436,7 +348,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
                     marker_color="rgba(80,80,80,0.18)",
                     marker_line_width=0,
                     customdata=[-v for v in med_s_vals],
-                    hovertemplate="%{x}<br>S median: %{customdata:.3f}<extra></extra>",
+                    hovertemplate="%{x}<br>S median conf.: %{customdata:.3f}<extra></extra>",
                 )
             )
             plot.update()
@@ -454,8 +366,6 @@ a shifted centre reveals a station-specific delay. Stations are sorted by median
 """
 
     async def view(self) -> None:
-        state = get_tab_state()
-
         fig = make_subplots(
             rows=2,
             cols=1,
@@ -500,7 +410,7 @@ a shifted centre reveals a station-specific delay. Stations are sorted by median
                 return float(np.median(np.abs(combined))) if combined else float("inf")
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = self.catalog.full_catalog
             delays: dict[NSL, StationDelays] = defaultdict(StationDelays)
 
             for ev in catalog.events:

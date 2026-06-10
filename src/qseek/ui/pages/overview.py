@@ -5,16 +5,13 @@ from nicegui import ui
 
 from qseek.ui.components.magnitudes import MagnitudeRate
 from qseek.ui.components.map import OverviewMap
-from qseek.ui.components.statistics import (
-    EventRate,
-    SemblanceRate,
-)
+from qseek.ui.components.statistics import EventRate
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import stat_card
 
 
 async def overview_page() -> None:
-    catalog = await get_tab_state().get_filtered_catalog()
+    catalog = await get_tab_state().get_catalog()
 
     if catalog.n_events == 0:
         with ui.row().classes("items-center gap-2 text-grey-6 mt-2"):
@@ -93,20 +90,18 @@ async def overview_page() -> None:
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12"):
-            overview = OverviewMap()
+            overview = OverviewMap(catalog)
             overview.header()
             await overview.view()
-        if catalog.has_magnitudes():
-            with ui.card().classes("col-12"):
-                rate = MagnitudeRate()
-                rate.header()
-                await rate.view()
         with ui.card().classes("col-12"):
-            semblance_rate = SemblanceRate()
-            semblance_rate.header()
-            await semblance_rate.view()
+            rate = MagnitudeRate(catalog)
+            rate.header()
+            await rate.view(
+                show_semblance=not catalog.has_magnitudes(),
+                show_density=True,
+            )
         with ui.card().classes("col-12"):
-            event_rate = EventRate()
+            event_rate = EventRate(catalog)
             event_rate.header()
             await event_rate.view()
         # with ui.card().classes("col-12"):

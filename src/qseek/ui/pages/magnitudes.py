@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from nicegui import ui
 
-from qseek.ui.components import magnitudes as magnitude_components
+from qseek.ui.components.magnitudes import (
+    MagnitudeFrequency,
+    MagnitudeFrequencyBPositive,
+    MagnitudeRate,
+    StationMagnitudesResiduals,
+)
 from qseek.ui.state import get_tab_state
 
 
 async def magnitudes_page() -> None:
     state = get_tab_state()
-    catalog = await state.get_filtered_catalog()
+    catalog = await state.get_catalog()
 
     if not catalog.has_magnitudes():
         with ui.column().classes("w-full items-center justify-center gap-3 mt-16"):
@@ -21,18 +26,18 @@ async def magnitudes_page() -> None:
         return
 
     with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
-        rate = magnitude_components.MagnitudeRate()
+        rate = MagnitudeRate(catalog)
         rate.header()
-        await rate.view()
+        await rate.view(show_density=True)
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12 col-md"):
-            freq = magnitude_components.MagnitudeFrequency()
+            freq = MagnitudeFrequency(catalog)
             freq.header()
             await freq.view()
 
         with ui.card().classes("col-12 col-md"):
-            semblance = magnitude_components.MagnitudeFrequencyBPositive()
+            semblance = MagnitudeFrequencyBPositive(catalog)
             semblance.header()
             await semblance.view()
 
@@ -40,6 +45,6 @@ async def magnitudes_page() -> None:
         ui.row().classes("w-full flex-1 items-stretch"),
         ui.card().classes("col-12 col-md"),
     ):
-        over_station = magnitude_components.StationMagnitudesResiduals()
+        over_station = StationMagnitudesResiduals(catalog)
         over_station.header()
         await over_station.view()

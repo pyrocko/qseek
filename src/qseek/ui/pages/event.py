@@ -18,7 +18,7 @@ from qseek.ui.utils import stat_card
 
 async def event_page(event_id: str) -> None:
     state = get_tab_state()
-    catalog = await state.get_filtered_catalog()
+    catalog = await state.get_catalog()
     event = catalog.get_event_by_uid(UUID(event_id))
     ev = event.event
 
@@ -45,6 +45,9 @@ async def event_page(event_id: str) -> None:
                 f"± {mag.error:.2f}"
                 if mag.error is not None and not math.isnan(mag.error)
                 else ""
+            )
+            mag_subtitle += (
+                f" (computed from {len(mag.station_magnitudes)} station magnitudes)"
             )
             stat_card(
                 "Magnitude",

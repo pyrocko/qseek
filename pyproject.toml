@@ -69,6 +69,7 @@ ui = [
     "asyncssh>=2.22",
     "rfc3986>=2.0.0",
     "watchfiles>=1.1",
+    "scikit-learn >= 1.9"
 ]
 docs = [
     "mkdocs-material>=9.6",
