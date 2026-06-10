@@ -53,6 +53,7 @@ class EventLocalMagnitude(EventMagnitude):
         return {
             f"ML-{self.model}": self.average,
             f"ML-error-{self.model}": self.error,
+            f"ML-n-stations-{self.model}": self.n_stations,
         }
 
     @classmethod
