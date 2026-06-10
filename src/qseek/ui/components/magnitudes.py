@@ -128,7 +128,9 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
                 x=bin_edges[:-1],
                 y=ev_count,
                 name="Magnitude Distribution",
-                marker_color="lightgray",
+                marker_color="rgba(180, 185, 195, 0.4)",
+                marker_line_color="rgba(150, 155, 165, 0.5)",
+                marker_line_width=0.5,
                 hoverinfo="none",
                 hovertemplate=None,
                 showlegend=False,
@@ -138,9 +140,8 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
                     x=bin_centers,
                     y=ogata_katsura,
                     mode="lines",
-                    line={"color": "red", "width": 1.5},
+                    line={"color": "#E07B54", "width": 2},
                     hoverinfo="none",
-                    opacity=0.6,
                     name=f"b={b_value:.2f} ±{b_value_sigma:.2f}",
                     showlegend=True,
                 )
@@ -152,8 +153,7 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
                     mode="lines",
                     name="Ogata-Katsura Probability",
                     yaxis="y2",
-                    line={"color": "blue", "width": 1.5},
-                    opacity=0.6,
+                    line={"color": "#5B8DB8", "width": 2},
                     hoverinfo="none",
                     showlegend=False,
                 )
@@ -162,7 +162,7 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
                 x=mc_max_curvature,
                 y0=0,
                 line_dash="dash",
-                line_color="darkgreen",
+                line_color="#4CAF82",
                 name=f"MaxC: {mc_max_curvature:.2f}",
                 showlegend=True,
             )
@@ -170,7 +170,7 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
                 x=og_mc_90,
                 y0=0,
                 line_dash="dash",
-                line_color="blue",
+                line_color="#5B8DB8",
                 name=f"EMR (90%): {og_mc_90:.2f}",
                 showlegend=True,
             )
@@ -178,7 +178,7 @@ Estimation of the magintude of completeness using maximum curvature (MaxC) and E
                 x=og_mc_99,
                 y0=0,
                 line_dash="dot",
-                line_color="blue",
+                line_color="#5B8DB8",
                 name=f"EMR (99%): {og_mc_99:.2f}",
                 showlegend=True,
             )
@@ -393,7 +393,10 @@ to magnitude value.
                     yaxis="y2",
                 )
             )
-            fig.update_layout(uirevision=True)
+            fig.update_layout(
+                uirevision=True,
+                xaxis={"range": [times.min(), times.max()]},
+            )
 
             plot.update()
 
@@ -464,7 +467,10 @@ events, which can be used to estimate the b-value of the magnitude distribution.
                     x=bincenters,
                     y=hist_vals,
                     name="Magnitude Histogram",
-                    marker={"color": "lightgray"},
+                    marker={
+                        "color": "rgba(180, 185, 195, 0.4)",
+                        "line": {"color": "rgba(150, 155, 165, 0.5)", "width": 0.5},
+                    },
                     hoverinfo="none",
                     showlegend=False,
                 )
@@ -475,7 +481,7 @@ events, which can be used to estimate the b-value of the magnitude distribution.
                     y=n_pred,
                     mode="lines",
                     name=f"b pos.={bvalue_pos:.2f} ±{b_value_pos_uncertainty:.2f}",
-                    line={"color": "red", "width": 1.5, "dash": "dash"},
+                    line={"color": "#E07B54", "width": 2, "dash": "dash"},
                     hoverinfo="none",
                 )
             )
@@ -495,6 +501,163 @@ events, which can be used to estimate the b-value of the magnitude distribution.
             plot.update()
 
         state.catalog_store.updated.subscribe(update_plot)
+        background_tasks.create(update_plot())
+
+
+class MagnitudeStatisticsOverTime(Component):
+    name = "Magnitude Statistics Over Time"
+    description = """b-value (b-positive method) and magnitude of completeness (MaxC)
+computed in sliding windows of 500 events, advancing 250 events at a time.
+"""
+
+    async def view(self) -> None:
+        fig = go.Figure()
+        fig.update_layout(
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            template="plotly_white",
+            xaxis_title="Time",
+            yaxis={"title": "b-value (b-positive)"},
+            yaxis2={
+                "title": "Mc (MaxC)",
+                "overlaying": "y",
+                "side": "right",
+                "showgrid": False,
+            },
+            legend={"x": 0.01, "y": 0.99, "xanchor": "left", "yanchor": "top"},
+        )
+        plot = ui.plotly(fig).classes("w-full h-64")
+
+        async def update_plot() -> None:
+            catalog = self.catalog
+            events = sorted(
+                (
+                    ev
+                    for ev in catalog.events
+                    if ev.magnitude is not None
+                    and ev.magnitude.average is not None
+                    and np.isfinite(ev.magnitude.average)
+                ),
+                key=lambda ev: ev.time,
+            )
+            if len(events) < 500:
+                return
+
+            window_size = 500
+            step = 100
+            delta_mc = 0.5
+            bin_width = 0.1
+
+            center_times = []
+            b_pos_values: list[float] = []
+            b_pos_errors: list[float] = []
+            mc_maxc_values: list[float] = []
+
+            for start in range(0, len(events) - window_size + 1, step):
+                win_events = events[start : start + window_size]
+                win_times = np.asarray(
+                    [ev.time.timestamp() for ev in win_events],
+                    dtype=float,
+                )
+                win_mags = np.asarray(
+                    [ev.magnitude.average for ev in win_events],
+                    dtype=float,
+                )
+
+                center_times.append(win_events[window_size // 2].time)
+
+                # b-positive b-value
+                _, mag_diff = _calculate_dmag_bpositive(
+                    win_times, win_mags, d_mc=delta_mc
+                )
+                if len(mag_diff) >= 10:
+                    b_pos = 1.0 / (np.log(10.0) * np.mean(mag_diff))
+                    b_pos_err = b_pos / np.sqrt(mag_diff.size)
+                else:
+                    b_pos, b_pos_err = np.nan, np.nan
+                b_pos_values.append(b_pos)
+                b_pos_errors.append(b_pos_err)
+
+                # MaxC magnitude of completeness
+                bin_edges = np.arange(
+                    np.min(win_mags) - bin_width / 2,
+                    np.max(win_mags) + bin_width,
+                    bin_width,
+                )
+                ev_count, _ = np.histogram(win_mags, bins=bin_edges)
+                mc_maxc_values.append(bin_edges[np.argmax(ev_count)])
+
+            if not center_times:
+                return
+
+            _color_b = "#E07B54"
+            _color_b_band = "rgba(224,123,84,0.2)"
+            _color_mc = "#5B8DB8"
+            _color_mc_band = "rgba(91,141,184,0.2)"
+
+            b_pos_arr = np.asarray(b_pos_values, dtype=float)
+            b_pos_err_arr = np.asarray(b_pos_errors, dtype=float)
+            b_upper = (b_pos_arr + b_pos_err_arr).tolist()
+            b_lower = (b_pos_arr - b_pos_err_arr).tolist()
+
+            mc_arr = np.asarray(mc_maxc_values, dtype=float)
+            mc_upper = (mc_arr + bin_width / 2).tolist()
+            mc_lower = (mc_arr - bin_width / 2).tolist()
+
+            fig.data = []
+            fig.update_layout(xaxis={"range": [events[0].time, events[-1].time]})
+
+            # b-positive band
+            fig.add_trace(
+                go.Scatter(
+                    x=center_times + center_times[::-1],
+                    y=b_upper + b_lower[::-1],
+                    fill="toself",
+                    fillcolor=_color_b_band,
+                    line={"width": 0},
+                    hoverinfo="skip",
+                    showlegend=False,
+                    yaxis="y",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=center_times,
+                    y=b_pos_values,
+                    mode="lines+markers",
+                    name="b-positive",
+                    line={"color": _color_b, "width": 1.5},
+                    marker={"color": _color_b, "size": 6, "line": {"width": 0}},
+                    yaxis="y",
+                )
+            )
+
+            # Mc (MaxC) band
+            fig.add_trace(
+                go.Scatter(
+                    x=center_times + center_times[::-1],
+                    y=mc_upper + mc_lower[::-1],
+                    fill="toself",
+                    fillcolor=_color_mc_band,
+                    line={"width": 0},
+                    hoverinfo="skip",
+                    showlegend=False,
+                    yaxis="y2",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=center_times,
+                    y=mc_maxc_values,
+                    mode="lines+markers",
+                    name="Mc (MaxC)",
+                    line={"color": _color_mc, "width": 1.5},
+                    marker={"color": _color_mc, "size": 6, "line": {"width": 0}},
+                    yaxis="y2",
+                )
+            )
+            plot.update()
+
+        self.catalog.updated.subscribe(update_plot)
         background_tasks.create(update_plot())
 
 

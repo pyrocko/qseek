@@ -6,6 +6,7 @@ from qseek.ui.components.magnitudes import (
     MagnitudeFrequency,
     MagnitudeFrequencyBPositive,
     MagnitudeRate,
+    MagnitudeStatisticsOverTime,
     StationMagnitudesResiduals,
 )
 from qseek.ui.state import get_tab_state
@@ -29,6 +30,11 @@ async def magnitudes_page() -> None:
         rate = MagnitudeRate(catalog)
         rate.header()
         await rate.view(show_density=True)
+
+    with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
+        stats_over_time = MagnitudeStatisticsOverTime(catalog)
+        stats_over_time.header()
+        await stats_over_time.view()
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12 col-md"):

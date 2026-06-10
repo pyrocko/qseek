@@ -78,7 +78,7 @@ def drawer(manager: SourceManager) -> None:
             _drawer_button("Network", "hub", "/network")
             _drawer_button("Magnitudes", "equalizer", "/magnitudes")
             _drawer_button("Analysis", "analytics", "/analysis")
-            _drawer_button("Clusters", "join_right", "/clusters")
+            _drawer_button("Clusters", "spoke", "/clusters")
             _drawer_button("Config", "settings", "/config")
 
         ui.space()
