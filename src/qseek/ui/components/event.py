@@ -13,14 +13,14 @@ KM = 1e3
 
 
 class ObservationsAzimuthsPlot(EventComponent):
-    name = "Azimuthal Observations"
+    title = "Azimuthal Observations"
     description = """
 Azimuthal plot of station observations for each phase. Colored diamonds = observed
 (color is delay), size is pick confidence. No modelled arrivals shown here since
 azimuths are not meaningful without a reference event.
 """
 
-    async def view(self, phases: list[str]) -> None:
+    async def plot(self, phases: list[str]) -> None:
         ev = self.event
         n = len(phases)
 
@@ -150,7 +150,7 @@ azimuths are not meaningful without a reference event.
 
 
 class TravelTimeResidualPlot(EventComponent):
-    name = "Travel Time Residuals"
+    title = "Travel Time Residuals"
     description = """
 Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
  phase vs. epicentral distance. Marker size scales with pick confidence. Color encodes
@@ -158,7 +158,7 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
  stations with no pick for that phase.
 """
 
-    async def view(self, phases: list[str]) -> None:
+    async def plot(self, phases: list[str]) -> None:
         ev = self.event
 
         distances = [ev.surface_distance_to(r) / 1000.0 for r in ev.receivers]
@@ -296,7 +296,7 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
 
 
 class WadatiDiagramEvent(EventComponent):
-    name = "Wadati Diagram"
+    title = "Wadati Diagram"
     description = """
 P travel time vs. S-P travel time per station. The slope gives
 <i>V<sub>P</sub>/V<sub>S</sub></i>. Filled markers = both picks observed
@@ -304,7 +304,7 @@ P travel time vs. S-P travel time per station. The slope gives
 Open grey markers = modelled arrivals for reference.
 """
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         ev = self.event
         origin_ts = ev.time.timestamp()
 
@@ -490,12 +490,12 @@ Open grey markers = modelled arrivals for reference.
 
 
 class EventMap(EventComponent):
-    name = "Event Map"
+    title = "Event Map"
     description = """
 Map showing event location and online stations contributing to the location.
 """
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         ev = self.event
 
         m = ui.leaflet(center=(ev.effective_lat, ev.effective_lon), zoom=12).classes(
@@ -513,7 +513,7 @@ Map showing event location and online stations contributing to the location.
             {
                 "lat": r.effective_lat,
                 "lon": r.effective_lon,
-                "label": f"{r.network}.{r.station}.{r.location}",
+                "label": r.nsl.pretty_str(strip=True),
                 "distance_km": round(ev.surface_distance_to(r) / 1000.0, 1),
                 "n_picks": r.n_picks(),
             }
@@ -556,7 +556,8 @@ Map showing event location and online stations contributing to the location.
             {json.dumps(stations)}.forEach(function(s) {{
                 var icon = s.n_picks > 0 ? stationIconWithPick : stationIconNoPick;
                 group.addLayer(L.marker([s.lat, s.lon], {{icon: icon}})
-                    .bindTooltip(`<b>${{s.label}}</b>` + '<br>Distance: ' + s.distance_km + ' km' + (s.n_picks ? `<br>Picks: ${{s.n_picks}}` : '<br><i>No picks</i>'), {{permanent: false}}));
+                    .bindTooltip(`<b>${{s.label}}</b>` + '<br>Distance: ' + s.distance_km + ' km' + (s.n_picks ? `<br>Picks: ${{s.n_picks}}` : '<br><i>No picks</i>'), {{permanent: false}})
+                    .on('click', function() {{ window.location.href = '/station/' + s.label; }}));
             }});
             group.addLayer(L.marker([{ev.effective_lat}, {ev.effective_lon}], {{icon: eventIcon, zIndexOffset: 1000}})
                 .bindTooltip('<b>Event</b><br>{ev.time.strftime("%Y-%m-%d %H:%M:%S")} UTC<br>Lat: {ev.effective_lat:.4f}°<br>Lon: {ev.effective_lon:.4f}°<br>Depth: {ev.effective_depth / 1000.0:.1f} km', {{permanent: false}}));
@@ -566,14 +567,14 @@ Map showing event location and online stations contributing to the location.
 
 
 class EventStationMagnitudes(EventComponent):
-    name = "Station Magnitudes"
+    title = "Station Magnitudes"
 
     description = """
 Station magnitudes for each phase. Only shown if station magnitudes are available
 for the event.
 """
 
-    async def view(self, magnitude: EventMagnitude) -> None:
+    async def plot(self, magnitude: EventMagnitude) -> None:
         # self.header()
 
         if not magnitude or not magnitude.station_magnitudes:

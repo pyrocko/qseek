@@ -1,3 +1,4 @@
+import numpy as np
 from nicegui import ui
 
 from qseek.ui.components.map import OverviewMap
@@ -8,33 +9,44 @@ from qseek.ui.components.network import (
     StationTraveltimeResiduals,
 )
 from qseek.ui.state import get_tab_state
+from qseek.ui.utils import card_header
 
 
 async def network_page() -> None:
-    catalog = await get_tab_state().get_catalog()
+    state = get_tab_state()
+    catalog = await state.get_catalog()
+    search = await state.run.get_search()
+    stations = search.stations
+    events = catalog.full_catalog.events
 
     with ui.column().classes("w-full gap-4"):
         with ui.card().classes("w-full"):
-            station_map = OverviewMap(catalog)
-            station_map.header(
-                title="Network Overview",
-                description="Map of stations. Click on a station to view its details.",
+            ui.label("Network Stations").classes("text-lg font-bold")
+            ui.label(f"{stations.n_stations} stations available for search")
+            station_map = OverviewMap(
+                center_lat=np.mean([sta.lat for sta in stations]),
+                center_lon=np.mean([sta.lon for sta in stations]),
             )
-            await station_map.view(show_events=False)
-            station_table = StationTable(catalog)
-            await station_table.view()
+            await station_map.initialized()
+            await station_map.add_stations(stations)
+
+            StationTable(stations)
 
         with ui.card().classes("w-full"):
-            station_coverage = StationCoverage(catalog)
-            station_coverage.header()
-            await station_coverage.view()
+            card_header(StationCoverage.title, StationCoverage.description)
+            station_coverage = StationCoverage()
+            await station_coverage.plot_coverage(events)
 
         with ui.card().classes("w-full"):
-            station_picks = StationsPickPerformance(catalog)
-            station_picks.header()
-            await station_picks.view()
+            card_header(
+                StationsPickPerformance.title, StationsPickPerformance.description
+            )
+            station_picks = StationsPickPerformance()
+            await station_picks.plot_stations(events)
 
         with ui.card().classes("w-full"):
-            residuals = StationTraveltimeResiduals(catalog)
-            residuals.header()
-            await residuals.view()
+            card_header(
+                StationTraveltimeResiduals.title, StationTraveltimeResiduals.description
+            )
+            residuals = StationTraveltimeResiduals()
+            await residuals.plot_residuals(events)

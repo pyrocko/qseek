@@ -13,7 +13,7 @@ from qseek.ui.components.event import (
     WadatiDiagramEvent,
 )
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import stat_card
+from qseek.ui.utils import StatCard, card_header
 
 
 async def event_page(event_id: str) -> None:
@@ -46,10 +46,8 @@ async def event_page(event_id: str) -> None:
                 if mag.error is not None and not math.isnan(mag.error)
                 else ""
             )
-            mag_subtitle += (
-                f" (computed from {len(mag.station_magnitudes)} station magnitudes)"
-            )
-            stat_card(
+            mag_subtitle += f" ({len(mag.station_magnitudes)} stations)"
+            StatCard(
                 "Magnitude",
                 f"{mag.average:.2f}",
                 "speed",
@@ -59,7 +57,7 @@ async def event_page(event_id: str) -> None:
                 f"Error is the median absolute deviation.",
             )
 
-        stat_card(
+        StatCard(
             "Semblance",
             f"{event.semblance:.3f}",
             icon="graphic_eq",
@@ -68,7 +66,7 @@ async def event_page(event_id: str) -> None:
             "detection.",
         )
         picks = ev.receivers.get_num_phase_picks()
-        stat_card(
+        StatCard(
             "Picks",
             str(ev.n_picks),
             icon="network_ping",
@@ -76,7 +74,7 @@ async def event_page(event_id: str) -> None:
             tooltip="Number of phase arrivals associated with the event. Qseek "
             "associates picks based on their contribution to the semblance ",
         )
-        stat_card(
+        StatCard(
             "Stations",
             str(ev.n_stations),
             icon="sensors",
@@ -86,7 +84,7 @@ async def event_page(event_id: str) -> None:
         )
         # suf_lat = "E" if lon >= 0 else "W"
         # suf_lon = "N" if lat >= 0 else "S"
-        # _stat_card(
+        # _StatCard(
         #     "Coordinates",
         #     f"{lat:.4f}°{suf_lat} {lon:.4f}°{suf_lon}",
         #     icon="explore",
@@ -94,7 +92,7 @@ async def event_page(event_id: str) -> None:
         #     if ev.uncertainty
         #     else "",
         # )
-        stat_card(
+        StatCard(
             "Depth",
             f"{depth_km:.2f} km",
             icon="vertical_align_bottom",
@@ -105,7 +103,7 @@ async def event_page(event_id: str) -> None:
             "derived from the 2% semblance threshold around the peak node.",
         )
         rms_phases = ev.receivers.get_rms()
-        stat_card(
+        StatCard(
             "RMS",
             f"{ev.rms:.3f} s",
             icon="adjust",
@@ -121,26 +119,42 @@ async def event_page(event_id: str) -> None:
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12"):
+            card_header(
+                EventMap.title,
+                EventMap.description,
+            )
+
             event_map = EventMap(event.event)
-            event_map.header()
-            await event_map.view()
+            await event_map.plot()
         with ui.card().classes("col-12 col-md"):
+            card_header(
+                WadatiDiagramEvent.title,
+                WadatiDiagramEvent.description,
+            )
             wadati = WadatiDiagramEvent(event.event)
-            wadati.header()
-            await wadati.view()
+            await wadati.plot()
 
         with ui.card().classes("col-12 col-md"):
+            card_header(
+                TravelTimeResidualPlot.title,
+                TravelTimeResidualPlot.description,
+            )
             tt_residual = TravelTimeResidualPlot(event.event)
-            tt_residual.header()
-            await tt_residual.view(phases)
+            await tt_residual.plot(phases)
 
         with ui.card().classes("col-12"):
+            card_header(
+                ObservationsAzimuthsPlot.title,
+                ObservationsAzimuthsPlot.description,
+            )
             obs_azimuth = ObservationsAzimuthsPlot(event.event)
-            obs_azimuth.header()
-            await obs_azimuth.view(phases)
+            await obs_azimuth.plot(phases)
 
         for ev_mag in ev.magnitudes:
             with ui.card().classes("col-12"):
+                card_header(
+                    EventStationMagnitudes.title,
+                    EventStationMagnitudes.description,
+                )
                 sta_mag = EventStationMagnitudes(ev)
-                sta_mag.header()
-                await sta_mag.view(ev_mag)
+                await sta_mag.plot(ev_mag)

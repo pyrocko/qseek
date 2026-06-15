@@ -1,30 +1,38 @@
+from __future__ import annotations
+
 import asyncio
 import json
+from typing import TYPE_CHECKING, Iterable
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
-from nicegui import background_tasks, ui
+from nicegui import ui
 
 from qseek.ui.base import Component
-from qseek.ui.state import get_tab_state
+from qseek.ui.models import EventMinimal
 from qseek.ui.utils import EVENT_ANIMATED_SVG
+
+if TYPE_CHECKING:
+    from nicegui.elements.leaflet import Leaflet
+
+    from qseek.models.station import Station
 
 
 class OverviewMap(Component):
-    name = "Event Map"
-    description = """Map of detected events. Color corresponds to depth and size corresponds to magnitude."""
+    title = "Event Map"
+    description = """
+Map of detected events. Color corresponds to depth and size corresponds to magnitude.
+"""
+    _map: Leaflet | None = None
+    _initialized = False
 
-    async def view(
+    def __init__(
         self,
-        show_events: bool = True,
-        marker_colors: list[str] | None = None,
+        center_lat: float,
+        center_lon: float,
     ) -> None:
-        state = get_tab_state()
-        catalog = self.catalog
-        cmap = cm.get_cmap("magma_r")
-
-        m = ui.leaflet(center=(np.mean(catalog.lats), np.mean(catalog.lons))).classes(
+        m = ui.leaflet(center=(center_lat, center_lon)).classes(
             "w-full h-128 rounded-lg shadow"
         )
         m.clear_layers()
@@ -36,9 +44,13 @@ class OverviewMap(Component):
                 "maxZoom": 20,
             },
         )
+        self._map = m
 
-        await m.initialized()
-        with m:
+    async def initialized(self):
+        if self._initialized:
+            return
+        await self._map.initialized()
+        with self._map as m:
             ui.run_javascript(
                 f"""
                 const map = getElement({m.id}).map;
@@ -48,91 +60,92 @@ class OverviewMap(Component):
                 map._stationGroup = L.featureGroup().addTo(map);
                 """,
             )
+            self._initialized = True
 
-        async def update_markers():
-            if not show_events:
-                return
-
-            events = catalog.events
-            if not events:
-                return
-
+    async def add_event_markers(
+        self,
+        events: list[EventMinimal],
+        cmap: str = "magma_r",
+        marker_colors: list[str] | None = None,
+        show_latest: bool = True,
+    ):
+        if marker_colors is None:
+            mpl_cmap = cm.get_cmap(cmap)
             depths = np.array([ev.depth for ev in events])
             norm = mcolors.Normalize(vmin=depths.min(), vmax=depths.max())
-            colors = (
-                [mcolors.to_hex(cmap(norm(d))) for d in depths]
+            marker_colors = (
+                [mcolors.to_hex(mpl_cmap(norm(d))) for d in depths]
                 if marker_colors is None
                 else marker_colors
             )
-            marker_data = [
-                [float(ev.lat), float(ev.lon), float(ev.semblance), color, str(ev.uid)]
-                for ev, color in zip(events, colors, strict=True)
-            ]
-            marker_data = sorted(
-                marker_data, key=lambda x: x[2]
-            )  # sort by depth for better layering
-            latest = max(catalog.events, key=lambda ev: ev.time)
-            latest_data = [float(latest.lat), float(latest.lon), str(latest.uid)]
-            data, latest_json = await asyncio.to_thread(
-                lambda: (json.dumps(marker_data), json.dumps(latest_data))
+
+        marker_data = [
+            [float(ev.lat), float(ev.lon), float(ev.semblance), color, str(ev.uid)]
+            for ev, color in zip(events, marker_colors, strict=True)
+        ]
+        marker_data = sorted(marker_data, key=lambda x: x[2])  # sort by depth
+
+        data = await asyncio.to_thread(json.dumps, marker_data)
+        with self._map as m:
+            ui.run_javascript(
+                f"""
+                const map = getElement({m.id}).map;
+                map._eventGroup.clearLayers();
+                const data = {data};
+                data.forEach(point => {{
+                    L.circleMarker([point[0], point[1]], {{
+                        renderer: map._canvasRenderer,
+                        radius: point[2] * 4,
+                        stroke: false,
+                        fillColor: point[3],
+                        fillOpacity: 0.7
+                    }}).on('click', () => window.location.href = 'event/' + point[4])
+                    .addTo(map._eventGroup);
+                }});
+                """
             )
-            with m:
+            if show_latest:
+                latest = max(events, key=lambda ev: ev.time)
+                latest_data = [float(latest.lat), float(latest.lon), str(latest.uid)]
                 ui.run_javascript(
                     f"""
                     const map = getElement({m.id}).map;
-                    map._eventGroup.clearLayers();
-                    const data = {data};
-                    data.forEach(point => {{
-                        L.circleMarker([point[0], point[1]], {{
-                            renderer: map._canvasRenderer,
-                            radius: point[2] * 4,
-                            stroke: false,
-                            fillColor: point[3],
-                            fillOpacity: 0.7
-                        }}).on('click', () => window.location.href = 'event/' + point[4])
-                        .addTo(map._eventGroup);
+                    const latest = {json.dumps(latest_data)};
+                    const latestIcon = L.divIcon({{
+                        html: '{EVENT_ANIMATED_SVG}',
+                        iconSize: [40, 40],
+                        iconAnchor: [20, 20],
+                        className: ''
                     }});
+                    L.marker([latest[0], latest[1]], {{icon: latestIcon}})
+                        .on('click', () => window.location.href = 'event/' + latest[2])
+                        .addTo(map._eventGroup);
                     """
                 )
-                if state.run.live:
-                    ui.run_javascript(
-                        f"""
-                        const map = getElement({m.id}).map;
-                        const latest = {latest_json};
-                        const latestIcon = L.divIcon({{
-                            html: '{EVENT_ANIMATED_SVG}',
-                            iconSize: [40, 40],
-                            iconAnchor: [20, 20],
-                            className: ''
-                        }});
-                        L.marker([latest[0], latest[1]], {{icon: latestIcon}})
-                            .on('click', () => window.location.href = 'event/' + latest[2])
-                            .addTo(map._eventGroup);
-                        """
-                    )
 
-        async def add_stations():
-            search = await state.run.get_search()
-            station_data = [
-                {
-                    "lat": float(sta.effective_lat),
-                    "lon": float(sta.effective_lon),
-                    "label": sta.nsl.pretty_str(strip=True),
-                    "elevation": sta.elevation,
-                    "depth": sta.depth,
-                }
-                for sta in search.stations
-            ]
-            data = await asyncio.to_thread(json.dumps, station_data)
-            station_svg = (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="0.75">'
-                '<polygon points="8,0.5 14.5,11.75 1.5,11.75"'
-                ' fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
-                "</svg>"
-            )
-            with m:
-                ui.run_javascript(
-                    f"""
+        await self.update_extent()
+
+    async def add_stations(self, stations: Iterable[Station]):
+        station_data = [
+            {
+                "lat": float(sta.effective_lat),
+                "lon": float(sta.effective_lon),
+                "label": sta.nsl.pretty_str(strip=True),
+                "elevation": sta.elevation,
+                "depth": sta.depth,
+            }
+            for sta in stations
+        ]
+        data = await asyncio.to_thread(json.dumps, station_data)
+        station_svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="0.75">'
+            '<polygon points="8,0.5 14.5,11.75 1.5,11.75"'
+            ' fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
+            "</svg>"
+        )
+        with self._map as m:
+            ui.run_javascript(
+                f"""
                 const map = getElement({m.id}).map;
                 const stations = {data};
                 const stationIcon = L.divIcon({{
@@ -151,15 +164,12 @@ class OverviewMap(Component):
                         .addTo(map._stationGroup);
                 }});
                 """,
-                )
+            )
 
-        async def update_map():
-            async with asyncio.TaskGroup() as tg:
-                tg.create_task(update_markers())
-                tg.create_task(add_stations())
-            with m:
-                ui.run_javascript(
-                    f"""
+    async def update_extent(self):
+        with self._map as m:
+            ui.run_javascript(
+                f"""
                     const map = getElement({m.id}).map;
                     const b = map._eventGroup.getBounds();
                     if (b.isValid()) {{
@@ -172,7 +182,4 @@ class OverviewMap(Component):
                         }}
                     }}
                     """,
-                )
-
-        self.catalog.updated.subscribe(update_markers)
-        background_tasks.create(update_map(), name="update-map")
+            )

@@ -7,7 +7,7 @@ from qseek.ui.components.station import (
     StationTraveltimeResidual,
 )
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import stat_card
+from qseek.ui.utils import StatCard, card_header
 
 
 async def station_page(station_nsl: str) -> None:
@@ -43,30 +43,30 @@ async def station_page(station_nsl: str) -> None:
 
     # Stat cards
     with ui.row().classes("w-full items-stretch"):
-        stat_card(
+        StatCard(
             "Code",
             f"{station.nsl.pretty_str(strip=True)}",
             "sensors",
             tooltip="Network-Station-Location code (NSL)",
         )
-        stat_card(
+        StatCard(
             "Latitude",
             f"{station.effective_lat:.5f}°",
             "explore",
         )
-        stat_card(
+        StatCard(
             "Longitude",
             f"{station.effective_lon:.5f}°",
             "explore",
         )
-        stat_card(
+        StatCard(
             "Elevation",
             f"{station.elevation:,.0f} m",
             "terrain",
             subtitle=f"Effective: {station.effective_elevation:,.0f} m",
         )
         if station.depth > 0:
-            stat_card(
+            StatCard(
                 "Depth",
                 f"{station.depth:,.0f} m",
                 "vertical_align_bottom",
@@ -74,21 +74,33 @@ async def station_page(station_nsl: str) -> None:
 
     with ui.column().classes("w-full gap-4"):
         with ui.card().classes("w-full"):
+            card_header(
+                StationMap.title,
+                StationMap.description,
+            )
             station_map = StationMap(station)
-            station_map.header()
-            await station_map.view()
+            await station_map.plot()
 
         with ui.card().classes("w-full"):
+            card_header(
+                StationDetails.title,
+                StationDetails.description,
+            )
             details = StationDetails(station)
-            details.header()
-            await details.view()
+            await details.plot()
 
         with ui.card().classes("w-full"):
+            card_header(
+                StationTraveltimeResidual.title,
+                StationTraveltimeResidual.description,
+            )
             station_residual = StationTraveltimeResidual(station)
-            station_residual.header()
-            await station_residual.view()
+            await station_residual.plot()
 
         with ui.card().classes("w-full"):
+            card_header(
+                StationPickPerformance.title,
+                StationPickPerformance.description,
+            )
             pick_perf = StationPickPerformance(station)
-            pick_perf.header()
-            await pick_perf.view()
+            await pick_perf.plot()

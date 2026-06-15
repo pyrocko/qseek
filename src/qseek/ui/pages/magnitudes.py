@@ -7,14 +7,16 @@ from qseek.ui.components.magnitudes import (
     MagnitudeFrequencyBPositive,
     MagnitudeRate,
     MagnitudeStatisticsOverTime,
-    StationMagnitudesResiduals,
+    StationsMagnitudesResiduals,
 )
 from qseek.ui.state import get_tab_state
+from qseek.ui.utils import card_header
 
 
 async def magnitudes_page() -> None:
     state = get_tab_state()
     catalog = await state.get_catalog()
+    events = catalog.events
 
     if not catalog.has_magnitudes():
         with ui.column().classes("w-full items-center justify-center gap-3 mt-16"):
@@ -27,30 +29,41 @@ async def magnitudes_page() -> None:
         return
 
     with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
-        rate = MagnitudeRate(catalog)
-        rate.header()
-        await rate.view(show_density=True)
+        card_header(MagnitudeRate.title, MagnitudeRate.description)
+        mag_rate = MagnitudeRate()
+        await mag_rate.plot_events(
+            events,
+            show_semblance=not catalog.has_magnitudes(),
+            show_density=True,
+        )
 
     with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
-        stats_over_time = MagnitudeStatisticsOverTime(catalog)
-        stats_over_time.header()
-        await stats_over_time.view()
+        card_header(
+            MagnitudeStatisticsOverTime.title, MagnitudeStatisticsOverTime.description
+        )
+        stats_over_time = MagnitudeStatisticsOverTime()
+        await stats_over_time.plot_events(events)
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         with ui.card().classes("col-12 col-md"):
-            freq = MagnitudeFrequency(catalog)
-            freq.header()
-            await freq.view()
+            card_header(MagnitudeFrequency.title, MagnitudeFrequency.description)
+            freq = MagnitudeFrequency()
+            await freq.plot_events(events)
 
         with ui.card().classes("col-12 col-md"):
-            semblance = MagnitudeFrequencyBPositive(catalog)
-            semblance.header()
-            await semblance.view()
+            card_header(
+                MagnitudeFrequencyBPositive.title,
+                MagnitudeFrequencyBPositive.description,
+            )
+            b_positive = MagnitudeFrequencyBPositive()
+            await b_positive.plot_events(events)
 
     with (
         ui.row().classes("w-full flex-1 items-stretch"),
         ui.card().classes("col-12 col-md"),
     ):
-        over_station = StationMagnitudesResiduals(catalog)
-        over_station.header()
-        await over_station.view()
+        card_header(
+            StationsMagnitudesResiduals.title, StationsMagnitudesResiduals.description
+        )
+        over_station = StationsMagnitudesResiduals()
+        await over_station.plot_residuals(events)

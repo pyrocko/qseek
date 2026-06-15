@@ -39,47 +39,13 @@ def attach_plotly_events(plot: ui.plotly) -> None:
     """)
 
 
-def stat_card(
-    label: str,
-    value: str,
-    icon: str,
-    subtitle: str = "",
-    tooltip: str = "",
-) -> None:
-    """Helper function to create a statistic card with consistent styling.
-
-    Args:
-        label: The label for the statistic (e.g. "Total Events").
-        value: The value to display (e.g. "42").
-        icon: The name of the Material Icon to display (e.g. "crisis_alert").
-        subtitle: Optional subtitle to display below the value.
-        tooltip: Optional tooltip text to display when hovering over the info icon.
-    """
-    with (
-        ui.card().classes("flex-1 min-w-40"),
-        ui.column().classes("p-1 pb-0 gap-1 w-full"),
-    ):
-        with ui.row().classes("items-center gap-2 w-full"):
-            ui.icon(icon).classes("text-lg text-grey-8")
-            ui.label(label).classes(
-                "text-xs text-grey-8 uppercase tracking-wider font-semibold"
-            )
-            if tooltip:
-                ui.space()
-                with ui.icon("help_outline").classes("text-sm text-grey-5"):
-                    ui.tooltip(tooltip).props("max-width=260px").classes("text-xs")
-        ui.label(value).classes("text-2xl font-bold text-grey-10 mt-1")
-        # Always render subtitle line to keep card height uniform
-        ui.label(subtitle or "\u00a0").classes("text-xs text-grey-8 leading-tight")
-
-
 # Animated radiating-wave event icon — matches logo_light.svg language:
 # same color (#e4004b), ease-out expansion, pause after burst, stagger 1s.
 # 40x40 SVG, center at (20,20), rings expand r=5→18, dur=6s (3s on + 3s pause).
 
 _event_ring = (
     '<circle cx="20" cy="20" r="5" fill="none" stroke="#e4004b" stroke-width="2">'
-    '<animate attributeName="r"       values="5;18;18" keyTimes="0;0.5;1"'
+    '<animate attributeName="r" values="5;18;18" keyTimes="0;0.5;1"'
     ' calcMode="spline" keySplines="0.2 0 0.8 1; 0 0 1 1"'
     ' dur="6s" repeatCount="indefinite" begin="{begin}"/>'
     '<animate attributeName="opacity" values="0.8;0;0" keyTimes="0;0.5;1"'
@@ -95,3 +61,48 @@ EVENT_ANIMATED_SVG = (
     + '<circle cx="20" cy="20" r="5" fill="#e4004b" stroke="black" stroke-width="1.5"/>'
     + "</svg>"
 )
+
+
+def card_header(title, description: str = "") -> None:
+    ui.label(title).classes("text-h5")
+    if description:
+        ui.html(
+            description,
+            tag="div",
+            sanitize=False,
+        ).classes("text-body2 mb-2")
+
+
+class StatCard(ui.card):
+    def __init__(
+        self,
+        label: str,
+        value: str,
+        icon: str,
+        subtitle: str = "",
+        tooltip: str = "",
+    ):
+        super().__init__()
+        with (
+            self.classes("flex-1 min-w-40"),
+            ui.column().classes("p-1 pb-0 gap-1 w-full"),
+        ):
+            with ui.row().classes("items-center gap-2 w-full"):
+                ui.icon(icon).classes("text-lg text-grey-8")
+                ui.label(label).classes(
+                    "text-xs text-grey-8 uppercase tracking-wider font-semibold"
+                )
+                if tooltip:
+                    ui.space()
+                    with ui.icon("help_outline").classes("text-sm text-grey-5"):
+                        ui.tooltip(tooltip).props("max-width=260px").classes("text-xs")
+            self._value = ui.label(value).classes(
+                "text-2xl font-bold text-grey-10 mt-1"
+            )
+            # Always render subtitle line to keep card height uniform
+            self._subtitle = ui.label(subtitle or "\u00a0").classes(
+                "text-xs text-grey-8 leading-tight"
+            )
+
+        self.bind_value = self._value.bind_text_from
+        self.bind_subtitle = self._subtitle.bind_text_from

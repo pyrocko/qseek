@@ -166,6 +166,7 @@ def catalog_filter_dialog():
                     with state.loading_message("Applying filters..."):
                         dialog.close()
                         catalog.filter_events()
+                        catalog.updated.emit()
 
                 def reset_filters():
                     catalog.reset_filters(reset_user_filters=True)

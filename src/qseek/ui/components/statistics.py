@@ -5,23 +5,26 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import plotly.graph_objects as go
-from nicegui import background_tasks, ui
+from nicegui import ui
+from nicegui.elements.plotly import Plotly
 from scipy.stats import gaussian_kde
 
 from qseek.ui.analysis.vpvs import PSCollection
 from qseek.ui.base import Component
-from qseek.ui.state import get_tab_state
+from qseek.ui.models import EventMinimal
 from qseek.ui.utils import attach_plotly_events
 from qseek.utils import async_weighted_median
 
 
 class EventRate(Component):
-    name = "Event Rate"
+    title = "Event Rate"
     description = """
 Number of detected events per day/hour/minute and cumulative number of events over time.
 """
+    plot: Plotly | None = None
+    figure: go.Figure | None = None
 
-    async def view(self) -> None:
+    def __init__(self) -> None:
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -36,206 +39,80 @@ Number of detected events per day/hour/minute and cumulative number of events ov
             },
             showlegend=False,
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
+        self.plot = ui.plotly(fig).classes("w-full h-64")
+        self.figure = fig
 
-        async def update_plot():
-            catalog = self.catalog
-            if not catalog.events:
-                return
+    async def add_events(self, events: list[EventMinimal]) -> None:
+        fig = self.figure
+        if not events:
+            return
 
-            times = catalog.times
-            duration = times[-1] - times[0]
+        times = [ev.time for ev in events]
+        duration = times[-1] - times[0]
 
-            if duration > timedelta(days=180):
-                bin_sec = int(timedelta(days=1).total_seconds())
-                bin_label = "Events / day"
-            elif duration > timedelta(days=14):
-                bin_sec = int(timedelta(hours=12).total_seconds())
-                bin_label = "Events / 12 hours"
-            elif duration > timedelta(hours=72):
-                bin_sec = int(timedelta(hours=6).total_seconds())
-                bin_label = "Events / 6 hours"
-            elif duration > timedelta(hours=24):
-                bin_sec = int(timedelta(hours=1).total_seconds())
-                bin_label = "Events / hour"
-            elif duration > timedelta(hours=2):
-                bin_sec = int(timedelta(minutes=10).total_seconds())
-                bin_label = "Events / 10 min"
-            else:
-                bin_sec = int(timedelta(minutes=1).total_seconds())
-                bin_label = "Events / minute"
+        if duration > timedelta(days=180):
+            bin_sec = int(timedelta(days=1).total_seconds())
+            bin_label = "Events / day"
+        elif duration > timedelta(days=14):
+            bin_sec = int(timedelta(hours=12).total_seconds())
+            bin_label = "Events / 12 hours"
+        elif duration > timedelta(hours=72):
+            bin_sec = int(timedelta(hours=6).total_seconds())
+            bin_label = "Events / 6 hours"
+        elif duration > timedelta(hours=24):
+            bin_sec = int(timedelta(hours=1).total_seconds())
+            bin_label = "Events / hour"
+        elif duration > timedelta(hours=2):
+            bin_sec = int(timedelta(minutes=10).total_seconds())
+            bin_label = "Events / 10 min"
+        else:
+            bin_sec = int(timedelta(minutes=1).total_seconds())
+            bin_label = "Events / minute"
 
-            time_numeric = np.array([t.timestamp() for t in times])
-            t0 = np.floor(time_numeric.min() / bin_sec) * bin_sec
-            bin_edges = np.arange(t0, time_numeric.max() + bin_sec, bin_sec)
-            counts, _ = np.histogram(time_numeric, bins=bin_edges)
+        time_numeric = np.array([t.timestamp() for t in times])
+        t0 = np.floor(time_numeric.min() / bin_sec) * bin_sec
+        bin_edges = np.arange(t0, time_numeric.max() + bin_sec, bin_sec)
+        counts, _ = np.histogram(time_numeric, bins=bin_edges)
 
-            bin_starts = [
-                datetime.fromtimestamp(e, tz=timezone.utc) for e in bin_edges[:-1]
-            ]
-            cumulative = np.cumsum(counts)
+        bin_starts = [
+            datetime.fromtimestamp(e, tz=timezone.utc) for e in bin_edges[:-1]
+        ]
+        cumulative = np.cumsum(counts)
 
-            fig.data = []
-            fig.update_layout(yaxis_title=bin_label)
-            fig.add_bar(
+        fig.data = []
+        fig.update_layout(yaxis_title=bin_label)
+        fig.add_bar(
+            x=bin_starts,
+            y=counts,
+            name=bin_label,
+            marker={"color": "gray", "line": {"width": 0}},
+            width=bin_sec * 1000,
+            hoverinfo="none",
+            hovertemplate=None,
+            showlegend=False,
+        )
+        fig.add_trace(
+            go.Scattergl(
                 x=bin_starts,
-                y=counts,
-                name=bin_label,
-                marker={"color": "gray", "line": {"width": 0}},
-                width=bin_sec * 1000,
+                y=cumulative,
+                mode="lines",
+                name="Cumulative",
+                line={"color": "black", "width": 1.5},
                 hoverinfo="none",
                 hovertemplate=None,
-                showlegend=False,
+                yaxis="y2",
             )
-            fig.add_trace(
-                go.Scattergl(
-                    x=bin_starts,
-                    y=cumulative,
-                    mode="lines",
-                    name="Cumulative",
-                    line={"color": "black", "width": 1.5},
-                    hoverinfo="none",
-                    hovertemplate=None,
-                    yaxis="y2",
-                )
-            )
-            plot.update()
-
-        self.catalog.updated.subscribe(update_plot)
-        background_tasks.create(update_plot())
-
-
-class MigrationPlot(Component):
-    name = "Migration Plot"
-    description = """
-Plot distance to octree center over time to visualize event migration. Size of markers
-corresponds to magnitude and color corresponds to depth (light = shallow, dark = deep).
-"""
-
-    async def view(self) -> None:
-        state = get_tab_state()
-
-        fig = go.Figure()
-        fig.update_layout(
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
-            template="plotly_white",
-            xaxis_title="Time",
-            yaxis_title="Distance to Center (m)",
         )
-
-        plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_events(plot)
-
-        catalog = await state.get_catalog()
-
-        async def update_plot():
-            distances = np.sqrt(
-                catalog.north_shifts**2 + catalog.east_shifts**2 + catalog.depths**2
-            )
-
-            fig.data = []
-            fig.add_trace(
-                go.Scattergl(
-                    x=catalog.times,
-                    y=distances,
-                    mode="markers",
-                    name="Migration Plot",
-                    hoverinfo="none",
-                    hovertemplate=None,
-                    customdata=catalog.uids,
-                    marker={
-                        "color": catalog.depths,
-                        "colorscale": "Magma_r",
-                        "size": catalog.semblances / catalog.semblances.max() * 15,
-                        "line": {"width": 0},
-                        "opacity": 0.3,
-                    },
-                )
-            )
-            plot.update()
-
-        catalog.updated.subscribe(update_plot)
-        background_tasks.create(update_plot())
-
-
-class DepthSection(Component):
-    name = "Depth Sections"
-    description = """
-Depth of detected events along profile line through the center.
-Color corresponds to time and size corresponds to semblance.
-"""
-
-    async def view(self, direction: str = "north-south") -> None:
-        state = get_tab_state()
-        fig = go.Figure()
-
-        fig.update_layout(
-            margin={"l": 0, "r": 55, "t": 0, "b": 0},
-            template="plotly_white",
-            xaxis_title="Distance to Center (m)",
-            yaxis_title="Depth (m)",
-            yaxis={"autorange": "reversed"},
-        )
-
-        plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_events(plot)
-
-        async def update_plot():
-            catalog = await state.get_catalog()
-
-            if direction == "north-south":
-                distances = catalog.north_shifts
-            else:
-                distances = catalog.east_shifts
-
-            times = catalog.times
-            times_num = np.array([(t - times[0]).total_seconds() for t in times]) / (
-                3600 * 24
-            )
-            fig.data = []
-            fig.add_trace(
-                go.Scattergl(
-                    x=distances,
-                    y=catalog.depths,
-                    mode="markers",
-                    name=self.name,
-                    customdata=catalog.uids,
-                    hoverinfo="none",
-                    hovertemplate=None,
-                    marker={
-                        "color": times_num,
-                        "colorscale": "Turbo",
-                        "showscale": True,
-                        "colorbar": {
-                            "title": {
-                                "text": "Days",
-                                "font": {"size": 10},
-                            },
-                            "thickness": 8,
-                            "len": 0.8,
-                            "outlinewidth": 0,
-                            "tickfont": {"size": 9},
-                            "tickformat": ".0f",
-                        },
-                        "size": catalog.semblances / catalog.semblances.max() * 15,
-                        "line": {"width": 0},
-                        "opacity": 0.3,
-                    },
-                )
-            )
-            plot.update()
-
-        state.catalog_store.updated.subscribe(update_plot)
-        background_tasks.create(update_plot())
+        self.plot.update()
 
 
 class NPicksDistribution(Component):
-    name = "Picks per Event"
-    description = """
-Distribution of number of picks associated with detected events.
-"""
+    title = "Number of Picks Distribution"
+    description = """Distribution of the number of phase picks per detected event."""
+    plot: Plotly | None = None
+    figure: go.Figure | None = None
 
-    async def view(self) -> None:
+    def __init__(self) -> None:
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -245,57 +122,57 @@ Distribution of number of picks associated with detected events.
         )
         plot = ui.plotly(fig).classes("w-full h-full")
         attach_plotly_events(plot)
+        self.plot = plot
+        self.figure = fig
 
-        async def update_plot():
-            catalog = self.catalog
-            n_picks = catalog.n_picks
-            n_picks = n_picks[~np.isnan(n_picks)].astype(int)
+    async def plot_picks(self, events: list[EventMinimal]) -> None:
+        fig = self.figure
+        n_picks = np.array(
+            [ev.n_picks for ev in events if ev.n_picks is not None], dtype=float
+        )
+        n_picks = n_picks[~np.isnan(n_picks)].astype(int)
 
-            counts = np.bincount(n_picks)
-            x = np.arange(len(counts))
-            y = counts
+        counts = np.bincount(n_picks)
+        x = np.arange(len(counts))
+        y = counts
+        median = float(np.median(n_picks))
 
-            median = float(np.median(n_picks))
-
-            fig.data = []
-            fig.add_bar(
-                x=x,
-                y=y,
-                name="N Picks Distribution",
-                marker_color="gray",
-                hoverinfo="none",
-                hovertemplate=None,
-            )
-            fig.add_vline(
-                x=median,
-                line={
-                    "dash": "dash",
-                    "color": "rgba(0,0,0,0.4)",
-                    "width": 1.5,
-                },
-                annotation={
-                    "text": f"Median:\n{median:.0f} Picks",
-                    "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
-                    "xanchor": "left",
-                    "yanchor": "top",
-                    "showarrow": False,
-                    "yref": "paper",
-                    "y": 0.98,
-                },
-            )
-            plot.update()
-
-        self.catalog.updated.subscribe(update_plot)
-        background_tasks.create(update_plot())
+        fig.data = []
+        fig.add_bar(
+            x=x,
+            y=y,
+            name="N Picks Distribution",
+            marker_color="gray",
+            hoverinfo="none",
+            hovertemplate=None,
+        )
+        fig.add_vline(
+            x=median,
+            line={
+                "dash": "dash",
+                "color": "rgba(0,0,0,0.4)",
+                "width": 1.5,
+            },
+            annotation={
+                "text": f"Median:\n{median:.0f} Picks",
+                "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
+                "xanchor": "left",
+                "yanchor": "top",
+                "showarrow": False,
+                "yref": "paper",
+                "y": 0.98,
+            },
+        )
+        self.plot.update()
 
 
 class SemblanceDistribution(Component):
-    name = "Semblance Distribution"
-    description = """
-Distribution of semblance values of detected events.
-"""
+    title = "Semblance Distribution"
+    description = """Distribution of semblance values across all detected events."""
+    plot: Plotly | None = None
+    figure: go.Figure | None = None
 
-    async def view(self) -> None:
+    def __init__(self) -> None:
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -303,55 +180,55 @@ Distribution of semblance values of detected events.
             xaxis_title="Semblance",
             yaxis_title="Number of Events",
         )
-        plot = ui.plotly(fig).classes("w-full h-full")
+        self.plot = ui.plotly(fig).classes("w-full h-full")
+        self.figure = fig
 
-        async def update_plot():
-            catalog = self.catalog
-            semblances = catalog.semblances
-            semblances = semblances[np.isfinite(semblances)]
-            if not semblances.size:
-                return
+    async def plot_distribution(self, events: list[EventMinimal]) -> None:
+        fig = self.figure
+        semblances = np.array([ev.semblance for ev in events], dtype=float)
+        semblances = semblances[np.isfinite(semblances)]
+        if not semblances.size:
+            return
 
-            counts, edges = np.histogram(semblances, bins=50)
-            centers = (edges[:-1] + edges[1:]) / 2
-            median = float(np.median(semblances))
+        counts, edges = np.histogram(semblances, bins=50)
+        centers = (edges[:-1] + edges[1:]) / 2
+        median = float(np.median(semblances))
 
-            plot.clear()
-            fig.add_bar(
-                x=centers,
-                y=counts,
-                name="Semblance Distribution",
-                marker_color="gray",
-                hoverinfo="none",
-                hovertemplate=None,
-            )
-            fig.add_vline(
-                x=median,
-                line={"dash": "dash", "color": "rgba(0,0,0,0.4)", "width": 1.5},
-                annotation={
-                    "text": f"Median: {median:.3f}",
-                    "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
-                    "xanchor": "left",
-                    "yanchor": "top",
-                    "showarrow": False,
-                    "yref": "paper",
-                    "y": 0.98,
-                },
-            )
-            plot.update()
-
-        background_tasks.create(update_plot())
+        fig.data = []
+        fig.add_bar(
+            x=centers,
+            y=counts,
+            name="Semblance Distribution",
+            marker_color="gray",
+            hoverinfo="none",
+            hovertemplate=None,
+        )
+        fig.add_vline(
+            x=median,
+            line={"dash": "dash", "color": "rgba(0,0,0,0.4)", "width": 1.5},
+            annotation={
+                "text": f"Median: {median:.3f}",
+                "font": {"size": 10, "color": "rgba(0,0,0,0.5)"},
+                "xanchor": "left",
+                "yanchor": "top",
+                "showarrow": False,
+                "yref": "paper",
+                "y": 0.98,
+            },
+        )
+        self.plot.update()
 
 
 class WadatiDiagram(Component):
-    name = "Wadati Diagram"
+    title = "Wadati Diagram"
     description = """
-Showing t<sub>P</sub> vs t<sub>S</sub>-t<sub>P</sub> arrival times and the apparent
-Vp/Vs ratio of detected events. The size of markers corresponds to semblance and color
-corresponds to event time.
+P travel time vs. S-P travel time across all events. The slope gives
+<i>V<sub>P</sub>/V<sub>S</sub></i>.
 """
+    plot: Plotly | None = None
+    figure: go.Figure | None = None
 
-    async def view(self) -> None:
+    def __init__(self) -> None:
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -370,104 +247,99 @@ corresponds to event time.
         )
         plot = ui.plotly(fig).classes("w-full h-full")
         attach_plotly_events(plot)
+        self.plot = plot
+        self.figure = fig
 
-        async def update_plot():
-            catalog = self.catalog
+    async def plot_events(self, events: list[EventMinimal]) -> None:
+        fig = self.figure
+        ps_collection = PSCollection()
 
-            ps_collection = PSCollection()
+        for ev in events:
+            ps_collection.add_event(ev.event)
 
-            for ev in catalog.events:
-                ps_collection.add_event(ev.event)
+        p_arr = ps_collection.get_travel_times("P")
+        s_arr = ps_collection.get_travel_times("S")
+        event_uids = [tt.event.uid for tt in ps_collection.travel_times]
+        pick_confidences = np.min(
+            [
+                ps_collection.get_confidences("P"),
+                ps_collection.get_confidences("S"),
+            ],
+            axis=0,
+        )
 
-            p_arr = ps_collection.get_travel_times("P")
-            s_arr = ps_collection.get_travel_times("S")
-            event_uids = [tt.event.uid for tt in ps_collection.travel_times]
-            pick_confidences = np.min(
-                [
-                    ps_collection.get_confidences("P"),
-                    ps_collection.get_confidences("S"),
-                ],
-                axis=0,
+        sp_arr = s_arr - p_arr
+
+        point_density = None
+        n_picks = s_arr.size
+        if n_picks >= 3:
+            try:
+                pts = np.vstack([p_arr, sp_arr])
+                max_samples = 5_000
+                if n_picks > max_samples:
+                    rng = np.random.default_rng(0)
+                    sample_idx = rng.choice(n_picks, max_samples, replace=False)
+                    kde = await asyncio.to_thread(
+                        gaussian_kde, pts[:, sample_idx], bw_method="scott"
+                    )
+                else:
+                    kde = await asyncio.to_thread(gaussian_kde, pts, bw_method="scott")
+                point_density = await asyncio.to_thread(kde, pts)
+                order = await asyncio.to_thread(np.argsort, point_density)
+                p_arr = p_arr[order]
+                sp_arr = sp_arr[order]
+                point_density = point_density[order]
+                event_uids = [event_uids[i] for i in order]
+                pick_confidences = pick_confidences[order]
+            except (ValueError, np.linalg.LinAlgError):
+                point_density = None
+
+        fig.data = []
+        fig.add_trace(
+            go.Scattergl(
+                x=p_arr,
+                y=sp_arr,
+                mode="markers",
+                hoverinfo="none",
+                hovertemplate=None,
+                customdata=event_uids,
+                marker={
+                    "color": point_density if point_density is not None else "black",
+                    "colorscale": "viridis",
+                    "showscale": False,
+                    "size": pick_confidences / pick_confidences.max() * 10,
+                    "line": {"width": 0},
+                    "opacity": 0.1,
+                },
+                showlegend=False,
+                name="Wadati Plot",
             )
+        )
 
-            sp_arr = s_arr - p_arr
-
-            point_density = None
-            n_picks = s_arr.size
-            if n_picks >= 3:
-                try:
-                    pts = np.vstack([p_arr, sp_arr])
-                    max_samples = 5_000
-                    if n_picks > max_samples:
-                        rng = np.random.default_rng(0)
-                        sample_idx = rng.choice(n_picks, max_samples, replace=False)
-                        kde = await asyncio.to_thread(
-                            gaussian_kde, pts[:, sample_idx], bw_method="scott"
-                        )
-                    else:
-                        kde = await asyncio.to_thread(
-                            gaussian_kde, pts, bw_method="scott"
-                        )
-                    point_density = await asyncio.to_thread(kde, pts)
-                    order = await asyncio.to_thread(np.argsort, point_density)
-                    p_arr = p_arr[order]
-                    sp_arr = sp_arr[order]
-                    point_density = point_density[order]
-                    event_uids = [event_uids[i] for i in order]
-                    pick_confidences = pick_confidences[order]
-                except (ValueError, np.linalg.LinAlgError):
-                    point_density = None
-
-            plot.clear()
+        mask = np.isfinite(p_arr) & np.isfinite(sp_arr) & (p_arr > 0)
+        if mask.sum() > 1:
+            p_clean = p_arr[mask]
+            sp_clean = sp_arr[mask]
+            median = await async_weighted_median(
+                sp_clean / p_clean,
+                weights=pick_confidences[mask],
+            )
+            vp_vs_median = float(median + 1)
+            p_range = np.array([0.0, p_clean.max()])
             fig.add_trace(
                 go.Scattergl(
-                    x=p_arr,
-                    y=sp_arr,
-                    mode="markers",
+                    x=p_range,
+                    y=(vp_vs_median - 1) * p_range,
+                    mode="lines",
+                    name=f"Vp/Vs = {vp_vs_median:.2f}",
+                    line={
+                        "color": "rgba(200,50,50,0.8)",
+                        "dash": "dash",
+                        "width": 1.5,
+                    },
                     hoverinfo="none",
                     hovertemplate=None,
-                    customdata=event_uids,
-                    marker={
-                        "color": point_density
-                        if point_density is not None
-                        else "black",
-                        "colorscale": "viridis",
-                        "showscale": False,
-                        "size": pick_confidences / pick_confidences.max() * 10,
-                        "line": {"width": 0},
-                        "opacity": 0.1,
-                    },
-                    showlegend=False,
-                    name="Wadati Plot",
                 )
             )
 
-            mask = np.isfinite(p_arr) & np.isfinite(sp_arr) & (p_arr > 0)
-            if mask.sum() > 1:
-                p_clean = p_arr[mask]
-                sp_clean = sp_arr[mask]
-                median = await async_weighted_median(
-                    sp_clean / p_clean,
-                    weights=pick_confidences[mask],
-                )
-                vp_vs_median = float(median + 1)
-                p_range = np.array([0.0, p_clean.max()])
-                fig.add_trace(
-                    go.Scattergl(
-                        x=p_range,
-                        y=(vp_vs_median - 1) * p_range,
-                        mode="lines",
-                        name=f"Vp/Vs = {vp_vs_median:.2f}",
-                        line={
-                            "color": "rgba(200,50,50,0.8)",
-                            "dash": "dash",
-                            "width": 1.5,
-                        },
-                        hoverinfo="none",
-                        hovertemplate=None,
-                    )
-                )
-
-            plot.update()
-
-        background_tasks.create(update_plot())
+        self.plot.update()

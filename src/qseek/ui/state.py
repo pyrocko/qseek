@@ -44,6 +44,7 @@ class CatalogStore:
     north_shifts: np.ndarray = np.array([])
 
     updated: Event
+
     _all_events: list[EventMinimal] = []
     _catalog: EventCatalog | None = None
     _run: RunSource | None = None
@@ -72,6 +73,7 @@ class CatalogStore:
 
         self._run_watcher: asyncio.Task | None = None
         self.updated = Event()
+        self.new_events = Event()
 
     @property
     def full_catalog(self) -> EventCatalog:
@@ -134,9 +136,6 @@ class CatalogStore:
             ]
             self.reset_filters(reset_user_filters=False)
             self.filter_events()
-            self.refresh_caches()
-
-            self.updated.emit()
 
             time_since_update = time.time() - last_update
             last_update = time.time()
@@ -174,6 +173,7 @@ class CatalogStore:
 
         self.times = [ev.time for ev in self.events]
         self.uids = [ev.uid for ev in self.events]
+        self.refresh_caches()
 
     def refresh_caches(self):
         self.magnitudes = np.array(

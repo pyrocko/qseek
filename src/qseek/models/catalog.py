@@ -500,13 +500,20 @@ class EventCatalog(BaseModel):
                 jitter_location=jitter_location,
             )
 
-    async def export_csv(self, file: Path, jitter_location: float = 0.0) -> None:
+    async def export_csv(
+        self,
+        file: Path,
+        jitter_location: float = 0.0,
+        additional_data: list[dict] | None = None,
+    ) -> None:
         """Export detections to a CSV file.
 
         Args:
             file (Path): The output filename.
             jitter_location (float, optional): Randomize the location of each detection
                 by this many meters. Defaults to 0.0.
+            additional_data (list[dict], optional): Additional data to include in the CSV.
+                Defaults to None.
         """
         logger.info("exporting event CSV to %s", file)
         header = []
@@ -516,9 +523,14 @@ class EventCatalog(BaseModel):
         else:
             detections = self.events
 
+        if additional_data and len(additional_data) != len(detections):
+            raise ValueError("additional_data must have the same length as detections")
+
         csv_lines: list[dict] = []
-        for detection in detections:
+        for idx, detection in enumerate(detections):
             csv = detection.get_csv_dict()
+            if additional_data:
+                csv.update(additional_data[idx])
             for key in csv:
                 if key not in header:
                     header.append(key)

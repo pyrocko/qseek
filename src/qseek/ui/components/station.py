@@ -20,21 +20,21 @@ _STATION_SVG = (
 
 
 class StationComponent(Component):
-    name: str = "Station Component"
+    title: str = "Station Component"
     description: str = ""
 
     def __init__(self, station: Station) -> None:
         self.station = station
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         raise NotImplementedError
 
 
 class StationMap(StationComponent):
-    name = "Location"
+    title = "Location"
     description = "Map showing the station's geographic position."
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         station = self.station
         m = ui.leaflet(
             center=(station.effective_lat, station.effective_lon), zoom=10
@@ -86,12 +86,12 @@ class StationMap(StationComponent):
 
 
 class StationDetails(StationComponent):
-    name = "Station Details"
+    title = "Station Details"
     description = """
 Essential metadata about the station.
 """
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         station = self.station
 
         rows = [
@@ -145,13 +145,13 @@ Essential metadata about the station.
 
 
 class StationPickPerformance(StationComponent):
-    name = "Pick Performance"
+    title = "Pick Performance"
     description = (
         "Detection confidence of P and S arrivals at this station over time. "
         "P picks are shown above zero, S picks below."
     )
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         state = get_tab_state()
 
         fig = go.Figure()
@@ -281,7 +281,7 @@ class StationPickPerformance(StationComponent):
 
 
 class StationTraveltimeResidual(StationComponent):
-    name = "Traveltime Residuals"
+    title = "Traveltime Residuals"
     description = (
         "P and S traveltime residuals (observed - modelled) at this station over time. "
         "Marker size reflects detection confidence. "
@@ -289,7 +289,7 @@ class StationTraveltimeResidual(StationComponent):
         "a non-zero slope indicates a systematic timing drift."
     )
 
-    async def view(self) -> None:
+    async def plot(self) -> None:
         state = get_tab_state()
 
         _zeroline = {
