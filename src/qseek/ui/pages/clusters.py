@@ -116,7 +116,7 @@ async def clusters_page() -> None:
         else:
             await update_clusters()
 
-    async def download() -> None:
+    async def download_catalog() -> None:
         if dbscan.labels is None or dbscan.colors is None:
             ui.notify(
                 "Please run DBSCAN clustering before downloading.",
@@ -151,17 +151,14 @@ async def clusters_page() -> None:
             icon="settings",
             on_click=show_dialog,
         ).props("push color=gray-700").classes("ml-auto")
-        btn_download = ui.button(icon="download", on_click=download).props(
+        btn_download = ui.button(icon="download", on_click=download_catalog).props(
             "outline color=gray-400"
         )
 
     with ui.row().classes("w-full items-stretch"):
         card_clusters = StatCard(
             "Clusters",
-            stats.n_clusters,
             icon="spoke",
-            subtitle=f"{stats.n_clustered} events clustered "
-            f"({stats.n_clustered / catalog.n_events * 100:.1f}%)",
             tooltip="Number of clusters identified by DBSCAN.",
         )
         card_clusters.bind_value(stats, "n_clusters")
@@ -172,9 +169,7 @@ async def clusters_page() -> None:
         )
         card_noise = StatCard(
             "Noise Events",
-            stats.n_noise,
             icon="close",
-            subtitle=f"Not in any cluster ({stats.n_noise / catalog.n_events * 100:.1f}%)",
             tooltip="Number of events classified as noise"
             "(not belonging to any cluster).",
         )
@@ -186,7 +181,6 @@ async def clusters_page() -> None:
         )
         StatCard(
             "Epsilon",
-            f"{params.epsilon} m",
             icon="square_foot",
             subtitle="Neighborhood radius",
             tooltip="Maximum distance between two samples for them to be considered as "
@@ -194,7 +188,6 @@ async def clusters_page() -> None:
         ).bind_value(params, "epsilon", backward=lambda v: f"{v} m")
         StatCard(
             "Min Samples",
-            str(params.min_samples),
             icon="people",
             subtitle="Min samples in neighborhood",
             tooltip="Minimum number of samples in a neighborhood for a point to be "
@@ -202,9 +195,11 @@ async def clusters_page() -> None:
         ).bind_value(params, "min_samples")
 
     with ui.row().classes("w-full flex-1 items-stretch"):
-        with ui.card().classes("col-12"):
-            card_header(OverviewMap.title, OverviewMap.description)
-            map_ = OverviewMap(catalog.lats.mean(), catalog.lons.mean())
+        map_ = OverviewMap(catalog.lats.mean(), catalog.lons.mean())
+        map_.set_title("Event Clusters")
+        map_.set_description(
+            "DBSCAN clustering of detected events based on their spatial proximity."
+        )
 
         with ui.card().classes("col-12"):
             card_header(MagnitudeRateCluster.title, MagnitudeRateCluster.description)
@@ -225,7 +220,7 @@ async def clusters_page() -> None:
             except Exception as e:
                 ui.notify(f"Error calculating clusters: {e}", color="negative")
                 return
-            await map_.initialized()
+            await map_.initialize()
             stats.n_clusters = dbscan.n_unique_labels()
             stats.n_noise = (labels == -1).sum()
             stats.n_clustered = catalog.n_events - stats.n_noise
@@ -236,7 +231,7 @@ async def clusters_page() -> None:
                 map_.add_event_markers(
                     catalog.events,
                     marker_colors=cluster_colors,
-                    show_latest=False,
+                    highlight_latest=False,
                 )
             )
 

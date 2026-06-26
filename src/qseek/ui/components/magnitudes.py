@@ -12,12 +12,13 @@ from qseek.ui.analysis.magnitudes import (
     ogata_katsura,
     prob_ogata_katsura,
 )
-from qseek.ui.base import Component
+from qseek.ui.base import Panel
 from qseek.ui.models import EventMinimal
+from qseek.ui.state import CatalogStore
 from qseek.ui.utils import attach_plotly_events
 
 
-class MagnitudeFrequency(Component):
+class MagnitudeFrequency(Panel):
     title = "Magnitude Frequency Distribution"
     description = """
 Entire magnitude range (EMR) fit to the data using Ogata-Katsura (1993). Estimation of
@@ -27,6 +28,7 @@ the magnitude of completeness using maximum curvature (MaxC) and EMR fit.
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -45,7 +47,8 @@ the magnitude of completeness using maximum curvature (MaxC) and EMR fit.
             },
             legend={"x": 1, "y": 1, "xanchor": "right", "yanchor": "top"},
         )
-        self.plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
         self.figure = fig
 
     async def plot_events(self, events: list[EventMinimal]) -> None:
@@ -143,7 +146,7 @@ the magnitude of completeness using maximum curvature (MaxC) and EMR fit.
         self.plot.update()
 
 
-class MagnitudeRate(Component):
+class MagnitudeRate(Panel):
     title = "Magnitude Rate"
     description = """
 Magnitude of detected events over time. Size of markers corresponds to magnitude value.
@@ -151,7 +154,15 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
     plot: Plotly | None = None
     figure: go.Figure | None = None
 
-    def __init__(self) -> None:
+    def __init__(
+        self, show_semblance: bool = False, show_density: bool = False
+    ) -> None:
+        super().__init__()
+        self.show_semblance = show_semblance
+        self.show_density = show_density
+        self._last_cumulative_mag = 0.0
+        self._scott_kde = 0.0
+
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -166,21 +177,16 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 "showgrid": False,
             },
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_events(plot)
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
 
-        self.plot = plot
+        attach_plotly_events(self.plot)
         self.figure = fig
 
-    async def plot_events(
-        self,
-        events: list[EventMinimal],
-        show_semblance: bool = False,
-        show_density: bool = False,
-        marker_colors: list[str] | None = None,
-    ) -> None:
-        fig = self.figure
-        if show_semblance:
+    def _get_data(
+        self, events: list[EventMinimal]
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if self.show_semblance:
             events = [(ev.time, ev.uid, ev.semblance) for ev in events]
         else:
             events = [
@@ -191,33 +197,36 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 and np.isfinite(ev.magnitude.average)
             ]
         if not events:
+            return (), (), ()
+
+        return map(np.asarray, zip(*events, strict=True))
+
+    def get_density(
+        self, times: np.ndarray, recalculate_scott: bool = True
+    ) -> np.ndarray | None:
+        try:
+            time_numeric = np.asarray(
+                [time.timestamp() for time in times],
+                dtype=float,
+            )
+            if recalculate_scott or self._scott_kde == 0.0:
+                self._scott_kde = gaussian_kde(time_numeric, bw_method="scott")
+            kde = gaussian_kde(time_numeric, bw_method=self._scott_kde.factor * 0.1)
+            return kde(time_numeric)
+        except (ValueError, np.linalg.LinAlgError):
+            ui.notify(
+                "Could not compute point density for magnitude rate plot.",
+                type="warn",
+            )
+            return None
+
+    async def plot_events(self, events: list[EventMinimal]) -> None:
+        fig = self.figure
+        times, uids, magnitudes = self._get_data(events)
+        if len(times) == 0:
             return
 
-        times, uids, magnitudes = map(np.asarray, zip(*events, strict=True))
-        magnitudes = np.asarray(magnitudes, dtype=float)
-        if len(magnitudes) == 0:
-            return
-
-        # Keep a time-sorted copy for cumulative line computation.
-        time_order = np.argsort(times)
-        times_sorted = times[time_order]
-        magnitudes_sorted = magnitudes[time_order]
-
-        point_density = None
-        if show_density:
-            try:
-                time_numeric = np.asarray(
-                    [time.timestamp() for time in times],
-                    dtype=float,
-                )
-                scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-                kde = gaussian_kde(time_numeric, bw_method=scott_kde.factor * 0.1)
-                point_density = kde(time_numeric)
-            except (ValueError, np.linalg.LinAlgError):
-                ui.notify(
-                    "Could not compute point density for magnitude rate plot.",
-                    type="warn",
-                )
+        point_density = self.get_density(times) if self.show_density else None
 
         scatter_times = times
         scatter_magnitudes = magnitudes
@@ -240,11 +249,7 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 name="Event Magnitude",
                 customdata=scatter_uids,
                 marker={
-                    "color": point_density
-                    if point_density is not None
-                    else marker_colors
-                    if marker_colors is not None
-                    else "black",
+                    "color": point_density if point_density is not None else "black",
                     "colorscale": "Cividis",
                     "showscale": False,
                     "size": (scatter_magnitudes - min_mag)
@@ -259,8 +264,15 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 hovertemplate=None,
             )
         )
+
+        # Keep a time-sorted copy for cumulative line computation.
+        time_order = np.argsort(times)
+        times_sorted = times[time_order]
+        magnitudes_sorted = magnitudes[time_order]
+
         moment_magnitudes = np.power(10, 1.5 * magnitudes_sorted + 9.1)
         cumulative_magnitudes = np.cumsum(moment_magnitudes)
+        self._last_cumulative_mag = cumulative_magnitudes[-1]
         fig.add_trace(
             go.Scattergl(
                 x=times_sorted,
@@ -284,8 +296,15 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
 
         self.plot.update()
 
+    def attach_catalog(self, catalog: CatalogStore) -> None:
+        async def update_plot() -> None:
+            await self.plot_events(catalog.events)
 
-class MagnitudeFrequencyBPositive(Component):
+        catalog.new_events.subscribe(update_plot)
+        catalog.updated.subscribe(update_plot)
+
+
+class MagnitudeFrequencyBPositive(Panel):
     title = "Magnitude Frequency b-Positive"
     description = """
 Frequency of positive magnitude differences between consecutive events, which can be
@@ -295,6 +314,7 @@ used to estimate the b-value of the magnitude distribution.
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -303,9 +323,9 @@ used to estimate the b-value of the magnitude distribution.
             yaxis_title="Frequency",
             showlegend=False,
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
-        attach_plotly_events(plot)
-        self.plot = plot
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
+        attach_plotly_events(self.plot)
         self.figure = fig
 
     async def plot_events(self, events: list[EventMinimal]) -> None:
@@ -378,7 +398,7 @@ used to estimate the b-value of the magnitude distribution.
         self.plot.update()
 
 
-class MagnitudeStatisticsOverTime(Component):
+class MagnitudeStatisticsOverTime(Panel):
     title = "Magnitude Statistics Over Time"
     description = """
 b-value (b-positive method) and magnitude of completeness (MaxC) computed in sliding
@@ -388,6 +408,7 @@ windows of 500 events, advancing 250 events at a time.
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -402,7 +423,8 @@ windows of 500 events, advancing 250 events at a time.
             },
             legend={"x": 0.01, "y": 0.99, "xanchor": "left", "yanchor": "top"},
         )
-        self.plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
         self.figure = fig
 
     async def plot_events(self, events: list[EventMinimal]) -> None:
@@ -529,13 +551,14 @@ windows of 500 events, advancing 250 events at a time.
         self.plot.update()
 
 
-class StationsMagnitudesResiduals(Component):
+class StationsMagnitudesResiduals(Panel):
     title = "Station Magnitude Residuals"
     description = """Distance-corrected station magnitude residuals per station."""
     plot: Plotly | None = None
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -544,7 +567,8 @@ class StationsMagnitudesResiduals(Component):
             yaxis_title="Magnitude Residual",
             showlegend=False,
         )
-        self.plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
         self.figure = fig
 
     async def plot_residuals(self, events: list[EventMinimal]) -> None:

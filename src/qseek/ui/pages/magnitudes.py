@@ -10,7 +10,6 @@ from qseek.ui.components.magnitudes import (
     StationsMagnitudesResiduals,
 )
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import card_header
 
 
 async def magnitudes_page() -> None:
@@ -28,42 +27,24 @@ async def magnitudes_page() -> None:
             ).classes("text-grey-5 text-body2 text-center").style("max-width: 380px")
         return
 
-    with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
-        card_header(MagnitudeRate.title, MagnitudeRate.description)
-        mag_rate = MagnitudeRate()
-        await mag_rate.plot_events(
-            events,
-            show_semblance=not catalog.has_magnitudes(),
-            show_density=True,
-        )
+    mag_rate = MagnitudeRate()
+    await mag_rate.plot_events(
+        events,
+        show_semblance=not catalog.has_magnitudes(),
+        show_density=True,
+    )
 
-    with ui.row().classes("w-full flex-1 items-stretch"), ui.card().classes("col-12"):
-        card_header(
-            MagnitudeStatisticsOverTime.title, MagnitudeStatisticsOverTime.description
-        )
-        stats_over_time = MagnitudeStatisticsOverTime()
-        await stats_over_time.plot_events(events)
+    stats_over_time = MagnitudeStatisticsOverTime()
+    await stats_over_time.plot_events(events)
 
     with ui.row().classes("w-full flex-1 items-stretch"):
-        with ui.card().classes("col-12 col-md"):
-            card_header(MagnitudeFrequency.title, MagnitudeFrequency.description)
-            freq = MagnitudeFrequency()
-            await freq.plot_events(events)
+        freq = MagnitudeFrequency()
+        await freq.plot_events(events)
 
         with ui.card().classes("col-12 col-md"):
-            card_header(
-                MagnitudeFrequencyBPositive.title,
-                MagnitudeFrequencyBPositive.description,
-            )
             b_positive = MagnitudeFrequencyBPositive()
             await b_positive.plot_events(events)
 
-    with (
-        ui.row().classes("w-full flex-1 items-stretch"),
-        ui.card().classes("col-12 col-md"),
-    ):
-        card_header(
-            StationsMagnitudesResiduals.title, StationsMagnitudesResiduals.description
-        )
+    with ui.row().classes("w-full flex-1 items-stretch"):
         over_station = StationsMagnitudesResiduals()
         await over_station.plot_residuals(events)

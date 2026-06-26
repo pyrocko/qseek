@@ -10,21 +10,23 @@ from nicegui.elements.plotly import Plotly
 from scipy.stats import gaussian_kde
 
 from qseek.ui.analysis.vpvs import PSCollection
-from qseek.ui.base import Component
+from qseek.ui.base import Panel
 from qseek.ui.models import EventMinimal
+from qseek.ui.state import CatalogStore
 from qseek.ui.utils import attach_plotly_events
 from qseek.utils import async_weighted_median
 
 
-class EventRate(Component):
+class EventRate(Panel):
     title = "Event Rate"
     description = """
-Number of detected events per day/hour/minute and cumulative number of events over time.
+Number of detected events over time.
 """
     plot: Plotly | None = None
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -39,7 +41,8 @@ Number of detected events per day/hour/minute and cumulative number of events ov
             },
             showlegend=False,
         )
-        self.plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
         self.figure = fig
 
     async def add_events(self, events: list[EventMinimal]) -> None:
@@ -105,14 +108,22 @@ Number of detected events per day/hour/minute and cumulative number of events ov
         )
         self.plot.update()
 
+    def attach_catalog(self, catalog: CatalogStore) -> None:
+        async def update() -> None:
+            await self.add_events(catalog.events)
 
-class NPicksDistribution(Component):
+        catalog.new_events.subscribe(update)
+        catalog.updated.subscribe(update)
+
+
+class NPicksDistribution(Panel):
     title = "Number of Picks Distribution"
     description = """Distribution of the number of phase picks per detected event."""
     plot: Plotly | None = None
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -120,9 +131,9 @@ class NPicksDistribution(Component):
             xaxis_title="Number of Picks",
             yaxis_title="Number of Events",
         )
-        plot = ui.plotly(fig).classes("w-full h-full")
-        attach_plotly_events(plot)
-        self.plot = plot
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-full")
+        attach_plotly_events(self.plot)
         self.figure = fig
 
     async def plot_picks(self, events: list[EventMinimal]) -> None:
@@ -166,13 +177,14 @@ class NPicksDistribution(Component):
         self.plot.update()
 
 
-class SemblanceDistribution(Component):
+class SemblanceDistribution(Panel):
     title = "Semblance Distribution"
     description = """Distribution of semblance values across all detected events."""
     plot: Plotly | None = None
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -180,7 +192,8 @@ class SemblanceDistribution(Component):
             xaxis_title="Semblance",
             yaxis_title="Number of Events",
         )
-        self.plot = ui.plotly(fig).classes("w-full h-full")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-full")
         self.figure = fig
 
     async def plot_distribution(self, events: list[EventMinimal]) -> None:
@@ -219,7 +232,7 @@ class SemblanceDistribution(Component):
         self.plot.update()
 
 
-class WadatiDiagram(Component):
+class WadatiDiagram(Panel):
     title = "Wadati Diagram"
     description = """
 P travel time vs. S-P travel time across all events. The slope gives
@@ -229,6 +242,7 @@ P travel time vs. S-P travel time across all events. The slope gives
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -245,9 +259,9 @@ P travel time vs. S-P travel time across all events. The slope gives
                 "bgcolor": "rgba(255,255,255,0.75)",
             },
         )
-        plot = ui.plotly(fig).classes("w-full h-full")
-        attach_plotly_events(plot)
-        self.plot = plot
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-full")
+        attach_plotly_events(self.plot)
         self.figure = fig
 
     async def plot_events(self, events: list[EventMinimal]) -> None:

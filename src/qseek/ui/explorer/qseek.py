@@ -121,7 +121,7 @@ class QseekWebSource(RunSource):
         self.last_update = datetime_now()
         self.n_events += collection.n_detections
 
-        logger.info("informing attached proxies about update from %s", self.name)
+        logger.info("informing attached stores about update from %s", self.name)
         async with self.updated:
             self.updated.notify_all()
 

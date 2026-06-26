@@ -8,11 +8,12 @@ from nicegui.elements.plotly import Plotly
 from plotly.subplots import make_subplots
 
 from qseek.models.detection import EventDetection
-from qseek.ui.base import Component
+from qseek.ui.base import Panel
+from qseek.ui.state import CatalogStore
 from qseek.utils import NSL
 
 
-class StationTable(Component):
+class StationTable(Panel):
     title = "Station Table"
     description = (
         "All stations in the network inventory, sorted by network and station code."
@@ -136,13 +137,14 @@ class StationTable(Component):
         filter_input.bind_value_to(table, "filter")
 
 
-class StationCoverage(Component):
+class StationCoverage(Panel):
     title = "Station Coverage"
     description = """Number of stations contributing to each detected event."""
     plot: Plotly | None = None
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -152,7 +154,8 @@ class StationCoverage(Component):
             showlegend=False,
             yaxis={"rangemode": "tozero"},
         )
-        self.plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
         self.figure = fig
 
     async def plot_coverage(
@@ -202,8 +205,11 @@ class StationCoverage(Component):
         )
         self.plot.update()
 
+    def attach_catalog(self, catalog: CatalogStore) -> None:
+        catalog.new_events.subscribe(lambda: self.plot_coverage(catalog.events))
 
-class StationsPickPerformance(Component):
+
+class StationsPickPerformance(Panel):
     title = "Station Performance"
     description = """
 Ranking of stations by cumulative detection confidence of associated P and S picks.
@@ -214,6 +220,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -243,7 +250,8 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
                 "x": 1,
             },
         )
-        plot = ui.plotly(fig).classes("w-full h-72")
+        with self:
+            plot = ui.plotly(fig).classes("w-full h-72")
         plot.on(
             "plotly_click",
             lambda e: ui.navigate.to(f"/station/{e.args['points'][0]['x']}"),
@@ -360,7 +368,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
         self.plot.update()
 
 
-class StationTraveltimeResiduals(Component):
+class StationTraveltimeResiduals(Panel):
     title = "Station Traveltime Residuals"
     description = """
 Distribution of traveltime residuals (observed &minus; modelled) per station for P
@@ -372,6 +380,7 @@ Stations are sorted by median absolute residual (best-performing left).
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = make_subplots(
             rows=2,
             cols=1,
@@ -400,7 +409,8 @@ Stations are sorted by median absolute residual (best-performing left).
         fig.update_yaxes(title_text="S residual (s)", **_zeroline, row=2, col=1)
         fig.update_xaxes(title_text="Station", row=2, col=1)
 
-        plot = ui.plotly(fig).classes("w-full h-96")
+        with self:
+            plot = ui.plotly(fig).classes("w-full h-96")
         plot.on(
             "plotly_click",
             lambda e: ui.navigate.to(f"/station/{e.args['points'][0]['x']}"),

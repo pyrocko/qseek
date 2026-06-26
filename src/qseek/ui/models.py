@@ -21,6 +21,7 @@ class EventMinimal:
     time: datetime
     semblance: float
     n_picks: int
+    rms: float
     magnitude: EventMagnitude | None
     event: EventDetection
 
@@ -61,6 +62,7 @@ class EventMinimal:
             time=event.time,
             semblance=event.semblance,
             n_picks=event.n_picks,
+            rms=event.rms,
             magnitude=event.magnitude,
             event=event,
         )

@@ -26,6 +26,7 @@ class GuiRange(TypedDict):
 class CatalogStore:
     semblance_range: GuiRange = binding.BindableProperty()
     magnitude_range: GuiRange = binding.BindableProperty()
+    rms_range: GuiRange = binding.BindableProperty()
     depth_range: GuiRange = binding.BindableProperty()
     n_picks_range: GuiRange = binding.BindableProperty()
     date_range: dict = binding.BindableProperty()
@@ -44,6 +45,7 @@ class CatalogStore:
     north_shifts: np.ndarray = np.array([])
 
     updated: Event
+    new_events: Event[list[EventMinimal]]
 
     _all_events: list[EventMinimal] = []
     _catalog: EventCatalog | None = None
@@ -58,9 +60,13 @@ class CatalogStore:
             "min": -2.0,
             "max": 9.0,
         }
+        self.rms_range = {
+            "min": 0.0,
+            "max": 1000.0,
+        }
         self.depth_range = {
             "min": -10000.0,
-            "max": 50_000.0,
+            "max": 50000.0,
         }
         self.n_picks_range = {
             "min": 0,
@@ -90,7 +96,6 @@ class CatalogStore:
 
         self.reset_filters(reset_user_filters=True)
         self.filter_events()
-        self.refresh_caches()
 
         self.updated.emit()
 
@@ -129,13 +134,23 @@ class CatalogStore:
         logger.info("Starting run watcher for run %s", self._run.name)
         last_update = time.time()
         while True:
-            await self._run.updated.wait()
-            self._all_events += [
+            async with self._run.updated:
+                await self._run.updated.wait()
+            n_new_events = len(self._catalog.events) - len(self._all_events)
+            if n_new_events <= 0:
+                continue
+
+            new_events = [
                 EventMinimal.from_event(ev)
                 for ev in self._catalog.events[len(self._all_events) :]
             ]
+            self._all_events += new_events
             self.reset_filters(reset_user_filters=False)
-            self.filter_events()
+            filtered_events = self.filter_events(new_events)
+            if not filtered_events:
+                continue
+
+            self.new_events.emit(filtered_events)
 
             time_since_update = time.time() - last_update
             last_update = time.time()
@@ -143,7 +158,7 @@ class CatalogStore:
             if time_since_update < refresh_interval:
                 await asyncio.sleep(refresh_interval - time_since_update)
 
-    def filter_events(self):
+    def filter_events(self, new_events: list[EventMinimal] | None = None):
         if self._catalog is None:
             raise RuntimeError("No catalog set for filtering")
 
@@ -153,27 +168,38 @@ class CatalogStore:
         date_max = datetime.strptime(self.date_range["to"], "%Y-%m-%d").replace(
             tzinfo=timezone.utc
         )
-        self.events = [
+
+        events = new_events if new_events is not None else self._all_events
+        filtered_events = [
             e
-            for e in self._all_events
+            for e in events
             if self.semblance_range["min"] <= e.semblance <= self.semblance_range["max"]
             and self.depth_range["min"] <= e.depth <= self.depth_range["max"]
             and self.n_picks_range["min"] <= e.n_picks <= self.n_picks_range["max"]
+            and self.rms_range["min"] <= e.rms <= self.rms_range["max"]
             and date_min <= e.time <= date_max + timedelta(days=1)
         ]
 
         if self.has_magnitudes():
-            self.events = [
+            filtered_events = [
                 e
-                for e in self.events
+                for e in filtered_events
                 if self.magnitude_range["min"]
                 <= (e.magnitude.average if e.magnitude is not None else np.nan)
                 <= self.magnitude_range["max"]
             ]
 
-        self.times = [ev.time for ev in self.events]
-        self.uids = [ev.uid for ev in self.events]
+        if new_events is None:
+            self.events = filtered_events
+            self.times = [ev.time for ev in filtered_events]
+            self.uids = [ev.uid for ev in filtered_events]
+        else:
+            self.events.extend(filtered_events)
+            self.times.extend([ev.time for ev in filtered_events])
+            self.uids.extend([ev.uid for ev in filtered_events])
+
         self.refresh_caches()
+        return filtered_events
 
     def refresh_caches(self):
         self.magnitudes = np.array(
@@ -203,8 +229,6 @@ class CatalogStore:
         self.semblances = self.semblances.astype(np.float32)
         self.n_picks = self.n_picks.astype(int)
 
-        self.updated.emit()
-
     def get_event_by_uid(self, uid: UUID) -> EventMinimal:
         for ev in self.events:
             if ev.uid == uid:
@@ -227,6 +251,7 @@ class CatalogStore:
         )
         depths = np.array([ev.depth for ev in self._all_events])
         n_picks = np.array([ev.n_picks for ev in self._all_events])
+        rms = np.array([ev.rms for ev in self._all_events])
         times = [ev.time for ev in self._all_events]
 
         self.semblance_range = {
@@ -236,6 +261,10 @@ class CatalogStore:
         self.magnitude_range = {
             "min": float(np.nanmin(magnitudes)),
             "max": float(np.nanmax(magnitudes)),
+        }
+        self.rms_range = {
+            "min": float(rms.min()),
+            "max": float(rms.max()),
         }
         self.depth_range = {
             "min": float(depths.min()),

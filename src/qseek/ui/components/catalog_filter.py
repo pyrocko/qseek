@@ -101,6 +101,28 @@ def catalog_filter_dialog():
                     backward=lambda r: f"{round(r['min'])} - {round(r['max'])}",
                 )
 
+            # ── RMS ──
+            with ui.column().classes("gap-2 w-full"):
+                with ui.row().classes("items-center gap-1.5"):
+                    ui.icon("sensors", size="xs").classes("text-grey-5")
+                    ui.label("RMS").classes(
+                        "text-sm font-semibold text-grey-8 tracking-wide"
+                    )
+                ui.range(
+                    min=catalog.rms_range["min"],
+                    max=catalog.rms_range["max"],
+                    step=0.01,
+                ).classes("w-full").props("color=tertiary").bind_value(
+                    catalog, "rms_range"
+                )
+                ui.label().classes(
+                    "text-xs text-grey-6 font-mono text-right"
+                ).bind_text_from(
+                    catalog,
+                    "rms_range",
+                    backward=lambda r: f"{round(r['min'], 2)} - {round(r['max'], 2)} s",
+                )
+
             # ── Date Range ──
             with ui.column().classes("gap-2 w-full"):
                 with ui.row().classes("items-center gap-1.5"):

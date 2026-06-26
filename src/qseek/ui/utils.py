@@ -77,8 +77,8 @@ class StatCard(ui.card):
     def __init__(
         self,
         label: str,
-        value: str,
-        icon: str,
+        value: str = "",
+        icon: str = "",
         subtitle: str = "",
         tooltip: str = "",
     ):
