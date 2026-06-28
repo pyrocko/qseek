@@ -609,7 +609,7 @@ class EventCatalog(BaseModel):
     def __iter__(self) -> Iterator[EventDetection]:
         return iter(sorted(self.events, key=lambda d: d.time))
 
-    async def export_geopackage(self, filename: Path) -> None:
+    async def export_gpkg(self, filename: Path) -> None:
         """Save the catalog as a GeoPackage file.
 
         Args:

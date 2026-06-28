@@ -73,7 +73,7 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
         catalog = await run.get_catalog()
         with TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir) / "catalog.gpkg"
-            await catalog.export_geopackage(tmp_path)
+            await catalog.export_gpkg(tmp_path)
             return Response(
                 content=tmp_path.read_bytes(),
                 media_type="application/geopackage+sqlite3",

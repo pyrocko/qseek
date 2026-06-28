@@ -9,6 +9,13 @@ def catalog_filter_dialog():
     state = get_tab_state()
     catalog = state.catalog_store
 
+    semblance_filter = catalog.semblance_filter
+    magnitude_filter = catalog.magnitude_filter
+    n_picks_filter = catalog.n_picks_filter
+    rms_filter = catalog.rms_filter
+    depth_filter = catalog.depth_filter
+    time_filter = catalog.time_filter
+
     with (
         ui.dialog() as dialog,
         ui.card().classes("w-[760px] gap-0 !p-0 overflow-hidden rounded-xl shadow-2xl"),
@@ -38,17 +45,18 @@ def catalog_filter_dialog():
                         "text-sm font-semibold text-grey-8 tracking-wide"
                     )
                 ui.range(
-                    min=0.0,
-                    max=2.0,
+                    min=semblance_filter.data_min,
+                    max=semblance_filter.data_max,
                     step=0.01,
+                    on_change=lambda _: setattr(semblance_filter, "user_defined", True),
                 ).classes("w-full").props("color=primary").bind_value(
-                    catalog, "semblance_range"
+                    semblance_filter, "range"
                 )
                 ui.label().classes(
                     "text-xs text-grey-6 font-mono text-right"
                 ).bind_text_from(
-                    catalog,
-                    "semblance_range",
+                    semblance_filter,
+                    "range",
                     backward=lambda r: f"{r['min']:.2f} - {r['max']:.2f}",
                 )
 
@@ -61,17 +69,20 @@ def catalog_filter_dialog():
                     )
                 if catalog.has_magnitudes():
                     ui.range(
-                        min=-1,
-                        max=9,
+                        min=magnitude_filter.data_min,
+                        max=magnitude_filter.data_max,
                         step=0.1,
+                        on_change=lambda _: setattr(
+                            magnitude_filter, "user_defined", True
+                        ),
                     ).classes("w-full").props("color=deep-orange").bind_value(
-                        catalog, "magnitude_range"
+                        magnitude_filter, "range"
                     )
                     ui.label().classes(
                         "text-xs text-grey-6 font-mono text-right"
                     ).bind_text_from(
-                        catalog,
-                        "magnitude_range",
+                        magnitude_filter,
+                        "range",
                         backward=lambda r: f"{r['min']:.1f} - {r['max']:.1f}",
                     )
                 else:
@@ -87,17 +98,18 @@ def catalog_filter_dialog():
                         "text-sm font-semibold text-grey-8 tracking-wide"
                     )
                 ui.range(
-                    min=catalog.n_picks_range["min"],
-                    max=catalog.n_picks_range["max"],
+                    min=n_picks_filter.data_min,
+                    max=n_picks_filter.data_max,
                     step=1.0,
+                    on_change=lambda _: setattr(n_picks_filter, "user_defined", True),
                 ).classes("w-full").props("color=secondary").bind_value(
-                    catalog, "n_picks_range"
+                    n_picks_filter, "range"
                 )
                 ui.label().classes(
                     "text-xs text-grey-6 font-mono text-right"
                 ).bind_text_from(
-                    catalog,
-                    "n_picks_range",
+                    n_picks_filter,
+                    "range",
                     backward=lambda r: f"{round(r['min'])} - {round(r['max'])}",
                 )
 
@@ -109,21 +121,22 @@ def catalog_filter_dialog():
                         "text-sm font-semibold text-grey-8 tracking-wide"
                     )
                 ui.range(
-                    min=catalog.rms_range["min"],
-                    max=catalog.rms_range["max"],
+                    min=rms_filter.data_min,
+                    max=rms_filter.data_max,
                     step=0.01,
+                    on_change=lambda _: setattr(rms_filter, "user_defined", True),
                 ).classes("w-full").props("color=tertiary").bind_value(
-                    catalog, "rms_range"
+                    rms_filter, "range"
                 )
                 ui.label().classes(
                     "text-xs text-grey-6 font-mono text-right"
                 ).bind_text_from(
-                    catalog,
-                    "rms_range",
-                    backward=lambda r: f"{round(r['min'], 2)} - {round(r['max'], 2)} s",
+                    rms_filter,
+                    "range",
+                    backward=lambda r: f"{r['min']:.2f} - {r['max']:.2f} s",
                 )
 
-            # ── Date Range ──
+            # ── Depth ──
             with ui.column().classes("gap-2 w-full"):
                 with ui.row().classes("items-center gap-1.5"):
                     ui.icon("height", size="xs").classes("text-grey-5")
@@ -131,15 +144,16 @@ def catalog_filter_dialog():
                         "text-sm font-semibold text-grey-8 tracking-wide"
                     )
                 ui.range(
-                    min=catalog.depth_range["min"],
-                    max=catalog.depth_range["max"],
+                    min=depth_filter.data_min,
+                    max=depth_filter.data_max,
                     step=10.0,
-                ).classes("w-full").bind_value(catalog, "depth_range")
+                    on_change=lambda _: setattr(depth_filter, "user_defined", True),
+                ).classes("w-full").bind_value(depth_filter, "range")
                 ui.label().classes(
                     "text-xs text-grey-6 font-mono text-right"
                 ).bind_text_from(
-                    catalog,
-                    "depth_range",
+                    depth_filter,
+                    "range",
                     backward=lambda r: f"{r['min']:.0f} - {r['max']:.0f} m",
                 )
 
@@ -152,8 +166,10 @@ def catalog_filter_dialog():
                     )
 
                 with ui.menu().props("no-parent-event") as date_menu:
-                    ui.date().props("range mask='YYYY-MM-DD' today-btn").bind_value(
-                        catalog, "date_range"
+                    ui.date(
+                        on_change=lambda _: setattr(time_filter, "user_defined", True),
+                    ).props("range mask='YYYY-MM-DD' today-btn").bind_value(
+                        time_filter, "range"
                     )
                     with ui.row().classes("justify-end px-2 pb-2"):
                         ui.button("OK", on_click=date_menu.close).props(
@@ -163,10 +179,10 @@ def catalog_filter_dialog():
                 ui.button(icon="edit_calendar", on_click=date_menu.open).props(
                     "outline color=teal icon-right"
                 ).classes("w-full font-mono text-sm").bind_text_from(
-                    catalog,
-                    "date_range",
+                    time_filter,
+                    "range",
                     backward=lambda r: (
-                        f"{r['from']}  \u2192  {r['to']}"
+                        f"{r['from']}  →  {r['to']}"
                         if isinstance(r, dict) and "from" in r
                         else "Select range"
                     ),
@@ -178,8 +194,10 @@ def catalog_filter_dialog():
         with ui.row().classes("w-full px-6 py-4 items-center justify-between"):
             with ui.row().classes("items-center gap-1.5"):
                 ui.icon("crisis_alert", size="xs").classes("text-grey-5")
-                ui.label(f"{catalog.n_events:,} events currently shown").classes(
-                    "text-xs text-grey-6"
+                ui.label().classes("text-xs text-grey-6").bind_text_from(
+                    catalog,
+                    "events",
+                    backward=lambda evs: f"{len(evs):,} events currently shown",
                 )
 
             with ui.row().classes("gap-2"):
@@ -190,10 +208,12 @@ def catalog_filter_dialog():
                         catalog.filter_events()
                         catalog.updated.emit()
 
-                def reset_filters():
+                def do_reset():
                     catalog.reset_filters(reset_user_filters=True)
+                    catalog.filter_events()
+                    catalog.updated.emit()
 
-                ui.button("Reset", on_click=reset_filters).props(
+                ui.button("Reset", on_click=do_reset).props(
                     "flat dense color=grey-7"
                 ).classes("text-sm")
                 ui.button("Apply", on_click=apply).props(

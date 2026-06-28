@@ -47,6 +47,8 @@ dependencies = [
     "scikit-fmm >= 2025.1",
     "eikonalfm @ git+https://github.com/kevinganster/eikonalfm",
     "sdnotify>=0.3.0",
+    "fudgeo>=1.5",
+    "scikit-learn>=1.9",
 ]
 
 classifiers = [
@@ -70,7 +72,7 @@ ui = [
     "rfc3986>=2.0.0",
     "watchfiles>=1.1",
     "scikit-learn >= 1.9",
-    "babel>=2.18"
+    "babel>=2.18",
 ]
 docs = [
     "mkdocs-material>=9.6",

@@ -135,7 +135,6 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
             [ev.lat, ev.lon, ev.depth, ev.semblance, color, str(ev.uid)]
             for ev, color in zip(events, marker_colors, strict=True)
         ]
-        marker_data = sorted(marker_data, key=lambda x: x[2])  # sort by depth
 
         data = await asyncio.to_thread(json.dumps, marker_data)
         with self._map as m:

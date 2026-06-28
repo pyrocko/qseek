@@ -55,11 +55,27 @@ class ClusterDBScan:
 
     def __init__(self, catalog: CatalogStore) -> None:
         self._catalog = catalog
+        self._n_distances = 0
 
         self.updated = Event()
 
     async def prepare(self):
         self._distance_matrix = await get_distance_matrix(self._catalog)
+        self._n_distances = self._distance_matrix.shape[0]
+
+    async def update_distance_matrix(self):
+        if self._distance_matrix is None:
+            await self.prepare()
+            return
+
+        new_n_distances = len(self._catalog.events)
+        if new_n_distances != self._n_distances:
+            logger.info(
+                "Updating distance matrix for %d events (was %d)...",
+                new_n_distances,
+                self._n_distances,
+            )
+            await self.prepare()
 
     async def cluster(
         self,

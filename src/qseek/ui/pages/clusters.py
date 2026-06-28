@@ -7,7 +7,7 @@ from qseek.ui.analysis.cluster import ClusterDBScan
 from qseek.ui.components.cluster import ClusterAnalysis, MagnitudeRateCluster
 from qseek.ui.components.map import OverviewMap
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import StatCard, card_header
+from qseek.ui.utils import StatCard
 
 
 @binding.bindable_dataclass
@@ -201,17 +201,21 @@ async def clusters_page() -> None:
             "DBSCAN clustering of detected events based on their spatial proximity."
         )
 
-        with ui.card().classes("col-12"):
-            card_header(MagnitudeRateCluster.title, MagnitudeRateCluster.description)
-            mag_rate = MagnitudeRateCluster()
+        mag_rate = MagnitudeRateCluster()
 
         if catalog.has_magnitudes():
-            with ui.card().classes("col-12"):
-                card_header(ClusterAnalysis.title, ClusterAnalysis.description)
-                analysis = ClusterAnalysis()
+            analysis = ClusterAnalysis()
 
-    async def update_clusters() -> None:
-        with state.loading_message("Calculating clusters..."):
+    catalog.updated.subscribe(
+        lambda _: background_tasks.create(update_clusters(loading_message=""))
+    )
+    catalog.new_events.subscribe(
+        lambda _: background_tasks.create(update_clusters(loading_message=""))
+    )
+
+    async def update_clusters(loading_message: str = "Calculating clusters...") -> None:
+        with state.loading_message(loading_message):
+            await dbscan.update_distance_matrix()
             try:
                 labels = await dbscan.cluster(
                     epsilon=params.epsilon,

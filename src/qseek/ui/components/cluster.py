@@ -7,7 +7,7 @@ from nicegui.elements.plotly import Plotly
 
 from qseek.ui.analysis.cluster import _NOISE_COLOR, labels_to_colors
 from qseek.ui.analysis.magnitudes import calculate_dmag_bpositive
-from qseek.ui.base import Component
+from qseek.ui.base import Panel
 from qseek.ui.models import EventMinimal
 from qseek.ui.utils import attach_plotly_events
 
@@ -15,7 +15,7 @@ _DELTA_MC = 0.5
 _MIN_MAG_DIFF = 10
 
 
-class ClusterAnalysis(Component):
+class ClusterAnalysis(Panel):
     title = "Cluster b-Positive Analysis"
     description = """
 b-positive value (left axis) and number of events (right axis) per cluster.
@@ -26,6 +26,7 @@ magnitude differences are shown without a b-value.
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -46,7 +47,8 @@ magnitude differences are shown without a b-value.
                 "bgcolor": "rgba(255,255,255,0.8)",
             },
         )
-        self.plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            self.plot = ui.plotly(fig).classes("w-full h-64")
         self.figure = fig
 
     async def plot_clusters(
@@ -137,7 +139,7 @@ magnitude differences are shown without a b-value.
         self.plot.update()
 
 
-class MagnitudeRateCluster(Component):
+class MagnitudeRateCluster(Panel):
     title = "Magnitude Rate by Cluster"
     description = """
 Magnitude of detected events over time, coloured by cluster. Toggle individual
@@ -147,6 +149,8 @@ clusters on and off via the legend. Noise events (label -1) are shown separately
     figure: go.Figure | None = None
 
     def __init__(self) -> None:
+        super().__init__()
+
         fig = go.Figure()
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -161,7 +165,8 @@ clusters on and off via the legend. Noise events (label -1) are shown separately
                 "bgcolor": "rgba(255,255,255,0.8)",
             },
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_events(plot)
         self.plot = plot
         self.figure = fig

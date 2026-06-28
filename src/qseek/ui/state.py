@@ -5,7 +5,6 @@ import logging
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TypedDict
 from uuid import UUID
 
 import numpy as np
@@ -18,21 +17,110 @@ from qseek.ui.models import EventMinimal
 logger = logging.getLogger(__name__)
 
 
-class GuiRange(TypedDict):
-    min: float
-    max: float
+class Filter:
+    range: dict = binding.BindableProperty()
+    data_min: float = binding.BindableProperty()
+    data_max: float = binding.BindableProperty()
+    user_defined: bool = False
+
+    event_attribute: str = ""
+
+    def __init__(self):
+        self.range = {"min": 0.0, "max": 1.0}
+        self.data_min = 0.0
+        self.data_max = 1.0
+        self.user_defined = False
+
+    def filter(self, event: EventMinimal) -> bool:
+        if not self.user_defined:
+            return False
+        val = getattr(event, self.event_attribute)
+        return not (self.range["min"] <= val <= self.range["max"])
+
+    def reset(self, events: list[EventMinimal]) -> None:
+        if not events:
+            return
+        values = np.array(
+            [getattr(ev, self.event_attribute) for ev in events],
+            dtype=float,
+        )
+        values = values[~np.isnan(values)]
+        if len(values) == 0:
+            return
+        self.data_min = float(values.min())
+        self.data_max = float(values.max())
+        self.range = {"min": self.data_min, "max": self.data_max}
+        self.user_defined = False
+
+
+class SemblanceFilter(Filter):
+    event_attribute = "semblance"
+
+
+class MagnitudeFilter(Filter):
+    def filter(self, event: EventMinimal) -> bool:
+        if not self.user_defined:
+            return False
+        if event.magnitude is None:
+            return True
+        return not (self.range["min"] <= event.magnitude.average <= self.range["max"])
+
+    def reset(self, events: list[EventMinimal]) -> None:
+        values = np.array(
+            [ev.magnitude.average for ev in events if ev.magnitude is not None],
+            dtype=float,
+        )
+        if len(values) == 0:
+            self.data_min = 0.0
+            self.data_max = 0.0
+        else:
+            self.data_min = float(values.min())
+            self.data_max = float(values.max())
+        self.range = {"min": self.data_min, "max": self.data_max}
+        self.user_defined = False
+
+
+class RMSFilter(Filter):
+    event_attribute = "rms"
+
+
+class DepthFilter(Filter):
+    event_attribute = "depth"
+
+
+class NPicksFilter(Filter):
+    event_attribute = "n_picks"
+
+
+class TimeFilter(Filter):
+    def filter(self, event: EventMinimal) -> bool:
+        if not self.user_defined:
+            return False
+        value = self.range
+        if not isinstance(value, dict) or "from" not in value:
+            return False
+        min_dt = datetime.fromisoformat(value["from"]).replace(tzinfo=timezone.utc)
+        # add one day to make the end date inclusive
+        max_dt = datetime.fromisoformat(value["to"]).replace(
+            tzinfo=timezone.utc
+        ) + timedelta(days=1)
+        return not (min_dt <= event.time <= max_dt)
+
+    def reset(self, events: list[EventMinimal]) -> None:
+        if not events:
+            return
+        times = [ev.time for ev in events]
+        self.data_min = min(times).timestamp()
+        self.data_max = max(times).timestamp()
+        self.range = {
+            "from": min(times).strftime("%Y-%m-%d"),
+            "to": max(times).strftime("%Y-%m-%d"),
+        }
+        self.user_defined = False
 
 
 class CatalogStore:
-    semblance_range: GuiRange = binding.BindableProperty()
-    magnitude_range: GuiRange = binding.BindableProperty()
-    rms_range: GuiRange = binding.BindableProperty()
-    depth_range: GuiRange = binding.BindableProperty()
-    n_picks_range: GuiRange = binding.BindableProperty()
-    date_range: dict = binding.BindableProperty()
-    user_defined_filters: bool = False
-
-    events: list[EventMinimal] = []
+    events: list[EventMinimal] = binding.BindableProperty()
     uids: list[UUID] = []
     times: list[datetime] = []
     semblances: np.ndarray = np.array([])
@@ -52,30 +140,23 @@ class CatalogStore:
     _run: RunSource | None = None
 
     def __init__(self):
-        self.semblance_range = {
-            "min": 0.0,
-            "max": 2.0,
-        }
-        self.magnitude_range = {
-            "min": -2.0,
-            "max": 9.0,
-        }
-        self.rms_range = {
-            "min": 0.0,
-            "max": 1000.0,
-        }
-        self.depth_range = {
-            "min": -10000.0,
-            "max": 50000.0,
-        }
-        self.n_picks_range = {
-            "min": 0,
-            "max": 100,
-        }
-        self.date_range = {
-            "from": "1970-01-01",
-            "to": "2050-01-01",
-        }
+        self.events = []
+
+        self.semblance_filter = SemblanceFilter()
+        self.magnitude_filter = MagnitudeFilter()
+        self.rms_filter = RMSFilter()
+        self.depth_filter = DepthFilter()
+        self.n_picks_filter = NPicksFilter()
+        self.time_filter = TimeFilter()
+
+        self.filters: list[Filter] = [
+            self.semblance_filter,
+            self.magnitude_filter,
+            self.rms_filter,
+            self.depth_filter,
+            self.n_picks_filter,
+            self.time_filter,
+        ]
 
         self._run_watcher: asyncio.Task | None = None
         self.updated = Event()
@@ -158,45 +239,27 @@ class CatalogStore:
             if time_since_update < refresh_interval:
                 await asyncio.sleep(refresh_interval - time_since_update)
 
-    def filter_events(self, new_events: list[EventMinimal] | None = None):
+    def filter_events(
+        self,
+        new_events: list[EventMinimal] | None = None,
+    ) -> list[EventMinimal]:
         if self._catalog is None:
             raise RuntimeError("No catalog set for filtering")
 
-        date_min = datetime.strptime(self.date_range["from"], "%Y-%m-%d").replace(
-            tzinfo=timezone.utc
-        )
-        date_max = datetime.strptime(self.date_range["to"], "%Y-%m-%d").replace(
-            tzinfo=timezone.utc
-        )
-
         events = new_events if new_events is not None else self._all_events
         filtered_events = [
-            e
-            for e in events
-            if self.semblance_range["min"] <= e.semblance <= self.semblance_range["max"]
-            and self.depth_range["min"] <= e.depth <= self.depth_range["max"]
-            and self.n_picks_range["min"] <= e.n_picks <= self.n_picks_range["max"]
-            and self.rms_range["min"] <= e.rms <= self.rms_range["max"]
-            and date_min <= e.time <= date_max + timedelta(days=1)
+            e for e in events if not any(f.filter(e) for f in self.filters)
         ]
-
-        if self.has_magnitudes():
-            filtered_events = [
-                e
-                for e in filtered_events
-                if self.magnitude_range["min"]
-                <= (e.magnitude.average if e.magnitude is not None else np.nan)
-                <= self.magnitude_range["max"]
-            ]
 
         if new_events is None:
             self.events = filtered_events
             self.times = [ev.time for ev in filtered_events]
             self.uids = [ev.uid for ev in filtered_events]
         else:
-            self.events.extend(filtered_events)
-            self.times.extend([ev.time for ev in filtered_events])
-            self.uids.extend([ev.uid for ev in filtered_events])
+            # new list assignment to trigger BindableProperty
+            self.events = self.events + filtered_events
+            self.times.extend(ev.time for ev in filtered_events)
+            self.uids.extend(ev.uid for ev in filtered_events)
 
         self.refresh_caches()
         return filtered_events
@@ -209,6 +272,16 @@ class CatalogStore:
             ],
             dtype=float,
         )
+        if not self.events:
+            self.lats = np.array([])
+            self.lons = np.array([])
+            self.depths = np.array([])
+            self.north_shifts = np.array([])
+            self.east_shifts = np.array([])
+            self.semblances = np.array([])
+            self.n_picks = np.array([])
+            return
+
         (
             self.lats,
             self.lons,
@@ -236,50 +309,12 @@ class CatalogStore:
         raise ValueError(f"Event with uid {uid} not found")
 
     def reset_filters(self, reset_user_filters: bool = False):
-        if not reset_user_filters and self.user_defined_filters:
+        if not reset_user_filters and any(f.user_defined for f in self.filters):
             return
+        for f in self.filters:
+            f.reset(self._all_events)
 
-        if reset_user_filters:
-            self.user_defined_filters = False
-
-        semblances = np.array([ev.semblance for ev in self._all_events])
-        magnitudes = np.array(
-            [
-                ev.magnitude.average if ev.magnitude is not None else np.nan
-                for ev in self._all_events
-            ]
-        )
-        depths = np.array([ev.depth for ev in self._all_events])
-        n_picks = np.array([ev.n_picks for ev in self._all_events])
-        rms = np.array([ev.rms for ev in self._all_events])
-        times = [ev.time for ev in self._all_events]
-
-        self.semblance_range = {
-            "min": float(semblances.min()),
-            "max": float(semblances.max()),
-        }
-        self.magnitude_range = {
-            "min": float(np.nanmin(magnitudes)),
-            "max": float(np.nanmax(magnitudes)),
-        }
-        self.rms_range = {
-            "min": float(rms.min()),
-            "max": float(rms.max()),
-        }
-        self.depth_range = {
-            "min": float(depths.min()),
-            "max": float(depths.max()),
-        }
-        self.n_picks_range = {
-            "min": int(n_picks.min()),
-            "max": int(n_picks.max()),
-        }
-        self.date_range = {
-            "from": min(times).strftime("%Y-%m-%d"),
-            "to": max(times).strftime("%Y-%m-%d"),
-        }
-
-    def has_magnitudes(self):
+    def has_magnitudes(self) -> bool:
         return not np.all(np.isnan(self.magnitudes))
 
     @property
