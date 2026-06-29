@@ -574,13 +574,24 @@ class SDSArchive(WaveformProvider):
             logger.warning("no waveform files found for %s, skipping", start_time)
             return []
 
-        return await _load_files(
+        traces = await _load_files(
             paths,
             start_time=start_time,
             end_time=end_time,
             want_incomplete=want_incomplete,
             executor=self._executor,
         )
+
+        for tr in traces.copy():
+            # This should never happen, but some archives are bad behaved
+            if NSL(*tr.nslc_id[:-1]) not in nsls:
+                logger.warning(
+                    "removing trace %s from batch %s, not in station selection",
+                    tr.full_id,
+                    start_time,
+                )
+                traces.remove(tr)
+        return traces
 
 
 if __name__ == "__main__":
