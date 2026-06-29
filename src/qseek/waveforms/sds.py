@@ -467,6 +467,16 @@ class SDSArchive(WaveformProvider):
                 executor=self._executor,
             )
 
+            for tr in traces.copy():
+                tr_nsl = NSL(*tr.nslc_id[:-1])
+                if tr_nsl not in nsls:
+                    logger.warning(
+                        "removing trace %s from batch %s, not in station selection",
+                        tr.full_id,
+                        batch_start,
+                    )
+                    traces.remove(tr)
+
             batch = WaveformBatch(
                 start_time=batch_start,
                 end_time=batch_end,
