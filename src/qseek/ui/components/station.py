@@ -7,7 +7,7 @@ from nicegui import background_tasks, ui
 from plotly.subplots import make_subplots
 
 from qseek.models.station import Station
-from qseek.ui.base import Component
+from qseek.ui.base import Panel
 from qseek.ui.state import get_tab_state
 from qseek.ui.utils import attach_plotly_events
 
@@ -19,11 +19,12 @@ _STATION_SVG = (
 )
 
 
-class StationComponent(Component):
+class StationComponent(Panel):
     title: str = "Station Component"
     description: str = ""
 
     def __init__(self, station: Station) -> None:
+        super().__init__()
         self.station = station
 
     async def plot(self) -> None:
@@ -36,9 +37,10 @@ class StationMap(StationComponent):
 
     async def plot(self) -> None:
         station = self.station
-        m = ui.leaflet(
-            center=(station.effective_lat, station.effective_lon), zoom=10
-        ).classes("w-full h-80 rounded-lg shadow")
+        with self:
+            m = ui.leaflet(
+                center=(station.effective_lat, station.effective_lon), zoom=10
+            ).classes("w-full h-80 rounded-lg shadow")
         m.clear_layers()
         m.tile_layer(
             url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
@@ -102,10 +104,10 @@ Essential metadata about the station.
             {"property": "Latitude", "value": f"{station.effective_lat:.6f}°"},
             {"property": "Longitude", "value": f"{station.effective_lon:.6f}°"},
             {"property": "Elevation", "value": f"{station.elevation:,.1f} m"},
+            {"property": "Depth", "value": f"{station.depth:,.1f} m"},
         ]
-        if station.depth > 0:
+        if station.depth != 0.0:
             rows += [
-                {"property": "Depth", "value": f"{station.depth:,.1f} m"},
                 {
                     "property": "Effective elevation",
                     "value": f"{station.effective_elevation:,.1f} m",
@@ -126,11 +128,12 @@ Essential metadata about the station.
             },
             {"name": "value", "label": "Value", "field": "value", "align": "left"},
         ]
-        table = (
-            ui.table(columns=columns, rows=rows, row_key="property")
-            .classes("w-full text-sm")
-            .props("dense flat bordered hide-header")
-        )
+        with self:
+            table = (
+                ui.table(columns=columns, rows=rows, row_key="property")
+                .classes("w-full text-sm")
+                .props("dense flat bordered hide-header")
+            )
         table.add_slot(
             "body-row",
             """
@@ -174,7 +177,8 @@ class StationPickPerformance(StationComponent):
                 "x": 1,
             },
         )
-        plot = ui.plotly(fig).classes("w-full h-64")
+        with self:
+            plot = ui.plotly(fig).classes("w-full h-64")
         attach_plotly_events(plot)
 
         nsl = self.station.nsl
@@ -285,8 +289,7 @@ class StationTraveltimeResidual(StationComponent):
     description = (
         "P and S traveltime residuals (observed - modelled) at this station over time. "
         "Marker size reflects detection confidence. "
-        "The dashed trend line is a confidence-weighted linear fit; "
-        "a non-zero slope indicates a systematic timing drift."
+        "The dashed line shows the median residual."
     )
 
     async def plot(self) -> None:
@@ -312,7 +315,8 @@ class StationTraveltimeResidual(StationComponent):
         fig.update_yaxes(title_text="S residual (s)", **_zeroline, row=2, col=1)
         fig.update_xaxes(title_text="Time", row=2, col=1)
 
-        plot = ui.plotly(fig).classes("w-full h-80")
+        with self:
+            plot = ui.plotly(fig).classes("w-full h-80")
         attach_plotly_events(plot)
 
         nsl = self.station.nsl
@@ -416,35 +420,17 @@ class StationTraveltimeResidual(StationComponent):
                     col=1,
                 )
 
-                if len(t_vis) >= 2:
-                    t_num = np.array([t.timestamp() for t in t_vis])
-                    slope, intercept = np.polyfit(t_num, y_vis, 1, w=c_vis)
-                    fit_y = slope * t_num + intercept
-                    slope_ms_per_day = slope * 86_400 * 1_000
-                    fig.add_trace(
-                        go.Scattergl(
-                            name=f"{phase} trend",
-                            x=t_vis,
-                            y=fit_y.tolist(),
-                            mode="lines",
-                            line={"color": color, "width": 1.5, "dash": "longdash"},
-                            hovertemplate=(
-                                f"{phase} trend: {slope_ms_per_day:+.2f} ms/day<extra></extra>"
-                            ),
-                        ),
+                if len(t_vis) >= 1:
+                    median_val = float(np.median(y_vis))
+                    median_ms = median_val * 1_000
+                    fig.add_hline(
+                        y=median_val,
+                        line={"color": color, "width": 1.5, "dash": "longdash"},
+                        annotation_text=f"median: {median_ms:+.1f} ms",
+                        annotation_font={"size": 10, "color": color},
+                        annotation_position="top right",
                         row=row,
                         col=1,
-                    )
-                    fig.add_annotation(
-                        x=t_vis[-1],
-                        y=float(fit_y[-1]),
-                        text=f"{slope_ms_per_day:+.2f} ms/day",
-                        font={"size": 10, "color": color},
-                        showarrow=False,
-                        xanchor="right",
-                        yanchor="bottom",
-                        xref=f"x{row if row > 1 else ''}",
-                        yref=f"y{row if row > 1 else ''}",
                     )
 
                 fig.update_yaxes(range=[lo, hi], row=row, col=1)

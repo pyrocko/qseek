@@ -145,8 +145,8 @@ azimuths are not meaningful without a reference event.
             margin={"l": 60, "r": 40, "t": 30, "b": 60},
             template="plotly_white",
         )
-
-        ui.plotly(fig).classes("w-full h-96")
+        with self:
+            ui.plotly(fig).classes("w-full h-96")
 
 
 class TravelTimeResidualPlot(EventComponent):
@@ -292,7 +292,8 @@ Traveltime residuals (<i>t<sub>observed</sub> - t<sub>modelled</sub></i>) per
             margin={"l": 60, "r": 40, "t": 40, "b": 40},
             template="plotly_white",
         )
-        ui.plotly(fig).classes("w-full h-80")
+        with self:
+            ui.plotly(fig).classes("w-full h-80")
 
 
 class WadatiDiagramEvent(EventComponent):
@@ -486,7 +487,8 @@ Open grey markers = modelled arrivals for reference.
             margin={"l": 60, "r": 40, "t": 40, "b": 90},
             template="plotly_white",
         )
-        ui.plotly(fig).classes("w-full h-80")
+        with self:
+            ui.plotly(fig).classes("w-full h-80")
 
 
 class EventMap(EventComponent):
@@ -498,9 +500,10 @@ Map showing event location and online stations contributing to the location.
     async def plot(self) -> None:
         ev = self.event
 
-        m = ui.leaflet(center=(ev.effective_lat, ev.effective_lon), zoom=12).classes(
-            "w-full h-128 rounded-lg shadow"
-        )
+        with self:
+            m = ui.leaflet(
+                center=(ev.effective_lat, ev.effective_lon), zoom=12
+            ).classes("w-full h-128 rounded-lg shadow")
         m.tile_layer(
             url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
             options={
@@ -682,5 +685,5 @@ for the event.
             margin={"l": 60, "r": 40, "t": 40, "b": 80},
             template="plotly_white",
         )
-
-        ui.plotly(fig).classes("w-full h-80")
+        with self:
+            ui.plotly(fig).classes("w-full h-80")

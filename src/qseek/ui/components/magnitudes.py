@@ -155,11 +155,13 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
     figure: go.Figure | None = None
 
     def __init__(
-        self, show_semblance: bool = False, show_density: bool = False
+        self,
+        show_semblance: bool = False,
+        show_density: bool = False,
     ) -> None:
-        super().__init__()
         self.show_semblance = show_semblance
         self.show_density = show_density
+        super().__init__()
         self._last_cumulative_mag = 0.0
         self._scott_kde = 0.0
 
@@ -168,10 +170,12 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
             xaxis_title="Time",
-            yaxis_title="Magnitude",
+            yaxis_title="Magnitude" if not show_semblance else "Semblance",
             showlegend=False,
             yaxis2={
-                "title": "Cumulative Magnitude",
+                "title": "Cumulative Magnitude"
+                if not show_semblance
+                else "Cumulative Semblance",
                 "overlaying": "y",
                 "side": "right",
                 "showgrid": False,
@@ -182,6 +186,22 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
 
         attach_plotly_events(self.plot)
         self.figure = fig
+
+    @property
+    def title(self) -> str:  # noqa
+        if self.show_semblance:
+            return "Semblance Rate"
+        return "Magnitude Rate"
+
+    @property
+    def description(self) -> str:  # noqa
+        if self.show_semblance:
+            return """
+Semblance of detected events over time. Size of markers corresponds to semblance value.
+"""
+        return """
+Magnitude of detected events over time. Size of markers corresponds to magnitude value.
+"""
 
     def _get_data(
         self, events: list[EventMinimal]

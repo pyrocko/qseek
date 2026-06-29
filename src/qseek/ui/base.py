@@ -47,7 +47,7 @@ class Component(Element):
                 ).classes("text-body2 mb-2")
 
 
-class EventComponent(Component):
+class EventComponent(Panel):
     title: str = "Event Component"
     description: str = ""
 

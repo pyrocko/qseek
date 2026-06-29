@@ -13,7 +13,7 @@ from qseek.ui.components.event import (
     WadatiDiagramEvent,
 )
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import StatCard, card_header
+from qseek.ui.utils import StatCard
 
 
 async def event_page(event_id: str) -> None:
@@ -118,43 +118,18 @@ async def event_page(event_id: str) -> None:
     phases = list(ev.receivers.get_available_phases())
 
     with ui.row().classes("w-full flex-1 items-stretch"):
-        with ui.card().classes("col-12"):
-            card_header(
-                EventMap.title,
-                EventMap.description,
-            )
+        event_map = EventMap(event.event)
+        await event_map.plot()
 
-            event_map = EventMap(event.event)
-            await event_map.plot()
-        with ui.card().classes("col-12 col-md"):
-            card_header(
-                WadatiDiagramEvent.title,
-                WadatiDiagramEvent.description,
-            )
-            wadati = WadatiDiagramEvent(event.event)
-            await wadati.plot()
+        wadati = WadatiDiagramEvent(event.event).classes("col-12 col-md")
+        await wadati.plot()
 
-        with ui.card().classes("col-12 col-md"):
-            card_header(
-                TravelTimeResidualPlot.title,
-                TravelTimeResidualPlot.description,
-            )
-            tt_residual = TravelTimeResidualPlot(event.event)
-            await tt_residual.plot(phases)
+        tt_residual = TravelTimeResidualPlot(event.event).classes("col-12 col-md")
+        await tt_residual.plot(phases)
 
-        with ui.card().classes("col-12"):
-            card_header(
-                ObservationsAzimuthsPlot.title,
-                ObservationsAzimuthsPlot.description,
-            )
-            obs_azimuth = ObservationsAzimuthsPlot(event.event)
-            await obs_azimuth.plot(phases)
+        obs_azimuth = ObservationsAzimuthsPlot(event.event)
+        await obs_azimuth.plot(phases)
 
-        for ev_mag in ev.magnitudes:
-            with ui.card().classes("col-12"):
-                card_header(
-                    EventStationMagnitudes.title,
-                    EventStationMagnitudes.description,
-                )
-                sta_mag = EventStationMagnitudes(ev)
-                await sta_mag.plot(ev_mag)
+    for ev_mag in ev.magnitudes:
+        sta_mag = EventStationMagnitudes(ev)
+        await sta_mag.plot(ev_mag)

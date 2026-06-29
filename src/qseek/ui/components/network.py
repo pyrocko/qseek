@@ -132,7 +132,7 @@ class StationTable(Panel):
         )
         table.on(
             "row-click",
-            lambda e: ui.navigate.to(f"/station/{e.args[1]['id']}"),
+            lambda e: ui.navigate.to(f"/station/{e.args[1]['id'].rstrip('.')}"),
         )
         filter_input.bind_value_to(table, "filter")
 

@@ -148,10 +148,11 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
                 map._eventData.push(...{data});
                 map._eventData.sort((a, b) => a[2] - b[2]); // sort by depth
 
+                const _maxSemblance = Math.max(...map._eventData.map(p => p[3]), 1e-9);
                 map._eventData.forEach(point => {{
                     L.circleMarker([point[0], point[1]], {{
                         renderer: map._canvasRenderer,
-                        radius: point[3] * 4,
+                        radius: (point[3] / _maxSemblance) * 4,
                         stroke: false,
                         fillColor: point[4],
                         fillOpacity: 0.7
@@ -218,7 +219,6 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
                 highlight_latest=highlight_latest,
                 clear_markers=True,
             )
-            await self.update_extent()
 
         async def update_no_highlight():
             await update(highlight_latest=False)
