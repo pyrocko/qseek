@@ -118,6 +118,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
         marker_colors: list[str] | None = None,
         highlight_latest: bool = True,
         clear_markers: bool = True,
+        update_extent: bool = True,
     ):
         if marker_colors is None:
             mpl_cmap = cm.get_cmap(cmap)
@@ -180,7 +181,8 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
                     """
                 )
 
-        await self.update_extent()
+        if update_extent:
+            await self.update_extent()
 
     async def update_extent(self):
         with self._map as m:
@@ -218,6 +220,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
                 catalog.events,
                 highlight_latest=highlight_latest,
                 clear_markers=True,
+                update_extent=False,
             )
 
         async def update_no_highlight():

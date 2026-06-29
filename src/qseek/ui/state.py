@@ -209,17 +209,21 @@ class CatalogStore:
     def has_catalog(self) -> bool:
         return self._catalog is not None
 
-    async def _watch_run(self, refresh_interval: float = 10.0):
+    async def _watch_run(self, refresh_interval: float = 5.0):
         if self._run is None:
             raise RuntimeError("No run set for watching")
         logger.info("Starting run watcher for run %s", self._run.name)
+
         last_update = time.time()
+
         while True:
             async with self._run.updated:
-                await self._run.updated.wait()
-            n_new_events = len(self._catalog.events) - len(self._all_events)
-            if n_new_events <= 0:
-                continue
+                if len(self._catalog.events) == len(self._all_events):
+                    await self._run.updated.wait()
+            time_since_update = time.time() - last_update
+            if time_since_update < refresh_interval:
+                await asyncio.sleep(refresh_interval - time_since_update)
+            last_update = time.time()
 
             new_events = [
                 EventMinimal.from_event(ev)
@@ -232,12 +236,6 @@ class CatalogStore:
                 continue
 
             self.new_events.emit(filtered_events)
-
-            time_since_update = time.time() - last_update
-            last_update = time.time()
-
-            if time_since_update < refresh_interval:
-                await asyncio.sleep(refresh_interval - time_since_update)
 
     def filter_events(
         self,
