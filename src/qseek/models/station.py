@@ -307,7 +307,12 @@ class StationInventory(Model):
                 for tr in traces
             ]
         except KeyError as exc:
-            raise ValueError("could not find station information") from exc
+            tr_nsls = {_NSL(tr.network, tr.station, tr.location) for tr in traces}
+            missing_nsls = tr_nsls - set(available_stations.keys())
+            raise ValueError(
+                "could not find station information for NSLs: "
+                f"{', '.join(nsl.pretty_str(strip=True) for nsl in missing_nsls)}"
+            ) from exc
 
         return selected_stations
 
