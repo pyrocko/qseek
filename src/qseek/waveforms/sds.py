@@ -48,6 +48,8 @@ STATION = f"{ANY}*"
 CHANNEL = f"{ANY}{ANY}{ANY}.D"
 JDAY = "[0-9]*"
 
+EXCLUDE_BANDS = "LVURPTQ"
+
 
 async def _load_file(
     file: Path,
@@ -359,8 +361,12 @@ class SDSArchive(WaveformProvider):
             if not folder.is_dir():
                 continue
             channel = folder.name.rstrip(".D")
+            band = channel[0]
             channel_type = channel[:2]
             channel_orientation = channel[-1]
+            if band in EXCLUDE_BANDS:
+                continue
+
             if channel_selector and channel_type not in channel_selector:
                 continue
             if channel_orientation not in channel_orientations:
@@ -467,15 +473,20 @@ class SDSArchive(WaveformProvider):
                 executor=self._executor,
             )
 
+            removed_nsls = set()
             for tr in traces.copy():
+                # This should never happen, but some archives are bad behaved
                 tr_nsl = NSL(*tr.nslc_id[:-1])
                 if tr_nsl not in nsls:
-                    logger.warning(
-                        "removing trace %s from batch %s, not in station selection",
-                        tr.full_id,
-                        batch_start,
-                    )
                     traces.remove(tr)
+                    removed_nsls.add(tr_nsl)
+
+            for tr_nsl in removed_nsls:
+                logger.warning(
+                    "removing trace %s from batch %s, not in station selection",
+                    tr_nsl.pretty_str(strip=True),
+                    start_time,
+                )
 
             batch = WaveformBatch(
                 start_time=batch_start,
