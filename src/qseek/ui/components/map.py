@@ -4,9 +4,9 @@ import asyncio
 import json
 from typing import TYPE_CHECKING, Iterable
 
-import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
+from matplotlib.pyplot import get_cmap
 from nicegui import background_tasks, ui
 
 from qseek.ui.base import Panel
@@ -121,7 +121,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
         update_extent: bool = True,
     ):
         if marker_colors is None:
-            mpl_cmap = cm.get_cmap(cmap)
+            mpl_cmap = get_cmap(cmap)
             depths = np.array([ev.depth for ev in events])
             norm = self._cmap_norm
             norm.vmin = min(norm.vmin, depths.min())
