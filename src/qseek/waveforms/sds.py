@@ -582,15 +582,20 @@ class SDSArchive(WaveformProvider):
             executor=self._executor,
         )
 
+        removed_nsls = set()
         for tr in traces.copy():
             # This should never happen, but some archives are bad behaved
-            if NSL(*tr.nslc_id[:-1]) not in nsls:
-                logger.warning(
-                    "removing trace %s from batch %s, not in station selection",
-                    tr.full_id,
-                    start_time,
-                )
+            tr_nsl = NSL(*tr.nslc_id[:-1])
+            if tr_nsl not in nsls:
                 traces.remove(tr)
+                removed_nsls.add(tr_nsl)
+
+        for tr_nsl in removed_nsls:
+            logger.warning(
+                "removing trace %s from batch %s, not in station selection",
+                tr_nsl.pretty_str(strip=True),
+                start_time,
+            )
         return traces
 
 
@@ -630,7 +635,7 @@ if __name__ == "__main__":
             "%d available NSLs in SDS archive: %s",
             sds.n_stations,
             ", ".join(
-                nsl.pretty
+                nsl.pretty_str(strip=True)
                 for nsl in sorted(sds.available_nsls(), key=lambda s: s.pretty)
             ),
         )
