@@ -137,6 +137,9 @@ class StationCovarage(NamedTuple):
 
     def add_file(self, file: Path):
         *_, channel, _ = file.parts
+        band = channel[0]
+        if band in EXCLUDE_BANDS:
+            return
         file_date = _get_date_from_filename(file)
         self.file_dates.append(file_date)
         self.channels.add(channel.rstrip(".D"))

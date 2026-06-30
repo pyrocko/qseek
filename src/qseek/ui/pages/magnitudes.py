@@ -27,12 +27,11 @@ async def magnitudes_page() -> None:
             ).classes("text-grey-5 text-body2 text-center").style("max-width: 380px")
         return
 
-    mag_rate = MagnitudeRate()
-    await mag_rate.plot_events(
-        events,
+    mag_rate = MagnitudeRate(
         show_semblance=not catalog.has_magnitudes(),
         show_density=True,
     )
+    await mag_rate.plot_events(events)
 
     stats_over_time = MagnitudeStatisticsOverTime()
     await stats_over_time.plot_events(events)
