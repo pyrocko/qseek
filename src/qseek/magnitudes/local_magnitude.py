@@ -63,6 +63,7 @@ class EventLocalMagnitude(EventMagnitude):
         station_magnitudes: list[StationLocalMagnitude],
         max_station_std: float = 3.0,
         min_stations: int = 3,
+        use_mean: bool = False,
     ) -> Self:
         ml = cls(model=model_name)
 
@@ -93,6 +94,9 @@ class EventLocalMagnitude(EventMagnitude):
         median = np.median(magnitudes)
 
         ml.average = float(median)
+        if use_mean:
+            ml.average = float(np.mean(magnitudes))
+
         # Combine inter-station scatter (MAD) and per-station measurement noise,
         # both normalized by sqrt(N) to give the precision of the median estimate.
         mad = np.median(np.abs(magnitudes - median))
@@ -143,6 +147,12 @@ class LocalMagnitude(EventMagnitudeCalculator):
         default="iaspei-southern-california",
         description="The amplitude attenuation model to "
         "use for calculating the local magnitude, or a custom local magnitude model.",
+    )
+    use_mean: bool = Field(
+        default=False,
+        description="Whether to use the mean or median of the station magnitudes for "
+        "the network magnitude. The median is more robust to outliers, but the mean "
+        "is more accurate if the station magnitudes are normally distributed.",
     )
 
     export_mseed: Path | None = Field(
@@ -319,6 +329,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
             station_magnitudes=station_magnitudes,
             max_station_std=self.max_station_std,
             min_stations=self.min_stations,
+            use_mean=self.use_mean,
         )
 
     def get_station_magnitude(
