@@ -41,48 +41,68 @@ static inline int get_thread_count(int n_threads) {
 static inline npy_intp imax(npy_intp a, npy_intp b) { return a > b ? a : b; }
 static inline npy_intp imin(npy_intp a, npy_intp b) { return a < b ? a : b; }
 
-// Function to check NumPy array dtype
-static inline int check_array_dtype(PyArrayObject *arr, int expected_type) {
+// Function to check NumPy array dtype, dimensionality and contiguity.
+//
+// Callers no longer copy/convert inputs via PyArray_ContiguousFromObject
+// (that hid dtype/shape mismatches behind a silent copy, and freeing that
+// copy's reference immediately after use left dangling data pointers once
+// the copy's refcount hit zero). Arrays are used as-is, so this check is
+// the only guard against wrong dtype, wrong rank, or non-contiguous input.
+static inline int check_array_dtype(PyArrayObject *arr, int expected_type,
+                                    int expected_ndim) {
   if (!PyArray_Check(arr)) {
     PyErr_SetString(PyExc_TypeError, "Input must be a NumPy array");
     return 0;
   }
   if (PyArray_TYPE(arr) != expected_type) {
-    PyErr_Format(PyExc_TypeError, "Input array must be of type %s",
-                 expected_type == NPY_FLOAT32 ? "float32" : "unknown");
+    const char *type_name = expected_type == NPY_FLOAT32 ? "float32"
+                            : expected_type == NPY_INT32 ? "int32"
+                            : expected_type == NPY_BOOL  ? "bool"
+                                                         : "unknown";
+    PyErr_Format(PyExc_TypeError, "Input array must be of type %s", type_name);
+    return 0;
+  }
+  if (PyArray_NDIM(arr) != expected_ndim) {
+    PyErr_Format(PyExc_ValueError,
+                 "Input array must have %d dimension(s), got %d", expected_ndim,
+                 PyArray_NDIM(arr));
     return 0;
   }
   if (!PyArray_ISCONTIGUOUS(arr)) {
-    PyErr_SetString(PyExc_ValueError, "Input array must be contiguous");
+    PyErr_SetString(PyExc_ValueError, "Input array must be C-contiguous");
     return 0;
   }
   return 1;
 }
 
 // Prepare function equivalent to Mojo's prepare
+//
+// Inputs are used as-is (no PyArray_ContiguousFromObject conversion): the
+// caller must already pass C-contiguous arrays of the exact dtype checked
+// below. This is enforced by check_array_dtype() rather than silently
+// converted, since a converted copy's data pointer would otherwise be kept
+// around after the copy's only reference is released -- see the note on
+// check_array_dtype() above.
 static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
                          PyObject *weights, PyObject *node_mask,
                          Trace **traces_list, Node **nodes_list,
                          int32_t *min_shift, int32_t *max_shift) {
   Py_ssize_t n_traces = PyList_Size(traces);
-  PyArrayObject *shifts_arr =
-      (PyArrayObject *)PyArray_ContiguousFromObject(shifts, NPY_INT32, 2, 2);
-  PyArrayObject *weights_arr =
-      (PyArrayObject *)PyArray_ContiguousFromObject(weights, NPY_FLOAT32, 2, 2);
-  PyArrayObject *offsets_arr =
-      (PyArrayObject *)PyArray_ContiguousFromObject(offsets, NPY_INT32, 1, 1);
+  PyArrayObject *shifts_arr = (PyArrayObject *)shifts;
+  PyArrayObject *weights_arr = (PyArrayObject *)weights;
+  PyArrayObject *offsets_arr = (PyArrayObject *)offsets;
   PyArrayObject *node_mask_arr = NULL;
-
-  if (!shifts_arr || !weights_arr || !offsets_arr) {
-    Py_XDECREF(shifts_arr);
-    Py_XDECREF(weights_arr);
-    Py_XDECREF(offsets_arr);
-    return NULL;
-  }
+  int node_mask_owned = 0;
 
   if (n_traces == 0) {
     PyErr_SetString(PyExc_ValueError, "Input traces must be a non-empty list");
-    goto cleanup;
+    return NULL;
+  }
+
+  if (!check_array_dtype(shifts_arr, NPY_INT32, 2) ||
+      !check_array_dtype(weights_arr, NPY_FLOAT32, 2) ||
+      !check_array_dtype(offsets_arr, NPY_INT32, 1)) {
+    return NULL;
   }
 
   npy_intp *shifts_shape = PyArray_SHAPE(shifts_arr);
@@ -92,54 +112,40 @@ static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
     node_mask = PyArray_ZEROS(1, &n_nodes, NPY_BOOL, 0);
     if (!node_mask) {
       PyErr_SetString(PyExc_MemoryError, "Failed to allocate node activation");
-      goto cleanup;
+      return NULL;
     }
-  } else {
-    if (!check_array_dtype((PyArrayObject *)node_mask, NPY_BOOL)) {
-      goto cleanup;
-    }
-    if (PyArray_SHAPE((PyArrayObject *)node_mask)[0] != n_nodes) {
-      PyErr_SetString(PyExc_ValueError,
-                      "Node mask must have the same number of elements as "
-                      "nodes in shifts array");
-      goto cleanup;
-    }
+    node_mask_owned = 1; // We own this reference and must release it below.
+  } else if (!check_array_dtype((PyArrayObject *)node_mask, NPY_BOOL, 1)) {
+    return NULL;
   }
   node_mask_arr = (PyArrayObject *)node_mask;
 
   if (n_nodes == 0) {
     PyErr_SetString(PyExc_ValueError,
                     "Number of nodes must be greater than zero");
-    goto cleanup;
-  }
-
-  if (!check_array_dtype(weights_arr, NPY_FLOAT32) ||
-      !check_array_dtype(offsets_arr, NPY_INT32) ||
-      !check_array_dtype(shifts_arr, NPY_INT32) ||
-      !check_array_dtype(node_mask_arr, NPY_BOOL)) {
-    goto cleanup;
+    goto cleanup_mask;
   }
 
   if (shifts_shape[0] != PyArray_SHAPE(weights_arr)[0] ||
       shifts_shape[1] != PyArray_SHAPE(weights_arr)[1]) {
     PyErr_SetString(PyExc_ValueError,
                     "Shifts and weights must have the same shape");
-    goto cleanup;
+    goto cleanup_mask;
   }
   if (n_traces != PyArray_SHAPE(offsets_arr)[0]) {
     PyErr_SetString(PyExc_ValueError,
                     "Number of arrays must match number of offsets");
-    goto cleanup;
+    goto cleanup_mask;
   }
   if (shifts_shape[1] != n_traces) {
     PyErr_SetString(PyExc_ValueError,
                     "Shifts must have the same number of columns as traces");
-    goto cleanup;
+    goto cleanup_mask;
   }
   if (n_nodes != PyArray_SHAPE(node_mask_arr)[0]) {
     PyErr_SetString(PyExc_ValueError,
                     "Number of nodes must match number of activation flags");
-    goto cleanup;
+    goto cleanup_mask;
   }
 
   int32_t *offsets_data = (int32_t *)PyArray_DATA(offsets_arr);
@@ -151,22 +157,17 @@ static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
   *nodes_list = (Node *)malloc(n_nodes * sizeof(Node));
   if (!*traces_list || !*nodes_list) {
     PyErr_SetString(PyExc_MemoryError, "Failed to allocate memory");
-    goto cleanup;
+    goto cleanup_traces;
   }
 
   for (npy_intp i = 0; i < n_traces; i++) {
-    PyArrayObject *trace = (PyArrayObject *)PyArray_ContiguousFromObject(
-        PyList_GetItem(traces, i), NPY_FLOAT32, 1, 1);
-    if (!trace)
-      goto cleanup_traces;
-    if (!check_array_dtype(trace, NPY_FLOAT32)) {
-      Py_DECREF(trace);
+    PyArrayObject *trace = (PyArrayObject *)PyList_GetItem(traces, i);
+    if (!check_array_dtype(trace, NPY_FLOAT32, 1)) {
       goto cleanup_traces;
     }
     (*traces_list)[i].data = (float *)PyArray_DATA(trace);
     (*traces_list)[i].size = PyArray_SIZE(trace);
     (*traces_list)[i].offset = offsets_data[i];
-    Py_DECREF(trace); // We keep the data pointer, but release the array object
   }
 
   for (npy_intp i = 0; i < n_nodes; i++) {
@@ -187,18 +188,18 @@ static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
     }
   }
 
-  Py_DECREF(shifts_arr);
-  Py_DECREF(weights_arr);
-  Py_DECREF(offsets_arr);
+  if (node_mask_owned) {
+    Py_DECREF(node_mask);
+  }
   return traces;
 
 cleanup_traces:
   free(*traces_list);
   free(*nodes_list);
-cleanup:
-  Py_XDECREF(shifts_arr);
-  Py_XDECREF(weights_arr);
-  Py_XDECREF(offsets_arr);
+cleanup_mask:
+  if (node_mask_owned) {
+    Py_DECREF(node_mask);
+  }
   return NULL;
 }
 
@@ -237,6 +238,8 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
       PyErr_SetString(
           PyExc_ValueError,
           "shift_range argument must be tuple of two integers or None.");
+      free(traces_list);
+      free(nodes_list);
       return NULL;
     }
     min_shift = (int32_t)PyLong_AsLong(PyTuple_GetItem(shift_range, 0));
@@ -254,7 +257,7 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
   }
 
   if (stack != Py_None) {
-    if (!check_array_dtype((PyArrayObject *)stack, NPY_FLOAT32)) {
+    if (!check_array_dtype((PyArrayObject *)stack, NPY_FLOAT32, 2)) {
       free(traces_list);
       free(nodes_list);
       return NULL;
@@ -384,6 +387,8 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
       PyErr_SetString(
           PyExc_ValueError,
           "shift_range argument must be tuple of two integers or None.");
+      free(traces_list);
+      free(nodes_list);
       return NULL;
     }
     min_shift = (int32_t)PyLong_AsLong(PyTuple_GetItem(shift_range, 0));
@@ -401,10 +406,8 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   }
 
   if (node_stack_max != Py_None && node_stack_max_idx != Py_None) {
-    if (!check_array_dtype((PyArrayObject *)node_stack_max, NPY_FLOAT32) ||
-        !check_array_dtype((PyArrayObject *)node_stack_max_idx, NPY_INT32) ||
-        PyArray_NDIM((PyArrayObject *)node_stack_max) != 1 ||
-        PyArray_NDIM((PyArrayObject *)node_stack_max_idx) != 1 ||
+    if (!check_array_dtype((PyArrayObject *)node_stack_max, NPY_FLOAT32, 1) ||
+        !check_array_dtype((PyArrayObject *)node_stack_max_idx, NPY_INT32, 1) ||
         PyArray_SHAPE((PyArrayObject *)node_stack_max_idx)[0] != stack_size ||
         PyArray_SHAPE((PyArrayObject *)node_stack_max)[0] != stack_size) {
       PyErr_SetString(
@@ -568,6 +571,8 @@ static PyObject *delay_sum_snapshot(PyObject *self, PyObject *args,
       PyErr_SetString(
           PyExc_ValueError,
           "shift_range argument must be tuple of two integers or None.");
+      free(traces_list);
+      free(nodes_list);
       return NULL;
     }
     min_shift = (int32_t)PyLong_AsLong(PyTuple_GetItem(shift_range, 0));
