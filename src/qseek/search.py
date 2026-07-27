@@ -345,6 +345,7 @@ class Search(Model):
 
     n_threads: CpuCount = Field(
         default="auto",
+        validate_default=True,
         description="Number of threads for stacking and migration. "
         "`'auto'` will use the maximum number of cores and leaves resources "
         "for I/O and other work. `0` uses all available cores.",
@@ -487,7 +488,7 @@ class Search(Model):
         logger.info("preparing search components")
         self.stations.prepare(self.octree.location)
 
-        self.data_provider.prepare(self.stations)
+        await self.data_provider.prepare(self.stations)
         self.stations.filter_stations(self.data_provider.available_nsls())
 
         distances = self.octree.distances_stations(self.stations)

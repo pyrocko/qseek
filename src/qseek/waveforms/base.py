@@ -122,7 +122,7 @@ class WaveformProvider(Model):
     def available_nsls(self) -> set[NSL]:
         raise NotImplementedError
 
-    def prepare(self, stations: StationInventory) -> None: ...
+    async def prepare(self, stations: StationInventory) -> None: ...
 
     async def iter_batches(
         self,

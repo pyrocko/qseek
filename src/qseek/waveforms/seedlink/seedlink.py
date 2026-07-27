@@ -56,6 +56,7 @@ async def save_traces_sds(
     traces: list[Trace],
     sds_directory: Path,
     crop_padding: timedelta,
+    steim: Literal[1, 2] = 2,
 ) -> list[Path]:
     """Save traces in SDS format.
 
@@ -63,6 +64,7 @@ async def save_traces_sds(
         traces: List of traces to save.
         sds_directory: Directory to save the traces in.
         crop_padding: Padding to crop the traces.
+        steim: Steim compression level.
 
     Returns:
         List of filenames of the saved traces.
@@ -88,7 +90,7 @@ async def save_traces_sds(
             save,
             [trace],
             filename_template=filename,
-            steim=2,
+            steim=steim,
             record_length=4096,
             additional={"julianday": f"{tr_julianday:03d}"},
             append=True,
@@ -143,6 +145,10 @@ class SeedLink(WaveformProvider):
         description="Path to save MiniSeed in an SDS structure. Give a path to save "
         "the archive, or True to use the default path. If False, no saving is done.",
     )
+    sds_steim_compression: Literal[1, 2] = Field(
+        default=2,
+        description="Steim compression level for SDS saving. 1 or 2.",
+    )
 
     _stats: SeedLinkStats = PrivateAttr(default_factory=SeedLinkStats)
     _squirrel: Squirrel | None = PrivateAttr(None)
@@ -161,7 +167,7 @@ class SeedLink(WaveformProvider):
         """Get the SeedLink streams."""
         return [stream for client in self.clients for stream in client.streams]
 
-    def prepare(self, stations: StationInventory) -> None:
+    async def prepare(self, stations: StationInventory) -> None:
         logger.info("preparing SeedLink streaming")
         self._stats.set_seedlink(self)
         self.sds_archive.mkdir(parents=True, exist_ok=True)
@@ -176,13 +182,13 @@ class SeedLink(WaveformProvider):
         # self._squirrel.add(str(self.save_sds_archive), check=False)
 
         for client in self.clients:
-            client.prepare(stations, timeout=self.timeout.total_seconds())
+            await client.prepare(stations, timeout=self.timeout.total_seconds())
 
     def available_nsls(self) -> set[NSL]:
         return {
             station.nsl
             for client in self.clients
-            for station in client.station_selection
+            for station in client._request_selection
         }
 
     async def iter_batches(
@@ -267,6 +273,7 @@ class SeedLink(WaveformProvider):
                 traces=batch_traces,
                 sds_directory=self.sds_archive,
                 crop_padding=window_padding,
+                steim=self.sds_steim_compression,
             )
             self._saved_filenames.update(filenames)
             if self._squirrel:

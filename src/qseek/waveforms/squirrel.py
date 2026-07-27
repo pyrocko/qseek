@@ -234,7 +234,7 @@ class PyrockoSquirrel(WaveformProvider):
                 paths.append(str(path.expanduser()))
         squirrel.add(paths, check=False)
 
-    def prepare(self, stations: StationInventory) -> None:
+    async def prepare(self, stations: StationInventory) -> None:
         logger.info("preparing squirrel waveform provider")
         self._stations = stations
 

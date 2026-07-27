@@ -4,10 +4,12 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from fnmatch import fnmatch
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, PrivateAttr, computed_field
+from pydantic.dataclasses import dataclass
 from pyrocko.io import load
 from pyrocko.trace import NoData, Trace, degapper
 
@@ -59,9 +61,7 @@ async def call_slinktool(cmd_args: list[str]) -> bytes:
 
 
 class SeedLinkStation(BaseModel):
-    network: str
-    station: str
-    location: str
+    nsl: NSL
     channel: str
     dataquality: str
 
@@ -76,17 +76,26 @@ class SeedLinkStation(BaseModel):
         starttime = starttime.replace(tzinfo=timezone.utc)
         endtime = endtime.replace(tzinfo=timezone.utc)
         return cls(
-            network=line[0:2].strip(),
-            station=line[3:8].strip(),
-            location=line[9:12].strip(),
+            nsl=NSL(line[0:2].strip(), line[3:8].strip(), line[9:12].strip()),
             channel=line[12:15].strip(),
             dataquality=line[16],
             starttime=starttime,
             endtime=endtime,
         )
 
+    def matches(self, station_selection: StationSelection) -> bool:
+        """Check if the station matches the given selection."""
+        return station_selection.nsl.match(self.nsl) and fnmatch(
+            self.channel, station_selection.channel
+        )
 
-class StationSelection(BaseModel):
+    def as_selection(self, channel: str) -> StationSelection:
+        """Convert the SeedLinkStation to a StationSelection."""
+        return StationSelection(nsl=self.nsl, channel=channel)
+
+
+@dataclass(frozen=True)
+class StationSelection:
     nsl: NSL = Field(
         default=NSL("1D", "SYRAU", ""),
         description="Network, station, and location code.",
@@ -320,7 +329,7 @@ class SeedLinkClientStats(BaseModel):
     def total_stations(self) -> int:
         if not self._seedlink_client:
             return 0
-        return len(self._seedlink_client.station_selection)
+        return len(self._seedlink_client._request_selection)
 
     @computed_field
     @property
@@ -369,7 +378,7 @@ class SeedLinkClientStats(BaseModel):
             return False
 
         stations = sorted(
-            self._seedlink_client.station_selection,
+            self._seedlink_client._request_selection,
             key=lambda s: s.nsl.pretty,
         )
         ret = ""
@@ -403,7 +412,7 @@ class SeedLinkClientStats(BaseModel):
 
 class SeedLinkClient(BaseModel):
     host: str = Field(
-        default="geofon.gfz-potsdam.de",
+        default="geofon.gfz.de",
         description="SeedLink server hostname or IP address.",
     )
     port: int = Field(
@@ -443,6 +452,7 @@ class SeedLinkClient(BaseModel):
     _stats: SeedLinkClientStats = PrivateAttr(
         default_factory=SeedLinkClientStats,
     )
+    _request_selection: set[StationSelection] = PrivateAttr(default_factory=set)
 
     @property
     def _slink_host(self) -> str:
@@ -458,21 +468,31 @@ class SeedLinkClient(BaseModel):
         """Get the stats for this client."""
         return self._stats
 
-    def prepare(
+    async def prepare(
         self, inventory_stations: StationInventory, timeout: float = 60.0
     ) -> None:
         nslcs = []
-        for sta in self.station_selection.copy():
-            if sta.nslc in nslcs:
-                logger.warning("duplicate station selection %s, removing", sta.nslc)
-                self.station_selection.remove(sta)
-                continue
+        available_stations = await self.get_available_stations()
+        for sta in available_stations:
+            for sta_sel in self.station_selection:
+                if not sta.matches(sta_sel):
+                    continue
+                self._request_selection.add(sta.as_selection(sta_sel.channel))
+
+        # Add stations from the selection that are explicitly specified
+        # This allows for stations that are not currently available to be included
+        # in the request selection.
+        for sta_sel in self.station_selection:
+            if sta_sel.nsl.station:
+                self._request_selection.add(sta_sel)
+
+        for sta in self._request_selection.copy():
             if sta.nsl not in inventory_stations:
                 logger.warning(
                     "station %s not in inventory, removing from selection",
                     sta.nsl.pretty_str(strip=True),
                 )
-                self.station_selection.remove(sta)
+                self._request_selection.remove(sta)
                 continue
             nslcs.append(sta.nslc)
 
@@ -488,8 +508,11 @@ class SeedLinkClient(BaseModel):
         self,
         start_time: datetime | None = None,
     ) -> None:
-        selectors = ",".join(sta.seedlink_str() for sta in self.station_selection)
-        nsls = ",".join(sta.nsl.pretty for sta in self.station_selection)
+        if not self._request_selection:
+            raise RuntimeError("No stations available for streaming")
+
+        selectors = ",".join(sta.seedlink_str() for sta in self._request_selection)
+        nsls = ",".join(sta.nsl.pretty for sta in self._request_selection)
         logger.info("start streaming stations %s from %s", nsls, self._slink_host)
 
         slinktool_args = [

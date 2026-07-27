@@ -304,7 +304,7 @@ class SDSArchive(WaveformProvider):
             n_files,
         )
 
-    def prepare(self, stations: StationInventory):
+    async def prepare(self, stations: StationInventory):
         obspy_compat.plant()
 
         self.scan_sds_archive()
