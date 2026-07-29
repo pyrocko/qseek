@@ -60,7 +60,7 @@ def drawer(manager: SourceManager) -> None:
 
     with (
         ui.left_drawer(top_corner=True, bottom_corner=True)
-        .classes("w-40")
+        .classes("w-40 overflow-x-hidden")
         .style("background-color: #1a2a3f")
         .props("elevated"),
     ):
@@ -84,13 +84,16 @@ def drawer(manager: SourceManager) -> None:
         ui.space()
 
         with (
-            ui.button_group().classes("w-full"),
+            ui.button_group().classes("w-full min-w-0"),
             ui.button(
                 icon="folder_open",
                 on_click=lambda: run_selection_dialog(manager),
-            ).classes("w-full"),
+            ).classes("w-full min-w-0"),
+            ui.label()
+            .bind_text_from(tab_state, "run_name")
+            .classes("ellipsis flex-1 min-w-0"),
         ):
-            ui.label().bind_text_from(tab_state, "run_name").classes("ellipsis")
+            ui.tooltip().bind_text_from(tab_state, "run_name")
         ui.separator()
         with (
             ui.row().classes("items-center opacity-60 p-2 w-full justify-center"),
