@@ -574,12 +574,6 @@ class SeedLinkClient(BaseModel):
                     continue
 
                 trace: Trace = traces[0]
-                logger.debug(
-                    "received %s.%s.%s.%s from %s",
-                    *trace.nslc_id,
-                    self._slink_host,
-                )
-
                 station_data = self._stream_data[trace.nslc_id]
                 station_data.add_trace(
                     trace,
