@@ -37,6 +37,9 @@ class Filter:
         val = getattr(event, self.event_attribute)
         return not (self.range["min"] <= val <= self.range["max"])
 
+    def set_user_defined(self, user_defined: bool = True):
+        self.user_defined = user_defined
+
     def reset(self, events: list[EventMinimal]) -> None:
         if not events:
             return
@@ -152,12 +155,12 @@ class CatalogStore:
         self.time_filter = TimeFilter()
 
         self.filters: list[Filter] = [
+            self.time_filter,
             self.semblance_filter,
             self.magnitude_filter,
             self.rms_filter,
             self.depth_filter,
             self.n_picks_filter,
-            self.time_filter,
         ]
 
         self._run_watcher: asyncio.Task | None = None

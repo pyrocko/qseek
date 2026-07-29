@@ -207,7 +207,7 @@ async def clusters_page() -> None:
             analysis = ClusterAnalysis()
 
     catalog.updated.subscribe(
-        lambda _: background_tasks.create(update_clusters(loading_message=""))
+        lambda: background_tasks.create(update_clusters(loading_message=""))
     )
     catalog.new_events.subscribe(
         lambda _: background_tasks.create(update_clusters(loading_message=""))

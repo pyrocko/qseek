@@ -114,7 +114,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
     async def add_event_markers(
         self,
         events: list[EventMinimal],
-        cmap: str = "magma_r",
+        cmap: str = "plasma_r",
         marker_colors: list[str] | None = None,
         highlight_latest: bool = True,
         clear_markers: bool = True,
@@ -149,6 +149,16 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
                 map._eventData.push(...{data});
                 map._eventData.sort((a, b) => a[2] - b[2]); // sort by depth
 
+                const _minOpacity = 0.7;
+                const _fadeStart = 5;
+                const _fadeEnd = 200;
+                const _nEvents = map._eventData.length;
+                const _markerOpacity = _nEvents <= _fadeStart
+                    ? 1.0
+                    : _nEvents >= _fadeEnd
+                        ? _minOpacity
+                        : 1.0 - (_nEvents - _fadeStart) / (_fadeEnd - _fadeStart) * (1.0 - _minOpacity);
+
                 const _maxSemblance = Math.max(...map._eventData.map(p => p[3]), 1e-9);
                 map._eventData.forEach(point => {{
                     L.circleMarker([point[0], point[1]], {{
@@ -156,10 +166,15 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
                         radius: (point[3] / _maxSemblance) * 4,
                         stroke: false,
                         fillColor: point[4],
-                        fillOpacity: 0.7
+                        fillOpacity: _markerOpacity
                     }}).on('click', () => window.location.href = 'event/' + point[5])
                     .addTo(map._eventGroup);
                 }});
+
+                if (map._canvasRenderer._container) {{
+                    map._canvasRenderer._container.style.filter =
+                        'drop-shadow(0px 0px 2px rgba(0, 0, 0, 0.3))';
+                }}
                 """
             )
             if highlight_latest:

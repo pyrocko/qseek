@@ -23,7 +23,7 @@ async def network_page() -> None:
             center_lat=np.mean([sta.lat for sta in stations]),
             center_lon=np.mean([sta.lon for sta in stations]),
         )
-        map_.set_title("Network Stations").classes("text-lg font-bold")
+        map_.set_title("Network Stations")
         map_.set_description(f"{stations.n_stations} stations available for search")
         await map_.initialize()
         await map_.add_stations(stations)

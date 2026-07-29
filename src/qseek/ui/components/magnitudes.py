@@ -169,7 +169,7 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
-            xaxis_title="Time",
+            xaxis_title="Time UTC",
             yaxis_title="Magnitude" if not show_semblance else "Semblance",
             showlegend=False,
             yaxis2={
@@ -433,7 +433,7 @@ windows of 500 events, advancing 250 events at a time.
         fig.update_layout(
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             template="plotly_white",
-            xaxis_title="Time",
+            xaxis_title="Time UTC",
             yaxis={"title": "b-value (b-positive)"},
             yaxis2={
                 "title": "Mc (MaxC)",
