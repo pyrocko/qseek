@@ -405,6 +405,10 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
     }
   }
 
+  // Both None or both provided is already guaranteed above; capture this
+  // before node_stack_max is possibly reassigned in the branch below.
+  int result_arrays_owned = (node_stack_max == Py_None);
+
   if (node_stack_max != Py_None && node_stack_max_idx != Py_None) {
     if (!check_array_dtype((PyArrayObject *)node_stack_max, NPY_FLOAT32, 1) ||
         !check_array_dtype((PyArrayObject *)node_stack_max_idx, NPY_INT32, 1) ||
@@ -443,9 +447,31 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   int32_t *stack_max_idx_data =
       (int32_t *)PyArray_DATA((PyArrayObject *)node_stack_max_idx);
 
+  // Per-thread tile buffers are carved out of one allocation instead of each
+  // OpenMP thread calling malloc() for its own tile: the tiles computed below
+  // partition [0, stack_size) contiguously with no gaps or overlap, so a
+  // single buffer can be sliced per-thread via tile_start_idx. This lets the
+  // allocation be checked here, before releasing the GIL, instead of being
+  // an unchecked malloc() deep inside the parallel region (a failure there
+  // -- realistic under memory pressure with large octrees/windows, since
+  // this scales with stack_size -- would previously segfault instead of
+  // raising a clean MemoryError).
+  float *tile_stack_buffer =
+      (float *)malloc((size_t)stack_size * sizeof(float));
+  if (!tile_stack_buffer) {
+    PyErr_SetString(PyExc_MemoryError, "Failed to allocate tile stack buffer");
+    if (result_arrays_owned) {
+      Py_DECREF(node_stack_max);
+      Py_DECREF(node_stack_max_idx);
+    }
+    free(traces_list);
+    free(nodes_list);
+    return NULL;
+  }
+
   Py_BEGIN_ALLOW_THREADS;
 #pragma omp parallel num_threads(get_thread_count(n_threads))                  \
-    shared(stack_max_data, stack_max_idx_data)
+    shared(stack_max_data, stack_max_idx_data, tile_stack_buffer)
   {
     int num_threads = omp_get_num_threads();
     int thread_id = omp_get_thread_num();
@@ -459,7 +485,7 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
         tile_start_idx + chunk_size + (thread_id < remainder ? 1 : 0);
     npy_intp tile_size = tile_end_idx - tile_start_idx;
 
-    float *tile_node_stack = (float *)malloc(tile_size * sizeof(float));
+    float *tile_node_stack = tile_stack_buffer + tile_start_idx;
 
     for (npy_intp i_node = 0; i_node < n_nodes; i_node++) {
       Node node = nodes_list[i_node];
@@ -526,9 +552,9 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
         }
       }
     }
-    free(tile_node_stack);
   }
 
+  free(tile_stack_buffer);
   free(traces_list);
   free(nodes_list);
   Py_END_ALLOW_THREADS;

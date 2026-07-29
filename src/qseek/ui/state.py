@@ -125,6 +125,8 @@ class TimeFilter(Filter):
 
 
 class CatalogStore:
+    MAX_VISIBLE_EVENTS: int = 10_000
+
     events: list[EventMinimal] = binding.BindableProperty()
     uids: list[UUID] = []
     times: list[datetime] = []
@@ -255,14 +257,18 @@ class CatalogStore:
         ]
 
         if new_events is None:
-            self.events = filtered_events
-            self.times = [ev.time for ev in filtered_events]
-            self.uids = [ev.uid for ev in filtered_events]
+            # events are chronological ascending, keep the most recent tail
+            visible_events = filtered_events[-self.MAX_VISIBLE_EVENTS :]
         else:
             # new list assignment to trigger BindableProperty
-            self.events = self.events + filtered_events
-            self.times.extend(ev.time for ev in filtered_events)
-            self.uids.extend(ev.uid for ev in filtered_events)
+            visible_events = self.events + filtered_events
+            overflow = len(visible_events) - self.MAX_VISIBLE_EVENTS
+            if overflow > 0:
+                visible_events = visible_events[overflow:]
+
+        self.events = visible_events
+        self.times = [ev.time for ev in visible_events]
+        self.uids = [ev.uid for ev in visible_events]
 
         self.refresh_caches()
         return filtered_events
@@ -306,7 +312,7 @@ class CatalogStore:
         self.n_picks = self.n_picks.astype(int)
 
     def get_event_by_uid(self, uid: UUID) -> EventMinimal:
-        for ev in self.events:
+        for ev in self._all_events:
             if ev.uid == uid:
                 return ev
         raise ValueError(f"Event with uid {uid} not found")
