@@ -7,8 +7,8 @@ from nicegui import ui
 from nicegui.elements.plotly import Plotly
 from plotly.subplots import make_subplots
 
-from qseek.models.detection import EventDetection
 from qseek.ui.base import Panel
+from qseek.ui.models import EventMinimal
 from qseek.ui.state import CatalogStore
 from qseek.utils import NSL
 
@@ -160,13 +160,14 @@ class StationCoverage(Panel):
 
     async def plot_coverage(
         self,
-        events: list[EventDetection],
+        events: list[EventMinimal],
     ) -> None:
         if not events:
             return
 
         fig = self.figure
-        sorted_events = sorted(events, key=lambda e: e.time)
+        events_full = [ev.event for ev in events]
+        sorted_events = sorted(events_full, key=lambda e: e.time)
         n_stations = np.array([ev.receivers.n_receivers for ev in sorted_events])
         times = [ev.time for ev in sorted_events]
         median_n = float(np.median(n_stations))
@@ -261,7 +262,7 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
 
     async def plot_stations(
         self,
-        events: list[EventDetection],
+        events: list[EventMinimal],
     ) -> None:
         @dataclass
         class StationStats:
@@ -286,7 +287,9 @@ This median metric also serves as a proxy for the Signal-to-Noise ratio.
         fig = self.figure
         station_counts: dict[NSL, StationStats] = defaultdict(StationStats)
 
-        for ev in events:
+        events_full = [ev.event for ev in events]
+
+        for ev in events_full:
             for rcv in ev.receivers:
                 try:
                     arrival = rcv.get_arrival("P")
@@ -420,7 +423,7 @@ Stations are sorted by median absolute residual (best-performing left).
 
     async def plot_residuals(
         self,
-        events: list[EventDetection],
+        events: list[EventMinimal],
     ) -> None:
         @dataclass
         class StationDelays:
@@ -434,7 +437,9 @@ Stations are sorted by median absolute residual (best-performing left).
         fig = self.figure
         delays: dict[NSL, StationDelays] = defaultdict(StationDelays)
 
-        for ev in events:
+        events_full = [ev.event for ev in events]
+
+        for ev in events_full:
             for rcv in ev.receivers:
                 try:
                     arrival = rcv.get_arrival("P")

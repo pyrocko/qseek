@@ -184,12 +184,13 @@ class StationPickPerformance(StationComponent):
         nsl = self.station.nsl
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_catalog()
 
             def collect():
                 p_times, p_vals, p_uids = [], [], []
                 s_times, s_vals, s_uids = [], [], []
                 for ev in catalog.events:
+                    ev = ev.event
                     uid = str(ev.uid)
                     for rcv in ev.receivers:
                         if rcv.nsl != nsl:
@@ -322,12 +323,13 @@ class StationTraveltimeResidual(StationComponent):
         nsl = self.station.nsl
 
         async def update_plot():
-            catalog = await state.run.get_catalog()
+            catalog = await state.get_catalog()
 
             def collect():
                 p_times, p_vals, p_uids, p_confs = [], [], [], []
                 s_times, s_vals, s_uids, s_confs = [], [], [], []
                 for ev in catalog.events:
+                    ev = ev.event
                     uid = str(ev.uid)
                     for rcv in ev.receivers:
                         if rcv.nsl != nsl:

@@ -16,7 +16,7 @@ async def network_page() -> None:
     catalog = await state.get_catalog()
     search = await state.run.get_search()
     stations = search.stations
-    events = catalog.full_catalog.events
+    events = catalog.events
 
     with ui.column().classes("w-full gap-4"):
         map_ = OverviewMap(
