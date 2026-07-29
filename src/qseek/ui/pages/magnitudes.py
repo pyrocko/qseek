@@ -40,9 +40,8 @@ async def magnitudes_page() -> None:
         freq = MagnitudeFrequency()
         await freq.plot_events(events)
 
-        with ui.card().classes("col-12 col-md"):
-            b_positive = MagnitudeFrequencyBPositive()
-            await b_positive.plot_events(events)
+        b_positive = MagnitudeFrequencyBPositive()
+        await b_positive.plot_events(events)
 
     with ui.row().classes("w-full flex-1 items-stretch"):
         over_station = StationsMagnitudesResiduals()

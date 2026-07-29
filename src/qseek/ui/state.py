@@ -174,9 +174,7 @@ class CatalogStore:
         await self.detach()
         self._catalog = await run.get_catalog()
         await run.attach(self)
-        self._all_events = [
-            EventMinimal.from_event(ev) for ev in self._catalog.events[-5000:]
-        ]
+        self._all_events = [EventMinimal.from_event(ev) for ev in self._catalog.events]
         logger.debug("Run %s loaded with %d events", run.name, self.n_events)
 
         self.reset_filters(reset_user_filters=True)
