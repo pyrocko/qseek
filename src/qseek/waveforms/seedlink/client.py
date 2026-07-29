@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from fnmatch import fnmatch
@@ -60,6 +61,24 @@ async def call_slinktool(cmd_args: list[str]) -> bytes:
     return stdout
 
 
+_SEEDLINK_TIME_RANGE = re.compile(r"(\S+\s+\S+)\s+-\s+(\S+\s+\S+)")
+_SEEDLINK_TIME_FORMATS = (
+    "%Y/%m/%d %H:%M:%S.%f",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y-%m-%d %H:%M:%S.%f",
+    "%Y-%m-%d %H:%M:%S",
+)
+
+
+def _parse_seedlink_time(text: str) -> datetime:
+    for fmt in _SEEDLINK_TIME_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    raise ValueError(f"unrecognized SeedLink timestamp: {text!r}")
+
+
 class SeedLinkStation(BaseModel):
     nsl: NSL
     channel: str
@@ -70,11 +89,14 @@ class SeedLinkStation(BaseModel):
 
     @classmethod
     def from_line(cls, line: str) -> SeedLinkStation:
+        # Servers differ in the timestamp format they report, e.g.
         # ZB VOSXX 00 HHZ D 2021/10/08 04:20:36.4200  -  2021/10/08 11:31:00.220
-        starttime = datetime.strptime(line[18:42], "%Y/%m/%d %H:%M:%S.%f")  # noqa DTZ007
-        endtime = datetime.strptime(line[47:71], "%Y/%m/%d %H:%M:%S.%f")  # noqa DTZ007
-        starttime = starttime.replace(tzinfo=timezone.utc)
-        endtime = endtime.replace(tzinfo=timezone.utc)
+        # ZB VOSXX 00 HHZ D 2026-07-29 09:46:01  -  2026-07-29 10:00:00
+        match = _SEEDLINK_TIME_RANGE.search(line[17:])
+        if match is None:
+            raise ValueError(f"cannot parse SeedLink station line: {line!r}")
+        starttime = _parse_seedlink_time(match.group(1))
+        endtime = _parse_seedlink_time(match.group(2))
         return cls(
             nsl=NSL(line[0:2].strip(), line[3:8].strip(), line[9:12].strip()),
             channel=line[12:15].strip(),
