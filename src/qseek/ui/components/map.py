@@ -83,7 +83,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
         ]
         data = await asyncio.to_thread(json.dumps, station_data)
         station_svg = (
-            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="0.75">'
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" opacity="0.6">'
             '<polygon points="8,0.5 14.5,11.75 1.5,11.75"'
             ' fill="#5C8FA3" stroke="black" stroke-width="1.5"/>'
             "</svg>"
