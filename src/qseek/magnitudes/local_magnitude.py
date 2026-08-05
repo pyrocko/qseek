@@ -70,26 +70,36 @@ class EventLocalMagnitude(EventMagnitude):
         if not station_magnitudes:
             raise ValueError("No station magnitudes provided")
 
-        std = np.std([sta.magnitude for sta in station_magnitudes])
-        unclean_mean = np.mean([sta.magnitude for sta in station_magnitudes])
+        valid_magnitudes = [sta for sta in station_magnitudes if sta.flag is None]
 
-        for mag in station_magnitudes.copy():
+        std = np.std([sta.magnitude for sta in valid_magnitudes])
+        unclean_mean = np.mean([sta.magnitude for sta in valid_magnitudes])
+
+        for i, mag in enumerate(station_magnitudes.copy()):
+            if mag.flag is not None:
+                continue
             if np.abs(mag.magnitude - unclean_mean) > max_station_std * std:
                 logger.warning(
                     "%s magnitude removed due to high std",
                     mag.station.pretty,
                 )
-                station_magnitudes.remove(mag)
+                station_magnitudes[i].flag = "high_std"
 
-        if len(station_magnitudes) < min_stations:
-            raise ValueError(
+        valid_magnitudes = [sta for sta in station_magnitudes if sta.flag is None]
+        if len(valid_magnitudes) < min_stations:
+            ml.station_magnitudes = station_magnitudes
+            ml.average = float(np.nan)
+            ml.error = float(np.nan)
+            logger.warning(
                 "Not enough station magnitudes available for local magnitude "
                 "calculation after removing outliers."
             )
+            return ml
 
         ml.station_magnitudes = station_magnitudes
-        magnitudes = np.array([sta.magnitude for sta in ml.station_magnitudes])
-        station_errors = np.array([sta.error for sta in ml.station_magnitudes])
+
+        magnitudes = np.array([sta.magnitude for sta in valid_magnitudes])
+        station_errors = np.array([sta.error for sta in valid_magnitudes])
         n = len(magnitudes)
         median = np.median(magnitudes)
 
@@ -321,7 +331,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
                     nsl,
                     sta_mag.snr,
                 )
-                continue
+                sta_mag.flag = "low_snr"
             station_magnitudes.append(sta_mag)
 
         return EventLocalMagnitude.from_station_magnitudes(
