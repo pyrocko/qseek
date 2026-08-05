@@ -31,6 +31,7 @@ class StationLocalMagnitude(NamedTuple):
     distance_epi: float
     distance_hypo: float
     snr: float = 0.0
+    flag: str | None = None
 
 
 class EventMagnitude(BaseModel):
