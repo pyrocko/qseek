@@ -107,6 +107,9 @@ class StationLocalMagnitude(NamedTuple):
     distance_epi: float
     distance_hypo: float
     snr: float = 0.0
+    flag: str | None = (
+        None  # None -> valid magnitude, "low_snr" and "high_std" -> invalid magnitude
+    )
 
 
 class LocalMagnitudeModel:
