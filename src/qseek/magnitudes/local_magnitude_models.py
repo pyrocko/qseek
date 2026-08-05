@@ -256,6 +256,28 @@ class CentralCalifornia(WoodAnderson, LocalMagnitudeModel):
         return np.log10(dist_hypo_km) + 0.00301 * dist_hypo_km + 0.7
 
 
+class CaliforniaIntegratedSeismicNetwork(WoodAnderson, LocalMagnitudeModel):
+    author = "Urhammer et. al (2011)"
+    doi = "10.1785/0120100106"
+
+    epicentral_range = Range(0.0 * KM, 450.0 * KM)  # actually 500
+    component = "north-east-separate"
+    max_amplitude = "wood-anderson-old"
+    peak_measurement = "max-amplitude"
+
+    _FACTORS = [0.056, -0.031, -0.053, -0.080, -0.028, 0.015]
+
+    @classmethod
+    def get_amp_attenuation(cls, dist_hypo_km: float, dist_epi_km: float) -> float:
+        z = 1.11366 * np.log10(dist_hypo_km) - 2.00574
+
+        sum = 0.0
+        for i, tp in enumerate(cls._FACTORS, start=1):
+            sum += tp * np.cos(i * np.arccos(z))
+
+        return 1.11 * np.log10(dist_hypo_km) + 0.00189 * (dist_hypo_km) + 0.591 + sum
+
+
 class EasternNorthAmerica(WoodAnderson, LocalMagnitudeModel):
     author = "Kim (1998)"
 

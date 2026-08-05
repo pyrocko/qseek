@@ -191,7 +191,7 @@ class StationAmplitudes(NamedTuple):
     def snr(self) -> float:
         """Signal-to-noise ratio."""
         if self.noise == 0.0:
-            return 0.0
+            return float("inf") if self.peak_amp > 0.0 else 0.0
         return self.peak_amp / self.noise
 
     @classmethod

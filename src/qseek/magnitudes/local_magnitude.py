@@ -130,7 +130,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
         "before the analysis.",
     )
     min_signal_noise_ratio: float = Field(
-        default=1.5,
+        default=3.0,
         ge=1.0,
         description="Minimum signal-to-noise ratio for the local magnitude estimation. "
         "The noise amplitude is extracted from before the P phase arrival,"
