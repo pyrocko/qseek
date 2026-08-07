@@ -580,6 +580,20 @@ class SeedLinkClient(BaseModel):
                         lambda: self.restart_stream(None)
                     )
                     break
+                if len(data) != RECORD_LENGTH:
+                    logger.warning(
+                        "received incomplete record from %s", self._slink_host
+                    )
+                    continue
+                try:
+                    _ = int(data[:6])  # sequence number
+                except ValueError:
+                    logger.warning(
+                        "failed to parse sequence number from data received from %s",
+                        self._slink_host,
+                    )
+                    continue
+
                 self._stats.add_bytes(len(data))
 
                 with NamedTemporaryFile() as tmpfile:
