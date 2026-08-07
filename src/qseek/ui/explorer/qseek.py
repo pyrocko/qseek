@@ -67,43 +67,55 @@ class QseekWebSource(RunSource):
 
     async def _listen_websocket(self):
         while True:
-            async with (
-                aiohttp.ClientSession(
-                    base_url=f"{self.name}/api/v1/",
-                    raise_for_status=True,
-                ) as session,
-                session.ws_connect("ws") as ws,
-            ):
-                logger.info(
-                    "listening for WebSocket messages from %s", session._base_url
-                )
-                async for msg in ws:
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        try:
-                            msg = WebsocketMessage.model_validate_json(msg.data)
-                            await self._new_websocket_message(msg)
-                        except ValidationError as exc:
+            try:
+                async with (
+                    aiohttp.ClientSession(
+                        base_url=f"{self.name}/api/v1/",
+                        raise_for_status=True,
+                    ) as session,
+                    session.ws_connect("ws") as ws,
+                ):
+                    logger.info(
+                        "listening for WebSocket messages from %s", session._base_url
+                    )
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            try:
+                                parsed_msg = WebsocketMessage.model_validate_json(
+                                    msg.data
+                                )
+                                await self._new_websocket_message(parsed_msg)
+                            except ValidationError as exc:
+                                logger.error(
+                                    "Failed to parse WebSocket message from %s: %s",
+                                    self.name,
+                                    exc,
+                                )
+                        elif msg.type == aiohttp.WSMsgType.ERROR:
                             logger.error(
-                                "Failed to parse WebSocket message from %s: %s",
+                                "WebSocket error from %s: %s",
                                 self.name,
-                                exc,
+                                msg.data,
                             )
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        logger.error(
-                            "WebSocket error from %s: %s",
-                            self.name,
-                            msg.data,
-                        )
-                    elif msg.type == aiohttp.WSMsgType.CLOSED:
-                        logger.info(
-                            "WebSocket connection to %s closed by server",
-                            self.name,
-                        )
-
-            logger.warning(
-                "WebSocket connection to %s closed, reconnecting...",
-                self.name,
-            )
+                        elif msg.type == aiohttp.WSMsgType.CLOSED:
+                            logger.info(
+                                "WebSocket connection to %s closed by server",
+                                self.name,
+                            )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Connection failures or bugs while processing a message must not
+                # kill this task permanently - nothing awaits it, so any unhandled
+                # exception here silently stops live updates for good.
+                logger.exception(
+                    "WebSocket connection to %s failed, reconnecting...", self.name
+                )
+            else:
+                logger.warning(
+                    "WebSocket connection to %s closed, reconnecting...",
+                    self.name,
+                )
             # Wait before trying to reconnect
             await asyncio.sleep(5.0)
 
