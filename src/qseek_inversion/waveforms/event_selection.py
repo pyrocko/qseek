@@ -290,7 +290,7 @@ class EventWaveformsSelection(WaveformSelection):
             seconds_before=seconds_before,
             seconds_after=seconds_after,
             want_incomplete=False,
-            crop_receivers=False,
+            crop_traces=False,
         )
         if not traces:
             raise ValueError(f"No traces found for event {event.time}")
