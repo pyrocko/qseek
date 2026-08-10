@@ -36,11 +36,11 @@ from qseek.models.detection import EventDetection, PhaseDetection
 from qseek.models.detection_uncertainty import DetectionUncertainty
 from qseek.models.station import Station
 from qseek.octree import Octree
+from qseek.plugins import CallbackType, load_callback_plugin
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import PreProcessing, Resample
 from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
-from qseek.signals import Signal
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
@@ -292,6 +292,17 @@ class Search(Model):
         description="Web server for serving search results and monitoring.",
     )
 
+    callbacks: list[CallbackType] = Field(
+        default_factory=list,
+        description="Callback plugins notified of search lifecycle events.",
+    )
+    callback_scripts: list[Path] = Field(
+        default_factory=list,
+        description="Paths to single-file callback plugins. Each file is loaded "
+        "relative to the current working directory and must define a top-level "
+        "`load()` function returning a `Callback` instance.",
+    )
+
     semblance_sampling_rate: SamplingRate = Field(
         default=100,
         description="Sampling rate for the semblance image function. "
@@ -368,9 +379,6 @@ class Search(Model):
     _compute_semaphore: asyncio.Semaphore = PrivateAttr(
         asyncio.Semaphore(max(1, get_cpu_count() - 4))
     )
-
-    # Signals
-    _new_detection: Signal[EventDetection] = PrivateAttr(Signal())
 
     @field_validator("station_corrections", mode="before")
     @classmethod
@@ -524,10 +532,24 @@ class Search(Model):
             await self.webserver.prepare(search=self)
             BackgroundTasks.create_task(self.webserver.start())
 
+        for path in self.callback_scripts:
+            self.callbacks.append(load_callback_plugin(path))
+
         csv_header = EventDetection.csv_header()
         for m in self.magnitudes:
             csv_header.extend(m.csv_header())
         self._catalog.prepare(csv_header=csv_header)
+
+        await self._run_callbacks("on_start", self)
+
+    async def _run_callbacks(self, hook: str, *args: Any) -> None:
+        for callback in self.callbacks:
+            try:
+                await getattr(callback, hook)(*args)
+            except Exception:
+                logger.exception(
+                    "callback %s.%s raised", callback.__class__.__name__, hook
+                )
 
     async def start(
         self,
@@ -592,6 +614,7 @@ class Search(Model):
             pre_processed_batches
         ):
             batch_processing_start = datetime_now()
+            await self._run_callbacks("on_batch_start", batch)
 
             images.set_stations(self.stations)
             images.resample(self.semblance_sampling_rate)
@@ -614,6 +637,7 @@ class Search(Model):
                 show_log=True,
             )
             self.set_progress(batch.end_time)
+            await self._run_callbacks("on_batch_end", batch)
             n.notify("WATCHDOG=1")
 
         n.notify("STOPPING=1")
@@ -624,6 +648,7 @@ class Search(Model):
         )
         if self.webserver:
             await self.webserver.stop()
+        await self._run_callbacks("on_stop", self)
         console.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
@@ -644,7 +669,9 @@ class Search(Model):
                 detection,
                 jitter_location=self.octree.smallest_node_size(),
             )
-            await self._new_detection.emit(detection)
+            BackgroundTasks.create_task(
+                self._run_callbacks("on_new_detection", detection)
+            )
 
         if self.webserver:
             BackgroundTasks.create_task(self.webserver.new_detections(detections))
