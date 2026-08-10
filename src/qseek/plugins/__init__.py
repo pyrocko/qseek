@@ -8,6 +8,7 @@ from pydantic import Field
 
 from qseek.plugins.base import load_plugin
 from qseek.plugins.callback import Callback
+from qseek.plugins.telegram import TelegramAlert  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -32,4 +33,5 @@ def load_callback_plugin(path: Path) -> Callback:
     callback = load_plugin(path)
     if not isinstance(callback, Callback):
         raise TypeError(f"plugin {path} did not return a Callback instance")
+    logger.info("loaded callback plugin from %s", path)
     return callback

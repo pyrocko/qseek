@@ -458,6 +458,7 @@ def main() -> None:
             from qseek.corrections.base import TravelTimeCorrections
             from qseek.features.base import FeatureExtractor
             from qseek.magnitudes.base import EventMagnitudeCalculator
+            from qseek.plugins import Callback
             from qseek.pre_processing.base import BatchPreProcessing
             from qseek.tracers.tracers import RayTracer
             from qseek.waveforms.base import WaveformProvider
@@ -474,6 +475,7 @@ def main() -> None:
                 FeatureExtractor,
                 EventMagnitudeCalculator,
                 TravelTimeCorrections,
+                Callback,
             )
 
             if args.name:
