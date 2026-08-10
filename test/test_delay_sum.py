@@ -127,7 +127,7 @@ def test_delay_sum_reduce_snapshot(data, n_threads: int):
         )
         pyrocko_max_reduce_snapshot = res_pyrocko[:, idx]
         np.testing.assert_allclose(snapshot, pyrocko_max_reduce_snapshot, rtol=1e-5)
-        np.testing.assert_allclose(snapshot, max_res, rtol=1e-5)
+        np.testing.assert_allclose(snapshot.max(), max_res[idx], rtol=1e-5)
 
 
 @pytest.mark.benchmark(group="delay_sum")
@@ -283,16 +283,30 @@ def test_delay_sum_reduce_mask(
             res,
             n_threads=n_threads,
         )
-        return max_idx, max_value, offset
+        return max_idx, max_value, offset, res
 
     def benchmark_if(func: Callable, func_implementation: Implementation):
         return benchmark(func) if func_implementation == implementation else func()
 
     max_value, max_idx, offset = benchmark_if(stack_reduce_qseek, "qseek")
-    pyr_max_idx, pyr_max, pyr_off = benchmark_if(stack_reduce_pyrocko, "pyrocko")
+    pyr_max_idx, pyr_max, pyr_off, res_pyrocko = benchmark_if(
+        stack_reduce_pyrocko, "pyrocko"
+    )
 
     np.testing.assert_allclose(pyr_max, max_value, rtol=1e-5)
-    np.testing.assert_equal(pyr_max_idx, max_idx)
+
+    # Two independent reductions can break a tie between equally-valued
+    # candidate nodes (typically at the shift-range boundary) differently.
+    # Only flag an index mismatch if qseek's pick isn't actually tied for
+    # the max in the reference (pyrocko) stack.
+    tied = pyr_max_idx == max_idx
+    if not tied.all():
+        mismatched = np.flatnonzero(~tied)
+        np.testing.assert_allclose(
+            res_pyrocko[max_idx[mismatched], mismatched],
+            pyr_max[mismatched],
+            rtol=1e-5,
+        )
 
     assert pyr_off == offset
 
