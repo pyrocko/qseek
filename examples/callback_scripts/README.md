@@ -67,6 +67,9 @@ the `callbacks` field instead, configured like any other pluggable component
 - [`postgres_callback.py`](postgres_callback.py) — inserts every new
   detection into a Postgres database via `psycopg`'s async API, reusing one
   connection across calls with an `asyncio.Lock` and a single
-  reconnect-and-retry on failure. Run it directly
+  reconnect-and-retry on failure. Connection settings are `pydantic-settings`
+  fields on the callback itself (`database`, `producer_user`), read from
+  `QSEEKV2_DATABASE` / `QSEEKV2_PRODUCER_USER`. Run it directly
   (`python postgres_callback.py`) to check connectivity and role
-  permissions before wiring it into a search.
+  permissions before wiring it into a search. Requires `psycopg` and
+  `pydantic-settings`.

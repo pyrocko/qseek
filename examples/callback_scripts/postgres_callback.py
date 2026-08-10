@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ALGORITHM = "qseek"
+ALGORITHM = "qseek-v2"
 
 
 class PostgresCallback(Callback, BaseSettings):
@@ -78,7 +78,7 @@ class PostgresCallback(Callback, BaseSettings):
                         detection.effective_lon,
                         detection.effective_depth,
                         magnitude.average if magnitude else None,
-                        magnitude.name if magnitude else None,
+                        "ML",
                         ALGORITHM,
                         True,
                     ),
