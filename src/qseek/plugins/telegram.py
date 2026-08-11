@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 from collections import deque
 from datetime import datetime, timedelta
@@ -10,6 +11,7 @@ from pydantic import Field, PrivateAttr, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qseek.plugins.callback import Callback
+from qseek.utils import datetime_pretty
 
 if TYPE_CHECKING:
     from qseek.models.detection import EventDetection
@@ -18,6 +20,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
+
+
+def _format_window(window: timedelta) -> str:
+    hours = window.total_seconds() / 3600
+    if hours > 24 and hours % 24 == 0:
+        return f"{int(hours // 24)} days"
+    if hours >= 1:
+        return f"{hours:.0f} hours"
+    return f"{window.total_seconds() / 60:.0f} minutes"
 
 
 class TelegramAlert(Callback, BaseSettings):
@@ -33,13 +44,11 @@ class TelegramAlert(Callback, BaseSettings):
     callback: Literal["TelegramAlert"] = "TelegramAlert"
 
     bot_token: SecretStr = Field(
-        default="xxx-xxx-xxx",
+        exclude=True,
         description="The bot's token, as provided by BotFather.",
     )
     chat_id: str = Field(
-        default="",
-        description="The chat ID to send messages to."
-        "If empty, the bot's default chat is used.",
+        description="The chat ID to send messages to.",
     )
 
     magnitude_alert: float | None = Field(
@@ -64,6 +73,7 @@ class TelegramAlert(Callback, BaseSettings):
 
     _recent_events: deque[datetime] = PrivateAttr(default_factory=deque)
     _rate_alerted: bool = PrivateAttr(False)
+    _project_name: str = PrivateAttr("unknown")
 
     async def _send(
         self,
@@ -89,7 +99,7 @@ class TelegramAlert(Callback, BaseSettings):
             payload = {
                 "chat_id": self.chat_id,
                 "text": text,
-                "parse_mode": "Markdown",
+                "parse_mode": "HTML",
             }
 
         url = f"{TELEGRAM_API}/bot{self.bot_token.get_secret_value()}/{method}"
@@ -117,15 +127,22 @@ class TelegramAlert(Callback, BaseSettings):
 
         if not self._rate_alerted:
             self._rate_alerted = True
+            # sendVenue's title/address are always plain text, never parsed
+            # as markup - keep it free of formatting syntax.
             await self._send(
-                f"⚠️ *Swarm alert*: {n_events} events ≥ M{self.rate_alert_magnitude}"
-                f" in the last {self.rate_alert_window}",
+                f"✨ Swarm alert: {n_events} events ≥ M{self.rate_alert_magnitude}"
+                f" in the last {_format_window(self.rate_alert_window)}"
+                f" · {self._project_name}",
+                address=f"since {datetime_pretty(self._recent_events[0])}",
                 latitude=detection.effective_lat,
                 longitude=detection.effective_lon,
             )
 
     async def on_start(self, search: Search) -> None:
-        await self._send(f"🚀 qseek search started: `{search.project_dir.name}`")
+        self._project_name = search._rundir.name
+        await self._send(
+            f"🚀 qseek search started: <code>{html.escape(self._project_name)}</code>"
+        )
 
     async def on_new_detection(self, detection: EventDetection) -> None:
         magnitude = detection.magnitude
@@ -133,10 +150,12 @@ class TelegramAlert(Callback, BaseSettings):
             return
 
         if self.magnitude_alert is None or magnitude.average >= self.magnitude_alert:
+            # sendVenue's title is always plain text, so the raw (unescaped)
+            # project name is used here, unlike the HTML sendMessage calls.
             await self._send(
-                f"🔔 M{magnitude.average:.1f} {magnitude.name} detection",
+                f"🎯 M{magnitude.average:.1f} Event · {self._project_name}",
                 address=(
-                    f"{detection.time.isoformat()} · "
+                    f"{datetime_pretty(detection.time)}\n"
                     f"{detection.effective_depth / 1e3:.1f} km depth"
                 ),
                 latitude=detection.effective_lat,
@@ -147,4 +166,5 @@ class TelegramAlert(Callback, BaseSettings):
             await self._check_rate_alert(detection)
 
     async def on_stop(self, search: Search) -> None:
-        await self._send(f"🏁 qseek search finished: `{search.project_dir.name}`")
+        name = html.escape(search.project_dir.name)
+        await self._send(f"🏁 qseek search finished: <code>{name}</code>")
