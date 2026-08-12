@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Mojo build cache (created by mojo.importer on demand)
+__mojocache__/
+
 # Distribution / packaging
 .Python
 build/
