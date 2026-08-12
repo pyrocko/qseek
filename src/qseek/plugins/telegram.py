@@ -10,6 +10,7 @@ import aiohttp
 from pydantic import Field, PrivateAttr, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from qseek.magnitudes.base import EventMagnitude
 from qseek.plugins.callback import Callback
 from qseek.utils import datetime_pretty
 
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
+
+
+def get_magnitude_name(magnitude: EventMagnitude) -> str:
+    if magnitude == "LocalMagnitude":
+        return "ML"
+    if magnitude == "MomentMagnitude":
+        return "Mw"
+    return magnitude.__class__.__name__
 
 
 def _format_window(window: timedelta) -> str:
@@ -152,8 +161,10 @@ class TelegramAlert(Callback, BaseSettings):
         if self.magnitude_alert is None or magnitude.average >= self.magnitude_alert:
             # sendVenue's title is always plain text, so the raw (unescaped)
             # project name is used here, unlike the HTML sendMessage calls.
+            magnitude_name = get_magnitude_name(magnitude)
             await self._send(
-                f"🎯 M{magnitude.average:.1f} Event · {self._project_name}",
+                f"🎯 {magnitude_name}{magnitude.average:.1f} Event"
+                f" · {self._project_name}",
                 address=(
                     f"{datetime_pretty(detection.time)}\n"
                     f"{detection.effective_depth / 1e3:.1f} km depth"
