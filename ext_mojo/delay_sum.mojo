@@ -1,20 +1,66 @@
 """Delay-and-sum beamforming, ported from src/qseek/ext/delay_sum.c to Mojo.
 
-Mirrors the C/SIMDE + OpenMP extension function-for-function:
-`delay_sum`, `delay_sum_reduce`, and `delay_sum_snapshot` backproject
-seismic energy from traces into an irregular grid of nodes using
-per-node integer sample shifts and float32 weights.
+Struct-oriented design (inspired by the older `parstack.mojo` prototype on
+branch `features/mojo`, adapted to Mojo 1.0):
 
-SIMD lanes come from `vectorize` (compiled against the host's native
-vector width) instead of hand-rolled AVX2/SIMDE intrinsics.
+- `Trace` and `Node` are pointer-backed value types with their own compute
+  methods. `Node.accumulate_trace` clips one trace against an arbitrary
+  destination window, so the full-range `delay_sum` path and the per-tile
+  `delay_sum_reduce` path share it instead of duplicating the offset
+  arithmetic that the C original repeats twice.
+- `Grid` validates and owns the traces/nodes for one call, and resolves the
+  shift range, so each entry point is just "build a Grid, then compute".
+  `Grid.view()` hands tasks a borrowed `GridView` so the owner stays on the
+  calling thread.
 
-Multi-threading (`n_threads`) is accepted for API compatibility with the
-C extension but not yet implemented: `std.runtime.asyncrt.TaskGroup`
-(the intended replacement for OpenMP `#pragma omp parallel for`) reads
-garbage out of `List[...]`-typed arguments on the first loop iteration
-of a freshly-scheduled task in this Mojo 1.0.0 toolchain -- confirmed
-with a minimal repro outside this file. Everything runs single-threaded
-until that is fixed upstream.
+SIMD lanes come from `vectorize` (compiled against the host's native vector
+width) instead of hand-rolled AVX2/SIMDE intrinsics.
+
+Both stacking paths iterate nodes in blocks (`stack_block`) with the trace
+loop hoisted outside the node loop, so each trace slice is pulled from L3
+once per block and reused from L1 for the rest of it. Accumulation is ~98%
+of the work and was bound by re-reading the entire trace working set once
+per node; blocking cuts that traffic by the block factor.
+
+
+Threading: this module depends on a pre-stable API
+--------------------------------------------------
+
+Parallelism uses `std.runtime.asyncrt.TaskGroup` (`async def` + `create_task`
++ `wait`). **That API is not stable in Mojo 1.0.0** and is the one piece of
+this module likely to break on a toolchain upgrade:
+
+- The Mojo manual states plainly that "Mojo doesn't yet support async
+  execution", and "First-class `async` support: fully integrated with Mojo's
+  type and memory models" is still an open (unchecked) roadmap item.
+- `runtime.asyncrt` is documented only as a "low level concurrency library";
+  it is absent from the manual's user-facing chapters.
+
+It is used anyway because Mojo 1.0.0's stable stdlib has no parallel-for at
+all: `parallelize` does not exist, and `algorithm.map` is serial (measured at
+1.2x across 32 cores). The alternatives were single-threaded (~3.5x slower)
+or hand-rolled POSIX threads via `std.ffi` -- which was implemented and
+measured, but scaled worse than `TaskGroup` (2.4x vs 3.6x on 4 threads),
+because freshly spawned threads land on this class of CPU's efficiency cores
+while the runtime's warm pool stays on performance cores.
+
+Two consequences of async not yet being integrated with the memory model
+are worked around here; both were confirmed with minimal repros outside this
+file, and both are pinned by the tests in `test/test_delay_sum_mojo.py`:
+
+1. `List[...]` passed into an `async def` reads garbage on a task's first
+   loop iteration. Hence `Grid`/`GridView` hold `Pointer`-backed arrays
+   rather than `List`.
+2. Task lifetimes are not tracked, so a value's `__deinit__` can run before
+   the tasks using it are scheduled. `Grid` owns heap allocations, and Mojo
+   destroys a value at its last lexical use -- which would be inside the
+   `create_task` loop, freeing the traces/nodes out from under the running
+   tasks. Hence the `_ = grid^` after every `TaskGroup.wait()`; removing it
+   reintroduces a use-after-free.
+
+If a future Mojo release ships a stable parallel-for, replacing the
+`TaskGroup` blocks in `delay_sum`/`delay_sum_reduce` with it should also let
+workarounds (1) and (2) be dropped.
 """
 
 from std.python import PythonObject, Python
@@ -24,7 +70,20 @@ from std.memory import Pointer
 from std.memory.alloc import unsafe_alloc
 from std.memory.memory import unsafe_memset_zero
 from std.algorithm.functional import vectorize
+from std.math import ceildiv
 from std.sys.info import simd_width_of, num_logical_cores
+from std.runtime.asyncrt import TaskGroup
+
+comptime F32Ptr = Pointer[Float32, MutUntrackedOrigin]
+comptime I32Ptr = Pointer[Int32, MutUntrackedOrigin]
+comptime SIMD_WIDTH = simd_width_of[DType.float32]()
+
+# Nodes are stacked in blocks so each trace slice is read from L3 once per
+# block and then reused from L1 for the rest of it. `NODE_BLOCK` caps the
+# block; `BLOCK_SCRATCH_FLOATS` caps it again by size where the block needs
+# scratch buffers, so they stay resident in L2.
+comptime NODE_BLOCK = 8
+comptime BLOCK_SCRATCH_FLOATS = 262144  # 1 MiB of float32 stacks
 
 
 @export
@@ -48,214 +107,363 @@ def PyInit_delay_sum() abi("C") -> PythonObject:
         abort(String("error creating Python Mojo module: ", e))
 
 
-@fieldwise_init
-struct Trace(Copyable, Movable):
-    var data: Pointer[Float32, MutUntrackedOrigin]
-    var size: Int
-    var offset: Int
-
-
-@fieldwise_init
-struct Node(Copyable, Movable):
-    var shifts: Pointer[Int32, MutUntrackedOrigin]
-    var weights: Pointer[Float32, MutUntrackedOrigin]
-    var masked: Bool
+# ===----------------------------------------------------------------=== #
+# NumPy helpers
+# ===----------------------------------------------------------------=== #
 
 
 @always_inline
 def get_thread_count(n_threads: Int) -> Int:
-    if n_threads <= 0:
-        return num_logical_cores()
-    return n_threads
+    return num_logical_cores() if n_threads <= 0 else n_threads
 
 
 @always_inline
 def numpy_ptr[
     dtype: DType
 ](array: PythonObject) raises -> Pointer[Scalar[dtype], MutUntrackedOrigin]:
-    var addr = Int(py=array.ctypes.data)
-    return Pointer[Scalar[dtype], MutUntrackedOrigin](unsafe_from_address=addr)
+    return Pointer[Scalar[dtype], MutUntrackedOrigin](
+        unsafe_from_address=Int(py=array.ctypes.data)
+    )
 
 
 @always_inline
-def dtype_char[dtype: DType]() raises -> String:
+def dtype_char[dtype: DType]() -> StaticString:
     comptime if dtype == DType.float32:
         return "f"
     elif dtype == DType.int32:
         return "i"
-    elif dtype == DType.bool:
-        return "?"
     else:
-        raise Error("Unsupported dtype")
+        return "?"
 
 
 @always_inline
 def check_array_dtype[dtype: DType](array: PythonObject) raises:
     var expected = dtype_char[dtype]()
-    var actual = String(array.dtype.char)
-    if actual != expected:
-        raise Error(
-            "Input array must be of type " + expected + ", got " + actual
+    if String(array.dtype.char) != expected:
+        raise Error("Input array must be of type ", expected)
+
+
+# ===----------------------------------------------------------------=== #
+# Trace / Node
+# ===----------------------------------------------------------------=== #
+
+
+@fieldwise_init
+struct Trace(Copyable, Movable):
+    """A single seismic trace: a flat float32 buffer and its static offset."""
+
+    var data: F32Ptr
+    var size: Int
+    var offset: Int
+
+    def accumulate(
+        self,
+        weight: Float32,
+        dest: F32Ptr,
+        dest_start: Int,
+        src_start: Int,
+        n_samples: Int,
+    ):
+        """SIMD `dest[dest_start:] += weight * self.data[src_start:]`."""
+        var data = self.data
+
+        def kernel[width: Int](i: Int) {imm}:
+            var d = dest_start + i
+            var t = data.unsafe_load[width=width](src_start + i)
+            var s = dest.unsafe_load[width=width](d)
+            dest.unsafe_store(d, t.fma(weight, s))
+
+        vectorize[SIMD_WIDTH](n_samples, kernel)
+
+
+@fieldwise_init
+struct Node(Copyable, Movable):
+    """A grid node: per-trace integer sample shifts and float32 weights."""
+
+    var shifts: I32Ptr
+    var weights: F32Ptr
+    var masked: Bool
+
+    @always_inline
+    def shifted_start(
+        self, trace: Trace, i_trace: Int, min_shift: Int32
+    ) -> Int:
+        """Where this node places `trace`'s first sample in the result."""
+        return Int(
+            Int32(trace.offset) + self.shifts.unsafe_load(i_trace) - min_shift
         )
 
+    def accumulate_trace(
+        self,
+        trace: Trace,
+        i_trace: Int,
+        dest: F32Ptr,
+        window_start: Int,
+        window_end: Int,
+        min_shift: Int32,
+    ):
+        """Delay-and-sum one trace into `dest`, which covers the result
+        window [window_start, window_end) -- `dest[0]` is sample
+        `window_start`. Callers writing the full result pass 0; tiled
+        callers pass their tile bounds.
+        """
+        var weight = self.weights.unsafe_load(i_trace)
+        if weight == Float32(0):
+            return
 
-def prepare(
-    traces: PythonObject,
-    offsets: PythonObject,
-    shifts: PythonObject,
-    weights: PythonObject,
-    node_mask: PythonObject,
-) raises -> Tuple[List[Trace], List[Node], Int32, Int32]:
-    var n_traces = len(traces)
-    if n_traces == 0:
-        raise Error("Input traces must be a non-empty list")
+        # Intersect the shifted trace with the destination window.
+        var base = self.shifted_start(trace, i_trace, min_shift)
+        var begin = max(base, window_start)
+        var end = min(base + trace.size, window_end)
+        if end <= begin:
+            return
 
-    check_array_dtype[DType.int32](shifts)
-    check_array_dtype[DType.float32](weights)
-    check_array_dtype[DType.int32](offsets)
-
-    if Int(py=shifts.ndim) != 2 or Int(py=weights.ndim) != 2:
-        raise Error("Shifts and weights must be 2D arrays")
-    if Int(py=offsets.ndim) != 1:
-        raise Error("Offsets must be a 1D array")
-
-    var n_nodes = Int(py=shifts.shape[0])
-    if n_nodes == 0:
-        raise Error("Number of nodes must be greater than zero")
-
-    if Int(py=shifts.shape[0]) != Int(py=weights.shape[0]) or Int(
-        py=shifts.shape[1]
-    ) != Int(py=weights.shape[1]):
-        raise Error("Shifts and weights must have the same shape")
-    if n_traces != Int(py=offsets.shape[0]):
-        raise Error("Number of arrays must match number of offsets")
-    if Int(py=shifts.shape[1]) != n_traces:
-        raise Error("Shifts must have the same number of columns as traces")
-
-    var has_mask = node_mask is not None
-    if has_mask:
-        check_array_dtype[DType.bool](node_mask)
-        if Int(py=node_mask.ndim) != 1 or Int(py=node_mask.shape[0]) != n_nodes:
-            raise Error("Number of nodes must match number of activation flags")
-
-    var offsets_ptr = numpy_ptr[DType.int32](offsets)
-    var shifts_ptr = numpy_ptr[DType.int32](shifts)
-    var weights_ptr = numpy_ptr[DType.float32](weights)
-
-    var traces_list = List[Trace](capacity=n_traces)
-    for i_trace in range(n_traces):
-        var trace_arr = traces[i_trace]
-        check_array_dtype[DType.float32](trace_arr)
-        if Int(py=trace_arr.ndim) != 1:
-            raise Error("Each trace must be a 1D array")
-        traces_list.append(
-            Trace(
-                data=numpy_ptr[DType.float32](trace_arr),
-                size=Int(py=trace_arr.size),
-                offset=Int(offsets_ptr.unsafe_load(i_trace)),
-            )
+        trace.accumulate(
+            weight, dest, begin - window_start, begin - base, end - begin
         )
 
-    var nodes_list = List[Node](capacity=n_nodes)
-    if has_mask:
-        var mask_ptr = numpy_ptr[DType.uint8](node_mask)
-        for i_node in range(n_nodes):
-            nodes_list.append(
-                Node(
-                    shifts=shifts_ptr.unsafe_offset(i_node * n_traces),
-                    weights=weights_ptr.unsafe_offset(i_node * n_traces),
-                    masked=Bool(mask_ptr.unsafe_load(i_node) != 0),
+    def sample_at(
+        self, grid: GridView, index: Int, min_shift: Int32
+    ) -> Float32:
+        """Delay-and-sum a single result sample across all traces."""
+        var acc = Float32(0)
+        for i_trace in range(grid.n_traces):
+            var weight = self.weights.unsafe_load(i_trace)
+            if weight == Float32(0):
+                continue
+            var trace = grid.traces[unsafe_offset=i_trace].copy()
+            var sample = index - self.shifted_start(trace, i_trace, min_shift)
+            if 0 <= sample < trace.size:
+                acc += trace.data.unsafe_load(sample) * weight
+        return acc
+
+
+# ===----------------------------------------------------------------=== #
+# Grid: validates and owns one call's traces/nodes
+# ===----------------------------------------------------------------=== #
+
+
+@fieldwise_init
+struct GridView(Copyable, Movable):
+    """Borrowed view of a `Grid`, cheap to copy into a task."""
+
+    var traces: Pointer[Trace, MutUntrackedOrigin]
+    var n_traces: Int
+    var nodes: Pointer[Node, MutUntrackedOrigin]
+    var n_nodes: Int
+
+
+struct Grid:
+    """Validated, pointer-backed view over one call's inputs.
+
+    Also resolves the result window, so callers read `min_shift` and
+    `stack_size` off the grid rather than re-deriving them.
+    """
+
+    var traces: Pointer[Trace, MutUntrackedOrigin]
+    var n_traces: Int
+    var nodes: Pointer[Node, MutUntrackedOrigin]
+    var n_nodes: Int
+    var min_shift: Int32
+    var stack_size: Int
+
+    def __init__(
+        out self,
+        traces: PythonObject,
+        offsets: PythonObject,
+        shifts: PythonObject,
+        weights: PythonObject,
+        node_mask: PythonObject,
+        shift_range: PythonObject,
+    ) raises:
+        var n_traces = len(traces)
+        if n_traces == 0:
+            raise Error("Input traces must be a non-empty list")
+
+        check_array_dtype[DType.int32](shifts)
+        check_array_dtype[DType.float32](weights)
+        check_array_dtype[DType.int32](offsets)
+
+        if Int(py=shifts.ndim) != 2 or Int(py=weights.ndim) != 2:
+            raise Error("Shifts and weights must be 2D arrays")
+        if Int(py=offsets.ndim) != 1:
+            raise Error("Offsets must be a 1D array")
+
+        # `.shape` builds a fresh Python tuple on every access (it's a
+        # property, not a field read like the C extension's PyArray_SHAPE),
+        # so fetch each array's shape once and reuse it below.
+        var shifts_shape = shifts.shape
+        var weights_shape = weights.shape
+        var n_nodes = Int(py=shifts_shape[0])
+        if n_nodes == 0:
+            raise Error("Number of nodes must be greater than zero")
+        if Int(py=weights_shape[0]) != n_nodes or Int(
+            py=shifts_shape[1]
+        ) != Int(py=weights_shape[1]):
+            raise Error("Shifts and weights must have the same shape")
+        if n_traces != Int(py=offsets.shape[0]):
+            raise Error("Number of arrays must match number of offsets")
+        if Int(py=shifts_shape[1]) != n_traces:
+            raise Error("Shifts must have the same number of columns as traces")
+
+        var has_mask = node_mask is not None
+        if has_mask:
+            check_array_dtype[DType.bool](node_mask)
+            if (
+                Int(py=node_mask.ndim) != 1
+                or Int(py=node_mask.shape[0]) != n_nodes
+            ):
+                raise Error(
+                    "Number of nodes must match number of activation flags"
+                )
+
+        var offsets_ptr = numpy_ptr[DType.int32](offsets)
+        var shifts_ptr = numpy_ptr[DType.int32](shifts)
+        var weights_ptr = numpy_ptr[DType.float32](weights)
+
+        self.n_traces = n_traces
+        self.n_nodes = n_nodes
+        self.traces = unsafe_alloc[Trace](n_traces)
+        self.nodes = unsafe_alloc[Node](n_nodes)
+
+        for i_trace in range(n_traces):
+            var array = traces[i_trace]
+            check_array_dtype[DType.float32](array)
+            if Int(py=array.ndim) != 1:
+                raise Error("Each trace must be a 1D array")
+            self.traces.unsafe_offset(i_trace).unsafe_write(
+                Trace(
+                    numpy_ptr[DType.float32](array),
+                    Int(py=array.size),
+                    Int(offsets_ptr.unsafe_load(i_trace)),
                 )
             )
-    else:
+
         for i_node in range(n_nodes):
-            nodes_list.append(
+            self.nodes.unsafe_offset(i_node).unsafe_write(
                 Node(
-                    shifts=shifts_ptr.unsafe_offset(i_node * n_traces),
-                    weights=weights_ptr.unsafe_offset(i_node * n_traces),
+                    shifts_ptr.unsafe_offset(i_node * n_traces),
+                    weights_ptr.unsafe_offset(i_node * n_traces),
                     masked=False,
                 )
             )
 
-    var min_shift = Int32.MAX
-    var max_shift = Int32.MIN
-    for i_node in range(n_nodes):
-        ref node = nodes_list[i_node]
-        for i_trace in range(n_traces):
-            var idx_begin = Int32(
-                traces_list[i_trace].offset
-            ) + node.shifts.unsafe_load(i_trace)
-            var idx_end = idx_begin + Int32(traces_list[i_trace].size)
-            min_shift = min(min_shift, idx_begin)
-            max_shift = max(max_shift, idx_end)
+        if has_mask:
+            # Resolved once outside the loop: `numpy_ptr` walks a Python
+            # attribute chain, which must not land on a per-node path.
+            var mask_ptr = numpy_ptr[DType.uint8](node_mask)
+            for i_node in range(n_nodes):
+                ref node = self.nodes[unsafe_offset=i_node]
+                node.masked = mask_ptr.unsafe_load(i_node) != 0
 
-    return traces_list^, nodes_list^, min_shift, max_shift
+        var min_shift = Int32.MAX
+        var max_shift = Int32.MIN
+        for i_node in range(n_nodes):
+            ref node = self.nodes[unsafe_offset=i_node]
+            for i_trace in range(n_traces):
+                ref trace = self.traces[unsafe_offset=i_trace]
+                var begin = Int32(trace.offset) + node.shifts.unsafe_load(
+                    i_trace
+                )
+                min_shift = min(min_shift, begin)
+                max_shift = max(max_shift, begin + Int32(trace.size))
 
+        if shift_range is not None:
+            if len(shift_range) != 2:
+                raise Error(
+                    "shift_range argument must be tuple of two integers or"
+                    " None."
+                )
+            min_shift = Int32(Int(py=shift_range[0]))
+            max_shift = Int32(Int(py=shift_range[1]))
+            if max_shift <= min_shift:
+                raise Error(
+                    "Invalid shift_range: max_shift must be greater than"
+                    " min_shift."
+                )
 
-def resolve_shift_range(
-    shift_range: PythonObject, min_shift: Int32, max_shift: Int32
-) raises -> Tuple[Int32, Int32]:
-    if shift_range is None:
-        return min_shift, max_shift
+        self.min_shift = min_shift
+        self.stack_size = Int(max_shift - min_shift)
 
-    if len(shift_range) != 2:
-        raise Error(
-            "shift_range argument must be tuple of two integers or None."
-        )
+    def __deinit__(deinit self):
+        self.traces.unsafe_free()
+        self.nodes.unsafe_free()
 
-    var new_min = Int32(Int(py=shift_range[0]))
-    var new_max = Int32(Int(py=shift_range[1]))
-    if new_max <= new_min:
-        raise Error(
-            "Invalid shift_range: max_shift must be greater than min_shift."
-        )
-    return new_min, new_max
+    @always_inline
+    def view(self) -> GridView:
+        return GridView(self.traces, self.n_traces, self.nodes, self.n_nodes)
 
 
 # ===----------------------------------------------------------------=== #
-# delay_sum
+# Shared blocked stacking kernel
 # ===----------------------------------------------------------------=== #
 
 
-def stack_chunk(
+@always_inline
+def stack_block[
+    skip_masked: Bool
+](
+    grid: GridView,
     node_start: Int,
     node_end: Int,
-    n_traces: Int,
-    traces: List[Trace],
-    nodes: List[Node],
-    stack_data: Pointer[Float32, MutUntrackedOrigin],
+    dest: F32Ptr,
+    dest_stride: Int,
+    window_start: Int,
+    window_end: Int,
+    min_shift: Int32,
+):
+    """Stack nodes [node_start, node_end) into `dest_stride`-spaced buffers.
+
+    The trace loop is outermost so each trace slice is loaded once for the
+    whole block; node `i` accumulates into `dest[(i - node_start) * stride]`.
+    """
+    for i_trace in range(grid.n_traces):
+        var trace = grid.traces[unsafe_offset=i_trace].copy()
+        for i_node in range(node_start, node_end):
+            var node = grid.nodes[unsafe_offset=i_node].copy()
+            comptime if skip_masked:
+                if node.masked:
+                    continue
+            node.accumulate_trace(
+                trace,
+                i_trace,
+                dest.unsafe_offset((i_node - node_start) * dest_stride),
+                window_start,
+                window_end,
+                min_shift,
+            )
+
+
+@always_inline
+def chunk_bounds(i_chunk: Int, n_chunks: Int, total: Int) -> Tuple[Int, Int]:
+    return i_chunk * total // n_chunks, (i_chunk + 1) * total // n_chunks
+
+
+# ===----------------------------------------------------------------=== #
+# delay_sum: threaded over nodes, each writing its own row of the result
+# ===----------------------------------------------------------------=== #
+
+
+async def stack_chunk(
+    grid: GridView,
+    node_start: Int,
+    node_end: Int,
+    stack_data: F32Ptr,
     stack_size: Int,
     min_shift: Int32,
 ):
-    comptime simd_width = simd_width_of[DType.float32]()
-
-    for i_node in range(node_start, node_end):
-        ref node = nodes[i_node]
-        var node_stack = stack_data.unsafe_offset(i_node * stack_size)
-
-        for i_trace in range(n_traces):
-            var weight = node.weights.unsafe_load(i_trace)
-            if weight == Float32(0):
-                continue
-
-            var trace = traces[i_trace].copy()
-            var trace_shift = Int32(trace.offset) + node.shifts.unsafe_load(
-                i_trace
-            )
-            var base_idx = Int(trace_shift - min_shift)
-            var start = max(0, -base_idx)
-            var stack_nsamples = min(stack_size - base_idx, trace.size)
-            var n_samples = stack_nsamples - start
-            if n_samples <= 0:
-                continue
-
-            def kernel[width: Int](i: Int) {imm}:
-                var i_dst = base_idx + start + i
-                var t = trace.data.unsafe_load[width=width](start + i)
-                var s = node_stack.unsafe_load[width=width](i_dst)
-                node_stack.unsafe_store(i_dst, t.fma(weight, s))
-
-            vectorize[simd_width](n_samples, kernel)
+    for block_start in range(node_start, node_end, NODE_BLOCK):
+        var block_end = min(block_start + NODE_BLOCK, node_end)
+        stack_block[skip_masked=False](
+            grid,
+            block_start,
+            block_end,
+            stack_data.unsafe_offset(block_start * stack_size),
+            stack_size,
+            0,
+            stack_size,
+            min_shift,
+        )
 
 
 def delay_sum(
@@ -270,131 +478,123 @@ def delay_sum(
     var shift_range = kwargs.pop(String("shift_range"), PythonObject(None))
     var n_threads = Int(py=kwargs.pop(String("n_threads"), PythonObject(1)))
 
-    var out = prepare(traces, offsets, shifts, weights, node_mask)
-    var traces_list = out[0].copy()
-    var nodes_list = out[1].copy()
+    var grid = Grid(traces, offsets, shifts, weights, node_mask, shift_range)
+    var stack_size = grid.stack_size
 
-    var min_shift: Int32
-    var max_shift: Int32
-    min_shift, max_shift = resolve_shift_range(shift_range, out[2], out[3])
-
-    var n_traces = len(traces_list)
-    var n_nodes = len(nodes_list)
-    var stack_size = Int(max_shift - min_shift)
-
-    var np = Python.import_module("numpy")
     if stack is None:
+        var np = Python.import_module("numpy")
         stack = np.zeros(
-            Python.tuple(n_nodes, stack_size), dtype=PythonObject("float32")
+            Python.tuple(grid.n_nodes, stack_size),
+            dtype=PythonObject("float32"),
         )
     else:
         check_array_dtype[DType.float32](stack)
+        var shape = stack.shape
         if (
             Int(py=stack.ndim) != 2
-            or Int(py=stack.shape[0]) != n_nodes
-            or Int(py=stack.shape[1]) != stack_size
+            or Int(py=shape[0]) != grid.n_nodes
+            or Int(py=shape[1]) != stack_size
         ):
             raise Error(
                 "Resulting stack array must have shape (n_nodes, stack_size)"
             )
 
     var stack_data = numpy_ptr[DType.float32](stack)
-    _ = get_thread_count(
-        n_threads
-    )  # accepted for API compatibility; see module docstring
+    var n_chunks = max(1, min(get_thread_count(n_threads), grid.n_nodes))
 
-    stack_chunk(
-        0,
-        n_nodes,
-        n_traces,
-        traces_list,
-        nodes_list,
-        stack_data,
-        stack_size,
-        min_shift,
-    )
+    var tg = TaskGroup()
+    for i_chunk in range(n_chunks):
+        var bounds = chunk_bounds(i_chunk, n_chunks, grid.n_nodes)
+        tg.create_task(
+            stack_chunk(
+                grid.view(),
+                bounds[0],
+                bounds[1],
+                stack_data,
+                stack_size,
+                grid.min_shift,
+            )
+        )
+    tg.wait()
+    # Keep the Grid's allocations alive past the tasks; see module docstring.
+    _ = grid^
 
-    return Python.tuple(stack, Int(min_shift))
+    return Python.tuple(stack, Int(grid.min_shift))
 
 
 # ===----------------------------------------------------------------=== #
-# delay_sum_reduce
+# delay_sum_reduce: threaded over the result's time axis, each task scanning
+# every node (like the C original) and folding into a running max/argmax
 # ===----------------------------------------------------------------=== #
 
 
-def reduce_tile(
+def update_running_max(
+    src: F32Ptr,
+    n_samples: Int,
+    dest_start: Int,
+    node_idx: Int32,
+    stack_max: F32Ptr,
+    stack_max_idx: I32Ptr,
+):
+    """Fold one node's stack into the running (max, argmax) result arrays.
+
+    Vectorized with SIMD compare + select on both the value and index lanes.
+    The C original leaves this loop scalar (its SIMD attempt is commented
+    out, using masked_store on both arrays) because SIMDE didn't offer a
+    portable masked int32 store; `SIMD.select` sidesteps that entirely.
+    """
+
+    def kernel[width: Int](i: Int) {imm}:
+        var d = dest_start + i
+        var new_val = src.unsafe_load[width=width](i)
+        var old_val = stack_max.unsafe_load[width=width](d)
+        var is_greater = new_val.gt(old_val)
+        stack_max.unsafe_store(d, is_greater.select(new_val, old_val))
+        var old_idx = stack_max_idx.unsafe_load[width=width](d)
+        var node_vec = SIMD[DType.int32, width](node_idx)
+        stack_max_idx.unsafe_store(d, is_greater.select(node_vec, old_idx))
+
+    vectorize[SIMD_WIDTH](n_samples, kernel)
+
+
+async def reduce_tile(
+    grid: GridView,
     tile_start: Int,
     tile_end: Int,
-    n_traces: Int,
-    traces: List[Trace],
-    nodes: List[Node],
     min_shift: Int32,
-    stack_max_data: Pointer[Float32, MutUntrackedOrigin],
-    stack_max_idx_data: Pointer[Int32, MutUntrackedOrigin],
+    stacks: F32Ptr,
+    block: Int,
+    stack_max: F32Ptr,
+    stack_max_idx: I32Ptr,
 ):
-    comptime simd_width = simd_width_of[DType.float32]()
     var tile_size = tile_end - tile_start
-    var tile_stack = unsafe_alloc[Float32](tile_size)
 
-    for i_node in range(len(nodes)):
-        ref node = nodes[i_node]
-        if node.masked:
-            continue
+    for block_start in range(0, grid.n_nodes, block):
+        var block_end = min(block_start + block, grid.n_nodes)
+        unsafe_memset_zero(stacks, (block_end - block_start) * tile_size)
 
-        unsafe_memset_zero(tile_stack, tile_size)
+        stack_block[skip_masked=True](
+            grid,
+            block_start,
+            block_end,
+            stacks,
+            tile_size,
+            tile_start,
+            tile_end,
+            min_shift,
+        )
 
-        for i_trace in range(n_traces):
-            var weight = node.weights.unsafe_load(i_trace)
-            if weight == Float32(0):
+        for i_node in range(block_start, block_end):
+            if grid.nodes[unsafe_offset=i_node].copy().masked:
                 continue
-
-            var trace = traces[i_trace].copy()
-            var trace_shift = Int32(trace.offset) + node.shifts.unsafe_load(
-                i_trace
+            update_running_max(
+                stacks.unsafe_offset((i_node - block_start) * tile_size),
+                tile_size,
+                tile_start,
+                Int32(i_node),
+                stack_max,
+                stack_max_idx,
             )
-            var base_idx = Int(trace_shift - min_shift)
-
-            var tile_base_idx = max(0, base_idx - tile_start)
-            var trace_start_idx = max(0, tile_start - base_idx)
-            var trace_end_idx = max(0, tile_end - base_idx)
-            trace_start_idx = min(trace_start_idx, trace.size)
-            trace_end_idx = min(trace_end_idx, trace.size)
-            var n_samples = trace_end_idx - trace_start_idx
-            if n_samples <= 0:
-                continue
-
-            def kernel[width: Int](i: Int) {imm}:
-                var i_dst = tile_base_idx + i
-                var t = trace.data.unsafe_load[width=width](trace_start_idx + i)
-                var s = tile_stack.unsafe_load[width=width](i_dst)
-                tile_stack.unsafe_store(i_dst, t.fma(weight, s))
-
-            vectorize[simd_width](n_samples, kernel)
-
-        # Vectorized max/argmax update: SIMD compare + select on both the
-        # value and index lanes. The C original leaves this loop scalar
-        # (its SIMD attempt is commented out, using masked_store on both
-        # arrays), because SIMDE didn't offer a portable masked int32
-        # store; `SIMD.select` sidesteps that entirely.
-        var node_idx = Int32(i_node)
-
-        def update_max[width: Int](i: Int) {imm}:
-            var res_idx = tile_start + i
-            var new_val = tile_stack.unsafe_load[width=width](i)
-            var old_val = stack_max_data.unsafe_load[width=width](res_idx)
-            var is_greater = new_val.gt(old_val)
-            stack_max_data.unsafe_store(
-                res_idx, is_greater.select(new_val, old_val)
-            )
-            var old_idx = stack_max_idx_data.unsafe_load[width=width](res_idx)
-            var node_vec = SIMD[DType.int32, width](node_idx)
-            stack_max_idx_data.unsafe_store(
-                res_idx, is_greater.select(node_vec, old_idx)
-            )
-
-        vectorize[simd_width](tile_size, update_max)
-
-    tile_stack.unsafe_free()
 
 
 def delay_sum_reduce(
@@ -406,70 +606,74 @@ def delay_sum_reduce(
 ) raises -> PythonObject:
     var node_mask = kwargs.pop(String("node_mask"), PythonObject(None))
     var shift_range = kwargs.pop(String("shift_range"), PythonObject(None))
-    var node_stack_max = kwargs.pop(
-        String("node_stack_max"), PythonObject(None)
-    )
-    var node_stack_max_idx = kwargs.pop(
+    var node_max = kwargs.pop(String("node_stack_max"), PythonObject(None))
+    var node_max_idx = kwargs.pop(
         String("node_stack_max_idx"), PythonObject(None)
     )
     var n_threads = Int(py=kwargs.pop(String("n_threads"), PythonObject(1)))
 
-    if (node_stack_max is None) != (node_stack_max_idx is None):
+    if (node_max is None) != (node_max_idx is None):
         raise Error(
             "node_stack_max and node_stack_max_idx must be both provided or"
             " both None"
         )
 
-    var out = prepare(traces, offsets, shifts, weights, node_mask)
-    var traces_list = out[0].copy()
-    var nodes_list = out[1].copy()
+    var grid = Grid(traces, offsets, shifts, weights, node_mask, shift_range)
+    var stack_size = grid.stack_size
 
-    var min_shift: Int32
-    var max_shift: Int32
-    min_shift, max_shift = resolve_shift_range(shift_range, out[2], out[3])
-
-    var n_traces = len(traces_list)
-    var stack_size = Int(max_shift - min_shift)
-
-    var np = Python.import_module("numpy")
-    var owns_result = node_stack_max is None
-    if owns_result:
-        node_stack_max = np.full(
+    if node_max is None:
+        var np = Python.import_module("numpy")
+        node_max = np.full(
             stack_size,
             np.finfo(PythonObject("float32")).min,
             dtype=PythonObject("float32"),
         )
-        node_stack_max_idx = np.zeros(stack_size, dtype=PythonObject("int32"))
+        node_max_idx = np.zeros(stack_size, dtype=PythonObject("int32"))
     else:
-        check_array_dtype[DType.float32](node_stack_max)
-        check_array_dtype[DType.int32](node_stack_max_idx)
+        check_array_dtype[DType.float32](node_max)
+        check_array_dtype[DType.int32](node_max_idx)
         if (
-            Int(py=node_stack_max.shape[0]) != stack_size
-            or Int(py=node_stack_max_idx.shape[0]) != stack_size
+            Int(py=node_max.shape[0]) != stack_size
+            or Int(py=node_max_idx.shape[0]) != stack_size
         ):
             raise Error(
                 "Provided result arrays must be 1D NumPy arrays of float32 and"
                 " int respectively, with correct length"
             )
 
-    var stack_max_data = numpy_ptr[DType.float32](node_stack_max)
-    var stack_max_idx_data = numpy_ptr[DType.int32](node_stack_max_idx)
-    _ = get_thread_count(
-        n_threads
-    )  # accepted for API compatibility; see module docstring
+    var stack_max = numpy_ptr[DType.float32](node_max)
+    var stack_max_idx = numpy_ptr[DType.int32](node_max_idx)
+    var n_chunks = max(1, min(get_thread_count(n_threads), stack_size))
 
-    reduce_tile(
-        0,
-        stack_size,
-        n_traces,
-        traces_list,
-        nodes_list,
-        min_shift,
-        stack_max_data,
-        stack_max_idx_data,
-    )
+    # One scratch allocation shared by every task, sliced per chunk:
+    # allocating inside each task instead put a malloc large enough to be
+    # mmap'd (and its page faults) on the hot path, which showed up as
+    # run-to-run jitter.
+    var max_tile = ceildiv(stack_size, n_chunks)
+    var block = max(1, min(NODE_BLOCK, BLOCK_SCRATCH_FLOATS // max_tile))
+    var scratch = unsafe_alloc[Float32](n_chunks * block * max_tile)
 
-    return Python.tuple(node_stack_max, node_stack_max_idx, Int(min_shift))
+    var tg = TaskGroup()
+    for i_chunk in range(n_chunks):
+        var bounds = chunk_bounds(i_chunk, n_chunks, stack_size)
+        tg.create_task(
+            reduce_tile(
+                grid.view(),
+                bounds[0],
+                bounds[1],
+                grid.min_shift,
+                scratch.unsafe_offset(i_chunk * block * max_tile),
+                block,
+                stack_max,
+                stack_max_idx,
+            )
+        )
+    tg.wait()
+    scratch.unsafe_free()
+    # Keep the Grid's allocations alive past the tasks; see module docstring.
+    _ = grid^
+
+    return Python.tuple(node_max, node_max_idx, Int(grid.min_shift))
 
 
 # ===----------------------------------------------------------------=== #
@@ -484,7 +688,7 @@ def delay_sum_snapshot(
     weights: PythonObject,
     var **kwargs: PythonObject,
 ) raises -> PythonObject:
-    if not ("index" in kwargs):
+    if "index" not in kwargs:
         raise Error(
             "delay_sum_snapshot() missing required keyword argument: 'index'"
         )
@@ -492,42 +696,21 @@ def delay_sum_snapshot(
     var shift_range = kwargs.pop(String("shift_range"), PythonObject(None))
     var node_mask = kwargs.pop(String("node_mask"), PythonObject(None))
 
-    var out = prepare(traces, offsets, shifts, weights, node_mask)
-    var traces_list = out[0].copy()
-    var nodes_list = out[1].copy()
-
-    var min_shift: Int32
-    var max_shift: Int32
-    min_shift, max_shift = resolve_shift_range(shift_range, out[2], out[3])
-
-    var stack_size = Int(max_shift - min_shift)
-    if index < 0 or index >= stack_size:
-        raise Error("Snapshot index out of bounds: " + String(index))
-
-    var n_traces = len(traces_list)
-    var n_nodes = len(nodes_list)
+    var grid = Grid(traces, offsets, shifts, weights, node_mask, shift_range)
+    if index < 0 or index >= grid.stack_size:
+        raise Error("Snapshot index out of bounds: ", index)
 
     var np = Python.import_module("numpy")
-    var snapshot = np.zeros(n_nodes, dtype=PythonObject("float32"))
+    var snapshot = np.zeros(grid.n_nodes, dtype=PythonObject("float32"))
     var snapshot_data = numpy_ptr[DType.float32](snapshot)
+    var view = grid.view()
 
-    for i_node in range(n_nodes):
-        ref node = nodes_list[i_node]
+    for i_node in range(grid.n_nodes):
+        var node = grid.nodes[unsafe_offset=i_node].copy()
         if node.masked:
             continue
-        var acc = Float32(0)
-        for i_trace in range(n_traces):
-            var weight = node.weights.unsafe_load(i_trace)
-            if weight == Float32(0):
-                continue
-            ref trace = traces_list[i_trace]
-            var trace_shift = Int32(trace.offset) + node.shifts.unsafe_load(
-                i_trace
-            )
-            var base_idx = Int(trace_shift - min_shift)
-            var trace_sample = index - base_idx
-            if 0 <= trace_sample < trace.size:
-                acc += trace.data.unsafe_load(trace_sample) * weight
-        snapshot_data.unsafe_store(i_node, acc)
+        snapshot_data.unsafe_store(
+            i_node, node.sample_at(view, index, grid.min_shift)
+        )
 
     return snapshot

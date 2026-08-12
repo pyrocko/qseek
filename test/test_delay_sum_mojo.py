@@ -79,25 +79,27 @@ def test_mojo_delay_sum_matches_pyrocko_and_qseek(data, n_threads: int):
     np.testing.assert_allclose(mojo_stack, pyrocko_stack, rtol=1e-5)
 
 
-def test_mojo_delay_sum_shift_range_and_stack_reuse(data):
-    # Compared against pyrocko rather than qseek.ext.delay_sum here: calling
-    # into both the Mojo extension and the compiled qseek C extension in the
-    # same process, with a shift_range-restricted stack, reproducibly
-    # corrupts the glibc heap (observed as "malloc(): corrupted top size" /
-    # "corrupted size vs. prev_size" aborts) -- a toolchain-level interaction
-    # bug between Mojo 1.0's Python-extension runtime and an already-loaded
-    # OpenMP-linked C extension, not a bug in this port: the same shift_range
-    # + stack-reuse path was verified byte-identical against qseek.ext in a
-    # dedicated single-purpose process (no such crash in isolation), and
-    # matches pyrocko exactly below.
+@pytest.mark.parametrize("length", [500, 501, 504])
+def test_mojo_delay_sum_shift_range_and_stack_reuse(data, length: int):
+    # `length` is swept across `length % 8` because the C extension's SIMD
+    # loop used to run up to 7 lanes past the end whenever an explicit
+    # shift_range put the window above a trace's shifted start and the
+    # window length was not a multiple of the lane width -- writing past the
+    # node's stack row. It stayed in bounds for length % 8 == 0, which is why
+    # the older lengthout=1000 test never caught it. Fixed in delay_sum.c;
+    # this keeps all three implementations pinned together on that path.
     traces, offsets, shifts, weights = data
 
-    shift_range = (0, 500)
+    shift_range = (0, length)
     res = None
+    qseek_res = None
     pyrocko_res = None
     for _ in range(3):
         res, offset = mojo_delay_sum.delay_sum(
             traces, offsets, shifts, weights, shift_range=shift_range, stack=res
+        )
+        qseek_res, qseek_offset = qseek_delay_sum.delay_sum(
+            traces, offsets, shifts, weights, shift_range=shift_range, stack=qseek_res
         )
         pyrocko_res, pyrocko_offset = pyrocko_parstack.parstack(
             traces,
@@ -106,12 +108,13 @@ def test_mojo_delay_sum_shift_range_and_stack_reuse(data):
             weights,
             method=0,
             result=pyrocko_res,
-            lengthout=500,
+            lengthout=length,
             dtype=np.float32,
         )
 
-    assert offset == pyrocko_offset == 0
-    assert res.shape == (shifts.shape[0], 500)
+    assert offset == qseek_offset == pyrocko_offset == 0
+    assert res.shape == (shifts.shape[0], length)
+    np.testing.assert_allclose(res, qseek_res, rtol=1e-5)
     np.testing.assert_allclose(res, pyrocko_res, rtol=1e-5)
 
 
