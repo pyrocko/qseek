@@ -89,6 +89,7 @@ dev = [
     "ruff>=0.14",
 ]
 completion = ["argcomplete>=3.2"]
+mojo = ["modular>=26.5"]
 
 [project.scripts]
 qseek = "qseek.apps.qseek:main"
