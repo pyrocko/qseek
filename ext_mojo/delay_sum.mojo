@@ -36,13 +36,23 @@ this module likely to break on a toolchain upgrade:
 - `runtime.asyncrt` is documented only as a "low level concurrency library";
   it is absent from the manual's user-facing chapters.
 
-It is used anyway because Mojo 1.0.0's stable stdlib has no parallel-for at
-all: `parallelize` does not exist, and `algorithm.map` is serial (measured at
-1.2x across 32 cores). The alternatives were single-threaded (~3.5x slower)
-or hand-rolled POSIX threads via `std.ffi` -- which was implemented and
-measured, but scaled worse than `TaskGroup` (2.4x vs 3.6x on 4 threads),
-because freshly spawned threads land on this class of CPU's efficiency cores
-while the runtime's warm pool stays on performance cores.
+It is used anyway because the alternatives measured worse on the workload
+this module actually runs (100 nodes x 100 traces x 30k samples,
+`delay_sum_reduce`, median ms):
+
+- `max.algorithm.parallelize` is the native parallel-for, but it lives in
+  the MAX package rather than the Mojo stdlib. It ties `TaskGroup` up to 8
+  threads (nt=4: 6.04 vs 6.11) and then falls behind as threads oversubscribe
+  the performance cores -- at `n_threads=0`, which is what qseek defaults to,
+  it runs 5.34 vs `TaskGroup`'s 3.05, losing even to the C extension's 3.61.
+- Hand-rolled POSIX threads via `std.ffi` scaled worse still (2.4x vs 3.6x on
+  4 threads): freshly spawned threads land on this class of CPU's efficiency
+  cores, while a warm pool stays on the performance cores.
+- The stable stdlib alone offers nothing: `std.algorithm.map` is serial
+  (measured at 1.2x across 32 cores), leaving single-threaded at ~3.5x slower.
+
+`parallelize` is the natural replacement the moment its high-thread-count
+scheduling improves; switching back is a two-call-site change.
 
 Two consequences of async not yet being integrated with the memory model
 are worked around here; both were confirmed with minimal repros outside this
@@ -58,9 +68,9 @@ file, and both are pinned by the tests in `test/test_delay_sum_mojo.py`:
    tasks. Hence the `_ = grid^` after every `TaskGroup.wait()`; removing it
    reintroduces a use-after-free.
 
-If a future Mojo release ships a stable parallel-for, replacing the
-`TaskGroup` blocks in `delay_sum`/`delay_sum_reduce` with it should also let
-workarounds (1) and (2) be dropped.
+Moving off `async` (to `parallelize` or anything else synchronous) removes
+the cause of workaround (1) entirely. Workaround (2) is about destruction
+order rather than async, so re-check it rather than assuming it can go.
 """
 
 from std.python import PythonObject, Python
