@@ -9,9 +9,11 @@ branch `features/mojo`, adapted to Mojo 1.0):
   `delay_sum_reduce` path share it instead of duplicating the offset
   arithmetic that the C original repeats twice.
 - `Grid` validates and owns the traces/nodes for one call, and resolves the
-  shift range, so each entry point is just "build a Grid, then compute".
+  result window, so each entry point is just "build a Grid, then compute".
   `Grid.view()` hands tasks a borrowed `GridView` so the owner stays on the
-  calling thread.
+  calling thread. Validation mirrors the C extension's `check_array_dtype`,
+  including the C-contiguity check -- without it a transposed or strided
+  view is read as though packed, silently returning wrong numbers.
 
 SIMD lanes come from `vectorize` (compiled against the host's native vector
 width) instead of hand-rolled AVX2/SIMDE intrinsics.
@@ -147,10 +149,22 @@ def dtype_char[dtype: DType]() -> StaticString:
 
 
 @always_inline
-def check_array_dtype[dtype: DType](array: PythonObject) raises:
-    var expected = dtype_char[dtype]()
-    if String(array.dtype.char) != expected:
-        raise Error("Input array must be of type ", expected)
+def check_array[
+    dtype: DType, ndim: Int
+](array: PythonObject, name: StaticString) raises:
+    """Validate dtype, rank and C-contiguity, as the C extension does.
+
+    Contiguity matters as much as dtype here: every kernel below walks the
+    raw buffer with strides it computes itself, so a transposed or strided
+    view would be read as if it were packed and silently give wrong numbers
+    instead of failing.
+    """
+    if String(array.dtype.char) != dtype_char[dtype]():
+        raise Error(name, " must have dtype '", dtype_char[dtype](), "'")
+    if Int(py=array.ndim) != ndim:
+        raise Error(name, " must be a ", ndim, "-D array")
+    if not array.flags["C_CONTIGUOUS"]:
+        raise Error(name, " must be C-contiguous")
 
 
 # ===----------------------------------------------------------------=== #
@@ -183,7 +197,11 @@ struct Trace(Copyable, Movable):
             var s = dest.unsafe_load[width=width](d)
             dest.unsafe_store(d, t.fma(weight, s))
 
-        vectorize[SIMD_WIDTH](n_samples, kernel)
+        # Unrolled: this is the hot loop (~98% of the module's work), and
+        # unrolling measured ~3% faster single-threaded. It makes no
+        # difference once threads saturate memory bandwidth, but costs
+        # nothing there either.
+        vectorize[SIMD_WIDTH, unroll_factor=4](n_samples, kernel)
 
 
 @fieldwise_init
@@ -290,14 +308,9 @@ struct Grid:
         if n_traces == 0:
             raise Error("Input traces must be a non-empty list")
 
-        check_array_dtype[DType.int32](shifts)
-        check_array_dtype[DType.float32](weights)
-        check_array_dtype[DType.int32](offsets)
-
-        if Int(py=shifts.ndim) != 2 or Int(py=weights.ndim) != 2:
-            raise Error("Shifts and weights must be 2D arrays")
-        if Int(py=offsets.ndim) != 1:
-            raise Error("Offsets must be a 1D array")
+        check_array[DType.int32, 2](shifts, "shifts")
+        check_array[DType.float32, 2](weights, "weights")
+        check_array[DType.int32, 1](offsets, "offsets")
 
         # `.shape` builds a fresh Python tuple on every access (it's a
         # property, not a field read like the C extension's PyArray_SHAPE),
@@ -318,11 +331,8 @@ struct Grid:
 
         var has_mask = node_mask is not None
         if has_mask:
-            check_array_dtype[DType.bool](node_mask)
-            if (
-                Int(py=node_mask.ndim) != 1
-                or Int(py=node_mask.shape[0]) != n_nodes
-            ):
+            check_array[DType.bool, 1](node_mask, "node_mask")
+            if Int(py=node_mask.shape[0]) != n_nodes:
                 raise Error(
                     "Number of nodes must match number of activation flags"
                 )
@@ -338,9 +348,7 @@ struct Grid:
 
         for i_trace in range(n_traces):
             var array = traces[i_trace]
-            check_array_dtype[DType.float32](array)
-            if Int(py=array.ndim) != 1:
-                raise Error("Each trace must be a 1D array")
+            check_array[DType.float32, 1](array, "each trace")
             self.traces.unsafe_offset(i_trace).unsafe_write(
                 Trace(
                     numpy_ptr[DType.float32](array),
@@ -366,19 +374,25 @@ struct Grid:
                 ref node = self.nodes[unsafe_offset=i_node]
                 node.masked = mask_ptr.unsafe_load(i_node) != 0
 
-        var min_shift = Int32.MAX
-        var max_shift = Int32.MIN
-        for i_node in range(n_nodes):
-            ref node = self.nodes[unsafe_offset=i_node]
-            for i_trace in range(n_traces):
-                ref trace = self.traces[unsafe_offset=i_trace]
-                var begin = Int32(trace.offset) + node.shifts.unsafe_load(
-                    i_trace
-                )
-                min_shift = min(min_shift, begin)
-                max_shift = max(max_shift, begin + Int32(trace.size))
-
-        if shift_range is not None:
+        var min_shift: Int32
+        var max_shift: Int32
+        if shift_range is None:
+            # Derive the window from the data: the span covered by every
+            # trace once every node has shifted it.
+            min_shift = Int32.MAX
+            max_shift = Int32.MIN
+            for i_node in range(n_nodes):
+                ref node = self.nodes[unsafe_offset=i_node]
+                for i_trace in range(n_traces):
+                    ref trace = self.traces[unsafe_offset=i_trace]
+                    var begin = Int32(trace.offset) + node.shifts.unsafe_load(
+                        i_trace
+                    )
+                    min_shift = min(min_shift, begin)
+                    max_shift = max(max_shift, begin + Int32(trace.size))
+        else:
+            # Caller pinned the window, so skip the scan above -- it is
+            # O(n_nodes * n_traces) and its result would only be discarded.
             if len(shift_range) != 2:
                 raise Error(
                     "shift_range argument must be tuple of two integers or"
@@ -498,13 +512,9 @@ def delay_sum(
             dtype=PythonObject("float32"),
         )
     else:
-        check_array_dtype[DType.float32](stack)
+        check_array[DType.float32, 2](stack, "stack")
         var shape = stack.shape
-        if (
-            Int(py=stack.ndim) != 2
-            or Int(py=shape[0]) != grid.n_nodes
-            or Int(py=shape[1]) != stack_size
-        ):
+        if Int(py=shape[0]) != grid.n_nodes or Int(py=shape[1]) != stack_size:
             raise Error(
                 "Resulting stack array must have shape (n_nodes, stack_size)"
             )
@@ -640,15 +650,15 @@ def delay_sum_reduce(
         )
         node_max_idx = np.zeros(stack_size, dtype=PythonObject("int32"))
     else:
-        check_array_dtype[DType.float32](node_max)
-        check_array_dtype[DType.int32](node_max_idx)
+        check_array[DType.float32, 1](node_max, "node_stack_max")
+        check_array[DType.int32, 1](node_max_idx, "node_stack_max_idx")
         if (
             Int(py=node_max.shape[0]) != stack_size
             or Int(py=node_max_idx.shape[0]) != stack_size
         ):
             raise Error(
-                "Provided result arrays must be 1D NumPy arrays of float32 and"
-                " int respectively, with correct length"
+                "node_stack_max and node_stack_max_idx must both have length",
+                stack_size,
             )
 
     var stack_max = numpy_ptr[DType.float32](node_max)
