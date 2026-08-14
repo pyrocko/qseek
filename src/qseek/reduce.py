@@ -4,19 +4,51 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
+import mojo.importer  # noqa: F401  (installs the import hook used just below)
 import numpy as np
 from pyrocko.trace import Trace
 from scipy import signal
 
-from qseek.ext.delay_sum import delay_sum_reduce, delay_sum_snapshot
+from qseek.ext_mojo import delay_sum as _delay_sum
 from qseek.stats import Stats
 
 if TYPE_CHECKING:
     from qseek.octree import Node
 
 logger = logging.getLogger(__name__)
+
+
+class TraceInput(NamedTuple):
+    """One trace as handed to the Mojo kernels: samples plus their offset.
+
+    `offset` is where sample 0 sits in the padded result window, so the
+    kernels need no separate offsets array alongside the trace list.
+    """
+
+    data: np.ndarray
+    offset: int
+
+
+class NodeStack(NamedTuple):
+    """One grid node's delay-and-sum inputs, as handed to the Mojo kernels.
+
+    Named `NodeStack` -- not `Node` -- to stay distinct from
+    `qseek.octree.Node`: there is one `NodeStack` per octree node, but it
+    only carries what the kernels need to stack it: which slot in the output
+    arrays it owns (`index`, i.e. its position in `DelaySumReduce.nodes`)
+    and its per-trace shift/weight.
+
+    Together with `TraceInput`, this is the whole interface to
+    `qseek/ext_mojo/delay_sum.mojo`: two plain lists, where the C extension
+    took packed 2-D arrays plus a parallel offsets array and a node mask.
+    Mojo's `Grid` just reads attributes off whatever lists it is given.
+    """
+
+    index: int
+    shifts: np.ndarray
+    weights: np.ndarray
 
 
 class DelaySumReduceStats(Stats): ...
@@ -30,15 +62,12 @@ class DelaySumReduce:
     nodes: list[Node]
 
     _start_time: datetime
-    _end_time: datetime
     _padding: timedelta
     _sampling_rate: float
 
-    _trace_offsets: np.ndarray
-    _trace_weights: np.ndarray
-    _node_shifts: np.ndarray
+    _trace_inputs: list[TraceInput]
+    _node_stacks: list[NodeStack]
 
-    _trace_data: list[np.ndarray]
     _padding_samples: int
     _result_nsamples: int
     _stack_offset: int
@@ -47,7 +76,7 @@ class DelaySumReduce:
     _stack_max_idx: np.ndarray
 
     _node_idx: dict[bytes, int]
-    _stacked_nodes: np.ndarray
+    _n_stacked: int
     _dirty: bool = True
 
     def __init__(
@@ -72,29 +101,31 @@ class DelaySumReduce:
         )
         self._stack_offset = 0
 
-        padded_start_time = start_time - padding
-        trace_tmins = np.fromiter((tr.tmin for tr in traces), float)
-        self._trace_offsets = np.round(
-            (trace_tmins - padded_start_time.timestamp()) * sr
-        ).astype(np.int32)
-
         self.traces = traces
         self.n_traces = len(traces)
         self._start_time = start_time
-        self._end_time = end_time
         self._padding = padding
 
         self._sampling_rate = sr
-        self._node_shifts = np.empty((0, self.n_traces), dtype=np.int32)
-        self._trace_weights = np.empty((0, self.n_traces), dtype=np.float32)
+        self._node_stacks = []
 
-        self._trace_data = [tr.ydata.astype(np.float32, copy=False) for tr in traces]
+        # `ascontiguousarray` rather than `astype(copy=False)`: the latter
+        # hands back a strided array unchanged when the dtype already
+        # matches, and the kernels read the raw buffer as if it were packed.
+        padded_start = (start_time - padding).timestamp()
+        self._trace_inputs = [
+            TraceInput(
+                data=np.ascontiguousarray(tr.ydata, dtype=np.float32),
+                offset=round((tr.tmin - padded_start) * sr),
+            )
+            for tr in traces
+        ]
 
         self._stack_max = np.zeros(self._result_nsamples, dtype=np.float32)
         self._stack_max_idx = np.zeros(self._result_nsamples, dtype=np.int32)
 
         self._node_idx = {}
-        self._stacked_nodes = np.empty(0, dtype=bool)
+        self._n_stacked = 0
 
         self.nodes = []
 
@@ -108,15 +139,26 @@ class DelaySumReduce:
 
     def _check_state(self) -> None:
         if self._dirty:
-            raise EnvironmentError(
+            raise RuntimeError(
                 "Stack is dirty, please recompute by calling stack() before use."
             )
 
     def remove_nodes(self, nodes: Sequence[Node]) -> None:
-        """Remove nodes from stack.
+        """Retract nodes' contributions from the running maximum stack.
+
+        Samples currently won by one of `nodes` are reset to 0.0, so the
+        next `stack()` re-derives them from the nodes added since. The nodes
+        themselves stay in `self.nodes` and keep their indices; only their
+        wins are dropped.
+
+        Note that this is an approximation: samples are reset rather than
+        recomputed against the remaining nodes, so a sample whose runner-up
+        is an older node is re-derived from the newly added nodes alone.
+        The caller (search.py) splits a node and immediately adds its
+        children, which cover the same region.
 
         Args:
-            nodes (Sequence[Node]): Nodes to remove.
+            nodes (Sequence[Node]): Nodes to retract.
 
         Raises:
             ValueError: If one or more nodes are not found.
@@ -138,30 +180,40 @@ class DelaySumReduce:
 
         required_shape = (n_new_nodes, self.n_traces)
         if traveltimes.shape != required_shape:
-            raise ValueError(f"Shifts shape must be {required_shape}.")
+            raise ValueError(f"Traveltimes shape must be {required_shape}.")
         if weights.shape != required_shape:
             raise ValueError(f"Weights shape must be {required_shape}.")
 
         if weights.dtype != np.float32:
             raise ValueError("Weights must be of dtype np.float32.")
 
-        # Cleaning traveltimes
-        traveltime_mask = np.isnan(traveltimes)
-        traveltimes[traveltime_mask] = 0.0
-        weights[traveltime_mask] = 0.0
+        # A NaN traveltime means the phase never arrives at that station;
+        # zeroing its weight makes the kernel skip the pair entirely. Both
+        # results are fresh arrays -- `traveltimes` and `weights` belong to
+        # the caller and must not be written through.
+        no_arrival = np.isnan(traveltimes)
+        shifts = np.round(
+            -np.where(no_arrival, 0.0, traveltimes) * self._sampling_rate
+        ).astype(np.int32)
+        weights = np.where(no_arrival, np.float32(0.0), weights)
 
-        shifts = np.round(-traveltimes * self._sampling_rate).astype(np.int32)
-        self._node_shifts = np.vstack((self._node_shifts, shifts))
-        self._trace_weights = np.vstack((self._trace_weights, weights))
-
-        self._stacked_nodes = np.concatenate(
-            (self._stacked_nodes, np.zeros(n_new_nodes, dtype=bool))
+        # Nodes are only ever appended, so a node's index is its position in
+        # both `self.nodes` and `self._node_stacks`. `NodeStack.index` still
+        # has to be stored, because `stack()` hands the kernel a *subset* of
+        # `_node_stacks` and each item must name its own global slot.
+        #
+        # The rows are views into the two arrays built above, which this
+        # object now solely owns: one allocation per call, rows contiguous
+        # and adjacent, rather than a small copy per node.
+        n_nodes_old = len(self.nodes)
+        self._node_stacks.extend(
+            NodeStack(index=n_nodes_old + i, shifts=shifts[i], weights=weights[i])
+            for i in range(n_new_nodes)
         )
 
-        n_nodes_old = len(self.nodes)
-        new_indices = {node.hash: n_nodes_old + i for i, node in enumerate(nodes)}
-        self._node_idx.update(new_indices)
-
+        self._node_idx.update(
+            {node.hash: n_nodes_old + i for i, node in enumerate(nodes)}
+        )
         self.nodes.extend(nodes)
         self._invalidate_state()
 
@@ -169,38 +221,36 @@ class DelaySumReduce:
         self,
         n_threads: int = 0,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Calculate the stacked traces and corresponding maxima stack and node indices.
+        """Fold any newly added nodes into the running maximum stack.
+
+        Accumulation is incremental: nodes already stacked by a previous
+        call stay folded into `_stack_max`/`_stack_max_idx`, so only the
+        nodes appended since then are passed to the kernel.
 
         Args:
             n_threads (int, optional): Number of threads to use. Defaults to 0.
-            nodes (list[Node] | None, optional): Nodes to include in stacking.
-                If None, all nodes are included. Defaults to None.
 
         Returns:
-            tuple[np.ndarray, np.ndarray]: Unpadded stacked maximum values and
-                node indices.
+            tuple[np.ndarray, np.ndarray]: Padded stacked maximum values and
+                node indices. Use `get_stack()` to trim the padding.
         """
-        rq_shp = (self.n_nodes, self.n_traces)
-        if self._node_shifts.shape != rq_shp or self._trace_weights.shape != rq_shp:
-            raise ValueError(f"Shape of weights and shifts must be {rq_shp}.")
+        new_node_stacks = self._node_stacks[self._n_stacked :]
+        if new_node_stacks:
+            (
+                self._stack_max,
+                self._stack_max_idx,
+                self._stack_offset,
+            ) = await asyncio.to_thread(
+                _delay_sum.delay_sum_reduce,
+                self._trace_inputs,
+                new_node_stacks,
+                shift_range=(0, self._result_nsamples),
+                node_stack_max=self._stack_max,
+                node_stack_max_idx=self._stack_max_idx,
+                n_threads=n_threads,
+            )
+            self._n_stacked = len(self._node_stacks)
 
-        (
-            self._stack_max,
-            self._stack_max_idx,
-            self._stack_offset,
-        ) = await asyncio.to_thread(
-            delay_sum_reduce,
-            traces=self._trace_data,
-            offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
-            node_mask=self._stacked_nodes,
-            shift_range=(0, self._result_nsamples),
-            node_stack_max=self._stack_max,
-            node_stack_max_idx=self._stack_max_idx,
-            n_threads=n_threads,
-        )
-        self._stacked_nodes[:] = True
         self._dirty = False
 
         return self._stack_max, self._stack_max_idx
@@ -248,30 +298,30 @@ class DelaySumReduce:
     async def get_snapshot(self, sample: int, leaf_only: bool = True) -> np.ndarray:
         """Get a snapshot of the delay-sum at a given sample index.
 
-        Removed nodes are excluded from the snapshot.
-
         Args:
             sample (int): Sample index to get the snapshot at.
-            leaf_only (bool, optional): Whether to include only leaf nodes in the
-                snapshot. Defaults to True.
+            leaf_only (bool, optional): If True, only leaf nodes (nodes
+                without children) are included in the snapshot. Defaults to
+                True.
 
         Returns:
-            np.ndarray: Snapshot of the delay-sum at the given sample index.
+            np.ndarray: Snapshot of the delay-sum at the given sample index,
+                aligned with `self.nodes` (or its leaf-only subset).
         """
-        mask_nodes = None
+        node_stacks = self._node_stacks
         if leaf_only:
-            mask_nodes = np.array([bool(n.children) for n in self.nodes], dtype=bool)
+            node_stacks = [
+                node_stack
+                for node_stack, node in zip(self._node_stacks, self.nodes, strict=True)
+                if not node.children
+            ]
 
-        snapshot = delay_sum_snapshot(
-            traces=self._trace_data,
-            offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
+        return _delay_sum.delay_sum_snapshot(
+            self._trace_inputs,
+            node_stacks,
             index=sample + self._padding_samples,
             shift_range=(0, self._result_nsamples),
-            node_mask=mask_nodes,
         )
-        return snapshot[~mask_nodes] if mask_nodes is not None else snapshot
 
     async def find_peaks(
         self,

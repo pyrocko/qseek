@@ -1,18 +1,20 @@
-"""Parity tests for the experimental Mojo port of delay_sum (ext_mojo/delay_sum.mojo).
+"""Parity tests for the Mojo delay_sum (src/qseek/ext_mojo/delay_sum.mojo).
 
 Compares the Mojo implementation against both the reference `pyrocko.parstack`
 and against qseek's own compiled C extension (`qseek.ext.delay_sum`), which is
 the function this Mojo module is a port of.
 
-Requires the optional `modular` (Mojo 1.0) toolchain: `uv sync --extra mojo`.
-All tests are skipped if it is not importable.
+All three Mojo entry points take two Python lists -- `TraceInput` and
+`NodeStack` (see `qseek.reduce`) -- where the C extension and pyrocko take
+flat arrays: traces plus a parallel `offsets` array, and packed 2-D
+(shifts, weights) plus a `node_mask`. `to_trace_inputs()` and
+`to_node_stacks()` below convert one to the other, so every test drives all
+implementations from the same generated data.
 """
 
 from __future__ import annotations
 
 import random
-import sys
-from pathlib import Path
 from typing import Literal, get_args
 
 import numpy as np
@@ -20,17 +22,13 @@ import pytest
 from pyrocko import parstack as pyrocko_parstack
 
 pytest.importorskip(
-    "mojo.importer", reason="Mojo toolchain (extra 'mojo') not installed"
+    "mojo.importer", reason="Mojo toolchain (dependency 'modular') not installed"
 )
 
 from qseek.ext import array_tools
 from qseek.ext import delay_sum as qseek_delay_sum
-
-EXT_MOJO_DIR = Path(__file__).parent.parent / "ext_mojo"
-if str(EXT_MOJO_DIR) not in sys.path:
-    sys.path.insert(0, str(EXT_MOJO_DIR))
-
-import delay_sum as mojo_delay_sum  # noqa: E402
+from qseek.ext_mojo import delay_sum as mojo_delay_sum
+from qseek.reduce import NodeStack, TraceInput
 
 N_THREADS_TEST = [1, 2]
 
@@ -49,6 +47,31 @@ def get_data(n_nodes: int = 20, n_samples: int = 4_000, n_traces: int = 10):
     return traces, offsets, shifts, weights
 
 
+def to_trace_inputs(traces: list[np.ndarray], offsets: np.ndarray) -> list[TraceInput]:
+    """Pair each trace array with its offset, as the Mojo entry points take."""
+    return [
+        TraceInput(data=data, offset=int(offset))
+        for data, offset in zip(traces, offsets, strict=True)
+    ]
+
+
+def to_node_stacks(
+    shifts: np.ndarray, weights: np.ndarray, indices: list[int] | None = None
+) -> list[NodeStack]:
+    """Build the node list the Mojo entry points take, from flat arrays.
+
+    `indices` defaults to each row's own position, but callers simulating a
+    masked/incremental subset (like a real `DelaySumReduce.stack()` call)
+    pass the subset's *global* indices explicitly.
+    """
+    if indices is None:
+        indices = range(shifts.shape[0])
+    return [
+        NodeStack(index=i, shifts=shifts[row], weights=weights[row])
+        for row, i in enumerate(indices)
+    ]
+
+
 @pytest.fixture
 def data():
     return get_data()
@@ -59,7 +82,9 @@ def test_mojo_delay_sum_matches_pyrocko_and_qseek(data, n_threads: int):
     traces, offsets, shifts, weights = data
 
     mojo_stack, mojo_offset = mojo_delay_sum.delay_sum(
-        traces, offsets, shifts, weights, n_threads=n_threads
+        to_trace_inputs(traces, offsets),
+        to_node_stacks(shifts, weights),
+        n_threads=n_threads,
     )
     qseek_stack, qseek_offset = qseek_delay_sum.delay_sum(
         traces, offsets, shifts, weights, n_threads=n_threads
@@ -91,12 +116,14 @@ def test_mojo_delay_sum_shift_range_and_stack_reuse(data, length: int):
     traces, offsets, shifts, weights = data
 
     shift_range = (0, length)
+    trace_inputs = to_trace_inputs(traces, offsets)
+    nodes = to_node_stacks(shifts, weights)
     res = None
     qseek_res = None
     pyrocko_res = None
     for _ in range(3):
         res, offset = mojo_delay_sum.delay_sum(
-            traces, offsets, shifts, weights, shift_range=shift_range, stack=res
+            trace_inputs, nodes, shift_range=shift_range, stack=res
         )
         qseek_res, qseek_offset = qseek_delay_sum.delay_sum(
             traces, offsets, shifts, weights, shift_range=shift_range, stack=qseek_res
@@ -121,9 +148,10 @@ def test_mojo_delay_sum_shift_range_and_stack_reuse(data, length: int):
 @pytest.mark.parametrize("n_threads", N_THREADS_TEST)
 def test_mojo_delay_sum_reduce_matches(data, n_threads: int):
     traces, offsets, shifts, weights = data
+    nodes = to_node_stacks(shifts, weights)
 
     mojo_max, mojo_idx, mojo_offset = mojo_delay_sum.delay_sum_reduce(
-        traces, offsets, shifts, weights, n_threads=n_threads
+        to_trace_inputs(traces, offsets), nodes, n_threads=n_threads
     )
     qseek_max, qseek_idx, qseek_offset = qseek_delay_sum.delay_sum_reduce(
         traces, offsets, shifts, weights, n_threads=n_threads
@@ -141,11 +169,47 @@ def test_mojo_delay_sum_reduce_matches(data, n_threads: int):
     np.testing.assert_equal(mojo_idx, pyrocko_idx)
 
 
+def test_mojo_delay_sum_reduce_incremental_indices(data):
+    """Splitting the node list across calls must still record global indices.
+
+    Mirrors how `DelaySumReduce.stack()` only passes the not-yet-stacked
+    subset each call: each `NodeStack.index` is the node's position in the
+    *full* node list, not its position in this call's (sub)list.
+    """
+    traces, offsets, shifts, weights = data
+    n_nodes = shifts.shape[0]
+    split = n_nodes // 2
+
+    shift_range = (0, 3_800)
+    node_max = None
+    node_max_idx = None
+    for lo, hi in [(0, split), (split, n_nodes)]:
+        nodes = to_node_stacks(
+            shifts[lo:hi], weights[lo:hi], indices=list(range(lo, hi))
+        )
+        node_max, node_max_idx, offset = mojo_delay_sum.delay_sum_reduce(
+            to_trace_inputs(traces, offsets),
+            nodes,
+            shift_range=shift_range,
+            node_stack_max=node_max,
+            node_stack_max_idx=node_max_idx,
+        )
+
+    qseek_max, qseek_idx, qseek_offset = qseek_delay_sum.delay_sum_reduce(
+        traces, offsets, shifts, weights, shift_range=shift_range
+    )
+
+    assert offset == qseek_offset
+    np.testing.assert_allclose(node_max, qseek_max, rtol=1e-5)
+    np.testing.assert_equal(node_max_idx, qseek_idx)
+
+
 def test_mojo_delay_sum_snapshot_matches(data):
     traces, offsets, shifts, weights = data
+    nodes = to_node_stacks(shifts, weights)
 
     mojo_max, _, mojo_offset = mojo_delay_sum.delay_sum_reduce(
-        traces, offsets, shifts, weights
+        to_trace_inputs(traces, offsets), nodes
     )
     _, _, qseek_offset = qseek_delay_sum.delay_sum_reduce(
         traces, offsets, shifts, weights
@@ -154,7 +218,7 @@ def test_mojo_delay_sum_snapshot_matches(data):
 
     for idx in random.Random(0).choices(range(len(mojo_max)), k=50):
         mojo_snap = mojo_delay_sum.delay_sum_snapshot(
-            traces, offsets, shifts, weights, index=idx
+            to_trace_inputs(traces, offsets), nodes, index=idx
         )
         qseek_snap = qseek_delay_sum.delay_sum_snapshot(
             traces, offsets, shifts, weights, index=idx
@@ -163,7 +227,13 @@ def test_mojo_delay_sum_snapshot_matches(data):
         np.testing.assert_allclose(mojo_snap.max(), mojo_max[idx], rtol=1e-5)
 
 
-def test_mojo_delay_sum_reduce_node_mask(data):
+def test_mojo_delay_sum_reduce_node_subset(data):
+    """Excluding nodes from the list must match the C extension's node_mask.
+
+    Mojo has no `node_mask` concept for `delay_sum_reduce`/`delay_sum_snapshot`
+    -- callers (reduce.py) filter the node list themselves instead. This
+    checks that filtering is equivalent to the C extension's node_mask.
+    """
     traces, offsets, shifts, weights = data
     n_nodes = shifts.shape[0]
 
@@ -171,8 +241,13 @@ def test_mojo_delay_sum_reduce_node_mask(data):
     masked_indices = random.Random(0).sample(range(n_nodes), 5)
     mask[masked_indices] = True
 
+    kept_indices = [i for i in range(n_nodes) if not mask[i]]
+    nodes = to_node_stacks(
+        shifts[kept_indices], weights[kept_indices], indices=kept_indices
+    )
+
     mojo_max, mojo_idx, mojo_offset = mojo_delay_sum.delay_sum_reduce(
-        traces, offsets, shifts, weights, node_mask=mask
+        to_trace_inputs(traces, offsets), nodes
     )
     qseek_max, qseek_idx, qseek_offset = qseek_delay_sum.delay_sum_reduce(
         traces, offsets, shifts, weights, node_mask=mask
@@ -189,10 +264,7 @@ def test_mojo_delay_sum_reduce_node_mask(data):
 # ===----------------------------------------------------------------=== #
 #
 # Mirrors the shape of test/test_delay_sum.py's benchmarks, with "mojo"
-# added as a third implementation. Note that Mojo currently runs
-# single-threaded regardless of n_threads (see the module docstring in
-# ext_mojo/delay_sum.mojo), so its numbers won't improve across the
-# n_threads parametrization the way qseek's and pyrocko's do.
+# added as a third implementation.
 
 N_THREADS_BENCH = [1, 2, 4]
 ROUNDS = 4
@@ -242,10 +314,12 @@ def test_benchmark_delay_sum(
         return res, offset
 
     def stack_mojo() -> tuple[np.ndarray, int]:
+        trace_inputs = to_trace_inputs(traces, offsets)
+        nodes = to_node_stacks(shifts, weights)
         res = None
         for _ in range(rounds):
             res, offset = mojo_delay_sum.delay_sum(
-                traces, offsets, shifts, weights, stack=res, n_threads=n_threads
+                trace_inputs, nodes, stack=res, n_threads=n_threads
             )
         array_tools.argmax_masked(res, n_threads=n_threads)
         return res, offset
@@ -292,8 +366,9 @@ def test_benchmark_delay_sum_reduce(
 
     def stack_reduce_mojo():
         traces, offsets, shifts, weights = benchmark_data
+        nodes = to_node_stacks(shifts, weights)
         max_value, max_idx, offset = mojo_delay_sum.delay_sum_reduce(
-            traces, offsets, shifts, weights, n_threads=n_threads
+            to_trace_inputs(traces, offsets), nodes, n_threads=n_threads
         )
         return max_idx, max_value, offset
 
