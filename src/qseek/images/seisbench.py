@@ -161,7 +161,7 @@ class PhaseNetImage(WaveformImage):
 
 
 class SeisBench(ImageFunction):
-    """PhaseNet image function. For more details see SeisBench documentation."""
+    """SeisBench AI image function. For more details see SeisBench documentation."""
 
     image: Literal["SeisBench"] = "SeisBench"
 
