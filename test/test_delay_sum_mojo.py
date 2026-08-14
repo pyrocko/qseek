@@ -14,7 +14,10 @@ implementations from the same generated data.
 
 from __future__ import annotations
 
+import os
 import random
+import threading
+import time
 from typing import Literal, get_args
 
 import numpy as np
@@ -257,6 +260,71 @@ def test_mojo_delay_sum_reduce_node_subset(data):
     np.testing.assert_allclose(mojo_max, qseek_max, rtol=1e-5)
     np.testing.assert_equal(mojo_idx, qseek_idx)
     assert not np.isin(mojo_idx, masked_indices).any()
+
+
+# ===----------------------------------------------------------------=== #
+# GIL release
+# ===----------------------------------------------------------------=== #
+
+
+def _spin_rate_during(work) -> float:
+    """Python-bytecode throughput of another thread while `work` runs.
+
+    A pure-Python counter loop can only advance while its thread holds the
+    GIL, so its rate during `work` measures how much of the GIL `work`
+    leaves available.
+    """
+    counter = 0
+    running = True
+
+    def spin() -> None:
+        nonlocal counter
+        while running:
+            counter += 1
+
+    thread = threading.Thread(target=spin, daemon=True)
+    thread.start()
+    try:
+        time.sleep(0.1)  # let the spinner reach steady state
+        start_count, start = counter, time.perf_counter()
+        work()
+        elapsed, spins = time.perf_counter() - start, counter - start_count
+    finally:
+        running = False
+        thread.join()
+    return spins / elapsed
+
+
+@pytest.mark.skipif(
+    (os.cpu_count() or 1) < 2, reason="needs >=2 cores to run spinner alongside"
+)
+def test_mojo_releases_gil(data):
+    """The Mojo kernels must release the GIL while computing.
+
+    `DelaySumReduce.stack()` offloads via `asyncio.to_thread`, which only
+    buys concurrency if the extension actually drops the GIL -- the C
+    extension this replaced did so with `Py_BEGIN_ALLOW_THREADS`. Without
+    the `GILReleased` guard in delay_sum.mojo this ratio measures ~0.1.
+    """
+    traces, offsets, shifts, weights = get_data(
+        n_nodes=400, n_samples=30_000, n_traces=100
+    )
+    trace_inputs = to_trace_inputs(traces, offsets)
+    nodes = to_node_stacks(shifts, weights)
+
+    # n_threads=1 so the kernel does not itself contend for every core.
+    released = _spin_rate_during(lambda: time.sleep(0.3))
+    during_mojo = _spin_rate_during(
+        lambda: mojo_delay_sum.delay_sum_reduce(trace_inputs, nodes, n_threads=1)
+    )
+
+    fraction = during_mojo / released
+    # Generous threshold: measures ~0.97 when released and ~0.10 when held,
+    # so 0.5 tolerates a loaded CI machine without admitting a regression.
+    assert fraction > 0.5, (
+        f"Mojo kernel appears to hold the GIL "
+        f"(spinner ran at {fraction:.2f} of its GIL-free rate)"
+    )
 
 
 # ===----------------------------------------------------------------=== #

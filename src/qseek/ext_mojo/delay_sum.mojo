@@ -86,6 +86,7 @@ order rather than async, so re-check it rather than assuming it can go.
 from std.python import PythonObject, Python
 from std.python.bindings import PythonModuleBuilder
 from std.python.numpy import from_numpy_array
+from std.python._cpython import PyThreadState
 from std.os import abort
 from std.memory import Pointer
 from std.memory.alloc import unsafe_alloc
@@ -126,6 +127,43 @@ def PyInit_delay_sum() abi("C") -> PythonObject:
         return m.finalize()
     except e:
         abort(String("error creating Python Mojo module: ", e))
+
+
+# ===----------------------------------------------------------------=== #
+# GIL
+# ===----------------------------------------------------------------=== #
+
+
+struct GILReleased:
+    """Drops the GIL for the duration of a `with` block.
+
+    Mojo functions bound with `PythonModuleBuilder` are entered holding the
+    GIL and keep it until they return, so a long compute would block every
+    other Python thread -- including the asyncio event loop that
+    `qseek.reduce` offloads to via `asyncio.to_thread`. The C extension this
+    module replaced released it around the same loops with
+    `Py_BEGIN_ALLOW_THREADS`; this is that, scoped.
+
+    Mojo 1.0 has no ready-made guard for this (nothing GIL-related appears
+    in the public stdlib index), but the primitive is reachable through the
+    documented `Python.cpython()` handle.
+
+    **Nothing inside the block may touch a `PythonObject`** -- that is what
+    the GIL protects. Build and borrow every Python input before entering,
+    and construct results after leaving. `__exit__` also runs when the block
+    raises, so the GIL is always reacquired before the error propagates.
+    """
+
+    var state: Optional[Pointer[PyThreadState, MutUntrackedOrigin]]
+
+    def __init__(out self):
+        self.state = Python().cpython().PyEval_SaveThread()
+
+    def __enter__(self):
+        pass
+
+    def __exit__(deinit self):
+        Python().cpython().PyEval_RestoreThread(self.state)
 
 
 # ===----------------------------------------------------------------=== #
@@ -537,25 +575,29 @@ def delay_sum(
 
     var stack_data = borrow_2d_f32(stack, grid.n_nodes, stack_size, "stack")
     var n_chunks = max(1, min(get_thread_count(n_threads), grid.n_nodes))
+    var min_shift = grid.min_shift
 
-    var tg = TaskGroup()
-    for i_chunk in range(n_chunks):
-        var bounds = chunk_bounds(i_chunk, n_chunks, grid.n_nodes)
-        tg.create_task(
-            stack_chunk(
-                grid.view(),
-                bounds[0],
-                bounds[1],
-                stack_data,
-                stack_size,
-                grid.min_shift,
+    with GILReleased():
+        var tg = TaskGroup()
+        for i_chunk in range(n_chunks):
+            var bounds = chunk_bounds(i_chunk, n_chunks, grid.n_nodes)
+            tg.create_task(
+                stack_chunk(
+                    grid.view(),
+                    bounds[0],
+                    bounds[1],
+                    stack_data,
+                    stack_size,
+                    min_shift,
+                )
             )
-        )
-    tg.wait()
-    # Keep the Grid's allocations alive past the tasks; see module docstring.
-    _ = grid^
+        tg.wait()
+        # Keep the Grid's allocations alive past the tasks; see module
+        # docstring. Also keeps it inside the GIL-released scope, so its
+        # `__deinit__` cannot free buffers a task is still reading.
+        _ = grid^
 
-    return Python.tuple(stack, Int(grid.min_shift))
+    return Python.tuple(stack, Int(min_shift))
 
 
 # ===----------------------------------------------------------------=== #
@@ -680,6 +722,7 @@ def delay_sum_reduce(
     var stack_max = max_borrow[0]
     var stack_max_idx = idx_borrow[0]
     var n_chunks = max(1, min(get_thread_count(n_threads), stack_size))
+    var min_shift = grid.min_shift
 
     # One scratch allocation shared by every task, sliced per chunk:
     # allocating inside each task instead put a malloc large enough to be
@@ -687,29 +730,32 @@ def delay_sum_reduce(
     # run-to-run jitter.
     var max_tile = ceildiv(stack_size, n_chunks)
     var block = max(1, min(NODE_BLOCK, BLOCK_SCRATCH_FLOATS // max_tile))
-    var scratch = unsafe_alloc[Float32](n_chunks * block * max_tile)
 
-    var tg = TaskGroup()
-    for i_chunk in range(n_chunks):
-        var bounds = chunk_bounds(i_chunk, n_chunks, stack_size)
-        tg.create_task(
-            reduce_tile(
-                grid.view(),
-                bounds[0],
-                bounds[1],
-                grid.min_shift,
-                scratch.unsafe_offset(i_chunk * block * max_tile),
-                block,
-                stack_max,
-                stack_max_idx,
+    with GILReleased():
+        var scratch = unsafe_alloc[Float32](n_chunks * block * max_tile)
+        var tg = TaskGroup()
+        for i_chunk in range(n_chunks):
+            var bounds = chunk_bounds(i_chunk, n_chunks, stack_size)
+            tg.create_task(
+                reduce_tile(
+                    grid.view(),
+                    bounds[0],
+                    bounds[1],
+                    min_shift,
+                    scratch.unsafe_offset(i_chunk * block * max_tile),
+                    block,
+                    stack_max,
+                    stack_max_idx,
+                )
             )
-        )
-    tg.wait()
-    scratch.unsafe_free()
-    # Keep the Grid's allocations alive past the tasks; see module docstring.
-    _ = grid^
+        tg.wait()
+        scratch.unsafe_free()
+        # Keep the Grid's allocations alive past the tasks; see module
+        # docstring. Also keeps it inside the GIL-released scope, so its
+        # `__deinit__` cannot free buffers a task is still reading.
+        _ = grid^
 
-    return Python.tuple(node_max, node_max_idx, Int(grid.min_shift))
+    return Python.tuple(node_max, node_max_idx, Int(min_shift))
 
 
 # ===----------------------------------------------------------------=== #
@@ -742,11 +788,14 @@ def delay_sum_snapshot(
     var snapshot = np.zeros(grid.n_nodes, dtype=PythonObject("float32"))
     var snapshot_data = borrow_1d[DType.float32](snapshot)[0]
     var view = grid.view()
+    var min_shift = grid.min_shift
 
-    for i_node in range(grid.n_nodes):
-        var node = grid.nodes[unsafe_offset=i_node].copy()
-        snapshot_data.unsafe_store(
-            i_node, node.sample_at(view, index, grid.min_shift)
-        )
+    with GILReleased():
+        for i_node in range(grid.n_nodes):
+            var node = grid.nodes[unsafe_offset=i_node].copy()
+            snapshot_data.unsafe_store(
+                i_node, node.sample_at(view, index, min_shift)
+            )
+        _ = grid^
 
     return snapshot
