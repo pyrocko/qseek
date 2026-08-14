@@ -83,13 +83,11 @@ class EventLocalMagnitude(EventMagnitude):
                     "%s magnitude removed due to high std",
                     mag.station.pretty,
                 )
-                station_magnitudes[i].flag = "high_std"
+                station_magnitudes[i] = mag._replace(flag="high_std")
 
         valid_magnitudes = [sta for sta in station_magnitudes if sta.flag is None]
         if len(valid_magnitudes) < min_stations:
             ml.station_magnitudes = station_magnitudes
-            ml.average = float(np.nan)
-            ml.error = float(np.nan)
             logger.warning(
                 "Not enough station magnitudes available for local magnitude "
                 "calculation after removing outliers."
@@ -251,7 +249,12 @@ class LocalMagnitude(EventMagnitudeCalculator):
                     asyncio.to_thread(
                         tr.transfer,
                         transfer_function=transfer_function,
-                        freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
+                        freqlimits=(
+                            0.1,
+                            1.0,
+                            0.40 / tr.deltat,
+                            0.45 / tr.deltat,
+                        ),
                         tfade=self.taper_seconds,
                         cut_off_fading=False,
                         demean=True,
@@ -331,7 +334,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
                     nsl,
                     sta_mag.snr,
                 )
-                sta_mag.flag = "low_snr"
+                sta_mag = sta_mag._replace(flag="low_snr")
             station_magnitudes.append(sta_mag)
 
         return EventLocalMagnitude.from_station_magnitudes(
