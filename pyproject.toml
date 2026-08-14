@@ -49,6 +49,7 @@ dependencies = [
     "sdnotify>=0.3.0",
     "fudgeo>=1.5",
     "scikit-learn>=1.9",
+    "modular>=26.5",
 ]
 
 classifiers = [
@@ -89,7 +90,6 @@ dev = [
     "ruff>=0.14",
 ]
 completion = ["argcomplete>=3.2"]
-mojo = ["modular>=26.5"]
 
 [project.scripts]
 qseek = "qseek.apps.qseek:main"
@@ -98,6 +98,11 @@ qseek-inversion = "qseek_inversion.app.qseek_inversion:main"
 [tool.setuptools.packages.find]
 where = ["src/"]
 include = ["qseek*"]
+
+[tool.setuptools.package-data]
+# Mojo sources are compiled on demand by the `mojo.importer` hook, so they
+# must ship as source rather than as a prebuilt extension.
+"qseek.ext_mojo" = ["*.mojo"]
 
 [project.urls]
 Documentation = "https://pyrocko.github.io/qseek/"
