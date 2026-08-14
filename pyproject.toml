@@ -49,7 +49,7 @@ dependencies = [
     "sdnotify>=0.3.0",
     "fudgeo>=1.5",
     "scikit-learn>=1.9",
-    "modular>=26.5",
+    "mojo>=1.0.0",
 ]
 
 classifiers = [
