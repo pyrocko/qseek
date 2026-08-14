@@ -3,17 +3,25 @@
 Struct-oriented design (inspired by the older `parstack.mojo` prototype on
 branch `features/mojo`, adapted to Mojo 1.0):
 
-- `Trace` and `Node` are pointer-backed value types with their own compute
-  methods. `Node.accumulate_trace` clips one trace against an arbitrary
-  destination window, so the full-range `delay_sum` path and the per-tile
-  `delay_sum_reduce` path share it instead of duplicating the offset
-  arithmetic that the C original repeats twice.
+- `Trace` and `NodeStack` are pointer-backed value types with their own
+  compute methods. `NodeStack.accumulate_trace` clips one trace against an
+  arbitrary destination window, so the full-range `delay_sum` path and the
+  per-tile `delay_sum_reduce` path share it instead of duplicating the
+  offset arithmetic that the C original repeats twice.
 - `Grid` validates and owns the traces/nodes for one call, and resolves the
   result window, so each entry point is just "build a Grid, then compute".
   `Grid.view()` hands tasks a borrowed `GridView` so the owner stays on the
-  calling thread. Validation mirrors the C extension's `check_array_dtype`,
-  including the C-contiguity check -- without it a transposed or strided
-  view is read as though packed, silently returning wrong numbers.
+  calling thread. Inputs are validated and borrowed through `borrow_1d`,
+  which wraps the stdlib's `from_numpy_array` -- that checks dtype, rank
+  and C-contiguity natively, the last mattering because a transposed or
+  strided view would otherwise be read as though packed, silently
+  returning wrong numbers.
+  All three entry points take the same inputs: a list of trace arrays and
+  a list of per-node objects (`qseek.reduce.NodeStack`), rather than the C
+  extension's shared 2D (shifts, weights) arrays plus a `node_mask`. Node
+  bookkeeping -- which nodes are new, which are leaves -- is Python's job,
+  so callers pass the subset they want stacked instead of everything plus
+  a mask, and `Grid` needs neither row-striding nor mask handling.
 
 SIMD lanes come from `vectorize` (compiled against the host's native vector
 width) instead of hand-rolled AVX2/SIMDE intrinsics.
@@ -77,6 +85,7 @@ order rather than async, so re-check it rather than assuming it can go.
 
 from std.python import PythonObject, Python
 from std.python.bindings import PythonModuleBuilder
+from std.python.numpy import from_numpy_array
 from std.os import abort
 from std.memory import Pointer
 from std.memory.alloc import unsafe_alloc
@@ -130,45 +139,57 @@ def get_thread_count(n_threads: Int) -> Int:
 
 
 @always_inline
-def numpy_ptr[
+def borrow_1d[
     dtype: DType
-](array: PythonObject) raises -> Pointer[Scalar[dtype], MutUntrackedOrigin]:
-    return Pointer[Scalar[dtype], MutUntrackedOrigin](
-        unsafe_from_address=Int(py=array.ctypes.data)
-    )
+](array: PythonObject) raises -> Tuple[
+    Pointer[Scalar[dtype], MutUntrackedOrigin], Int
+]:
+    """Validate a 1-D NumPy array and borrow its buffer as (pointer, length).
 
+    `from_numpy_array` does the checking natively -- dtype, rank and
+    C-contiguity, the last mattering as much as the first because every
+    kernel below walks the raw buffer with strides it computes itself, so a
+    transposed or strided view would be read as if it were packed and
+    silently give wrong numbers instead of failing.
 
-@always_inline
-def dtype_char[dtype: DType]() -> StaticString:
-    comptime if dtype == DType.float32:
-        return "f"
-    elif dtype == DType.int32:
-        return "i"
-    else:
-        return "?"
-
-
-@always_inline
-def check_array[
-    dtype: DType, ndim: Int
-](array: PythonObject, name: StaticString) raises:
-    """Validate dtype, rank and C-contiguity, as the C extension does.
-
-    Contiguity matters as much as dtype here: every kernel below walks the
-    raw buffer with strides it computes itself, so a transposed or strided
-    view would be read as if it were packed and silently give wrong numbers
-    instead of failing.
+    Its `Span` is then dropped to an untracked pointer: `Grid` stores these
+    in heap arrays that outlive the `PythonObject` binding the span's origin
+    is tied to, and hands them to tasks whose lifetimes Mojo does not yet
+    track (see the module docstring). Keeping the array alive for as long as
+    the pointer is used is therefore the caller's job -- `Grid`'s callers
+    hold the Python list of traces/nodes for the whole call.
     """
-    if String(array.dtype.char) != dtype_char[dtype]():
-        raise Error(name, " must have dtype '", dtype_char[dtype](), "'")
-    if Int(py=array.ndim) != ndim:
-        raise Error(name, " must be a ", ndim, "-D array")
+    var span = from_numpy_array[dtype](array)
+    var ptr = Pointer[Scalar[dtype], MutUntrackedOrigin](
+        unsafe_from_address=Int(span.unsafe_ptr())
+    )
+    return (ptr, len(span))
+
+
+@always_inline
+def borrow_2d_f32(
+    array: PythonObject, rows: Int, cols: Int, name: StaticString
+) raises -> F32Ptr:
+    """Validate a 2-D float32 array of shape (rows, cols) and borrow it.
+
+    The 2-D counterpart to `borrow_1d`, needed only for `delay_sum`'s output
+    array. `from_numpy_array` is 1-D only, so the shape and contiguity checks
+    are spelled out here; this runs once per call, not per node.
+    """
+    var shape = array.shape
+    if Int(py=array.ndim) != 2:
+        raise Error(name, " must be a 2-D array")
+    if Int(py=shape[0]) != rows or Int(py=shape[1]) != cols:
+        raise Error(name, " must have shape (", rows, ", ", cols, ")")
+    if String(array.dtype.char) != "f":
+        raise Error(name, " must have dtype 'f'")
     if not array.flags["C_CONTIGUOUS"]:
         raise Error(name, " must be C-contiguous")
+    return F32Ptr(unsafe_from_address=Int(py=array.ctypes.data))
 
 
 # ===----------------------------------------------------------------=== #
-# Trace / Node
+# Trace / NodeStack
 # ===----------------------------------------------------------------=== #
 
 
@@ -205,12 +226,22 @@ struct Trace(Copyable, Movable):
 
 
 @fieldwise_init
-struct Node(Copyable, Movable):
-    """A grid node: per-trace integer sample shifts and float32 weights."""
+struct NodeStack(Copyable, Movable):
+    """One grid node's delay-and-sum inputs: per-trace shifts and weights.
+
+    Named `NodeStack` (not `Node`) to keep it distinct from qseek's octree
+    `Node` -- the two are related (one `NodeStack` per octree node) but this
+    one only carries what the kernels below need: which output slot it owns
+    (`index`) and its per-trace shift/weight.
+
+    `index` matters only where results are folded into caller-owned buffers
+    across several calls (`delay_sum_reduce`); `delay_sum` and
+    `delay_sum_snapshot` write row/element `i` for the `i`-th node passed.
+    """
 
     var shifts: I32Ptr
     var weights: F32Ptr
-    var masked: Bool
+    var index: Int32
 
     @always_inline
     def shifted_start(
@@ -277,8 +308,50 @@ struct GridView(Copyable, Movable):
 
     var traces: Pointer[Trace, MutUntrackedOrigin]
     var n_traces: Int
-    var nodes: Pointer[Node, MutUntrackedOrigin]
+    var nodes: Pointer[NodeStack, MutUntrackedOrigin]
     var n_nodes: Int
+
+
+def resolve_window(
+    grid: GridView, shift_range: PythonObject
+) raises -> Tuple[Int32, Int32]:
+    """Resolve (min_shift, max_shift), either from `shift_range` or by
+    scanning every node's shifted traces for the window they span.
+
+    A free function rather than a `Grid` method: it runs from inside
+    `Grid.__init__`, before `self.min_shift`/`self.stack_size` exist, and
+    Mojo forbids calling a method on a partly-initialized `self`. A
+    `GridView` over the fields that *are* initialized by then is fine.
+    """
+    if shift_range is None:
+        # Derive the window from the data: the span covered by every trace
+        # once every node has shifted it.
+        var min_shift = Int32.MAX
+        var max_shift = Int32.MIN
+        for i_node in range(grid.n_nodes):
+            ref node = grid.nodes[unsafe_offset=i_node]
+            for i_trace in range(grid.n_traces):
+                ref trace = grid.traces[unsafe_offset=i_trace]
+                var begin = Int32(trace.offset) + node.shifts.unsafe_load(
+                    i_trace
+                )
+                min_shift = min(min_shift, begin)
+                max_shift = max(max_shift, begin + Int32(trace.size))
+        return (min_shift, max_shift)
+
+    # Caller pinned the window, so skip the scan above -- it is
+    # O(n_nodes * n_traces) and its result would only be discarded.
+    if len(shift_range) != 2:
+        raise Error(
+            "shift_range argument must be tuple of two integers or None."
+        )
+    var min_shift = Int32(Int(py=shift_range[0]))
+    var max_shift = Int32(Int(py=shift_range[1]))
+    if max_shift <= min_shift:
+        raise Error(
+            "Invalid shift_range: max_shift must be greater than min_shift."
+        )
+    return (min_shift, max_shift)
 
 
 struct Grid:
@@ -290,7 +363,7 @@ struct Grid:
 
     var traces: Pointer[Trace, MutUntrackedOrigin]
     var n_traces: Int
-    var nodes: Pointer[Node, MutUntrackedOrigin]
+    var nodes: Pointer[NodeStack, MutUntrackedOrigin]
     var n_nodes: Int
     var min_shift: Int32
     var stack_size: Int
@@ -298,116 +371,64 @@ struct Grid:
     def __init__(
         out self,
         traces: PythonObject,
-        offsets: PythonObject,
-        shifts: PythonObject,
-        weights: PythonObject,
-        node_mask: PythonObject,
+        nodes: PythonObject,
         shift_range: PythonObject,
     ) raises:
+        """Build from a list of trace-like and a list of node-like objects.
+
+        Each trace needs `data` (float32, 1-D) and `offset` (int); each node
+        needs `shifts` (int32, length n_traces), `weights` (float32, same
+        length) and `index`. See `qseek.reduce`'s `TraceInput`/`NodeStack`,
+        the `NamedTuple`s this is built for.
+
+        Both are plain Python lists rather than the C extension's packed 2-D
+        arrays plus a parallel offsets array and a node mask. Bookkeeping --
+        which nodes are new, which are leaves -- stays on the Python side:
+        callers pass the subset they want stacked, so there is no mask to
+        parse and no row-striding, just one borrow per list item.
+        """
         var n_traces = len(traces)
         if n_traces == 0:
             raise Error("Input traces must be a non-empty list")
 
-        check_array[DType.int32, 2](shifts, "shifts")
-        check_array[DType.float32, 2](weights, "weights")
-        check_array[DType.int32, 1](offsets, "offsets")
-
-        # `.shape` builds a fresh Python tuple on every access (it's a
-        # property, not a field read like the C extension's PyArray_SHAPE),
-        # so fetch each array's shape once and reuse it below.
-        var shifts_shape = shifts.shape
-        var weights_shape = weights.shape
-        var n_nodes = Int(py=shifts_shape[0])
+        var n_nodes = len(nodes)
         if n_nodes == 0:
             raise Error("Number of nodes must be greater than zero")
-        if Int(py=weights_shape[0]) != n_nodes or Int(
-            py=shifts_shape[1]
-        ) != Int(py=weights_shape[1]):
-            raise Error("Shifts and weights must have the same shape")
-        if n_traces != Int(py=offsets.shape[0]):
-            raise Error("Number of arrays must match number of offsets")
-        if Int(py=shifts_shape[1]) != n_traces:
-            raise Error("Shifts must have the same number of columns as traces")
-
-        var has_mask = node_mask is not None
-        if has_mask:
-            check_array[DType.bool, 1](node_mask, "node_mask")
-            if Int(py=node_mask.shape[0]) != n_nodes:
-                raise Error(
-                    "Number of nodes must match number of activation flags"
-                )
-
-        var offsets_ptr = numpy_ptr[DType.int32](offsets)
-        var shifts_ptr = numpy_ptr[DType.int32](shifts)
-        var weights_ptr = numpy_ptr[DType.float32](weights)
 
         self.n_traces = n_traces
         self.n_nodes = n_nodes
         self.traces = unsafe_alloc[Trace](n_traces)
-        self.nodes = unsafe_alloc[Node](n_nodes)
+        self.nodes = unsafe_alloc[NodeStack](n_nodes)
 
         for i_trace in range(n_traces):
-            var array = traces[i_trace]
-            check_array[DType.float32, 1](array, "each trace")
+            var trace_obj = traces[i_trace]
+            var data = borrow_1d[DType.float32](trace_obj.data)
             self.traces.unsafe_offset(i_trace).unsafe_write(
-                Trace(
-                    numpy_ptr[DType.float32](array),
-                    Int(py=array.size),
-                    Int(offsets_ptr.unsafe_load(i_trace)),
-                )
+                Trace(data[0], data[1], Int(py=trace_obj.offset))
             )
 
         for i_node in range(n_nodes):
+            var node_obj = nodes[i_node]
+            var shifts = borrow_1d[DType.int32](node_obj.shifts)
+            var weights = borrow_1d[DType.float32](node_obj.weights)
+            if shifts[1] != n_traces or weights[1] != n_traces:
+                raise Error(
+                    "node.shifts and node.weights must have length n_traces"
+                )
             self.nodes.unsafe_offset(i_node).unsafe_write(
-                Node(
-                    shifts_ptr.unsafe_offset(i_node * n_traces),
-                    weights_ptr.unsafe_offset(i_node * n_traces),
-                    masked=False,
+                NodeStack(
+                    shifts[0],
+                    weights[0],
+                    index=Int32(Int(py=node_obj.index)),
                 )
             )
 
-        if has_mask:
-            # Resolved once outside the loop: `numpy_ptr` walks a Python
-            # attribute chain, which must not land on a per-node path.
-            var mask_ptr = numpy_ptr[DType.uint8](node_mask)
-            for i_node in range(n_nodes):
-                ref node = self.nodes[unsafe_offset=i_node]
-                node.masked = mask_ptr.unsafe_load(i_node) != 0
-
-        var min_shift: Int32
-        var max_shift: Int32
-        if shift_range is None:
-            # Derive the window from the data: the span covered by every
-            # trace once every node has shifted it.
-            min_shift = Int32.MAX
-            max_shift = Int32.MIN
-            for i_node in range(n_nodes):
-                ref node = self.nodes[unsafe_offset=i_node]
-                for i_trace in range(n_traces):
-                    ref trace = self.traces[unsafe_offset=i_trace]
-                    var begin = Int32(trace.offset) + node.shifts.unsafe_load(
-                        i_trace
-                    )
-                    min_shift = min(min_shift, begin)
-                    max_shift = max(max_shift, begin + Int32(trace.size))
-        else:
-            # Caller pinned the window, so skip the scan above -- it is
-            # O(n_nodes * n_traces) and its result would only be discarded.
-            if len(shift_range) != 2:
-                raise Error(
-                    "shift_range argument must be tuple of two integers or"
-                    " None."
-                )
-            min_shift = Int32(Int(py=shift_range[0]))
-            max_shift = Int32(Int(py=shift_range[1]))
-            if max_shift <= min_shift:
-                raise Error(
-                    "Invalid shift_range: max_shift must be greater than"
-                    " min_shift."
-                )
-
-        self.min_shift = min_shift
-        self.stack_size = Int(max_shift - min_shift)
+        var window = resolve_window(
+            GridView(self.traces, self.n_traces, self.nodes, self.n_nodes),
+            shift_range,
+        )
+        self.min_shift = window[0]
+        self.stack_size = Int(window[1] - window[0])
 
     def __deinit__(deinit self):
         self.traces.unsafe_free()
@@ -424,9 +445,7 @@ struct Grid:
 
 
 @always_inline
-def stack_block[
-    skip_masked: Bool
-](
+def stack_block(
     grid: GridView,
     node_start: Int,
     node_end: Int,
@@ -440,14 +459,14 @@ def stack_block[
 
     The trace loop is outermost so each trace slice is loaded once for the
     whole block; node `i` accumulates into `dest[(i - node_start) * stride]`.
+    Every node in `grid` is stacked -- callers that only want a subset (e.g.
+    `delay_sum_reduce`'s incremental updates) pass a `Grid` built from just
+    that subset rather than masking it out here.
     """
     for i_trace in range(grid.n_traces):
         var trace = grid.traces[unsafe_offset=i_trace].copy()
         for i_node in range(node_start, node_end):
             var node = grid.nodes[unsafe_offset=i_node].copy()
-            comptime if skip_masked:
-                if node.masked:
-                    continue
             node.accumulate_trace(
                 trace,
                 i_trace,
@@ -478,7 +497,7 @@ async def stack_chunk(
 ):
     for block_start in range(node_start, node_end, NODE_BLOCK):
         var block_end = min(block_start + NODE_BLOCK, node_end)
-        stack_block[skip_masked=False](
+        stack_block(
             grid,
             block_start,
             block_end,
@@ -492,17 +511,21 @@ async def stack_chunk(
 
 def delay_sum(
     traces: PythonObject,
-    offsets: PythonObject,
-    shifts: PythonObject,
-    weights: PythonObject,
+    nodes: PythonObject,
     var **kwargs: PythonObject,
 ) raises -> PythonObject:
-    var node_mask = kwargs.pop(String("node_mask"), PythonObject(None))
+    """Stack every node into its own row of a (n_nodes, stack_size) array.
+
+    Row `i` holds `nodes[i]` -- positionally, so `NodeStack.index` is
+    unused here (only `delay_sum_reduce` needs it). This is the whole
+    per-node stack, so it is memory-hungry by design; production code wants
+    `delay_sum_reduce`, which folds the same work into a running max.
+    """
     var stack = kwargs.pop(String("stack"), PythonObject(None))
     var shift_range = kwargs.pop(String("shift_range"), PythonObject(None))
     var n_threads = Int(py=kwargs.pop(String("n_threads"), PythonObject(1)))
 
-    var grid = Grid(traces, offsets, shifts, weights, node_mask, shift_range)
+    var grid = Grid(traces, nodes, shift_range)
     var stack_size = grid.stack_size
 
     if stack is None:
@@ -511,15 +534,8 @@ def delay_sum(
             Python.tuple(grid.n_nodes, stack_size),
             dtype=PythonObject("float32"),
         )
-    else:
-        check_array[DType.float32, 2](stack, "stack")
-        var shape = stack.shape
-        if Int(py=shape[0]) != grid.n_nodes or Int(py=shape[1]) != stack_size:
-            raise Error(
-                "Resulting stack array must have shape (n_nodes, stack_size)"
-            )
 
-    var stack_data = numpy_ptr[DType.float32](stack)
+    var stack_data = borrow_2d_f32(stack, grid.n_nodes, stack_size, "stack")
     var n_chunks = max(1, min(get_thread_count(n_threads), grid.n_nodes))
 
     var tg = TaskGroup()
@@ -593,7 +609,7 @@ async def reduce_tile(
         var block_end = min(block_start + block, grid.n_nodes)
         unsafe_memset_zero(stacks, (block_end - block_start) * tile_size)
 
-        stack_block[skip_masked=True](
+        stack_block(
             grid,
             block_start,
             block_end,
@@ -605,13 +621,12 @@ async def reduce_tile(
         )
 
         for i_node in range(block_start, block_end):
-            if grid.nodes[unsafe_offset=i_node].copy().masked:
-                continue
+            var node = grid.nodes[unsafe_offset=i_node].copy()
             update_running_max(
                 stacks.unsafe_offset((i_node - block_start) * tile_size),
                 tile_size,
                 tile_start,
-                Int32(i_node),
+                node.index,
                 stack_max,
                 stack_max_idx,
             )
@@ -619,12 +634,16 @@ async def reduce_tile(
 
 def delay_sum_reduce(
     traces: PythonObject,
-    offsets: PythonObject,
-    shifts: PythonObject,
-    weights: PythonObject,
+    nodes: PythonObject,
     var **kwargs: PythonObject,
 ) raises -> PythonObject:
-    var node_mask = kwargs.pop(String("node_mask"), PythonObject(None))
+    """Fold every node's stack into a running (max, argmax) over time.
+
+    Callers doing incremental accumulation (reduce.py's `DelaySumReduce`)
+    pass only the nodes not yet folded into `node_stack_max` /
+    `node_stack_max_idx` -- `NodeStack.index` is what makes those buffers
+    record the right node even though this call only sees a subset.
+    """
     var shift_range = kwargs.pop(String("shift_range"), PythonObject(None))
     var node_max = kwargs.pop(String("node_stack_max"), PythonObject(None))
     var node_max_idx = kwargs.pop(
@@ -638,7 +657,7 @@ def delay_sum_reduce(
             " both None"
         )
 
-    var grid = Grid(traces, offsets, shifts, weights, node_mask, shift_range)
+    var grid = Grid(traces, nodes, shift_range)
     var stack_size = grid.stack_size
 
     if node_max is None:
@@ -649,20 +668,17 @@ def delay_sum_reduce(
             dtype=PythonObject("float32"),
         )
         node_max_idx = np.zeros(stack_size, dtype=PythonObject("int32"))
-    else:
-        check_array[DType.float32, 1](node_max, "node_stack_max")
-        check_array[DType.int32, 1](node_max_idx, "node_stack_max_idx")
-        if (
-            Int(py=node_max.shape[0]) != stack_size
-            or Int(py=node_max_idx.shape[0]) != stack_size
-        ):
-            raise Error(
-                "node_stack_max and node_stack_max_idx must both have length",
-                stack_size,
-            )
 
-    var stack_max = numpy_ptr[DType.float32](node_max)
-    var stack_max_idx = numpy_ptr[DType.int32](node_max_idx)
+    var max_borrow = borrow_1d[DType.float32](node_max)
+    var idx_borrow = borrow_1d[DType.int32](node_max_idx)
+    if max_borrow[1] != stack_size or idx_borrow[1] != stack_size:
+        raise Error(
+            "node_stack_max and node_stack_max_idx must both have length",
+            stack_size,
+        )
+
+    var stack_max = max_borrow[0]
+    var stack_max_idx = idx_borrow[0]
     var n_chunks = max(1, min(get_thread_count(n_threads), stack_size))
 
     # One scratch allocation shared by every task, sliced per chunk:
@@ -703,32 +719,32 @@ def delay_sum_reduce(
 
 def delay_sum_snapshot(
     traces: PythonObject,
-    offsets: PythonObject,
-    shifts: PythonObject,
-    weights: PythonObject,
+    nodes: PythonObject,
     var **kwargs: PythonObject,
 ) raises -> PythonObject:
+    """`nodes` is the same node-list convention as `delay_sum_reduce`. The
+    returned array is positionally aligned with `nodes` -- callers wanting
+    only a subset (e.g. reduce.py's `get_snapshot(leaf_only=True)`) filter
+    the list before calling rather than passing a mask.
+    """
     if "index" not in kwargs:
         raise Error(
             "delay_sum_snapshot() missing required keyword argument: 'index'"
         )
     var index = Int(py=kwargs.pop(String("index"), PythonObject(0)))
     var shift_range = kwargs.pop(String("shift_range"), PythonObject(None))
-    var node_mask = kwargs.pop(String("node_mask"), PythonObject(None))
 
-    var grid = Grid(traces, offsets, shifts, weights, node_mask, shift_range)
+    var grid = Grid(traces, nodes, shift_range)
     if index < 0 or index >= grid.stack_size:
         raise Error("Snapshot index out of bounds: ", index)
 
     var np = Python.import_module("numpy")
     var snapshot = np.zeros(grid.n_nodes, dtype=PythonObject("float32"))
-    var snapshot_data = numpy_ptr[DType.float32](snapshot)
+    var snapshot_data = borrow_1d[DType.float32](snapshot)[0]
     var view = grid.view()
 
     for i_node in range(grid.n_nodes):
         var node = grid.nodes[unsafe_offset=i_node].copy()
-        if node.masked:
-            continue
         snapshot_data.unsafe_store(
             i_node, node.sample_at(view, index, grid.min_shift)
         )
