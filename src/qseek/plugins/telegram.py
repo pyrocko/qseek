@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Literal
 
 import aiohttp
 from pydantic import Field, PrivateAttr, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qseek.magnitudes.base import EventMagnitude
 from qseek.plugins.callback import Callback
@@ -40,15 +39,13 @@ def _format_window(window: timedelta) -> str:
     return f"{window.total_seconds() / 60:.0f} minutes"
 
 
-class TelegramAlert(Callback, BaseSettings):
+class TelegramAlert(Callback):
     """Sends detection alerts to a Telegram chat.
 
     `bot_token` is excluded from `search.json` so it never ends up on disk;
     set it (and optionally `chat_id`) through the QSEEK_TELEGRAM_BOT_TOKEN /
     QSEEK_TELEGRAM_CHAT_ID environment variables instead.
     """
-
-    model_config = SettingsConfigDict(env_prefix="QSEEK_TELEGRAM_")
 
     callback: Literal["TelegramAlert"] = "TelegramAlert"
 
