@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 class Simple(Exporter):
     """Export simple travel times in CSV format (E. Biondi, 2023)."""
 
-    min_confidence_value: float = 0.3
-    min_semblance_value: float = 0.5
+    min_pick_confidence: float = 0.3
+    min_event_semblance: float = 0.5
 
     async def export(
         self,
@@ -25,13 +25,13 @@ class Simple(Exporter):
     ) -> Path:
         logger.info("Export simple travel times in CSV format.")
 
-        self.min_semblance_value = prompt.FloatPrompt.ask(
+        self.min_event_semblance = prompt.FloatPrompt.ask(
             "Minimum event semblance value",
-            default=self.min_semblance_value,
+            default=self.min_event_semblance,
         )
-        self.min_confidence_value = prompt.FloatPrompt.ask(
+        self.min_pick_confidence = prompt.FloatPrompt.ask(
             "Minimum pick confidence value",
-            default=self.min_confidence_value,
+            default=self.min_pick_confidence,
         )
 
         search = Search.load_rundir(rundir)
@@ -55,7 +55,7 @@ class Simple(Exporter):
         ):
             traveltime_file = traveltime_dir / f"{time_to_path(ev.time)}.csv"
 
-            if ev.semblance < self.min_semblance_value:
+            if ev.semblance < self.min_event_semblance:
                 continue
 
             observed_arrivals = [
@@ -63,7 +63,7 @@ class Simple(Exporter):
                 for receiver in ev.receivers
                 for phase, arrival in receiver.phase_arrivals.items()
                 if arrival.observed is not None
-                and arrival.observed.detection_value > self.min_confidence_value
+                and arrival.observed.detection_value > self.min_pick_confidence
             ]
 
             if not observed_arrivals:

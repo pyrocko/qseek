@@ -292,6 +292,20 @@ class EasternNorthAmerica(WoodAnderson, LocalMagnitudeModel):
         return 1.55 * np.log10(dist_epi_km) - 0.22
 
 
+class ArgentiereGlacier(WoodAnderson, LocalMagnitudeModel):
+    author = "Roux et al. (2008)"
+    doi = "10.3189/002214308784409053"
+
+    max_amplitude = "wood-anderson-2800"
+    component = "north-east-separate"
+    # not specified by authors; sensible default for near-field
+    hypocentral_range = Range(0.0 * KM, 100.0 * KM)
+
+    @staticmethod
+    def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
+        return -6 * np.log10(dist_hypo_km) - 1.2
+
+
 class Albania(WoodAnderson, LocalMagnitudeModel):
     author = "Muco and Minga (1991)"
 

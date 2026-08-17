@@ -83,12 +83,21 @@ class PhaseDetection(BaseModel):
             return self.observed.time - self.model.time
         return None
 
-    def get_arrival_time(self) -> datetime:
+    def get_arrival_time(self, observed_only: bool = False) -> datetime:
         """Get observed time or modelled time, observed phase has priority.
+
+        Args:
+            observed_only (bool, optional): If True, only consider observed arrivals.
+                Defaults to False.
 
         Returns:
             datetime: Arrival time
+
+        Raises:
+            ValueError: If observed_only is True and there is no observed arrival.
         """
+        if observed_only and not self.observed:
+            raise ValueError("No observed arrival available.")
         return self.observed.time if self.observed else self.model.time
 
     def _get_csv_dict(self) -> dict[str, Any]:
@@ -191,7 +200,9 @@ class Receiver(Station):
         return picks
 
     def get_arrivals_time_window(
-        self, phase: PhaseDescription | None = None
+        self,
+        phase: PhaseDescription | None = None,
+        observed_only: bool = False,
     ) -> tuple[datetime, datetime]:
         """Get the time window for phase arrivals.
 
@@ -199,16 +210,24 @@ class Receiver(Station):
             phase (PhaseDescription | None): Optional phase description.
                 If None, the time window for all arrivals is returned.
                 Defaults to None.
+            observed_only (bool, optional): If True, only consider observed arrivals.
+                Defaults to False.
 
         Returns:
             tuple[datetime, datetime]: A tuple containing the start and end time of
                 the phase arrivals.
+
+        Raises:
+            ValueError: If observed_only is True and there are no observed arrivals.
         """
         if phase:
             arrival = self.phase_arrivals[phase]
-            start_time = arrival.get_arrival_time()
+            start_time = arrival.get_arrival_time(observed_only=observed_only)
             return start_time, start_time
-        times = [arrival.get_arrival_time() for arrival in self.phase_arrivals.values()]
+        times = [
+            arrival.get_arrival_time(observed_only=observed_only)
+            for arrival in self.phase_arrivals.values()
+        ]
         return min(times), max(times)
 
     @classmethod
@@ -324,8 +343,9 @@ class EventReceivers(BaseModel):
         exclude_nsls: Iterable[NSL] | None = None,
         receivers: Iterable[Receiver] | None = None,
         channels: list[str] | None = None,
+        picked_only: bool = False,
         want_incomplete: bool = True,
-        crop_receivers: bool = True,
+        crop_traces: bool = True,
     ) -> list[Trace]:
         """Retrieves and restitutes waveforms for a given waveform provider.
 
@@ -342,9 +362,11 @@ class EventReceivers(BaseModel):
             receivers (list[Receiver] | None, optional): The receivers to retrieve
                 waveforms for. If None, all receivers are retrieved. Defaults to None.
             channels (list[str], optional): The channels to retrieve. Defaults to ["*"].
+            picked_only (bool, optional): Whether to retrieve only picked arrivals.
+                Defaults to False.
             want_incomplete (bool, optional): Whether to return incomplete traces.
                 Defaults to True.
-            crop_receivers (bool, optional): Whether to crop traces to receiver's
+            crop_traces (bool, optional): Whether to crop traces to receiver's
                 phase arrival window. Defaults to True.
 
         Returns:
@@ -359,11 +381,19 @@ class EventReceivers(BaseModel):
                 if not any(ex_nsl.match(receiver.nsl) for ex_nsl in exclude_nsls_set)
             ]
 
-        times = list(
-            chain.from_iterable(
-                receiver.get_arrivals_time_window(phase) for receiver in receivers
-            )
-        )
+        receiver_times: dict[Receiver, tuple[datetime, datetime]] = {}
+        for rcv in receivers:
+            try:
+                receiver_times[rcv] = rcv.get_arrivals_time_window(
+                    phase,
+                    observed_only=picked_only,
+                )
+            except ValueError:
+                continue
+
+        times = list(chain.from_iterable(receiver_times.values()))
+        receivers = list(receiver_times.keys())
+
         if not times:
             return []
 
@@ -375,7 +405,7 @@ class EventReceivers(BaseModel):
             channel_priorities=channels,
         )
 
-        if crop_receivers:
+        if crop_traces:
             for tr in traces:
                 # Crop to receiver's phase arrival window
                 receiver = self.get_receiver(tr.nslc_id[:3])

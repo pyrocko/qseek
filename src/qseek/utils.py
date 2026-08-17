@@ -327,6 +327,18 @@ def time_to_path(datetime: datetime) -> str:
     return datetime.isoformat(sep="T", timespec="milliseconds").replace(":", "")
 
 
+def datetime_pretty(dt: datetime) -> str:
+    """Formats a datetime object into a human-readable string.
+
+    Args:
+        dt (datetime): The datetime object to format.
+
+    Returns:
+        str: The formatted string representation of the datetime.
+    """
+    return dt.strftime("%Y-%m-%d %H:%M:%S") + f" {dt.tzname()}"
+
+
 def as_array(
     iterable: Iterable[float | Iterable[float]], dtype: np.dtype = float
 ) -> np.ndarray:

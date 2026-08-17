@@ -315,9 +315,19 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
       npy_intp i;
       simde__m256 weight_vec = simde_mm256_set1_ps(weight);
 
+      // The loop condition must be `i + LANE_WIDTH <= stack_nsamples` rather
+      // than the usual `i < stack_nsamples - (stack_nsamples % LANE_WIDTH)`:
+      // that form only bounds the loop correctly when `i` starts at 0, but
+      // here it starts at imax(0, min_shift - trace_shift), which is non-zero
+      // whenever an explicit shift_range puts the window above this trace's
+      // shifted start. With a non-zero, non-LANE_WIDTH-aligned start the old
+      // form let the final iteration run up to LANE_WIDTH-1 lanes past
+      // stack_nsamples, reading beyond the trace and writing beyond this
+      // node's stack row (into the next node, or off the array entirely).
+      // It happened to stay in bounds when stack_size % LANE_WIDTH == 0,
+      // which is why it went unnoticed.
       for (i = imax(0, min_shift - trace_shift);
-           i < stack_nsamples - (stack_nsamples % LANE_WIDTH);
-           i += LANE_WIDTH) {
+           i + LANE_WIDTH <= stack_nsamples; i += LANE_WIDTH) {
         npy_intp i_res = base_idx + i;
         simde__m256 trace_vec = simde_mm256_loadu_ps(&trace.data[i]);
         simde__m256 stack_vec = simde_mm256_loadu_ps(&node.stack[i_res]);
