@@ -781,7 +781,7 @@ class ChannelSelectors:
     HorizontalAvg = ChannelSelector("EN123RT", number_channels=2, average=True)
     Horizontal = ChannelSelector("EN123RT", number_channels=2)
     Vertical = ChannelSelector("Z0", number_channels=1)
-    NorthEast = ChannelSelector("NE", number_channels=2)
+    NorthEast = ChannelSelector("NE12", number_channels=2)
 
 
 def _dedent(text: str) -> str:
