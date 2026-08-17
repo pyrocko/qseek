@@ -249,12 +249,7 @@ class LocalMagnitude(EventMagnitudeCalculator):
                     asyncio.to_thread(
                         tr.transfer,
                         transfer_function=transfer_function,
-                        freqlimits=(
-                            0.1,
-                            1.0,
-                            0.40 / tr.deltat,
-                            0.45 / tr.deltat,
-                        ),
+                        freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
                         tfade=self.taper_seconds,
                         cut_off_fading=False,
                         demean=True,

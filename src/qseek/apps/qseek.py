@@ -283,10 +283,7 @@ def main() -> None:
             nest_asyncio.apply()
             from qseek.search import Search
 
-            if args.rundir.is_file() and args.rundir.suffix in {
-                ".json",
-                ".JSON",
-            }:
+            if args.rundir.is_file() and args.rundir.suffix in {".json", ".JSON"}:
                 search_file = args.rundir
                 rundir = args.rundir.parent / args.rundir.stem
                 if not rundir.is_dir():
@@ -326,7 +323,7 @@ def main() -> None:
                 )
 
             squirrel.snuffle(
-                events=(None if show_observed else search.catalog.as_pyrocko_events()),
+                events=None if show_observed else search.catalog.as_pyrocko_events(),
                 markers=markers,
                 stations=search.stations.as_pyrocko_stations(),
             )
@@ -493,9 +490,7 @@ def main() -> None:
                             console.print_json(subclass().model_dump_json(indent=2))
 
                             if subclass.__name__ == "LocalMagnitude":
-                                from qseek.magnitudes.local_magnitude import (
-                                    ModelName,
-                                )
+                                from qseek.magnitudes.local_magnitude import ModelName
 
                                 models = get_args(ModelName)
                                 list = "\n".join(f"- {m}" for m in sorted(models))
