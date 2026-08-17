@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import cached_property
@@ -896,6 +897,10 @@ class EventDetection(Location):
         for magnitude in self.magnitudes:
             csv_line.update(magnitude.csv_row())
         csv_line["WKT_geom"] = self.as_wkt()
+
+        for key, value in csv_line.items():
+            if value is None or (isinstance(value, float) and math.isnan(value)):
+                csv_line[key] = ""
         return csv_line
 
     @classmethod
