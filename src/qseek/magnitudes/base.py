@@ -31,7 +31,7 @@ class StationLocalMagnitude(NamedTuple):
     distance_epi: float
     distance_hypo: float
     snr: float = 0.0
-    flag: str | None = None
+    flag: Literal["valid", "low_snr", "high_std"] = "valid"
 
 
 class EventMagnitude(BaseModel):
@@ -247,8 +247,10 @@ class StationAmplitudes(NamedTuple):
             peak_amp=float(peak_amp),
             noise=float(noise_amp),
             noise_std=float(noise_std),
-            distance_hypo=receiver.distance_to(event)
-            if not station_depth_only
-            else hypo_distance_only_station_depth(receiver, event),
+            distance_hypo=(
+                receiver.distance_to(event)
+                if not station_depth_only
+                else hypo_distance_only_station_depth(receiver, event)
+            ),
             distance_epi=receiver.surface_distance_to(event),
         )
