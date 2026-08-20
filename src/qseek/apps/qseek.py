@@ -334,7 +334,6 @@ def main() -> None:
             from qseek.search import Search
 
             search = Search.load_rundir(args.rundir)
-            search.data_provider.prepare(search.stations)
             recalculate_magnitudes = args.recalculate
 
             tasks = []
@@ -360,6 +359,10 @@ def main() -> None:
             )
 
             async def worker() -> None:
+                search.stations.prepare(search.octree.location)
+                await search.data_provider.prepare(search.stations)
+                search.stations.filter_stations(search.data_provider.available_nsls())
+
                 for magnitude in search.magnitudes:
                     await magnitude.prepare(search.octree, search.stations)
                 await search.catalog.check(repair=True)
