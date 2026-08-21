@@ -344,7 +344,12 @@ def main() -> None:
                     console.print(
                         f"Event {str(detection.time).split('.')[0]}:",
                         ", ".join(
-                            f"[bold]{m.magnitude}[/bold] {m.average:.2f}±{m.error:.2f}"
+                            (
+                                f"[bold]{m.magnitude}[/bold] "
+                                f"{m.average:.2f}±{m.error:.2f}"
+                                if m.average is not None and m.error is not None
+                                else f"[bold]{m.magnitude}[/bold] (insufficient stations)"
+                            )
                             for m in detection.magnitudes
                         ),
                     )

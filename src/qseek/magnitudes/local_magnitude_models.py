@@ -107,6 +107,7 @@ class StationLocalMagnitude(NamedTuple):
     distance_epi: float
     distance_hypo: float
     snr: float = 0.0
+    flag: Literal["valid", "low_snr", "high_std"] = "valid"
 
 
 class LocalMagnitudeModel:
@@ -261,7 +262,7 @@ class CaliforniaIntegratedSeismicNetwork(WoodAnderson, LocalMagnitudeModel):
     doi = "10.1785/0120100106"
 
     epicentral_range = Range(0.0 * KM, 450.0 * KM)  # actually 500
-    component = "north-east-separate"
+    component = "horizontal-separate"
     max_amplitude = "wood-anderson-old"
     peak_measurement = "max-amplitude"
 
