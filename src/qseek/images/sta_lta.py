@@ -7,7 +7,7 @@ import numpy as np
 from obspy import Stream
 from obspy.signal.trigger import classic_sta_lta, trigger_onset
 from pydantic import Field, PositiveFloat
-from pyrocko.obspy_compat import to_obspy_stream, to_pyrocko_traces
+from pyrocko.obspy_compat import to_pyrocko_traces
 from pyrocko.trace import NoData, Trace
 
 from qseek.images.base import ImageFunction, ObservedArrival, PhaseName, WaveformImage
@@ -20,7 +20,9 @@ def _compute_characteristic_functions(
     stream: Stream,
     sta_seconds: float,
     lta_seconds: float,
+    threshold: float,
 ) -> list[Trace]:
+    """Compute the STA/LTA characteristic function, normalized to [0, 1]."""
     char_function_traces = []
     for tr in stream:
         sampling_rate = tr.stats.sampling_rate
@@ -35,11 +37,12 @@ def _compute_characteristic_functions(
                 tr.stats.npts,
             )
             continue
-        tr.data = classic_sta_lta(
+        ratio = classic_sta_lta(
             tr.data.astype(np.float64),
             sta_samples,
             lta_samples,
         )
+        tr.data = np.clip((ratio - 1.0) / (threshold - 1.0), 0.0, 1.0)
         char_function_traces.append(tr)
 
     return char_function_traces
@@ -83,34 +86,41 @@ class StaLtaImage(WaveformImage):
             return None
 
         trigger = trigger_onset(
-            search_trace.data.astype(np.float64),
+            search_trace.ydata.astype(np.float64),
             threshold,
             threshold / 2,
         )
         if len(trigger) == 0:
             return None
         if len(trigger) > 1:
-            logger.warning(
-                "Multiple triggers found for %s, using the first one.",
+            logger.debug(
+                "%d triggers found for %s, picking the one closest to the "
+                "modelled arrival.",
+                len(trigger),
                 ".".join(trace.nslc_id),
             )
-            return None
-        trigger_on_idx = trigger[0][0]
+        trigger_on_idx = trigger[:, 0]
         times = search_trace.get_xdata()
-        trigger_time = times[trigger_on_idx]
-        trigger_delay = trigger_time - event_time.timestamp()
+        trigger_times = times[trigger_on_idx]
+        trigger_delays = trigger_times - event_time.timestamp()
 
         # Limit to post-event peaks
-        post_event_peaks = trigger_delay > 0.0
+        post_event_peaks = trigger_delays > 0.0
         trigger_on_idx = trigger_on_idx[post_event_peaks]
-        trigger_time = trigger_time[post_event_peaks]
+        trigger_times = trigger_times[post_event_peaks]
 
         if not trigger_on_idx.size:
             return None
 
+        detection_values = search_trace.ydata[trigger_on_idx]
+
+        # Pick the trigger onset closest to the modelled arrival
+        residuals = trigger_times - modelled_arrival.timestamp()
+        closest_idx = np.argmin(np.abs(residuals))
+
         return ObservedArrival(
-            time=to_datetime(trigger_time[0]),
-            detection_value=1.0,
+            time=to_datetime(trigger_times[closest_idx]),
+            detection_value=float(detection_values[closest_idx]),
             phase=self.phase,
         )
 
@@ -128,6 +138,11 @@ class StaLta(ImageFunction):
     lta_seconds: PositiveFloat = Field(
         default=10.0,
         description="Long-term average (LTA) window length in seconds. "
+        "Only used when `model` is `STA/LTA`.",
+    )
+    threshold: Annotated[float, Field(strict=True, gt=1.0)] = Field(
+        default=4.0,
+        description="Classic STA/LTA 'trigger-on' ratio. "
         "Only used when `model` is `STA/LTA`.",
     )
 
@@ -158,19 +173,20 @@ class StaLta(ImageFunction):
         Returns:
             list[WaveformImage]: List of image functions.
         """
-        stream = to_obspy_stream(traces)
+        stream = Stream(tr.to_obspy_trace() for tr in traces)
 
         char_function_traces = await asyncio.to_thread(
             _compute_characteristic_functions,
             stream,
             self.sta_seconds,
             self.lta_seconds,
+            self.threshold,
         )
 
         traces = to_pyrocko_traces(char_function_traces)
 
-        p_traces = [tr for tr in char_function_traces if tr.channel.endswith("Z")]
-        s_traces = [tr for tr in char_function_traces if not tr.channel.endswith("Z")]
+        p_traces = [tr for tr in traces if tr.channel.endswith("Z")]
+        s_traces = [tr for tr in traces if not tr.channel.endswith("Z")]
 
         annotation_p = StaLtaImage(
             image_function=self.name,
@@ -194,7 +210,7 @@ class StaLta(ImageFunction):
         Returns:
             timedelta: The blinding duration for the image function.
         """
-        raise NotImplementedError("must be implemented by subclass")
+        return timedelta(seconds=self.lta_seconds)
 
     def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
         """Get the phases provided by the image function.
@@ -202,6 +218,8 @@ class StaLta(ImageFunction):
         Returns:
             tuple[PhaseDescription, ...]: The phases provided by the image function.
         """
-        return ("P", "S")
+        return tuple(self.phase_map.values())
 
-        raise NotImplementedError("must be implemented by subclass")
+    def _detection_half_width(self) -> float:
+        """Half width of the detection window in seconds."""
+        return self.sta_seconds / 2
