@@ -21,7 +21,23 @@ def _compute_characteristic_functions(
     sta_seconds: float,
     lta_seconds: float,
 ) -> list[Trace]:
-    """Compute the STA/LTA characteristic function, normalized to [0, 1]."""
+    """Compute the STA/LTA characteristic function, normalized to [0, 1].
+
+    For each trace, the short-term average and long-term average windows are converted
+    from seconds to samples based on the sampling rate.
+    The classic STA/LTA ratio is then computed and transformed into a
+    normalized characteristic function with values between 0 and 1.
+    Traces that are shorter than the required LTA window are skipped and a warning is logged.
+
+    Args:
+        stream (Stream): containing the input seismic traces
+        sta_seconds (float): Duration of the short-term average window in seconds.
+        lta_seconds (float): Duration of the long-term average window in seconds.
+
+    Returns:
+        list of Traces | None: A list of traces containing the normalized STA/LTA
+        characteristic functions.
+    """
     char_function_traces = []
     for tr in stream:
         sampling_rate = tr.stats.sampling_rate
