@@ -70,7 +70,7 @@ class EventLocalMagnitude(EventMagnitude):
         if not station_magnitudes:
             raise ValueError("No station magnitudes provided")
 
-        valid_magnitudes = [sta for sta in station_magnitudes if sta.flag is None]
+        valid_magnitudes = [sta for sta in station_magnitudes if sta.flag == "valid"]
 
         std = np.std([sta.magnitude for sta in valid_magnitudes])
         unclean_mean = np.mean([sta.magnitude for sta in valid_magnitudes])
@@ -85,7 +85,7 @@ class EventLocalMagnitude(EventMagnitude):
                 )
                 station_magnitudes[i] = mag._replace(flag="high_std")
 
-        valid_magnitudes = [sta for sta in station_magnitudes if sta.flag is None]
+        valid_magnitudes = [sta for sta in station_magnitudes if sta.flag == "valid"]
         if len(valid_magnitudes) < min_stations:
             ml.station_magnitudes = station_magnitudes
             logger.warning(
