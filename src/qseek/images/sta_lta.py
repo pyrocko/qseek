@@ -20,7 +20,6 @@ def _compute_characteristic_functions(
     stream: Stream,
     sta_seconds: float,
     lta_seconds: float,
-    stalta_threshold: float,
 ) -> list[Trace]:
     """Compute the STA/LTA characteristic function, normalized to [0, 1]."""
     char_function_traces = []
@@ -42,8 +41,9 @@ def _compute_characteristic_functions(
             sta_samples,
             lta_samples,
         )
-        # tr.data = np.clip((ratio - 1.0) / (stalta_threshold - 1.0), 0.0, 1.0)
-        tr.data = np.clip((ratio - 1.0) / (stalta_threshold - 1.0), 0.0, 1.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            normalized = np.where(ratio > 0.0, 1.0 - 1.0 / ratio, 0.0)
+        tr.data = np.clip(normalized, 0.0, 1.0)
         char_function_traces.append(tr)
 
     return char_function_traces
@@ -141,11 +141,6 @@ class StaLta(ImageFunction):
         description="Long-term average (LTA) window length in seconds. "
         "Only used when `model` is `STA/LTA`.",
     )
-    stalta_threshold: Annotated[float, Field(strict=True, gt=1.0)] = Field(
-        default=10.0,
-        description="Classic STA/LTA 'trigger-on' ratio. "
-        "Only used when `model` is `STA/LTA`.",
-    )
     blinding_window: PositiveFloat = Field(
         default=20,
         description="Blinding window in which no new detection can be set. "
@@ -187,7 +182,6 @@ class StaLta(ImageFunction):
             stream,
             self.sta_seconds,
             self.lta_seconds,
-            self.stalta_threshold,
         )
 
         traces = to_pyrocko_traces(char_function_traces)
