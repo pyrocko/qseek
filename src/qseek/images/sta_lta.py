@@ -42,6 +42,7 @@ def _compute_characteristic_functions(
             sta_samples,
             lta_samples,
         )
+        # tr.data = np.clip((ratio - 1.0) / (stalta_threshold - 1.0), 0.0, 1.0)
         tr.data = np.clip((ratio - 1.0) / (stalta_threshold - 1.0), 0.0, 1.0)
         char_function_traces.append(tr)
 
@@ -131,18 +132,24 @@ class StaLta(ImageFunction):
     image: Literal["StaLta"] = "StaLta"
 
     sta_seconds: PositiveFloat = Field(
-        default=0.5,
+        default=2,
         description="Short-term average (STA) window length in seconds. "
         "Only used when `model` is `STA/LTA`.",
     )
     lta_seconds: PositiveFloat = Field(
-        default=10.0,
+        default=20.0,
         description="Long-term average (LTA) window length in seconds. "
         "Only used when `model` is `STA/LTA`.",
     )
     stalta_threshold: Annotated[float, Field(strict=True, gt=1.0)] = Field(
-        default=4.0,
+        default=10.0,
         description="Classic STA/LTA 'trigger-on' ratio. "
+        "Only used when `model` is `STA/LTA`.",
+    )
+    blinding_window: PositiveFloat = Field(
+        default=20,
+        description="Blinding window in which no new detection can be set. "
+        "Typically the duration of the seismic event."
         "Only used when `model` is `STA/LTA`.",
     )
 
@@ -210,7 +217,7 @@ class StaLta(ImageFunction):
         Returns:
             timedelta: The blinding duration for the image function.
         """
-        return timedelta(seconds=self.sta_seconds)
+        return timedelta(seconds=self.blinding_window)
 
     def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
         """Get the phases provided by the image function.
@@ -222,4 +229,4 @@ class StaLta(ImageFunction):
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
-        return self.sta_seconds / 2
+        return self.blinding_window / 2
