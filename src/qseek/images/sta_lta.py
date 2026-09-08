@@ -20,7 +20,7 @@ def _compute_characteristic_functions(
     stream: Stream,
     sta_seconds: float,
     lta_seconds: float,
-    threshold: float,
+    stalta_threshold: float,
 ) -> list[Trace]:
     """Compute the STA/LTA characteristic function, normalized to [0, 1]."""
     char_function_traces = []
@@ -42,7 +42,7 @@ def _compute_characteristic_functions(
             sta_samples,
             lta_samples,
         )
-        tr.data = np.clip((ratio - 1.0) / (threshold - 1.0), 0.0, 1.0)
+        tr.data = np.clip((ratio - 1.0) / (stalta_threshold - 1.0), 0.0, 1.0)
         char_function_traces.append(tr)
 
     return char_function_traces
@@ -140,7 +140,7 @@ class StaLta(ImageFunction):
         description="Long-term average (LTA) window length in seconds. "
         "Only used when `model` is `STA/LTA`.",
     )
-    threshold: Annotated[float, Field(strict=True, gt=1.0)] = Field(
+    stalta_threshold: Annotated[float, Field(strict=True, gt=1.0)] = Field(
         default=4.0,
         description="Classic STA/LTA 'trigger-on' ratio. "
         "Only used when `model` is `STA/LTA`.",
@@ -180,7 +180,7 @@ class StaLta(ImageFunction):
             stream,
             self.sta_seconds,
             self.lta_seconds,
-            self.threshold,
+            self.stalta_threshold,
         )
 
         traces = to_pyrocko_traces(char_function_traces)
@@ -210,7 +210,7 @@ class StaLta(ImageFunction):
         Returns:
             timedelta: The blinding duration for the image function.
         """
-        return timedelta(seconds=self.lta_seconds)
+        return timedelta(seconds=self.sta_seconds)
 
     def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
         """Get the phases provided by the image function.
