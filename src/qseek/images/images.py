@@ -8,17 +8,16 @@ from itertools import chain
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     Any,
     AsyncIterator,
     ClassVar,
     Iterator,
     Tuple,
-    Union,
 )
 
 from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
 
+from qseek.images import ImageFunctionType
 from qseek.images.base import ImageFunction
 from qseek.images.seisbench import SeisBench
 from qseek.stats import Stats
@@ -34,12 +33,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-
-ImageFunctionType = Annotated[
-    Union[SeisBench, ImageFunction],
-    Field(..., discriminator="image"),
-]
 
 
 class ImageFunctionsStats(Stats):
@@ -83,7 +76,7 @@ class ImageFunctionsStats(Stats):
 
 
 class ImageFunctions(RootModel):
-    root: list[ImageFunctionType] = [SeisBench()]
+    root: list[ImageFunctionType] = Field(default_factory=lambda: [SeisBench()])
 
     _queue: asyncio.Queue[Tuple[WaveformImages, WaveformBatch] | None] = PrivateAttr(
         asyncio.Queue(maxsize=QUEUE_SIZE)

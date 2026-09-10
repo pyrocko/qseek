@@ -31,6 +31,11 @@ class ObservedArrival:
 class ImageFunction(BaseModel):
     image: Literal["base"] = "base"
 
+    @classmethod
+    def get_subclasses(cls) -> tuple[type[ImageFunction], ...]:
+        """Returns a tuple of all the subclasses of ImageFunction."""
+        return tuple(cls.__subclasses__())
+
     @property
     def name(self) -> str:
         return self.__class__.__name__
