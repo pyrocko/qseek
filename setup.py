@@ -21,13 +21,10 @@ def is_arm64() -> bool:
     return platform.machine() == "arm64"
 
 
-def has_avx2() -> bool:
-    if not is_x86_64():
-        return False
-
+def has_flag(flag: str) -> bool:
     info = cpuinfo.get_cpu_info()
     flags = info.get("flags", [])
-    return "avx2" in flags
+    return flag in flags
 
 
 setup(
@@ -55,8 +52,8 @@ setup(
                 "-fopenmp",
                 "-O3",
                 "-flto",
-                "-mfma" if is_x86_64() else NOOP,
-                "-mavx2" if has_avx2() else NOOP,
+                "-mfma" if is_x86_64() and has_flag("fma") else NOOP,
+                "-mavx2" if is_x86_64() and has_flag("avx2") else NOOP,
             ],
             extra_link_args=[
                 "-lomp" if is_macos() else "-lgomp",
