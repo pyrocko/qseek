@@ -465,6 +465,7 @@ def main() -> None:
             import qseek.waveforms.providers  # noqa: F401
             from qseek.corrections.base import TravelTimeCorrections
             from qseek.features.base import FeatureExtractor
+            from qseek.images.base import ImageFunction
             from qseek.magnitudes.base import EventMagnitudeCalculator
             from qseek.plugins import Callback
             from qseek.pre_processing.base import BatchPreProcessing
@@ -479,6 +480,7 @@ def main() -> None:
             module_classes = (
                 WaveformProvider,
                 BatchPreProcessing,
+                ImageFunction,
                 RayTracer,
                 FeatureExtractor,
                 EventMagnitudeCalculator,
