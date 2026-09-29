@@ -79,7 +79,7 @@ class PhaseNetImage(WaveformImage):
         modelled_arrival: datetime,
         search_window_seconds: float = 5.0,
         threshold: float = 0.1,
-        detection_blinding_seconds: float = 1.0,
+        detection_blinding_seconds: float = 0.1,
     ) -> ObservedArrival | None:
         """Search for the closest peak (pick) in the station's image functions.
 
@@ -90,8 +90,8 @@ class PhaseNetImage(WaveformImage):
             search_window_seconds (float, optional): Total search length in seconds
                 around modelled arrival time. Defaults to 5.
             threshold (float, optional): Threshold for detection. Defaults to 0.1.
-            detection_blinding_seconds (float, optional): Blinding time in seconds for
-                the peak detection. Defaults to 1 second.
+            detection_blinding_seconds (float, optional): Minimum separation between
+                peaks in seconds. Defaults to 0.1.
 
         Returns:
             datetime | None: Time of arrival, None is none found.
@@ -113,7 +113,7 @@ class PhaseNetImage(WaveformImage):
             search_trace.ydata,
             height=threshold,
             prominence=threshold,
-            distance=int(detection_blinding_seconds * 1.0 / search_trace.deltat),
+            distance=max(1, detection_blinding_seconds / search_trace.deltat),
         )
         if False:
             import matplotlib.pyplot as plt
@@ -179,7 +179,7 @@ class SeisBench(ImageFunction):
         "Available models are:" + ", ".join(sorted(get_args(PreTrainedName))),
     )
     window_overlap_samples: int = Field(
-        default=1500,
+        default=2000,
         ge=1000,
         le=3000,
         description="Window overlap in samples.",
@@ -260,7 +260,8 @@ class SeisBench(ImageFunction):
             self._seisbench_model = model.load(self.pretrained.with_suffix(""))
         else:
             logger.info("loading pre-trained SeisBench model %s...", self.pretrained)
-            self._seisbench_model = model.from_pretrained(self.pretrained)
+            self._seisbench_model = model.from_pretrained(self.pretrained, update=False)
+            self._seisbench_model.sampling_rate = self.sampling_rate
         if self.torch_use_cuda:
             try:
                 if isinstance(self.torch_use_cuda, bool):
@@ -298,8 +299,7 @@ class SeisBench(ImageFunction):
             return self.seisbench_model._annotate_args["blinding"][1]
 
     def get_blinding(self) -> timedelta:
-        scaled_blinding_samples = max(self.get_blinding_samples()) / self._rescale_input
-        return timedelta(seconds=scaled_blinding_samples / self.sampling_rate)
+        return timedelta(seconds=max(self.get_blinding_samples()) / self.sampling_rate)
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
@@ -309,29 +309,15 @@ class SeisBench(ImageFunction):
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
-        if self._rescale_input != 1.0:
-            scale = self._rescale_input
-            for tr in stream:
-                tr.stats.sampling_rate /= scale
 
         annotations: Stream = await asyncio.to_thread(
             self.seisbench_model.annotate,
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,
+            stacking=self.stack_method,
             copy=False,
         )
-
-        if self._rescale_input != 1.0:
-            scale = self._rescale_input
-            for tr in annotations:
-                tr.stats.sampling_rate *= scale
-                blinding_samples = max(self.get_blinding_samples())
-                # 100 Hz is the native sampling rate of PhaseNet
-                blinding_seconds = (
-                    blinding_samples / self._seisbench_model.sampling_rate
-                ) * (1.0 - 1 / scale)
-                tr.stats.starttime -= blinding_seconds
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()

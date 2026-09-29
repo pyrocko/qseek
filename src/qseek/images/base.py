@@ -219,7 +219,7 @@ class WaveformImage:
         """
         save_traces = [tr.copy() for tr in self.traces]
         for tr in save_traces:
-            tr.set_ydata((tr.ydata * 1e3).astype(np.int32))
+            tr.set_ydata((tr.ydata * 1e6).astype(np.int32))
         await asyncio.to_thread(
             save,
             save_traces,
