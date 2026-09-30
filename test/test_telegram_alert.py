@@ -1,8 +1,8 @@
 """Live smoke tests for TelegramAlert - these actually send messages.
 
-Requires QSEEK_TELEGRAM_BOT_TOKEN / QSEEK_TELEGRAM_CHAT_ID, loaded from a
-gitignored `.env` in the project root if present. Skipped automatically
-when unset, so this never runs in CI or on a machine without credentials.
+Requires the QSEEK_TELEGRAM_BOT_TOKEN / QSEEK_TELEGRAM_CHAT_ID environment
+variables. Skipped automatically when unset, so this never runs in CI or on a
+machine without credentials.
 """
 
 from __future__ import annotations
@@ -13,13 +13,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from dotenv import load_dotenv
 
 from qseek.magnitudes.local_magnitude import EventLocalMagnitude
 from qseek.models.detection import EventDetection
 from qseek.plugins.telegram import TelegramAlert
-
-load_dotenv()
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("QSEEK_TELEGRAM_BOT_TOKEN"),
