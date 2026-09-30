@@ -147,7 +147,8 @@ addopts = "--cov=qseek --cov-report html --benchmark-disable"
 
 [tool.cibuildwheel]
 build = ["cp312-*", "cp313-*", "cp314-*"]
-skip = ["*-musllinux_*"]
+# PyTorch, required by SeisBench, has no Intel macOS wheels for Python 3.13+
+skip = ["*-musllinux_*", "cp313-macosx_x86_64", "cp314-macosx_x86_64"]
 build-frontend = "build[uv]"
 test-requires = ["pytest", "pytest-asyncio", "pytest-benchmark"]
 # Test the C extensions of the installed wheel
