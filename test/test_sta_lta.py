@@ -278,6 +278,9 @@ def test_picker_config():
     with pytest.raises(ValidationError):
         StaLta(position="left")
     assert StaLta().min_onset_value == 0.4
+    for sta_seconds, lta_seconds in ((2.0, 1.0), (1.0, 1.0)):
+        with pytest.raises(ValidationError, match="must be shorter"):
+            StaLta(sta_seconds=sta_seconds, lta_seconds=lta_seconds)
     # The picker settings moved from the image function to the picker
     with pytest.raises(ValidationError):
         StaLta.model_validate({"mad_factor": 3.0})

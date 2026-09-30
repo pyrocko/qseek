@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 import numpy as np
 from obspy import Stream
 from obspy.signal.trigger import trigger_onset
-from pydantic import Field, PositiveFloat
+from pydantic import Field, PositiveFloat, model_validator
 from pyrocko.obspy_compat import to_pyrocko_traces
 from pyrocko.trace import Trace
 from scipy.signal import hilbert
@@ -414,6 +414,16 @@ class StaLta(ImageFunction):
         default_factory=StaLtaPicker,
         description="Picker to use for the image function.",
     )
+
+    @model_validator(mode="after")
+    def check_windows(self) -> StaLta:
+        """Check that the STA window is shorter than the LTA window."""
+        if self.sta_seconds >= self.lta_seconds:
+            raise ValueError(
+                f"sta_seconds ({self.sta_seconds}) must be shorter than "
+                f"lta_seconds ({self.lta_seconds})"
+            )
+        return self
 
     async def prepare(self) -> None: ...
 
