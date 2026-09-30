@@ -12,7 +12,7 @@ from pyrocko.io import save
 from pyrocko.trace import Trace
 from scipy import signal
 
-from qseek.images.images import ImageFunctions, WaveformImages
+from qseek.images.base import ImageFunction, WaveformImages
 from qseek.pre_processing.module import PreProcessing
 from qseek.search import Search
 from qseek.utils import NSLC
@@ -136,7 +136,7 @@ class EventWaveformsSelection(WaveformSelection):
     _events: list[EventDetection] = PrivateAttr(default_factory=list)
 
     _pre_processing: PreProcessing = PrivateAttr()
-    _image_functions: ImageFunctions = PrivateAttr()
+    _image_function: ImageFunction = PrivateAttr()
     _data_provider: WaveformProvider = PrivateAttr()
     _squirrel: Squirrel = PrivateAttr()
 
@@ -152,10 +152,10 @@ class EventWaveformsSelection(WaveformSelection):
 
         search = Search.load_rundir(self.import_rundir)
         await search.pre_processing.prepare()
-        await search.image_functions.prepare(search.stations, search.octree)
+        await search.image_function.prepare()
 
         self._pre_processing = search.pre_processing
-        self._image_functions = search.image_functions
+        self._image_function = search.image_function
         self._squirrel = search.data_provider.get_squirrel()
         self._data_provider = search.data_provider
 
@@ -214,7 +214,7 @@ class EventWaveformsSelection(WaveformSelection):
 
         for batch in batches:
             batch = await self._pre_processing.process_batch(batch)
-            images = await self._image_functions.get_images(batch)
+            images = await self._image_function.get_images(batch)
             images.set_stations(self.stations)
             batch_images.append(images)
         return batch_images

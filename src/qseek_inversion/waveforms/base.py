@@ -10,7 +10,7 @@ from qseek.models.station import StationInventory
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from qseek.images.images import WaveformImages
+    from qseek.images.base import WaveformImages
 
 
 class WaveformSelection(BaseModel):

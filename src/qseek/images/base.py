@@ -1,21 +1,38 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal, Sequence
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import PositiveInt, PrivateAttr, computed_field
 from pyrocko.io import save
 
+from qseek.base import Model
 from qseek.models.station import StationInventory, StationList
-from qseek.utils import SDS_PYROCKO_SCHEME, PhaseDescription, resample
+from qseek.stats import Stats
+from qseek.utils import (
+    _NSL,
+    QUEUE_SIZE,
+    SDS_PYROCKO_SCHEME,
+    PhaseDescription,
+    datetime_now,
+    human_readable_bytes,
+)
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
+    from rich.table import Table
 
+    from qseek.models.detection import EventDetection
+    from qseek.waveforms.base import WaveformBatch
+
+
+logger = logging.getLogger(__name__)
 
 PhaseName = Literal["P", "S"]
 
@@ -28,8 +45,110 @@ class ObservedArrival:
     provider: str = ""
 
 
-class ImageFunction(BaseModel):
+class Picker(Model):
+    def pick_trace(
+        self,
+        trace: Trace,
+        phase: PhaseDescription,
+        event_time: datetime,
+        modelled_arrival: datetime,
+    ) -> ObservedArrival | None:
+        """Pick a phase arrival in a single image function trace.
+
+        Args:
+            trace (Trace): Image function trace of a station.
+            phase (PhaseDescription): Phase of the observed arrival.
+            event_time (datetime): Time of the event, picks before it are rejected.
+            modelled_arrival (datetime): Modelled arrival time to search around.
+
+        Returns:
+            ObservedArrival | None: Picked arrival, None if none found.
+        """
+        raise NotImplementedError
+
+    def add_picks(
+        self,
+        detections: Sequence[EventDetection],
+        images: WaveformImages,
+    ) -> None:
+        """Pick the observed arrivals of the detections' receivers.
+
+        Picks are searched around the modelled arrival of each receiver's phase
+        detection and attached as its observed arrival.
+
+        Args:
+            detections (Sequence[EventDetection]): Detections with modelled arrivals.
+            images (WaveformImages): Images the detections were located from.
+        """
+        for image in images:
+            # Stations can have multiple traces due to data gaps
+            station_traces: dict[_NSL, list[Trace]] = defaultdict(list)
+            for tr in image.traces:
+                station_traces[_NSL(tr.network, tr.station, tr.location)].append(tr)
+
+            for detection in detections:
+                for receiver in detection.receivers:
+                    arrival = receiver.phase_arrivals.get(image.phase)
+                    if arrival is None:
+                        continue
+                    for trace in station_traces.get(receiver.nsl, ()):
+                        pick = self.pick_trace(
+                            trace,
+                            image.phase,
+                            detection.time,
+                            arrival.model.time,
+                        )
+                        if pick is not None:
+                            arrival.observed = pick
+                            break
+
+
+class ImageFunctionStats(Stats):
+    time_per_batch: timedelta = timedelta()
+    bytes_per_second: float = 0.0
+
+    _queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch] | None] | None = (
+        PrivateAttr(None)
+    )
+    _position = 40
+    _show_header = False
+
+    def set_queue(
+        self,
+        queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch] | None],
+    ) -> None:
+        self._queue = queue
+
+    @computed_field
+    @property
+    def queue_size(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.qsize()
+
+    @computed_field
+    @property
+    def queue_size_max(self) -> PositiveInt:
+        if self._queue is None:
+            return 0
+        return self._queue.maxsize
+
+    def _populate_table(self, table: Table) -> None:
+        alert = self.queue_size <= 2
+        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
+        table.add_row(
+            "[bold]Phase annotation[/bold]",
+            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
+            f" {human_readable_bytes(self.bytes_per_second) + '/s':>10}",
+        )
+
+
+class ImageFunction(Model):
     image: Literal["base"] = "base"
+
+    picker: Picker
+
+    _stats: ClassVar[ImageFunctionStats] = ImageFunctionStats()
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[ImageFunction], ...]:
@@ -56,21 +175,90 @@ class ImageFunction(BaseModel):
     def get_blinding(self) -> timedelta:
         """Blinding duration for the image function. Added to padded waveforms.
 
-        Args:
-            sampling_rate (float): The sampling rate of the waveform.
-
         Returns:
             timedelta: The blinding duration for the image function.
         """
         raise NotImplementedError("must be implemented by subclass")
 
-    def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
+    def get_phases(self) -> tuple[PhaseDescription, ...]:
         """Get the phases provided by the image function.
 
         Returns:
             tuple[PhaseDescription, ...]: The phases provided by the image function.
         """
         raise NotImplementedError("must be implemented by subclass")
+
+    async def get_images(self, batch: WaveformBatch) -> WaveformImages:
+        """Calculate the images of a waveform batch.
+
+        Args:
+            batch (WaveformBatch): Batch of waveforms.
+
+        Returns:
+            WaveformImages: Images of the batch.
+        """
+        images = WaveformImages(
+            start_time=batch.start_time,
+            end_time=batch.end_time,
+        )
+        logger.debug("calculating images from %s", self.name)
+        for image in await self.process_traces(batch.traces):
+            images.add_image(image)
+        return images
+
+    async def iter_images(
+        self,
+        batch_iterator: AsyncIterator[WaveformBatch],
+    ) -> AsyncIterator[tuple[WaveformImages, WaveformBatch]]:
+        """Iterate over images from batches.
+
+        The images are calculated in a background task, ahead of the consumer.
+
+        Args:
+            batch_iterator (AsyncIterator[WaveformBatch]): Async iterator over
+                batches.
+
+        Yields:
+            tuple[WaveformImages, WaveformBatch]: Images and their batch.
+        """
+        queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch] | None] = (
+            asyncio.Queue(maxsize=QUEUE_SIZE)
+        )
+        stats = self._stats
+        stats.set_queue(queue)
+
+        async def worker() -> None:
+            logger.info("start pre-processing images, queue size %d", queue.maxsize)
+            async for batch in batch_iterator:
+                if not batch.is_healthy():
+                    logger.debug("unhealthy batch, skipping")
+                    continue
+
+                start_time = datetime_now()
+                try:
+                    images = await self.get_images(batch)
+                except ValueError as e:
+                    logger.warning("error processing images: %s", e)
+                    continue
+                stats.time_per_batch = datetime_now() - start_time
+                stats.bytes_per_second = (
+                    batch.nbytes / stats.time_per_batch.total_seconds()
+                )
+                await queue.put((images, batch))
+
+            await queue.put(None)
+
+        task = asyncio.create_task(worker())
+
+        while True:
+            ret = await queue.get()
+            if ret is None:
+                logger.debug("image function finished")
+                break
+            yield ret
+
+        logger.debug("waiting for image function to finish")
+        await task
 
 
 @dataclass
@@ -108,30 +296,6 @@ class WaveformImage:
         """Set stations from the image's available traces."""
         self._stations = StationList(stations.select_from_traces(self.traces))
 
-    def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
-        """Resample traces in-place.
-
-        Args:
-            sampling_rate (float): Desired sampling rate in Hz.
-            max_normalize (bool): Normalize by maximum value to keep the scale of the
-                maximum detection. Defaults to False.
-        """
-        if not self.has_traces():
-            return
-
-        for tr in self.traces:
-            trace_sampling_rate = 1.0 / tr.deltat
-            if trace_sampling_rate == sampling_rate:
-                continue
-
-            downsample = trace_sampling_rate > sampling_rate
-            resample(tr, sampling_rate)
-
-            if max_normalize and downsample:
-                _, max_value = tr.max()
-                tr.ydata /= tr.ydata.max()
-                tr.ydata *= max_value
-
     def get_trace_data(self) -> list[np.ndarray]:
         """Get all trace data in a list.
 
@@ -158,65 +322,6 @@ class WaveformImage:
             np.int32
         )
 
-    def search_phase_arrival(
-        self,
-        trace_idx: int,
-        event_time: datetime,
-        modelled_arrival: datetime,
-        search_window_seconds: float = 5,
-        threshold: float = 0.1,
-    ) -> ObservedArrival | None:
-        """Search for a peak in all station's image functions.
-
-        Args:
-            trace_idx (int): Index of the trace.
-            event_time (datetime): Time of the event.
-            modelled_arrival (datetime): Time to search around.
-            search_window_seconds (float, optional): Total search length in seconds
-                around modelled arrival time. Defaults to 5.
-            threshold (float, optional): Threshold for detection. Defaults to 0.1.
-
-        Returns:
-            datetime | None: Time of arrival, None is none found.
-        """
-        raise NotImplementedError
-
-    def search_phase_arrivals(
-        self,
-        event_time: datetime,
-        modelled_arrivals: list[datetime | None],
-        search_window_seconds: float = 5.0,
-        threshold: float = 0.1,
-    ) -> list[ObservedArrival | None]:
-        """Search for a peak in all station's image functions.
-
-        Args:
-            event_time (datetime): Time of the event.
-            modelled_arrivals (list[datetime]): Time to search around.
-            search_window_seconds (float, optional): Total search length in seconds
-                around modelled arrival time. Defaults to 5.
-            threshold (float, optional): Threshold for detection. Defaults to 0.1.
-
-        Returns:
-            list[datetime | None]: List of arrivals, None is none found.
-        """
-        return [
-            self.search_phase_arrival(
-                idx,
-                event_time,
-                modelled_arrival,
-                search_window_seconds=search_window_seconds,
-                threshold=threshold,
-            )
-            if modelled_arrival
-            else None
-            for idx, modelled_arrival in zip(
-                range(self.n_traces),
-                modelled_arrivals,
-                strict=True,
-            )
-        ]
-
     async def save_mseed(self, path: Path) -> None:
         """Save the image traces to disk.
 
@@ -237,3 +342,91 @@ class WaveformImage:
         from pyrocko.trace import snuffle
 
         snuffle(self.traces)
+
+
+@dataclass
+class WaveformImages:
+    start_time: datetime
+    end_time: datetime
+    images: list[WaveformImage] = field(default_factory=list)
+    _sampling_rate: float = 0.0
+
+    @property
+    def n_images(self) -> int:
+        """Number of image functions."""
+        return len(self.images)
+
+    @property
+    def n_stations(self) -> int:
+        """Number of stations in the images."""
+        return max(0, *(image.stations.n_stations for image in self if image.stations))
+
+    @property
+    def sampling_rate(self) -> float:
+        """Sampling rate of the images."""
+        return self._sampling_rate
+
+    @property
+    def duration(self) -> timedelta:
+        """Duration of the images."""
+        return self.end_time - self.start_time
+
+    def add_image(self, image: WaveformImage) -> None:
+        """Add an image to the collection.
+
+        Args:
+            image (WaveformImage): Image to add.
+        """
+        trace_sampling_rates = {1.0 / tr.deltat for tr in image.traces}
+        if len(trace_sampling_rates) > 1:
+            raise ValueError(
+                f"Traces of image {image.phase} have different sampling rates "
+                f"{', '.join(f'{sr:g}' for sr in sorted(trace_sampling_rates))} Hz. "
+                "Resample the waveforms in the pre-processing."
+            )
+        self._sampling_rate = self._sampling_rate or image.sampling_rate
+        if self._sampling_rate != image.sampling_rate:
+            raise ValueError(
+                f"Image sampling rate {image.sampling_rate} does not match existing "
+                f"sampling rate {self._sampling_rate}"
+            )
+        self.images.append(image)
+
+    def set_stations(self, stations: StationInventory) -> None:
+        """Set the images stations.
+
+        Args:
+            stations (Stations): Stations to set.
+        """
+        for image in self:
+            image.set_stations(stations)
+
+    def cumulative_weight(self) -> float:
+        """Get the cumulative weight of all images."""
+        return sum(image.weight for image in self)
+
+    def get_traces(self) -> list[Trace]:
+        traces = []
+        for img in self:
+            traces += img.traces
+        return traces
+
+    def snuffle(self) -> None:
+        """Open Pyrocko Snuffler on the image traces."""
+        from pyrocko.trace import snuffle
+
+        snuffle(self.get_traces())
+
+    async def save_mseed(self, path: Path) -> None:
+        """Save images to disk.
+
+        Args:
+            path (Path): Path to save the images.
+        """
+        logger.debug("saving images to %s", path)
+        path.mkdir(exist_ok=True)
+        for image in self:
+            await image.save_mseed(path)
+
+    def __iter__(self) -> Iterator[WaveformImage]:
+        yield from self.images

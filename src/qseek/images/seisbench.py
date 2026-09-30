@@ -10,6 +10,7 @@ import numpy as np
 from obspy import Stream
 from pydantic import (
     Field,
+    NonNegativeFloat,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
@@ -19,9 +20,15 @@ from pyrocko.trace import NoData
 from scipy import signal
 from seisbench import logger as seisbench_logger
 
-from qseek.images.base import ImageFunction, ObservedArrival, PhaseName, WaveformImage
+from qseek.images.base import (
+    ImageFunction,
+    ObservedArrival,
+    PhaseName,
+    Picker,
+    WaveformImage,
+)
 from qseek.types import FilePath
-from qseek.utils import alog_call, to_datetime
+from qseek.utils import PhaseDescription, alog_call, to_datetime
 
 obspy_compat.plant()
 
@@ -71,38 +78,76 @@ PreTrainedName = Literal[
 StackMethod = Literal["avg", "max"]
 
 
-class PhaseNetImage(WaveformImage):
-    def search_phase_arrival(
-        self,
-        trace_idx: int,
-        event_time: datetime,
-        modelled_arrival: datetime,
-        search_window_seconds: float = 5.0,
-        threshold: float = 0.1,
-        detection_blinding_seconds: float = 0.1,
-    ) -> ObservedArrival | None:
-        """Search for the closest peak (pick) in the station's image functions.
+class AnnotationPicker(Picker):
+    """Pick phase arrivals from SeisBench annotations.
+
+    The pick is the annotation peak closest to the modelled arrival time within the
+    search window. Peaks before the event origin time are rejected.
+    """
+
+    threshold_p: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=1.0,
+        description="Minimum height and prominence of a P phase annotation peak.",
+    )
+    threshold_s: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=1.0,
+        description="Minimum height and prominence of an S phase annotation peak.",
+    )
+    search_window_seconds: PositiveFloat = Field(
+        default=5.0,
+        description="Total length of the search window in seconds, centered on the"
+        " modelled arrival time.",
+    )
+    peak_separation_seconds: NonNegativeFloat = Field(
+        default=0.1,
+        description="Minimum separation between annotation peaks in seconds.",
+    )
+
+    def get_threshold(self, phase: PhaseName) -> float:
+        """Get the peak threshold for a SeisBench phase.
 
         Args:
-            trace_idx (int): Index of the trace.
-            event_time (datetime): Time of the event.
-            modelled_arrival (datetime): Time to search around.
-            search_window_seconds (float, optional): Total search length in seconds
-                around modelled arrival time. Defaults to 5.
-            threshold (float, optional): Threshold for detection. Defaults to 0.1.
-            detection_blinding_seconds (float, optional): Minimum separation between
-                peaks in seconds. Defaults to 0.1.
+            phase (PhaseName): SeisBench annotation phase, `P` or `S`.
 
         Returns:
-            datetime | None: Time of arrival, None is none found.
+            float: Peak threshold.
         """
-        # TODO adapt threshold to the seisbench model
-        trace = self.traces[trace_idx]
-        window_length = timedelta(seconds=search_window_seconds)
+        match phase:
+            case "P":
+                return self.threshold_p
+            case "S":
+                return self.threshold_s
+            case _:
+                raise ValueError(f"No pick threshold for phase `{phase}`.")
+
+    def pick_trace(
+        self,
+        trace: Trace,
+        phase: PhaseDescription,
+        event_time: datetime,
+        modelled_arrival: datetime,
+    ) -> ObservedArrival | None:
+        """Pick the annotation peak closest to the modelled arrival.
+
+        Args:
+            trace (Trace): Annotation trace, its channel is the SeisBench phase.
+            phase (PhaseDescription): Phase of the observed arrival.
+            event_time (datetime): Time of the event.
+            modelled_arrival (datetime): Time to search around.
+
+        Returns:
+            ObservedArrival | None: Picked arrival, None if none found.
+        """
+        threshold = self.get_threshold(trace.channel)
+        half_window = timedelta(seconds=self.search_window_seconds / 2)
         try:
             search_trace = trace.chop(
-                tmin=(modelled_arrival - window_length / 2).timestamp(),
-                tmax=(modelled_arrival + window_length / 2).timestamp(),
+                tmin=(modelled_arrival - half_window).timestamp(),
+                tmax=(modelled_arrival + half_window).timestamp(),
                 inplace=False,
             )
         except NoData:
@@ -113,50 +158,22 @@ class PhaseNetImage(WaveformImage):
             search_trace.ydata,
             height=threshold,
             prominence=threshold,
-            distance=max(1, detection_blinding_seconds / search_trace.deltat),
+            distance=max(1, self.peak_separation_seconds / search_trace.deltat),
         )
-        if False:
-            import matplotlib.pyplot as plt
-
-            _, ax = plt.subplots()
-            time = search_trace.get_xdata()
-            std = np.std(search_trace.get_ydata())
-
-            ax.plot(time, search_trace.get_ydata())
-            ax.grid(alpha=0.3)
-            ax.axhline(threshold, color="r", linestyle="--", label="threshold")
-            ax.axhline(std, color="g", linestyle="--", label="std")
-            ax.axhline(3 * std, color="b", linestyle="dotted", label="3*std")
-            ax.axvline(
-                modelled_arrival.timestamp(),
-                color="k",
-                alpha=0.3,
-                label="modelled arrival",
-            )
-            if peak_idx.size:
-                ax.axvline(time[peak_idx], color="m", linestyle="--", label="peaks")
-            plt.show()
-
-        times = search_trace.get_xdata()
-        peak_times = times[peak_idx]
-        peak_delays = peak_times - event_time.timestamp()
+        peak_times = search_trace.get_xdata()[peak_idx]
 
         # Limit to post-event peaks
-        post_event_peaks = peak_delays > 0.0
+        post_event_peaks = peak_times > event_time.timestamp()
         peak_idx = peak_idx[post_event_peaks]
         peak_times = peak_times[post_event_peaks]
-        peak_residuals = peak_times - modelled_arrival.timestamp()
-
         if not peak_idx.size:
             return None
 
-        peak_values = search_trace.get_ydata()[peak_idx]
-        closest_peak_idx = np.argmin(np.abs(peak_residuals))
-
+        closest_peak = np.argmin(np.abs(peak_times - modelled_arrival.timestamp()))
         return ObservedArrival(
-            time=to_datetime(peak_times[closest_peak_idx]),
-            detection_value=peak_values[closest_peak_idx],
-            phase=self.phase,
+            time=to_datetime(peak_times[closest_peak]),
+            detection_value=float(search_trace.ydata[peak_idx[closest_peak]]),
+            phase=phase,
         )
 
 
@@ -223,6 +240,10 @@ class SeisBench(ImageFunction):
             "S": 1.0,
         },
         description="Weights for each phase.",
+    )
+    picker: AnnotationPicker = Field(
+        default_factory=AnnotationPicker,
+        description="Picker to use for the image function.",
     )
 
     _seisbench_model: WaveformModel = PrivateAttr()
@@ -307,7 +328,7 @@ class SeisBench(ImageFunction):
         return 0.2 / self._rescale_input
 
     @alog_call
-    async def process_traces(self, traces: list[Trace]) -> list[PhaseNetImage]:
+    async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         stream = Stream(tr.to_obspy_trace() for tr in traces)
 
         annotations: Stream = await asyncio.to_thread(
@@ -325,14 +346,14 @@ class SeisBench(ImageFunction):
             if tr.stats.channel.endswith("P") or tr.stats.channel.endswith("S")
         ]
 
-        annotation_p = PhaseNetImage(
+        annotation_p = WaveformImage(
             image_function=self.name,
             weight=self.weights["P"],
             phase=self.phase_map["P"],
             detection_half_width=self._detection_half_width(),
             traces=[tr for tr in annotated_traces if tr.channel.endswith("P")],
         )
-        annotation_s = PhaseNetImage(
+        annotation_s = WaveformImage(
             image_function=self.name,
             weight=self.weights["S"],
             phase=self.phase_map["S"],
@@ -345,5 +366,5 @@ class SeisBench(ImageFunction):
 
         return [annotation_s, annotation_p]
 
-    def get_provided_phases(self) -> tuple[str, ...]:
+    def get_phases(self) -> tuple[str, ...]:
         return tuple(self.phase_map.values())

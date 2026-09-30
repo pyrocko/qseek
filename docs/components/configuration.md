@@ -65,17 +65,20 @@ This is a minimal config which can used to start a Qseek search.
     ],
     "absorbing_boundary": 1000.0
   },
-  "image_functions": [
-    {
-      "image": "PhaseNet",
-      "model": "ethz",
-      "torch_use_cuda": false,
-      "phase_map": {
-        "P": "constant:P",
-        "S": "constant:S"
-      },
+  "image_function": {
+    "image": "SeisBench",
+    "model": "PhaseNet",
+    "pretrained": "ethz",
+    "torch_use_cuda": false,
+    "phase_map": {
+      "P": "constant:P",
+      "S": "constant:S"
+    },
+    "picker": {
+      "threshold_p": 0.1,
+      "threshold_s": 0.1
     }
-  ],
+  },
   "ray_tracers": [
     {
     "tracer": "ConstantVelocityTracer",
