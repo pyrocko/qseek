@@ -368,3 +368,17 @@ def test_merge_gap_in_both_components(caplog):
     for tr in merged:
         np.testing.assert_allclose(tr.ydata, np.sqrt((9.0 + 16.0) / 2))
     assert "cannot merge misaligned" not in caplog.text
+
+
+def test_window_samples_rounded():
+    """0.29 s at 100 Hz are 29 samples, truncation gives 28."""
+    rng = np.random.default_rng(0)
+    trace = Trace(
+        "XX", "STA", "", "HHZ", TMIN, deltat=0.01, ydata=rng.standard_normal(1000)
+    )
+    (char_function,) = _compute_characteristic_functions(
+        Stream([trace.to_obspy_trace()]), 0.29, 1.0, "energy"
+    )
+    # The centred STA/LTA is padded with ones where the STA window is not full
+    np.testing.assert_array_equal(char_function.data[-29:], 1.0)
+    assert char_function.data[-30] != 1.0

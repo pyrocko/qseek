@@ -229,8 +229,8 @@ def _compute_characteristic_functions(
     char_function_traces = []
     for tr in stream:
         sampling_rate = tr.stats.sampling_rate
-        sta_samples = max(1, int(sta_seconds * sampling_rate))
-        lta_samples = max(sta_samples + 1, int(lta_seconds * sampling_rate))
+        sta_samples = max(1, round(sta_seconds * sampling_rate))
+        lta_samples = max(sta_samples + 1, round(lta_seconds * sampling_rate))
 
         if tr.stats.npts <= lta_samples:
             logger.warning(
