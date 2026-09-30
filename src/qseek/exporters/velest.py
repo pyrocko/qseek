@@ -170,7 +170,7 @@ class Velest(Exporter):
 
         outdir.mkdir()
         search = Search.load_rundir(rundir)
-        phases = search.image_functions.get_phases()
+        phases = search.image_function.get_phases()
         for phase in phases:
             if phase.endswith("P"):
                 phase_p = phase

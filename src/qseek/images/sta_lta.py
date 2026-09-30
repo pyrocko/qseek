@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import asyncio
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
@@ -9,11 +10,17 @@ from obspy import Stream
 from obspy.signal.trigger import trigger_onset
 from pydantic import Field, PositiveFloat
 from pyrocko.obspy_compat import to_pyrocko_traces
-from pyrocko.trace import NoData, Trace
+from pyrocko.trace import Trace
 from scipy.signal import hilbert
 from scipy.stats import median_abs_deviation
 
-from qseek.images.base import ImageFunction, ObservedArrival, PhaseName, WaveformImage
+from qseek.images.base import (
+    ImageFunction,
+    ObservedArrival,
+    PhaseName,
+    Picker,
+    WaveformImage,
+)
 from qseek.utils import PhaseDescription, to_datetime
 
 # The signal transformation, the STA/LTA computation, and the merging of multiple horizontal components
@@ -24,6 +31,9 @@ from qseek.utils import PhaseDescription, to_datetime
 logger = logging.getLogger(__name__)
 
 SignalTransform = Literal["energy", "absolute", "envelope"]
+
+# The LTA window is invalid at the start of each trace, blind it with a margin
+LTA_BLINDING_MARGIN = 1.2
 
 
 def _transform_signal(data: np.ndarray, method: SignalTransform) -> np.ndarray:
@@ -47,6 +57,13 @@ def _transform_signal(data: np.ndarray, method: SignalTransform) -> np.ndarray:
 
 def _overlapping_sta_lta(signal: np.ndarray, nsta: int, nlta: int) -> np.ndarray:
     """Classic (right-aligned) STA/LTA ratio of an already non-negative signal.
+
+    Both windows end at the evaluated sample. The ratio therefore peaks up to
+    `nsta` samples after a phase onset, which delays the image function and biases
+    the stacked origin times late.
+
+    TODO: QuakeMigrate uses a centred STA/LTA, where the STA window starts and
+    the LTA window ends at the evaluated sample. Its ratio peaks at the onset.
 
     Args:
         signal (np.ndarray): Non-negative characteristic signal.
@@ -80,7 +97,9 @@ def _merge_horizontal_components(traces: list[Trace]) -> list[Trace]:
     """Combine multiple horizontal-component onset traces per station.
 
     Components sharing the same network/station/location are combined as the
-    root-mean-square of their STA/LTA onset functions.
+    root-mean-square of their STA/LTA onset functions. Components that are not
+    aligned, e.g. due to data gaps, cannot be combined. The longest component
+    trace is used for that station instead.
 
     Args:
         traces (list[Trace]): Per-component STA/LTA onset traces.
@@ -96,6 +115,20 @@ def _merge_horizontal_components(traces: list[Trace]) -> list[Trace]:
     for group in grouped.values():
         if len(group) == 1:
             merged_traces.append(group[0])
+            continue
+        reference = group[0]
+        if any(
+            tr.ydata.size != reference.ydata.size
+            or abs(tr.tmin - reference.tmin) > reference.deltat / 2
+            for tr in group
+        ):
+            longest = max(group, key=lambda tr: tr.ydata.size)
+            logger.warning(
+                "cannot merge misaligned horizontal components of %s, using %s",
+                ".".join(reference.nslc_id[:3]),
+                ".".join(longest.nslc_id),
+            )
+            merged_traces.append(longest)
             continue
         stacked = np.array([tr.ydata for tr in group])
         rms = np.sqrt(np.sum(stacked**2, axis=0) / len(group))
@@ -152,89 +185,101 @@ def _compute_characteristic_functions(
     return char_function_traces
 
 
-@dataclass
-class StaLtaImage(WaveformImage):
-    mad_factor: float = 10.0
+class StaLtaPicker(Picker):
+    """Pick phase onsets from STA/LTA characteristic functions.
 
-    def search_phase_arrival(
-        self,
-        trace_idx: int,
-        event_time: datetime,
-        modelled_arrival: datetime,
-        search_window_seconds: float = 5.0,
-        threshold: float = 0.1,
-        detection_blinding_seconds: float = 1.0,
-    ) -> ObservedArrival | None:
-        """Search for the closest peak (pick) in the station's image functions.
+    Triggers are detected on the station's full STA/LTA trace. A trigger turns on
+    where the ratio exceeds `median + mad_factor * MAD` of the trace and turns off
+    when it falls below half of that excess, `median + mad_factor / 2 * MAD`. The
+    pick is the trigger onset closest to the modelled arrival within the search
+    window. Onsets before the event origin time are rejected.
+    """
 
-        The trigger threshold is derived from the median absolute deviation
-        (MAD) of the station's full STA/LTA trace, scaled by `mad_factor`.
+    mad_factor: PositiveFloat = Field(
+        default=10.0,
+        description="Trigger threshold above the median of a station's STA/LTA "
+        "trace, in multiples of its median absolute deviation (MAD): "
+        "threshold = median + MAD * mad_factor.",
+    )
+    search_window_seconds: PositiveFloat = Field(
+        default=5.0,
+        description="Total length of the search window in seconds, centered on the"
+        " modelled arrival time.",
+    )
+
+    def get_trigger_thresholds(self, data: np.ndarray) -> tuple[float, float]:
+        """Get the trigger on and off thresholds for a STA/LTA trace.
 
         Args:
-            trace_idx (int): Index of the trace.
-            event_time (datetime): Time of the event.
-            modelled_arrival (datetime): Time to search around.
-            search_window_seconds (float, optional): Total search length in seconds
-                around modelled arrival time. Defaults to 5.
-            threshold (float, optional): Unused, kept for interface compatibility
-                with other image functions. The MAD-based threshold is used instead.
-            detection_blinding_seconds (float, optional): Blinding time in seconds for
-                the peak detection. Defaults to 1 second.
+            data (np.ndarray): STA/LTA characteristic function.
 
         Returns:
-            datetime | None: Time of arrival, None is none found.
+            tuple[float, float]: Trigger on and off thresholds.
         """
-        trace = self.traces[trace_idx]
-        window_length = timedelta(seconds=search_window_seconds)
-        try:
-            search_trace = trace.chop(
-                tmin=(modelled_arrival - window_length / 2).timestamp(),
-                tmax=(modelled_arrival + window_length / 2).timestamp(),
-                inplace=False,
-            )
-        except NoData:
+        median = float(np.median(data))
+        mad = float(median_abs_deviation(data))
+        return (
+            median + self.mad_factor * mad,
+            median + self.mad_factor / 2 * mad,
+        )
+
+    def pick_trace(
+        self,
+        trace: Trace,
+        phase: PhaseDescription,
+        event_time: datetime,
+        modelled_arrival: datetime,
+    ) -> ObservedArrival | None:
+        """Pick the trigger onset closest to the modelled arrival.
+
+        Args:
+            trace (Trace): STA/LTA characteristic function trace.
+            phase (PhaseDescription): Phase of the observed arrival.
+            event_time (datetime): Time of the event.
+            modelled_arrival (datetime): Time to search around.
+
+        Returns:
+            ObservedArrival | None: Picked arrival, None if none found.
+        """
+        data = trace.ydata.astype(np.float64, copy=False)
+        half_window = self.search_window_seconds / 2
+        window_tmin = modelled_arrival.timestamp() - half_window
+        window_tmax = modelled_arrival.timestamp() + half_window
+        if window_tmax < trace.tmin or window_tmin > trace.tmax:
             logger.warning("No data to pick phase arrival %s.", ".".join(trace.nslc_id))
             return None
 
-        mad_threshold = median_abs_deviation(trace.ydata) * self.mad_factor
+        threshold_on, threshold_off = self.get_trigger_thresholds(data)
+        triggers = np.asarray(
+            trigger_onset(data, threshold_on, threshold_off), dtype=int
+        ).reshape(-1, 2)
+        # A trigger active from the first sample has no observed onset
+        triggers = triggers[triggers[:, 0] > 0]
 
-        trigger = trigger_onset(
-            search_trace.ydata.astype(np.float64),
-            mad_threshold,
-            mad_threshold / 2,
+        onset_times = trace.tmin + triggers[:, 0] * trace.deltat
+        valid = (
+            (onset_times >= window_tmin)
+            & (onset_times <= window_tmax)
+            & (onset_times > event_time.timestamp())
         )
-        if len(trigger) == 0:
+        triggers = triggers[valid]
+        onset_times = onset_times[valid]
+        if not onset_times.size:
             return None
-        if len(trigger) > 1:
+        if onset_times.size > 1:
             logger.debug(
                 "%d triggers found for %s, picking the one closest to the "
                 "modelled arrival.",
-                len(trigger),
+                onset_times.size,
                 ".".join(trace.nslc_id),
             )
-        trigger_on_idx = trigger[:, 0]
-        times = search_trace.get_xdata()
-        trigger_times = times[trigger_on_idx]
-        trigger_delays = trigger_times - event_time.timestamp()
 
-        # Limit to post-event peaks
-        post_event_peaks = trigger_delays > 0.0
-        trigger_on_idx = trigger_on_idx[post_event_peaks]
-        trigger_times = trigger_times[post_event_peaks]
-
-        if not trigger_on_idx.size:
-            return None
-
-        detection_values = search_trace.ydata[trigger_on_idx]
-
-        # Pick the trigger onset closest to the modelled arrival
-        residuals = trigger_times - modelled_arrival.timestamp()
-        closest_idx = np.argmin(np.abs(residuals))
-
+        closest = np.argmin(np.abs(onset_times - modelled_arrival.timestamp()))
+        trigger_on, trigger_off = triggers[closest]
         return ObservedArrival(
-            time=to_datetime(trigger_times[closest_idx]),
-            detection_value=float(detection_values[closest_idx]),
-            phase=self.phase,
+            time=to_datetime(onset_times[closest]),
+            detection_value=float(data[trigger_on : trigger_off + 1].max()),
+            phase=phase,
         )
 
 
@@ -245,19 +290,16 @@ class StaLta(ImageFunction):
 
     sta_seconds: PositiveFloat = Field(
         default=2,
-        description="Short-term average (STA) window length in seconds. "
-        "Only used when `model` is `STA/LTA`.",
+        description="Short-term average (STA) window length in seconds.",
     )
     lta_seconds: PositiveFloat = Field(
         default=5.0,
-        description="Long-term average (LTA) window length in seconds. "
-        "Only used when `model` is `STA/LTA`.",
+        description="Long-term average (LTA) window length in seconds.",
     )
     blinding_window: PositiveFloat = Field(
         default=5,
         description="Blinding window in which no new detection can be set. "
-        "Typically the duration of the seismic event."
-        "Only used when `model` is `STA/LTA`.",
+        "Typically the duration of the seismic event.",
     )
     signal_transform: SignalTransform = Field(
         default="energy",
@@ -266,19 +308,13 @@ class StaLta(ImageFunction):
         "absolute amplitude, and `envelope` the amplitude of the analytic signal "
         "(Hilbert envelope).",
     )
-    mad_factor: PositiveFloat = Field(
-        default=10.0,
-        description="Multiplier for the median absolute deviation (MAD) of a "
-        "station's STA/LTA trace, used as the phase-picking trigger threshold: "
-        "threshold = MAD * mad_factor.",
-    )
 
     phase_map: dict[PhaseName, str] = Field(
         default={
             "P": "cake:P",
             "S": "cake:S",
         },
-        description="Phase mapping from SeisBench PhaseNet to "
+        description="Phase mapping from STA/LTA P and S images to "
         "Qseek travel time phases.",
     )
     weights: dict[PhaseName, Annotated[float, Field(strict=True, ge=0.0)]] = Field(
@@ -288,10 +324,14 @@ class StaLta(ImageFunction):
         },
         description="Weights for each phase.",
     )
+    picker: StaLtaPicker = Field(
+        default_factory=StaLtaPicker,
+        description="Picker to use for the image function.",
+    )
 
     async def prepare(self) -> None: ...
 
-    async def process_traces(self, traces: list[Trace]) -> list[StaLtaImage]:
+    async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         """Process traces to generate image functions.
 
         Args:
@@ -316,21 +356,19 @@ class StaLta(ImageFunction):
         s_traces = [tr for tr in traces if not tr.channel.endswith("Z")]
         s_traces = _merge_horizontal_components(s_traces)
 
-        annotation_p = StaLtaImage(
+        annotation_p = WaveformImage(
             image_function=self.name,
             weight=self.weights["P"],
             phase=self.phase_map["P"],
             detection_half_width=self._detection_half_width(),
             traces=p_traces,
-            mad_factor=self.mad_factor,
         )
-        annotation_s = StaLtaImage(
+        annotation_s = WaveformImage(
             image_function=self.name,
             weight=self.weights["S"],
             phase=self.phase_map["S"],
             detection_half_width=self._detection_half_width(),
             traces=s_traces,
-            mad_factor=self.mad_factor,
         )
         return [annotation_s, annotation_p]
 
@@ -340,9 +378,9 @@ class StaLta(ImageFunction):
         Returns:
             timedelta: The blinding duration for the image function.
         """
-        return timedelta(seconds=self.blinding_window)
+        return timedelta(seconds=self.lta_seconds * LTA_BLINDING_MARGIN)
 
-    def get_provided_phases(self) -> tuple[PhaseDescription, ...]:
+    def get_phases(self) -> tuple[PhaseDescription, ...]:
         """Get the phases provided by the image function.
 
         Returns:

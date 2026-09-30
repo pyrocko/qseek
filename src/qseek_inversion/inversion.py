@@ -19,7 +19,7 @@ from qseek_inversion.waveforms.synthetics import SyntheticEvents
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
-    from qseek.images.images import WaveformImages
+    from qseek.images.base import WaveformImages
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,6 @@ class InversionLayered1D(BaseModel):
             window_padding=timedelta(seconds=10),
             detection_threshold=search.detection_threshold,
             detection_blinding=search.detection_blinding,
-            pick_confidence_threshold=search.pick_confidence_threshold,
             station_corrections=search.station_corrections,
             distance_weights=search.distance_weights,
             ignore_boundary=search.ignore_boundary,

@@ -4,34 +4,62 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from obspy import Stream
+from pydantic import ValidationError
 from pyrocko.trace import Trace
 
-from qseek.images.seisbench import PhaseNetImage, SeisBench
+from qseek.images.seisbench import AnnotationPicker, SeisBench
+
+TMIN = 1700000000.123
+
+
+def time(seconds: float) -> datetime:
+    return datetime.fromtimestamp(TMIN + seconds, tz=timezone.utc)
+
+
+def annotation_trace(
+    peaks: dict[float, float],
+    sampling_rate: float = 100.0,
+    duration: float = 10.0,
+    phase: str = "P",
+    station: str = "STA",
+) -> Trace:
+    """Annotation trace starting at `TMIN` with peaks at {seconds: value}."""
+    data = np.zeros(round(duration * sampling_rate))
+    for seconds, value in peaks.items():
+        data[round(seconds * sampling_rate)] = value
+    return Trace(
+        network="XX",
+        station=station,
+        channel=phase,
+        tmin=TMIN,
+        deltat=1 / sampling_rate,
+        ydata=data,
+    )
+
+
+def pick_one(
+    picker: AnnotationPicker, trace: Trace, modelled_arrival: datetime, event_time=None
+):
+    return picker.pick_trace(trace, "cake:P", event_time or time(0), modelled_arrival)
 
 
 @pytest.mark.parametrize("sampling_rate", [5, 25, 100, 200])
 def test_nearest_peak_time_after_chopping(sampling_rate):
-    tmin = 1700000000.123
-    data = np.zeros(10 * sampling_rate)
-    data[5 * sampling_rate] = 0.35
-    data[round(5.6 * sampling_rate)] = 0.9
-    trace = Trace(tmin=tmin, deltat=1 / sampling_rate, ydata=data)
-    image = PhaseNetImage("SeisBench", "cake:P", 1.0, [trace], 0.2)
-
-    def time(seconds):
-        return datetime.fromtimestamp(tmin + seconds, tz=timezone.utc)
+    trace = annotation_trace({5.0: 0.35, 5.6: 0.9}, sampling_rate=sampling_rate)
+    picker = AnnotationPicker()
 
     # The window starts between samples and the stronger peak is less than 1 s away.
-    pick = image.search_phase_arrival(0, time(0), time(5.003))
+    pick = pick_one(picker, trace, time(5.003))
     assert pick is not None
     assert pick.time == time(5)
     assert pick.detection_value == 0.35
+    assert pick.phase == "cake:P"
 
-    pick = image.search_phase_arrival(0, time(0), time(5.5))
+    pick = pick_one(picker, trace, time(5.5))
     assert pick is not None
     assert pick.time == time(5.6)
 
-    pick = image.search_phase_arrival(0, time(0), time(5), threshold=0.5)
+    pick = pick_one(AnnotationPicker(threshold_p=0.5), trace, time(5))
     assert pick is not None
     assert pick.time == time(5.6)
 
@@ -40,25 +68,91 @@ def test_nearest_peak_time_after_chopping(sampling_rate):
     "blinding_seconds,expected_seconds", [(None, 5.06), (0.02, 5.0), (0.0, 5.0)]
 )
 def test_peak_blinding(blinding_seconds, expected_seconds):
-    tmin = 1700000000.123
-    data = np.zeros(1000)
-    data[500], data[506] = 0.35, 0.9
-    image = PhaseNetImage(
-        "SeisBench", "cake:P", 1.0, [Trace(tmin=tmin, deltat=0.01, ydata=data)], 0.2
-    )
-    kwargs = (
-        {}
+    trace = annotation_trace({5.0: 0.35, 5.06: 0.9})
+    picker = (
+        AnnotationPicker()
         if blinding_seconds is None
-        else {"detection_blinding_seconds": blinding_seconds}
+        else AnnotationPicker(detection_blinding_seconds=blinding_seconds)
     )
-    pick = image.search_phase_arrival(
-        0,
-        datetime.fromtimestamp(tmin, tz=timezone.utc),
-        datetime.fromtimestamp(tmin + 5, tz=timezone.utc),
-        **kwargs,
-    )
+    pick = pick_one(picker, trace, time(5))
     assert pick is not None
-    assert pick.time == datetime.fromtimestamp(tmin + expected_seconds, tz=timezone.utc)
+    assert pick.time == time(expected_seconds)
+
+
+@pytest.mark.parametrize(
+    "phase,threshold_p,threshold_s,expected_seconds",
+    [
+        ("P", 0.1, 0.5, 5.0),
+        ("P", 0.5, 0.1, 5.6),
+        ("S", 0.1, 0.5, 5.6),
+        ("S", 0.5, 0.1, 5.0),
+    ],
+)
+def test_phase_threshold(phase, threshold_p, threshold_s, expected_seconds):
+    trace = annotation_trace({5.0: 0.35, 5.6: 0.9}, phase=phase)
+    picker = AnnotationPicker(threshold_p=threshold_p, threshold_s=threshold_s)
+    pick = pick_one(picker, trace, time(5))
+    assert pick is not None
+    assert pick.time == time(expected_seconds)
+
+
+def test_phase_threshold_unknown_channel():
+    trace = annotation_trace({5.0: 0.9}, phase="HHZ")
+    with pytest.raises(ValueError, match="No pick threshold"):
+        pick_one(AnnotationPicker(), trace, time(5))
+
+
+def test_reject_pre_event_peaks():
+    trace = annotation_trace({4.0: 0.9, 5.5: 0.3})
+    picker = AnnotationPicker()
+
+    pick = pick_one(picker, trace, time(4.2), event_time=time(3))
+    assert pick is not None
+    assert pick.time == time(4)
+
+    # The closest peak precedes the event, the later one is picked
+    pick = pick_one(picker, trace, time(4.2), event_time=time(4.5))
+    assert pick is not None
+    assert pick.time == time(5.5)
+
+    pick = pick_one(picker, trace, time(6), event_time=time(6))
+    assert pick is None
+
+
+def test_search_window():
+    trace = annotation_trace({2.0: 0.9}, duration=20.0)
+    assert pick_one(AnnotationPicker(), trace, time(5)) is None
+
+    pick = pick_one(AnnotationPicker(search_window_seconds=8.0), trace, time(5))
+    assert pick is not None
+    assert pick.time == time(2)
+
+
+def test_no_data():
+    trace = annotation_trace({5.0: 0.9})
+    assert pick_one(AnnotationPicker(), trace, time(60)) is None
+
+
+def test_picker_config():
+    function = SeisBench.model_validate(
+        {"picker": {"threshold_p": 0.3, "search_window_seconds": 2.0}}
+    )
+    assert function.picker.threshold_p == 0.3
+    assert function.picker.threshold_s == 0.1
+    assert function.picker.search_window_seconds == 2.0
+
+    loaded = SeisBench.model_validate_json(function.model_dump_json())
+    assert loaded.picker == function.picker
+
+    for invalid in (
+        {"threshold_p": 0.0},
+        {"threshold_s": 1.5},
+        {"search_window_seconds": 0.0},
+        {"detection_blinding_seconds": -1.0},
+        {"unknown": 1.0},
+    ):
+        with pytest.raises(ValidationError):
+            AnnotationPicker.model_validate(invalid)
 
 
 @pytest.mark.asyncio
@@ -129,19 +223,28 @@ async def test_annotation_sample_times(
 
     images = await function.process_traces(traces)
     for image in images:
-        for idx, (original, annotation) in enumerate(
-            zip(traces, image.traces, strict=True)
+        expected_arrivals = [
+            datetime.fromtimestamp(original.tmin + 20, tz=timezone.utc)
+            for original in traces
+        ]
+        picks = [
+            function.picker.pick_trace(
+                annotation,
+                image.phase,
+                datetime.fromtimestamp(tmin, tz=timezone.utc),
+                expected,
+            )
+            for annotation, expected in zip(
+                image.traces, expected_arrivals, strict=True
+            )
+        ]
+        for original, annotation, pick, expected in zip(
+            traces, image.traces, picks, expected_arrivals, strict=True
         ):
             assert annotation.tmin == pytest.approx(
                 original.tmin + leading_samples / sampling_rate, rel=0, abs=1e-6
             )
             assert annotation.deltat == pytest.approx(stride / sampling_rate)
-            expected = datetime.fromtimestamp(original.tmin + 20, tz=timezone.utc)
-            pick = image.search_phase_arrival(
-                idx,
-                datetime.fromtimestamp(original.tmin, tz=timezone.utc),
-                expected,
-            )
             assert pick is not None
             assert abs((pick.time - expected).total_seconds()) <= 1e-6
             assert original.deltat == 1 / sampling_rate

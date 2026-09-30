@@ -28,7 +28,7 @@ from qseek.cache_lru import CACHES
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
-from qseek.images.images import ImageFunctions, WaveformImages
+from qseek.images import ImageFunctionType, SeisBench
 from qseek.magnitudes import EventMagnitudeCalculatorType
 from qseek.models import StationInventory
 from qseek.models.catalog import EventCatalog
@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from rich.table import Table
 
+    from qseek.images.base import WaveformImages
     from qseek.octree import Node
 
 
@@ -258,9 +259,9 @@ class Search(Model):
         description="Octree volume for the search.",
     )
 
-    image_functions: ImageFunctions = Field(
-        default_factory=ImageFunctions,
-        description="Image functions for waveform processing and "
+    image_function: ImageFunctionType = Field(
+        default_factory=SeisBench,
+        description="Image function for waveform processing and "
         "phase on-set detection.",
     )
     ray_tracers: RayTracers = Field(
@@ -311,12 +312,6 @@ class Search(Model):
     detection_threshold: Literal["MAD"] | PositiveFloat = Field(
         default="MAD",
         description="Detection threshold for semblance.",
-    )
-    pick_confidence_threshold: float = Field(
-        default=0.2,
-        gt=0.0,
-        le=1.0,
-        description="Confidence threshold for picking.",
     )
     min_stations: int = Field(
         default=3,
@@ -469,13 +464,13 @@ class Search(Model):
         shift_min, shift_max = await self.ray_tracers.get_travel_time_span(
             self.octree,
             list(self.stations),
-            self.image_functions.get_phases(),
+            self.image_function.get_phases(),
         )
         shift_range = shift_max - shift_min
         logger.info("maximum travel time shift %s", shift_max)
 
         return (
-            shift_range + self.image_functions.get_blinding() + self.detection_blinding
+            shift_range + self.image_function.get_blinding() + self.detection_blinding
         )
 
     async def prepare(self) -> None:
@@ -509,11 +504,11 @@ class Search(Model):
         await self.ray_tracers.prepare(
             self.octree,
             self.stations,
-            phases=self.image_functions.get_phases(),
+            phases=self.image_function.get_phases(),
             rundir=self._rundir,
         )
         await self.pre_processing.prepare()
-        await self.image_functions.prepare()
+        await self.image_function.prepare()
 
         if self.distance_weights:
             self.distance_weights.prepare(self.stations, self.octree)
@@ -522,7 +517,7 @@ class Search(Model):
             await self.station_corrections.prepare(
                 self.stations,
                 self.octree,
-                self.image_functions.get_phases(),
+                self.image_function.get_phases(),
                 self._rundir,
             )
         for magnitude in self.magnitudes:
@@ -602,7 +597,6 @@ class Search(Model):
             station_corrections=self.station_corrections,
             distance_weights=self.distance_weights,
             detection_threshold=self.detection_threshold,
-            pick_confidence_threshold=self.pick_confidence_threshold,
             node_interpolation=self.node_interpolation,
             ignore_boundary=self.ignore_boundary,
             ignore_boundary_width=self.ignore_boundary_width,
@@ -610,7 +604,7 @@ class Search(Model):
         n.notify("READY=1")
         n.notify("STATUS=Starting search...")
 
-        async for images, batch in self.image_functions.iter_images(
+        async for images, batch in self.image_function.iter_images(
             pre_processed_batches
         ):
             batch_processing_start = datetime_now()
@@ -627,6 +621,7 @@ class Search(Model):
 
             await self._catalog.save_semblance_trace(semblance_trace)
             if detections:
+                self.image_function.picker.add_picks(detections, images)
                 BackgroundTasks.create_task(self.new_detections(detections))
             if self.save_images:
                 await images.save_mseed(self._rundir / "images")
@@ -782,7 +777,6 @@ class OctreeSearch:
         distance_weights: DistanceWeights | None = None,
         detection_threshold: float | Literal["MAD"] = "MAD",
         detection_blinding: timedelta = timedelta(seconds=1.0),
-        pick_confidence_threshold: float = 0.3,
         ignore_boundary: IgnoreBoundary = "with_surface",
         ignore_boundary_width: float | Literal["root_node_size"] = "root_node_size",
         node_interpolation: bool = True,
@@ -803,11 +797,8 @@ class OctreeSearch:
             detection_threshold (float | Literal["MAD"], optional): The detection
                 threshold for the search. If "MAD", the threshold is set to 10 times
                 the median absolute deviation of the semblance. Defaults to "MAD".
-                picking. Defaults to 0.3.
             detection_blinding (timedelta, optional): The blinding time for the
                 detection. Defaults to 1 second.
-            pick_confidence_threshold (float, optional): The confidence threshold for
-                picking. Defaults to 0.3.
             ignore_boundary
                     (Literal[False, "with_surface", "without_surface"], optional):
                 Whether to ignore events at the boundary of the octree.
@@ -834,7 +825,6 @@ class OctreeSearch:
 
         self.detection_threshold = detection_threshold
         self.blinding = detection_blinding
-        self.pick_confidence_threshold = pick_confidence_threshold
         self.node_interpolation = node_interpolation
         self.attach_arrivals = attach_arrivals
         self.neighbor_search = neighbor_search
@@ -1102,26 +1092,17 @@ class OctreeSearch:
                 else:
                     station_delays = [timedelta(seconds=0.0)] * len(image.stations)
 
-                arrival_times = [arr.time if arr else None for arr in arrivals_model]
-
-                arrivals_observed = image.search_phase_arrivals(
-                    event_time=time,
-                    modelled_arrivals=arrival_times,
-                    threshold=self.pick_confidence_threshold,
-                )
-
+                # Observed arrivals are picked after the search, see Picker
                 phase_detections = [
                     PhaseDetection(
                         phase=image.phase,
                         model=modelled_time,
-                        observed=obs,
                         station_delay=station_delay,
                     )
                     if modelled_time
                     else None
-                    for modelled_time, obs, station_delay in zip(
+                    for modelled_time, station_delay in zip(
                         arrivals_model,
-                        arrivals_observed,
                         station_delays,
                         strict=True,
                     )

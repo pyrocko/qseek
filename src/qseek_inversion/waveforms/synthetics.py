@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from pydantic import Field, PositiveInt, PrivateAttr
 
-from qseek.images.base import WaveformImage
-from qseek.images.images import WaveformImages
+from qseek.images.base import WaveformImage, WaveformImages
 from qseek.search import Search
 from qseek.synthetics.synthetics import SyntheticEvent, SyntheticEventCatalog
 from qseek.tracers.fast_marching import FastMarchingTracer
