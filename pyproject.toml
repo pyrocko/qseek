@@ -158,8 +158,8 @@ environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu" }
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"
-# Homebrew's libomp targets the runner's macOS version
-environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu", CFLAGS = "-I$(brew --prefix libomp)/include", LDFLAGS = "-L$(brew --prefix libomp)/lib", MACOSX_DEPLOYMENT_TARGET = "$(sw_vers -productVersion | cut -d. -f1).0" }
+# Homebrew's libomp targets the runner's macOS version, macos-15 runners
+environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu", CFLAGS = "-I$(brew --prefix libomp)/include", LDFLAGS = "-L$(brew --prefix libomp)/lib", MACOSX_DEPLOYMENT_TARGET = "15.0" }
 
 [tool.setuptools_scm]
 

@@ -29,6 +29,7 @@ jobs:
   test:
     needs: prek
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version:

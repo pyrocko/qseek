@@ -28,7 +28,8 @@ jobs:
         os:
           - ubuntu-latest # x86_64
           - ubuntu-24.04-arm # aarch64
-          - macos-latest # arm64
+          # macOS 15 runners, the deployment target of the wheels
+          - macos-15 # arm64
           - macos-15-intel # x86_64
 
     steps:
