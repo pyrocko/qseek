@@ -31,6 +31,11 @@ class ObservedArrival:
 class ImageFunction(BaseModel):
     image: Literal["base"] = "base"
 
+    @classmethod
+    def get_subclasses(cls) -> tuple[type[ImageFunction], ...]:
+        """Returns a tuple of all the subclasses of ImageFunction."""
+        return tuple(cls.__subclasses__())
+
     @property
     def name(self) -> str:
         return self.__class__.__name__
@@ -113,12 +118,13 @@ class WaveformImage:
         """
         if not self.has_traces():
             return
-        if self.sampling_rate == sampling_rate:
-            return
-
-        downsample = self.sampling_rate > sampling_rate
 
         for tr in self.traces:
+            trace_sampling_rate = 1.0 / tr.deltat
+            if trace_sampling_rate == sampling_rate:
+                continue
+
+            downsample = trace_sampling_rate > sampling_rate
             resample(tr, sampling_rate)
 
             if max_normalize and downsample:
