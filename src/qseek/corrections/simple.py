@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
+from pydantic import Field
 
 from qseek.corrections.base import TravelTimeCorrections
 from qseek.utils import NSL, PhaseDescription
@@ -12,9 +13,20 @@ if TYPE_CHECKING:
 
 
 class SimpleCorrections(TravelTimeCorrections):
+    """Constant travel time corrections per station and phase.
+
+    The station delays are added to the modelled travel times of all source
+    locations.
+    """
+
     corrections: Literal["SimpleCorrections"] = "SimpleCorrections"
 
-    stations: dict[NSL, dict[PhaseDescription, float]] = {}
+    stations: dict[NSL, dict[PhaseDescription, float]] = Field(
+        default={},
+        description="Travel time delay in seconds per station and phase, e.g. "
+        '`{"GE.RUE.": {"cake:P": 0.12, "cake:S": 0.2}}`. Stations and phases '
+        "without an entry are not corrected.",
+    )
 
     @property
     def n_stations(self) -> int:
