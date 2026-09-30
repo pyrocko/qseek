@@ -10,8 +10,11 @@ from pyrocko.trace import Trace
 from qseek.images.sta_lta import (
     StaLta,
     StaLtaPicker,
+    _centred_sta_lta,
     _compute_characteristic_functions,
+    _log_onset,
     _merge_horizontal_components,
+    _overlapping_sta_lta,
 )
 
 TMIN = 1700000000.123
@@ -67,12 +70,47 @@ def test_pick_onset():
     assert pick.phase == "cake:P"
 
 
-def test_detection_value_is_trigger_peak():
+def test_pick_trigger_peak():
     trace = sta_lta_trace({(30.0, 30.5): 2.0, (30.5, 31.0): 4.0})
     pick = pick_one(StaLtaPicker(), trace, time(30.0))
     assert pick is not None
-    assert pick.time == time(30.0)
+    assert pick.time == time(30.5)
     assert pick.detection_value == 4.0
+
+
+def test_centred_sta_lta():
+    signal = np.ones(1000)
+    signal[600:] = 100.0
+    ratio = _centred_sta_lta(signal, nsta=20, nlta=100)
+
+    # Peaks one sample before the onset, the STA window starts at the onset
+    assert ratio.argmax() == 599
+    assert ratio.max() == pytest.approx(100.0)
+    # Null result where the LTA or STA window is not filled
+    np.testing.assert_array_equal(ratio[:99], 1.0)
+    np.testing.assert_array_equal(ratio[-20:], 1.0)
+
+
+def test_centred_sta_lta_windows():
+    rng = np.random.default_rng(0)
+    signal = rng.random(500) ** 2
+    nsta, nlta = 7, 30
+    ratio = _centred_sta_lta(signal, nsta, nlta)
+
+    for idx in range(nlta - 1, signal.size - nsta):
+        sta = signal[idx + 1 : idx + 1 + nsta].mean()
+        lta = signal[idx - nlta + 1 : idx + 1].mean()
+        assert ratio[idx] == pytest.approx(sta / lta)
+
+
+def test_classic_sta_lta():
+    signal = np.ones(1000)
+    signal[600:] = 100.0
+    ratio = _overlapping_sta_lta(signal, nsta=20, nlta=100)
+
+    # Peaks when the STA window is filled, limited by the overlapping LTA window
+    assert ratio.argmax() == 619
+    assert ratio.max() <= 100 / 20
 
 
 def test_no_pick_in_noise():
@@ -144,7 +182,10 @@ def test_no_data():
     assert pick_one(StaLtaPicker(), trace, time(120.0)) is None
 
 
-def test_pick_characteristic_function():
+@pytest.mark.parametrize(
+    "position,min_delay,max_delay", [("centred", -0.1, 0.1), ("classic", 0.5, 2.0)]
+)
+def test_pick_characteristic_function(position, min_delay, max_delay):
     """Pick an impulsive arrival in white noise end-to-end."""
     rng = np.random.default_rng(0)
     data = rng.standard_normal(round(120 * SAMPLING_RATE))
@@ -155,14 +196,15 @@ def test_pick_characteristic_function():
     trace = Trace("XX", "STA", "", "HHZ", TMIN, deltat=1 / SAMPLING_RATE, ydata=data)
     (char_function,) = to_pyrocko_traces(
         _compute_characteristic_functions(
-            Stream([trace.to_obspy_trace()]), 2.0, 5.0, "energy"
+            Stream([trace.to_obspy_trace()]), 2.0, 5.0, "energy", position
         )
     )
     picker = StaLtaPicker()
 
     pick = pick_one(picker, char_function, time(61.0))
     assert pick is not None
-    assert abs((pick.time - time(60.0)).total_seconds()) < 0.1
+    delay = (pick.time - time(60.0)).total_seconds()
+    assert min_delay <= delay <= max_delay
     assert pick.detection_value > 2.0
 
     assert pick_one(picker, char_function, time(30.0)) is None
@@ -193,7 +235,55 @@ async def test_process_traces():
     assert p_image.traces[0].channel == "HHZ"
 
 
+def test_log_onset():
+    onset = np.array([0.001, 0.4, 1.0, np.e, 100.0])
+    np.testing.assert_allclose(
+        _log_onset(onset, min_onset_value=0.4),
+        [np.log(0.4), np.log(0.4), 0.0, 1.0, np.log(100.0)],
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_traces_log_onset():
+    """The image is the clipped log onset, noise is at 0 and arrivals are picked."""
+    rng = np.random.default_rng(0)
+    n_samples = round(60 * SAMPLING_RATE)
+    onset = round(30 * SAMPLING_RATE)
+    traces = []
+    for channel in ("HHZ", "HHN", "HHE"):
+        data = rng.standard_normal(n_samples)
+        data[onset : onset + 300] += (
+            20 * rng.standard_normal(300) * np.exp(-np.arange(300) / 100)
+        )
+        traces.append(
+            Trace("XX", "STA", "", channel, TMIN, deltat=1 / SAMPLING_RATE, ydata=data)
+        )
+
+    # QuakeMigrate's default windows, a long STA window flattens the onset peak
+    function = StaLta(sta_seconds=0.2, lta_seconds=1.0, min_onset_value=0.5)
+    s_image, p_image = await function.process_traces(traces)
+
+    for image in (p_image, s_image):
+        (trace,) = image.traces
+        assert trace.ydata.min() >= np.log(0.5)
+        assert abs(np.median(trace.ydata)) < 0.1
+        pick = function.picker.pick_trace(trace, image.phase, time(0), time(30.5))
+        assert pick is not None
+        assert abs((pick.time - time(30.0)).total_seconds()) <= 0.1
+        assert pick.detection_value > np.log(10.0)
+
+
 def test_picker_config():
+    assert StaLta().position == "centred"
+    with pytest.raises(ValidationError):
+        StaLta(position="left")
+    assert StaLta().min_onset_value == 0.4
+    # QuakeMigrate's default windows
+    assert (StaLta().sta_seconds, StaLta().lta_seconds) == (0.2, 1.0)
+    assert StaLta().picker.mad_factor == 5.0
+    with pytest.raises(ValidationError):
+        StaLta(min_onset_value=0.001)
+
     function = StaLta.model_validate({"picker": {"mad_factor": 5.0}})
     assert function.picker.mad_factor == 5.0
     assert function.picker.search_window_seconds == 5.0

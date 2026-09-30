@@ -31,6 +31,7 @@ from qseek.utils import PhaseDescription, to_datetime
 logger = logging.getLogger(__name__)
 
 SignalTransform = Literal["energy", "absolute", "envelope"]
+StaLtaPosition = Literal["centred", "classic"]
 
 # The LTA window is invalid at the start of each trace, blind it with a margin
 LTA_BLINDING_MARGIN = 1.2
@@ -60,10 +61,8 @@ def _overlapping_sta_lta(signal: np.ndarray, nsta: int, nlta: int) -> np.ndarray
 
     Both windows end at the evaluated sample. The ratio therefore peaks up to
     `nsta` samples after a phase onset, which delays the image function and biases
-    the stacked origin times late.
-
-    TODO: QuakeMigrate uses a centred STA/LTA, where the STA window starts and
-    the LTA window ends at the evaluated sample. Its ratio peaks at the onset.
+    the stacked origin times late. The STA window is part of the LTA window, the
+    ratio is limited to `nlta / nsta`.
 
     Args:
         signal (np.ndarray): Non-negative characteristic signal.
@@ -91,6 +90,62 @@ def _overlapping_sta_lta(signal: np.ndarray, nsta: int, nlta: int) -> np.ndarray
     sta[idx] = dtiny
 
     return sta / lta
+
+
+def _centred_sta_lta(signal: np.ndarray, nsta: int, nlta: int) -> np.ndarray:
+    """Centred STA/LTA ratio of an already non-negative signal.
+
+    The LTA window ends at the evaluated sample and the STA window starts at the
+    following sample. The ratio of a phase onset peaks one sample before the
+    onset, it is not delayed by the STA window.
+
+    Args:
+        signal (np.ndarray): Non-negative characteristic signal.
+        nsta (int): Number of samples in the short-term window.
+        nlta (int): Number of samples in the long-term window.
+
+    Returns:
+        np.ndarray: STA/LTA ratio, computed in adjacent windows.
+    """
+    sta = np.cumsum(signal, dtype=np.float64)
+    lta = sta.copy()
+
+    sta[nsta:] = sta[nsta:] - sta[:-nsta]
+    # Shift the STA window to start after the evaluated sample
+    sta[nsta:-nsta] = sta[nsta * 2 :]
+    sta /= nsta
+    lta[nlta:] = lta[nlta:] - lta[:-nlta]
+    lta /= nlta
+
+    # Pad with ones (= null result) where the LTA or STA window is not full.
+    sta[: nlta - 1] = 1.0
+    lta[: nlta - 1] = 1.0
+    sta[-nsta:] = 1.0
+    lta[-nsta:] = 1.0
+
+    dtiny = np.finfo(0.0).tiny
+    idx = lta < dtiny
+    lta[idx] = dtiny
+    sta[idx] = dtiny
+
+    return sta / lta
+
+
+def _log_onset(onset: np.ndarray, min_onset_value: float) -> np.ndarray:
+    """Clip an STA/LTA onset function and take its natural logarithm.
+
+    The delay-and-sum stack of the log onsets is the logarithm of the geometric
+    mean of the onsets, as the coalescence in QuakeMigrate. Noise (STA/LTA = 1)
+    maps to 0 and single stations with large ratios do not dominate the stack.
+
+    Args:
+        onset (np.ndarray): STA/LTA onset function.
+        min_onset_value (float): Minimum onset value before taking the logarithm.
+
+    Returns:
+        np.ndarray: Log onset function.
+    """
+    return np.log(np.clip(onset, min_onset_value, None))
 
 
 def _merge_horizontal_components(traces: list[Trace]) -> list[Trace]:
@@ -144,13 +199,14 @@ def _compute_characteristic_functions(
     sta_seconds: float,
     lta_seconds: float,
     signal_transform: SignalTransform,
+    position: StaLtaPosition = "centred",
 ) -> list[Trace]:
     """Compute the STA/LTA characteristic function.
 
     For each trace, the waveform is first transformed into a non-negative
     characteristic signal (`signal_transform`), then the short-term and
     long-term average windows are converted from seconds to samples based on
-    the sampling rate, and the classic STA/LTA ratio is computed.
+    the sampling rate, and the centred or classic STA/LTA ratio is computed.
     Traces that are shorter than the required LTA window are skipped and a warning is logged.
 
     Args:
@@ -159,11 +215,14 @@ def _compute_characteristic_functions(
         lta_seconds (float): Duration of the long-term average window in seconds.
         signal_transform (SignalTransform): Transform applied to the waveform
             before computing the STA/LTA ratio.
+        position (StaLtaPosition): Position of the STA window, `centred` after or
+            `classic` overlapping the end of the LTA window.
 
     Returns:
         list of Traces: A list of traces containing the STA/LTA characteristic
         functions.
     """
+    sta_lta = _centred_sta_lta if position == "centred" else _overlapping_sta_lta
     char_function_traces = []
     for tr in stream:
         sampling_rate = tr.stats.sampling_rate
@@ -179,7 +238,7 @@ def _compute_characteristic_functions(
             )
             continue
         transformed = _transform_signal(tr.data.astype(np.float64), signal_transform)
-        tr.data = _overlapping_sta_lta(transformed, sta_samples, lta_samples)
+        tr.data = sta_lta(transformed, sta_samples, lta_samples)
         char_function_traces.append(tr)
 
     return char_function_traces
@@ -191,12 +250,13 @@ class StaLtaPicker(Picker):
     Triggers are detected on the station's full STA/LTA trace. A trigger turns on
     where the ratio exceeds `median + mad_factor * MAD` of the trace and turns off
     when it falls below half of that excess, `median + mad_factor / 2 * MAD`. The
-    pick is the trigger onset closest to the modelled arrival within the search
-    window. Onsets before the event origin time are rejected.
+    pick is the peak of the trigger closest to the modelled arrival within the
+    search window, the centred STA/LTA peaks at the phase onset. Peaks before the
+    event origin time are rejected.
     """
 
     mad_factor: PositiveFloat = Field(
-        default=10.0,
+        default=5.0,
         description="Trigger threshold above the median of a station's STA/LTA "
         "trace, in multiples of its median absolute deviation (MAD): "
         "threshold = median + MAD * mad_factor.",
@@ -230,7 +290,7 @@ class StaLtaPicker(Picker):
         event_time: datetime,
         modelled_arrival: datetime,
     ) -> ObservedArrival | None:
-        """Pick the trigger onset closest to the modelled arrival.
+        """Pick the trigger peak closest to the modelled arrival.
 
         Args:
             trace (Trace): STA/LTA characteristic function trace.
@@ -256,50 +316,73 @@ class StaLtaPicker(Picker):
         # A trigger active from the first sample has no observed onset
         triggers = triggers[triggers[:, 0] > 0]
 
-        onset_times = trace.tmin + triggers[:, 0] * trace.deltat
-        valid = (
-            (onset_times >= window_tmin)
-            & (onset_times <= window_tmax)
-            & (onset_times > event_time.timestamp())
+        peak_idx = np.array(
+            [on + np.argmax(data[on : off + 1]) for on, off in triggers], dtype=int
         )
-        triggers = triggers[valid]
-        onset_times = onset_times[valid]
-        if not onset_times.size:
+        peak_times = trace.tmin + peak_idx * trace.deltat
+        valid = (
+            (peak_times >= window_tmin)
+            & (peak_times <= window_tmax)
+            & (peak_times > event_time.timestamp())
+        )
+        peak_idx = peak_idx[valid]
+        peak_times = peak_times[valid]
+        if not peak_times.size:
             return None
-        if onset_times.size > 1:
+        if peak_times.size > 1:
             logger.debug(
                 "%d triggers found for %s, picking the one closest to the "
                 "modelled arrival.",
-                onset_times.size,
+                peak_times.size,
                 ".".join(trace.nslc_id),
             )
 
-        closest = np.argmin(np.abs(onset_times - modelled_arrival.timestamp()))
-        trigger_on, trigger_off = triggers[closest]
+        closest = np.argmin(np.abs(peak_times - modelled_arrival.timestamp()))
         return ObservedArrival(
-            time=to_datetime(onset_times[closest]),
-            detection_value=float(data[trigger_on : trigger_off + 1].max()),
+            time=to_datetime(peak_times[closest]),
+            detection_value=float(data[peak_idx[closest]]),
             phase=phase,
         )
 
 
 class StaLta(ImageFunction):
-    """STA/LTA analytical characteristic function."""
+    """STA/LTA analytical characteristic function.
+
+    The image is the natural logarithm of the STA/LTA onset function, clipped at
+    `min_onset_value`. Stacking the log onsets yields the logarithm of the
+    geometric mean of the onsets, following QuakeMigrate. The semblance and the
+    pick detection values are in log units, noise is at 0.
+    """
 
     image: Literal["StaLta"] = "StaLta"
 
     sta_seconds: PositiveFloat = Field(
-        default=2,
-        description="Short-term average (STA) window length in seconds.",
+        default=0.2,
+        description="Short-term average (STA) window length in seconds. A long STA"
+        " window flattens the peak of the centred STA/LTA at the phase onset.",
     )
     lta_seconds: PositiveFloat = Field(
-        default=5.0,
+        default=1.0,
         description="Long-term average (LTA) window length in seconds.",
     )
     blinding_window: PositiveFloat = Field(
         default=5,
         description="Blinding window in which no new detection can be set. "
         "Typically the duration of the seismic event.",
+    )
+    position: StaLtaPosition = Field(
+        default="centred",
+        description="Position of the STA window. `centred` places the STA window"
+        " after the LTA window, the ratio peaks at the phase onset. `classic`"
+        " overlaps both windows at their end, the ratio peaks up to `sta_seconds`"
+        " after the phase onset.",
+    )
+    min_onset_value: float = Field(
+        default=0.4,
+        ge=0.01,
+        description="Minimum value of the STA/LTA onset function before taking the "
+        "logarithm. Limits the influence of low onset values, e.g. in the coda of "
+        "strong events, on the stack.",
     )
     signal_transform: SignalTransform = Field(
         default="energy",
@@ -348,6 +431,7 @@ class StaLta(ImageFunction):
             self.sta_seconds,
             self.lta_seconds,
             self.signal_transform,
+            self.position,
         )
 
         traces = to_pyrocko_traces(char_function_traces)
@@ -355,6 +439,8 @@ class StaLta(ImageFunction):
         p_traces = [tr for tr in traces if tr.channel.endswith("Z")]
         s_traces = [tr for tr in traces if not tr.channel.endswith("Z")]
         s_traces = _merge_horizontal_components(s_traces)
+        for tr in p_traces + s_traces:
+            tr.set_ydata(_log_onset(tr.ydata, self.min_onset_value))
 
         annotation_p = WaveformImage(
             image_function=self.name,
