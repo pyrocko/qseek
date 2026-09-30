@@ -102,7 +102,7 @@ class AnnotationPicker(Picker):
         description="Total length of the search window in seconds, centered on the"
         " modelled arrival time.",
     )
-    detection_blinding_seconds: NonNegativeFloat = Field(
+    peak_separation_seconds: NonNegativeFloat = Field(
         default=0.1,
         description="Minimum separation between annotation peaks in seconds.",
     )
@@ -158,7 +158,7 @@ class AnnotationPicker(Picker):
             search_trace.ydata,
             height=threshold,
             prominence=threshold,
-            distance=max(1, self.detection_blinding_seconds / search_trace.deltat),
+            distance=max(1, self.peak_separation_seconds / search_trace.deltat),
         )
         peak_times = search_trace.get_xdata()[peak_idx]
 

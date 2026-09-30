@@ -65,14 +65,14 @@ def test_nearest_peak_time_after_chopping(sampling_rate):
 
 
 @pytest.mark.parametrize(
-    "blinding_seconds,expected_seconds", [(None, 5.06), (0.02, 5.0), (0.0, 5.0)]
+    "separation_seconds,expected_seconds", [(None, 5.06), (0.02, 5.0), (0.0, 5.0)]
 )
-def test_peak_blinding(blinding_seconds, expected_seconds):
+def test_peak_separation(separation_seconds, expected_seconds):
     trace = annotation_trace({5.0: 0.35, 5.06: 0.9})
     picker = (
         AnnotationPicker()
-        if blinding_seconds is None
-        else AnnotationPicker(detection_blinding_seconds=blinding_seconds)
+        if separation_seconds is None
+        else AnnotationPicker(peak_separation_seconds=separation_seconds)
     )
     pick = pick_one(picker, trace, time(5))
     assert pick is not None
@@ -148,7 +148,7 @@ def test_picker_config():
         {"threshold_p": 0.0},
         {"threshold_s": 1.5},
         {"search_window_seconds": 0.0},
-        {"detection_blinding_seconds": -1.0},
+        {"peak_separation_seconds": -1.0},
         {"unknown": 1.0},
         {"image": "SeisBench"},
     ):
