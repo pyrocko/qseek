@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+from pydantic import Field
 
 from qseek.features.base import EventFeature, FeatureExtractor, ReceiverFeature
 from qseek.utils import ChannelSelectors
@@ -41,10 +42,25 @@ def _get_maximum(traces: list[Trace]) -> float:
 
 
 class GroundMotionExtractor(FeatureExtractor):
+    """Peak ground motions of the detected events.
+
+    The peak ground acceleration (PGA), peak horizontal acceleration and peak
+    ground velocity (PGV) are measured on the restituted waveforms of each
+    receiver. The event features hold the maxima over all receivers.
+    """
+
     feature: Literal["GroundMotion"] = "GroundMotion"
 
-    seconds_before: float = 3.0
-    seconds_after: float = 8.0
+    seconds_before: float = Field(
+        default=3.0,
+        description="Start of the measurement window in seconds before the first "
+        "arrival at the receiver.",
+    )
+    seconds_after: float = Field(
+        default=8.0,
+        description="End of the measurement window in seconds after the last "
+        "arrival at the receiver.",
+    )
 
     async def add_features(
         self,
