@@ -7,6 +7,49 @@ from qseek.distance_weights import weights_gaussian
 KM = 1e3
 
 
+def test_weights_gaussian():
+    distance_taper = 10 * KM
+    # Two nodes, distances to five stations
+    distances = (
+        np.array(
+            [
+                [1.0, 2.0, 3.0, 8.0, 13.0],
+                [5.0, 1.0, 20.0, 3.0, 50.0],
+            ]
+        )
+        * KM
+    )
+    weights = weights_gaussian(distances, distance_taper, required_stations=3)
+
+    assert weights.shape == distances.shape
+    # The closest stations have full weight
+    np.testing.assert_equal(weights[0, :3], 1.0)
+    np.testing.assert_equal(weights[1, [0, 1, 3]], 1.0)
+    # The taper is the full width at half maximum beyond the closest stations
+    assert weights[0, 3] == pytest.approx(0.5, abs=0.01)
+    # Weights decrease with distance
+    assert weights[0, 3] > weights[0, 4] > 0.0
+    assert weights[1, 2] > weights[1, 4]
+
+
+def test_weights_gaussian_waterlevel():
+    rng = np.random.default_rng(42)
+    distances = rng.uniform(0, 100 * KM, size=(10, 20))
+    weights = weights_gaussian(distances, 5 * KM, required_stations=2, waterlevel=0.1)
+    assert weights.min() >= 0.1
+    assert weights.max() == pytest.approx(1.0)
+
+
+def test_weights_gaussian_required_stations():
+    distances = np.array([[1.0, 50.0, 100.0]]) * KM
+    # More required stations than available, all stations get full weight
+    np.testing.assert_equal(
+        weights_gaussian(distances, 1 * KM, required_stations=10), 1.0
+    )
+    with pytest.raises(ValueError):
+        weights_gaussian(distances, 1 * KM, required_stations=0)
+
+
 @pytest.mark.plot
 def test_weights_gaussian_min_stations():
     rng = np.random.default_rng(42)

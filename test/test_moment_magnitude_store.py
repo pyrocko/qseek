@@ -47,14 +47,25 @@ async def test_peak_amplitudes(engine: gf.LocalEngine) -> None:
     PeakAmplitudesStore.set_engine(engine)
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
     await store.compute_site_amplitudes(source_depth=2 * KM, reference_magnitude=1.0)
-    await store.get_amplitude_model(
-        source_depth=2 * KM,
-        distance=10 * KM,
-        n_amplitudes=10,
-        distance_cutoff=1 * KM,
-        auto_fill=False,
-        interpolation="nearest",
-    )
+
+    medians = []
+    for distance in (5 * KM, 10 * KM, 20 * KM):
+        model = await store.get_amplitude_model(
+            source_depth=2 * KM,
+            distance=distance,
+            n_amplitudes=10,
+            distance_cutoff=1 * KM,
+            auto_fill=False,
+            interpolation="nearest",
+        )
+        assert model.magnitude == 1.0
+        assert model.quantity == "displacement"
+        assert model.distance_epi == distance
+        assert np.isfinite(model.median)
+        assert model.median > 0.0
+        medians.append(model.median)
+    # Amplitudes decay with distance
+    assert medians == sorted(medians, reverse=True)
 
 
 @pytest.mark.skipif(
@@ -72,11 +83,13 @@ async def test_peak_amplitude_estimation(engine: gf.LocalEngine) -> None:
     store = PeakAmplitudesStore.from_selector(peak_amplitudes)
     await store.compute_site_amplitudes(source_depth=2 * KM, reference_magnitude=1.0)
 
-    await store.find_moment_magnitude(
+    magnitude, model = await store.find_moment_magnitude(
         source_depth=2 * KM,
         distance=10 * KM,
         observed_amplitude=0.0001,
     )
+    assert np.isfinite(magnitude)
+    assert model.median > 0.0
 
 
 @pytest.mark.plot
@@ -131,6 +144,7 @@ async def test_peak_amplitude_plot(engine: gf.LocalEngine) -> None:
 
 
 @pytest.mark.plot
+@pytest.mark.skipif(not has_store("crust2_de"), reason="crust2_de not available")
 @pytest.mark.asyncio
 async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
     import matplotlib.pyplot as plt

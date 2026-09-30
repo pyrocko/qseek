@@ -103,7 +103,7 @@ async def test_station_travel_time_table_constant(
     )
     await table.calculate(implementation=implementation)
 
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(0)
     distances = rng.uniform(0.0, table.distance_max, 1000)
     depths = rng.uniform(table.depth_range.start, table.depth_range.end, 1000)
     await table.get_travel_times(distances, depths)

@@ -5,19 +5,31 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "*"
+  # Called by the deploy workflow before publishing a release
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: "Open a tmate session when a test job fails"
+        type: boolean
+        default: false
+
+concurrency:
+  # A fixed name, a called workflow shares github.workflow with its caller
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   prek:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: j178/prek-action@v1
+      - uses: actions/checkout@v7
+      - uses: j178/prek-action@v3.0.0
 
   test:
     needs: prek
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version:
@@ -25,13 +37,14 @@ jobs:
           - "3.13"
           - "3.14"
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install uv with Python ${{ matrix.python-version }}
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -49,18 +62,21 @@ jobs:
         run: |
           uv run pytest -m "not plot"
       - name: Setup tmate session
-        if: ${{ failure() }}
+        if: ${{ failure() && github.event_name == 'workflow_dispatch' && inputs.debug }}
         uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 15
+        with:
+          limit-access-to-actor: true
 
   build_docs:
     runs-on: ubuntu-latest
     needs: test
     steps:
-      - uses: actions/checkout@v6
-      - name: Install uv with Python ${{ matrix.python-version }}
-        uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7
+      - name: Install uv with Python 3.12
+        uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
           enable-cache: true
       - name: Install package
         run: |

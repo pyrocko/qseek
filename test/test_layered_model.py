@@ -1,3 +1,5 @@
+import numpy as np
+
 from qseek.models.layered_model import LayeredModel
 from qseek.tracers.utils import LayeredEarthModel1D
 
@@ -18,6 +20,13 @@ mantle
 def test_layered_model(plot: bool) -> None:
     earth_model = LayeredEarthModel1D()
     layered_model = LayeredModel.from_earth_model(earth_model)
+    assert layered_model.n_layers > 0
+
+    depths = np.linspace(0, 20 * KM, 100)
+    assert np.all(layered_model.vp_interpolator(depths) > 0.0)
+    assert np.all(
+        layered_model.vp_interpolator(depths) > layered_model.vs_interpolator(depths)
+    )
 
     if plot:
         layered_model.plot(depth_range=(0, 20 * KM), samples=1000)
@@ -26,6 +35,17 @@ def test_layered_model(plot: bool) -> None:
 def test_gradient_model(plot: bool) -> None:
     earth_model = LayeredEarthModel1D(raw_file_data=GRADIENT_MODEL_ND)
     layered_model = LayeredModel.from_earth_model(earth_model)
+
+    # Velocities at the model nodes and linearly interpolated in between
+    depths = np.array([0.0, 0.25, 0.5, 1.0, 2.0, 3.0]) * KM
+    np.testing.assert_allclose(
+        layered_model.vp_interpolator(depths),
+        [1700.0, 1769.0, 1838.0, 2400.0, 3147.5, 3895.0],
+    )
+    np.testing.assert_allclose(
+        layered_model.vs_interpolator(depths),
+        [950.0, 989.0, 1028.0, 1344.0, 1760.5, 2177.0],
+    )
 
     if plot:
         layered_model.plot(depth_range=(-5 * KM, 35 * KM), samples=1000)

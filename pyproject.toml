@@ -38,7 +38,7 @@ dependencies = [
     "pydantic>=2.13",
     "aiohttp>=3.14",
     "aiohttp_cors>=0.7.0",
-    "lru-dict @ git+https://github.com/amitdev/lru-dict",
+    "lru-dict>=1.4.1",
     "rich>=15.0",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
@@ -143,10 +143,24 @@ convention = "google"
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]
 asyncio_default_fixture_loop_scope = "function"
-addopts = "--cov=qseek --cov-report html"
+addopts = "--cov=qseek --cov-report html --benchmark-disable"
+
+[tool.cibuildwheel]
+build = ["cp312-*", "cp313-*", "cp314-*"]
+# PyTorch, required by SeisBench, has no Intel macOS wheels for Python 3.13+
+skip = ["*-musllinux_*", "cp313-macosx_x86_64", "cp314-macosx_x86_64"]
+build-frontend = "build[uv]"
+test-requires = ["pytest", "pytest-asyncio", "pytest-benchmark"]
+# Test the C extensions of the installed wheel
+test-command = "pytest {project}/test/test_array_tools.py {project}/test/test_delay_sum.py -o addopts='' --benchmark-disable -p no:cacheprovider"
+# Wheels for x86_64 require AVX2 and FMA, qseek warns on CPUs without them.
+# PyTorch without CUDA for testing the wheels.
+environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu" }
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"
+# Homebrew's libomp targets the runner's macOS version, macos-15 runners
+environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu", CFLAGS = "-I$(brew --prefix libomp)/include", LDFLAGS = "-L$(brew --prefix libomp)/lib", MACOSX_DEPLOYMENT_TARGET = "15.0" }
 
 [tool.setuptools_scm]
 

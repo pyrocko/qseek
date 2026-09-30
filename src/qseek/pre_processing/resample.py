@@ -103,13 +103,20 @@ def downsample(
     if upscale_sratio > 1:
         data = np.repeat(data, upscale_sratio, axis=1)
 
+    deltat = traces_deltat / upscale_sratio
+    time_shift = 0.0
     for n_decimate in decimation_sequence:
         b, a, n = decimate_coeffs(n_decimate, None, "fir-remez")
-        data = signal.sosfilt(signal.tf2sos(b, a), data, axis=1)
+        # FIR filter, converting it to second-order sections is unstable
+        data = signal.lfilter(b, a, data, axis=1)
         data = data[:, n // 2 :: n_decimate].copy()
+        # The FIR delay is n / 2 samples, half a sample remains for odd orders
+        time_shift += (n / 2 - n // 2) * deltat
+        deltat *= n_decimate
 
     for trace, trace_data in zip(traces, data, strict=True):
         trace.deltat = delta_t
+        trace.tmin -= time_shift
         trace.set_ydata(trace_data)
     return traces
 
