@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal, Sequence
 
 import numpy as np
-from pydantic import BaseModel, PositiveInt, PrivateAttr, computed_field
+from pydantic import PositiveInt, PrivateAttr, computed_field
 from pyrocko.io import save
 
 from qseek.base import Model
@@ -143,7 +143,7 @@ class ImageFunctionStats(Stats):
         )
 
 
-class ImageFunction(BaseModel):
+class ImageFunction(Model):
     image: Literal["base"] = "base"
 
     picker: Picker

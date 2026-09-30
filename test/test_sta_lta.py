@@ -278,6 +278,9 @@ def test_picker_config():
     with pytest.raises(ValidationError):
         StaLta(position="left")
     assert StaLta().min_onset_value == 0.4
+    # The picker settings moved from the image function to the picker
+    with pytest.raises(ValidationError):
+        StaLta.model_validate({"mad_factor": 3.0})
     # QuakeMigrate's default windows
     assert (StaLta().sta_seconds, StaLta().lta_seconds) == (0.2, 1.0)
     assert StaLta().picker.mad_factor == 5.0

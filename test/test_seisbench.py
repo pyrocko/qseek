@@ -141,6 +141,9 @@ def test_picker_config():
     assert function.picker.threshold_s == 0.1
     assert function.picker.search_window_seconds == 2.0
 
+    with pytest.raises(ValidationError):
+        SeisBench.model_validate({"rescale_input": 1.0})
+
     loaded = SeisBench.model_validate_json(function.model_dump_json())
     assert loaded.picker == function.picker
 
