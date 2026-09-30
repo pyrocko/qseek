@@ -45,6 +45,8 @@ From [PyPi](https://pypi.org/project/qseek/).
 pip install qseek
 ```
 
+Pre-built packages are available for Linux (x86_64, aarch64) and macOS 15+ (arm64, x86_64). The x86_64 packages require a CPU with AVX2 and FMA; on older CPUs install from source with `pip install --no-binary qseek qseek`.
+
 Installation from GitHub.
 
 ```sh
