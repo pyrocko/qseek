@@ -150,6 +150,7 @@ def test_picker_config():
         {"search_window_seconds": 0.0},
         {"detection_blinding_seconds": -1.0},
         {"unknown": 1.0},
+        {"image": "SeisBench"},
     ):
         with pytest.raises(ValidationError):
             AnnotationPicker.model_validate(invalid)

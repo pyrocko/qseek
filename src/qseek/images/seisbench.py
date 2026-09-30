@@ -85,8 +85,6 @@ class AnnotationPicker(Picker):
     search window. Peaks before the event origin time are rejected.
     """
 
-    image: Literal["SeisBench"] = "SeisBench"
-
     threshold_p: float = Field(
         default=0.1,
         gt=0.0,
