@@ -149,47 +149,50 @@ def _log_onset(onset: np.ndarray, min_onset_value: float) -> np.ndarray:
 
 
 def _merge_horizontal_components(traces: list[Trace]) -> list[Trace]:
-    """Combine multiple horizontal-component onset traces per station.
+    """Combine the horizontal-component onset traces of each station.
 
-    Components sharing the same network/station/location are combined as the
-    root-mean-square of their STA/LTA onset functions. Components that are not
-    aligned, e.g. due to data gaps, cannot be combined. The longest component
-    trace is used for that station instead.
+    Aligned segments of the components, sharing network/station/location, start
+    time and number of samples, are combined as the root-mean-square of their
+    STA/LTA onset functions. Segments without an aligned counterpart, e.g. due to
+    a data gap in a single component, are kept as single-component traces.
+    Where the resulting traces of a station overlap, the longest trace is kept.
 
     Args:
         traces (list[Trace]): Per-component STA/LTA onset traces.
 
     Returns:
-        list[Trace]: One onset trace per station.
+        list[Trace]: Non-overlapping onset traces per station.
     """
-    grouped: dict[tuple[str, str, str], list[Trace]] = {}
+    grouped: dict[tuple[str, str, str], dict[tuple[int, int], list[Trace]]] = {}
     for tr in traces:
-        grouped.setdefault((tr.network, tr.station, tr.location), []).append(tr)
+        segment = (round(tr.tmin / tr.deltat), tr.ydata.size)
+        station_segments = grouped.setdefault((tr.network, tr.station, tr.location), {})
+        station_segments.setdefault(segment, []).append(tr)
 
     merged_traces = []
-    for group in grouped.values():
-        if len(group) == 1:
-            merged_traces.append(group[0])
-            continue
-        reference = group[0]
-        if any(
-            tr.ydata.size != reference.ydata.size
-            or abs(tr.tmin - reference.tmin) > reference.deltat / 2
-            for tr in group
-        ):
-            longest = max(group, key=lambda tr: tr.ydata.size)
-            logger.warning(
-                "cannot merge misaligned horizontal components of %s, using %s",
-                ".".join(reference.nslc_id[:3]),
-                ".".join(longest.nslc_id),
-            )
-            merged_traces.append(longest)
-            continue
-        stacked = np.array([tr.ydata for tr in group])
-        rms = np.sqrt(np.sum(stacked**2, axis=0) / len(group))
-        merged = group[0].copy()
-        merged.set_ydata(rms)
-        merged_traces.append(merged)
+    for station_segments in grouped.values():
+        station_traces = []
+        for components in station_segments.values():
+            if len(components) == 1:
+                station_traces.append(components[0])
+                continue
+            stacked = np.array([tr.ydata for tr in components])
+            rms = np.sqrt(np.sum(stacked**2, axis=0) / len(components))
+            merged = components[0].copy()
+            merged.set_ydata(rms)
+            station_traces.append(merged)
+
+        kept: list[Trace] = []
+        for tr in sorted(station_traces, key=lambda tr: tr.ydata.size, reverse=True):
+            if any(tr.tmin <= other.tmax and other.tmin <= tr.tmax for other in kept):
+                logger.warning(
+                    "cannot merge misaligned horizontal components of %s, dropping %s",
+                    ".".join(tr.nslc_id[:3]),
+                    ".".join(tr.nslc_id),
+                )
+                continue
+            kept.append(tr)
+        merged_traces.extend(sorted(kept, key=lambda tr: tr.tmin))
 
     return merged_traces
 

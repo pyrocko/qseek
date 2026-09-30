@@ -326,18 +326,42 @@ def test_merge_horizontal_components():
     np.testing.assert_allclose(merged[0].ydata, np.sqrt((9.0 + 16.0) / 2))
 
 
-@pytest.mark.parametrize(
-    "east",
-    [
-        # Gap in the east component
-        [horizontal("HHE", 0.0, 40, 4.0), horizontal("HHE", 6.0, 40, 4.0)],
-        # Same length, shifted start
-        [horizontal("HHE", 0.5, 100, 4.0)],
-    ],
-)
-def test_merge_misaligned_horizontal_components(east, caplog):
+def test_merge_gap_in_one_component(caplog):
     north = horizontal("HHN", 0.0, 100, 3.0)
+    east = [horizontal("HHE", 0.0, 40, 4.0), horizontal("HHE", 6.0, 40, 4.0)]
     merged = _merge_horizontal_components([north, *east])
+
+    # The north trace is kept, the overlapping east segment is dropped and the
+    # east segment after the north trace is kept as single component
+    assert [(tr.channel, tr.ydata.size) for tr in merged] == [
+        ("HHN", 100),
+        ("HHE", 40),
+    ]
+    assert merged[1].tmin == pytest.approx(TMIN + 6.0)
+    assert "cannot merge misaligned" in caplog.text
+
+
+def test_merge_shifted_components(caplog):
+    north = horizontal("HHN", 0.0, 100, 3.0)
+    east = horizontal("HHE", 0.5, 100, 4.0)
+    merged = _merge_horizontal_components([north, east])
+
     assert len(merged) == 1
     assert merged[0].ydata.size == 100
     assert "cannot merge misaligned" in caplog.text
+
+
+def test_merge_gap_in_both_components(caplog):
+    traces = [
+        horizontal("HHE", 0.0, 1000, 4.0),
+        horizontal("HHE", 20.0, 500, 4.0),
+        horizontal("HHN", 0.0, 1000, 3.0),
+        horizontal("HHN", 20.0, 500, 3.0),
+    ]
+    merged = _merge_horizontal_components(traces)
+
+    assert [tr.ydata.size for tr in merged] == [1000, 500]
+    assert merged[1].tmin == pytest.approx(TMIN + 20.0)
+    for tr in merged:
+        np.testing.assert_allclose(tr.ydata, np.sqrt((9.0 + 16.0) / 2))
+    assert "cannot merge misaligned" not in caplog.text
