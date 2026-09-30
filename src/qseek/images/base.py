@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -35,6 +36,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PhaseName = Literal["P", "S"]
+ImageQueue = asyncio.Queue[
+    "tuple[WaveformImages, WaveformBatch] | BaseException | None"
+]
 
 
 @dataclass
@@ -107,15 +111,13 @@ class ImageFunctionStats(Stats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
 
-    _queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch] | None] | None = (
-        PrivateAttr(None)
-    )
+    _queue: ImageQueue | None = PrivateAttr(None)
     _position = 40
     _show_header = False
 
     def set_queue(
         self,
-        queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch] | None],
+        queue: ImageQueue,
     ) -> None:
         self._queue = queue
 
@@ -191,11 +193,16 @@ class ImageFunction(Model):
     async def get_images(self, batch: WaveformBatch) -> WaveformImages:
         """Calculate the images of a waveform batch.
 
+        Images without traces are skipped.
+
         Args:
             batch (WaveformBatch): Batch of waveforms.
 
         Returns:
             WaveformImages: Images of the batch.
+
+        Raises:
+            ValueError: If no image has traces.
         """
         images = WaveformImages(
             start_time=batch.start_time,
@@ -203,7 +210,15 @@ class ImageFunction(Model):
         )
         logger.debug("calculating images from %s", self.name)
         for image in await self.process_traces(batch.traces):
+            if not image.has_traces():
+                logger.warning(
+                    "no traces for %s image %s, skipping", self.name, image.phase
+                )
+                continue
             images.add_image(image)
+
+        if not images.n_images:
+            raise ValueError("no image has traces")
         return images
 
     async def iter_images(
@@ -213,6 +228,9 @@ class ImageFunction(Model):
         """Iterate over images from batches.
 
         The images are calculated in a background task, ahead of the consumer.
+        Batches whose images cannot be calculated due to a `ValueError` are
+        skipped, other errors are raised to the consumer. The background task is
+        cancelled when the consumer stops iterating.
 
         Args:
             batch_iterator (AsyncIterator[WaveformBatch]): Async iterator over
@@ -221,44 +239,54 @@ class ImageFunction(Model):
         Yields:
             tuple[WaveformImages, WaveformBatch]: Images and their batch.
         """
-        queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch] | None] = (
-            asyncio.Queue(maxsize=QUEUE_SIZE)
-        )
+        queue: ImageQueue = asyncio.Queue(maxsize=QUEUE_SIZE)
         stats = self._stats
         stats.set_queue(queue)
 
         async def worker() -> None:
             logger.info("start pre-processing images, queue size %d", queue.maxsize)
-            async for batch in batch_iterator:
-                if not batch.is_healthy():
-                    logger.debug("unhealthy batch, skipping")
-                    continue
+            try:
+                async for batch in batch_iterator:
+                    if not batch.is_healthy():
+                        logger.debug("unhealthy batch, skipping")
+                        continue
 
-                start_time = datetime_now()
-                try:
-                    images = await self.get_images(batch)
-                except ValueError as e:
-                    logger.warning("error processing images: %s", e)
-                    continue
-                stats.time_per_batch = datetime_now() - start_time
-                stats.bytes_per_second = (
-                    batch.nbytes / stats.time_per_batch.total_seconds()
-                )
-                await queue.put((images, batch))
+                    start_time = datetime_now()
+                    try:
+                        images = await self.get_images(batch)
+                    except ValueError as e:
+                        logger.warning("error processing images: %s", e)
+                        continue
+                    stats.time_per_batch = datetime_now() - start_time
+                    stats.bytes_per_second = (
+                        batch.nbytes / stats.time_per_batch.total_seconds()
+                    )
+                    await queue.put((images, batch))
+            except Exception as exc:
+                await queue.put(exc)
+                return
+            finally:
+                if hasattr(batch_iterator, "aclose"):
+                    await batch_iterator.aclose()
 
             await queue.put(None)
 
         task = asyncio.create_task(worker())
-
-        while True:
-            ret = await queue.get()
-            if ret is None:
-                logger.debug("image function finished")
-                break
-            yield ret
-
-        logger.debug("waiting for image function to finish")
-        await task
+        try:
+            while True:
+                ret = await queue.get()
+                if ret is None:
+                    logger.debug("image function finished")
+                    break
+                if isinstance(ret, BaseException):
+                    raise ret
+                yield ret
+        finally:
+            if not task.done():
+                logger.debug("cancelling image function")
+                task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 @dataclass
