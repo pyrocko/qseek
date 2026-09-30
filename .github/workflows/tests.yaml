@@ -5,8 +5,8 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "*"
+  # Called by the deploy workflow before publishing a release
+  workflow_call:
   workflow_dispatch:
     inputs:
       debug:
@@ -15,7 +15,8 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A fixed name, a called workflow shares github.workflow with its caller
+  group: tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

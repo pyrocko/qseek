@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import platform
 
 import cpuinfo
@@ -27,6 +28,25 @@ def has_flag(flag: str) -> bool:
     return flag in flags
 
 
+def simd_flags() -> list[str]:
+    """SIMD compiler flags for x86_64.
+
+    `QSEEK_SIMD_FLAGS` sets the flags explicitly, e.g. for portable wheels that
+    must not depend on the build machine. By default the flags are detected from
+    the build machine's CPU.
+    """
+    if not is_x86_64():
+        return []
+    flags = os.environ.get("QSEEK_SIMD_FLAGS")
+    if flags is not None:
+        return flags.split()
+    return [
+        compiler_flag
+        for compiler_flag, cpu_flag in (("-mfma", "fma"), ("-mavx2", "avx2"))
+        if has_flag(cpu_flag)
+    ]
+
+
 setup(
     ext_modules=[
         Extension(
@@ -52,8 +72,7 @@ setup(
                 "-fopenmp",
                 "-O3",
                 "-flto",
-                "-mfma" if is_x86_64() and has_flag("fma") else NOOP,
-                "-mavx2" if is_x86_64() and has_flag("avx2") else NOOP,
+                *simd_flags(),
             ],
             extra_link_args=[
                 "-lomp" if is_macos() else "-lgomp",

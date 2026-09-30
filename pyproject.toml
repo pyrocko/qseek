@@ -145,8 +145,20 @@ markers = ["plot: plot figures in tests"]
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--cov=qseek --cov-report html --benchmark-disable"
 
+[tool.cibuildwheel]
+build = ["cp312-*", "cp313-*", "cp314-*"]
+skip = ["*-musllinux_*"]
+build-frontend = "build[uv]"
+test-requires = ["pytest", "pytest-asyncio", "pytest-benchmark"]
+# Test the C extensions of the installed wheel
+test-command = "pytest {project}/test/test_array_tools.py {project}/test/test_delay_sum.py -o addopts='' --benchmark-disable -p no:cacheprovider"
+# Install PyTorch without CUDA for testing the wheels
+environment = { UV_TORCH_BACKEND = "cpu" }
+
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"
+# Homebrew's libomp targets the runner's macOS version
+environment = { UV_TORCH_BACKEND = "cpu", CFLAGS = "-I$(brew --prefix libomp)/include", LDFLAGS = "-L$(brew --prefix libomp)/lib", MACOSX_DEPLOYMENT_TARGET = "$(sw_vers -productVersion | cut -d. -f1).0" }
 
 [tool.setuptools_scm]
 
