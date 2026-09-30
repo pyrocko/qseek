@@ -6,9 +6,12 @@ import contextvars
 import functools
 import logging
 import os
+import platform
 import re
+import subprocess
 import sys
 import time
+import warnings
 from asyncio import events
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -870,3 +873,72 @@ async def to_threadpool(pool: ThreadPoolExecutor | None, func, *args, **kwargs):
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
     return await loop.run_in_executor(pool, func_call)
+
+
+# Compiler flags of the C extensions and the CPU features they require
+SIMD_CPU_FEATURES = {"-mavx2": "avx2", "-mfma": "fma"}
+
+
+def get_cpu_features() -> set[str] | None:
+    """Get the SIMD features supported by the CPU.
+
+    Returns:
+        set[str] | None: Lower-case CPU feature flags, e.g. `avx2` and `fma`.
+            None if the features cannot be determined on this platform.
+    """
+    system = platform.system()
+    try:
+        if system == "Linux":
+            with Path("/proc/cpuinfo").open() as cpuinfo:
+                for line in cpuinfo:
+                    if line.startswith("flags"):
+                        return set(line.split(":", 1)[1].lower().split())
+            return None
+        if system == "Darwin":
+            features = subprocess.run(
+                [
+                    "sysctl",
+                    "-n",
+                    "machdep.cpu.features",
+                    "machdep.cpu.leaf7_features",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            return set(features.lower().split())
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return None
+
+
+def check_simd_support(build_flags: tuple[str, ...]) -> None:
+    """Warn if the CPU lacks SIMD features the C extensions were compiled with.
+
+    Pre-built x86_64 wheels are compiled with AVX2 and FMA. On CPUs without
+    them, importing the C extensions crashes with an illegal instruction.
+
+    Args:
+        build_flags (tuple[str, ...]): SIMD compiler flags of the C extensions.
+    """
+    required = {
+        SIMD_CPU_FEATURES[flag] for flag in build_flags if flag in SIMD_CPU_FEATURES
+    }
+    if not required:
+        return
+    cpu_features = get_cpu_features()
+    if cpu_features is None:
+        return
+    missing = required - cpu_features
+    if not missing:
+        return
+    warnings.warn(
+        "qseek's C extensions were compiled with the SIMD instructions "
+        f"{', '.join(sorted(required)).upper()}, but this CPU does not support "
+        f"{', '.join(sorted(missing)).upper()}. qseek will crash with an illegal "
+        "instruction. The pre-built wheels require a CPU with AVX2 and FMA; on this "
+        "CPU install qseek from source instead, e.g. "
+        "`pip install --no-binary qseek qseek`.",
+        RuntimeWarning,
+        stacklevel=2,
+    )

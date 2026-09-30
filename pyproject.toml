@@ -152,13 +152,14 @@ build-frontend = "build[uv]"
 test-requires = ["pytest", "pytest-asyncio", "pytest-benchmark"]
 # Test the C extensions of the installed wheel
 test-command = "pytest {project}/test/test_array_tools.py {project}/test/test_delay_sum.py -o addopts='' --benchmark-disable -p no:cacheprovider"
-# Install PyTorch without CUDA for testing the wheels
-environment = { UV_TORCH_BACKEND = "cpu" }
+# Wheels for x86_64 require AVX2 and FMA, qseek warns on CPUs without them.
+# PyTorch without CUDA for testing the wheels.
+environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu" }
 
 [tool.cibuildwheel.macos]
 before-build = "brew install libomp"
 # Homebrew's libomp targets the runner's macOS version
-environment = { UV_TORCH_BACKEND = "cpu", CFLAGS = "-I$(brew --prefix libomp)/include", LDFLAGS = "-L$(brew --prefix libomp)/lib", MACOSX_DEPLOYMENT_TARGET = "$(sw_vers -productVersion | cut -d. -f1).0" }
+environment = { QSEEK_SIMD_FLAGS = "-mavx2 -mfma", UV_TORCH_BACKEND = "cpu", CFLAGS = "-I$(brew --prefix libomp)/include", LDFLAGS = "-L$(brew --prefix libomp)/lib", MACOSX_DEPLOYMENT_TARGET = "$(sw_vers -productVersion | cut -d. -f1).0" }
 
 [tool.setuptools_scm]
 

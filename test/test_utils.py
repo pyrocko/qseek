@@ -1,6 +1,10 @@
+import platform
+import warnings
+
 import pytest
 from pydantic import BaseModel
 
+from qseek import utils
 from qseek.utils import _NSL, NSL
 
 
@@ -117,3 +121,31 @@ def test_nsl_exclusion():
     ]
 
     assert filtered_nsls == [_NSL.parse("6E.TE236."), _NSL.parse("6E.TE237.")]
+
+
+@pytest.mark.parametrize(
+    "build_flags,cpu_features,warns",
+    [
+        (("-mavx2", "-mfma"), {"sse2", "avx2", "fma"}, False),
+        (("-mavx2", "-mfma"), {"sse2", "avx"}, True),
+        (("-mavx2", "-mfma"), {"sse2", "avx2"}, True),
+        ((), {"sse2"}, False),
+        (("-mavx2", "-mfma"), None, False),
+    ],
+)
+def test_check_simd_support(monkeypatch, build_flags, cpu_features, warns):
+    monkeypatch.setattr(utils, "get_cpu_features", lambda: cpu_features)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        utils.check_simd_support(build_flags)
+    assert bool(caught) == warns
+    if warns:
+        assert caught[0].category is RuntimeWarning
+        assert "install qseek from source" in str(caught[0].message)
+
+
+def test_get_cpu_features():
+    features = utils.get_cpu_features()
+    if platform.system() in ("Linux", "Darwin"):
+        assert features
+        assert all(feature == feature.lower() for feature in features)
