@@ -36,6 +36,9 @@ jobs:
         with:
           fetch-depth: 0 # setuptools_scm derives the version from the git tags
 
+      # cibuildwheel's uv build frontend requires uv on macOS
+      - uses: astral-sh/setup-uv@v10.2.0
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v4.2.1
 
