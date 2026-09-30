@@ -38,7 +38,7 @@ dependencies = [
     "pydantic>=2.13",
     "aiohttp>=3.14",
     "aiohttp_cors>=0.7.0",
-    "lru-dict @ git+https://github.com/amitdev/lru-dict",
+    "lru-dict>=1.4.1",
     "rich>=15.0",
     "nest_asyncio>=1.5",
     "pyevtk>=1.6",
