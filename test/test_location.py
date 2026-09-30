@@ -3,6 +3,8 @@ from __future__ import annotations
 import random
 
 import numpy as np
+import pytest
+from pyrocko import orthodrome
 
 from qseek.models import Location
 
@@ -13,15 +15,20 @@ def test_location() -> None:
     loc = Location(lat=11.0, lon=23.55)
     loc_other = Location(lat=13.123, lon=21.12)
 
-    loc.surface_distance_to(loc_other)
+    distance = loc.surface_distance_to(loc_other)
+    assert distance == pytest.approx(
+        orthodrome.distance_accurate50m(11.0, 23.55, 13.123, 21.12)
+    )
+    assert loc_other.surface_distance_to(loc) == pytest.approx(distance)
 
 
 def test_distance_same_origin():
     loc = Location(lat=11.0, lon=23.55)
 
+    rng = random.Random(0)
     perturb_attributes = {"north_shift", "east_shift", "elevation", "depth"}
     for _ in range(100):
-        distance = random.uniform(-10 * KM, 10 * KM)
+        distance = rng.uniform(-10 * KM, 10 * KM)
         for attr in perturb_attributes:
             loc_other = loc.model_copy()
             loc_other._cached_lat_lon = None

@@ -1,129 +1,100 @@
 import asyncio
 import contextlib
-import logging
+import socket
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
+from qseek.models.station import Station, StationInventory
 from qseek.utils import _NSL, datetime_now
 from qseek.waveforms.seedlink.client import SeedLinkClient, StationSelection
 from qseek.waveforms.seedlink.seedlink import SeedLink, slinktool_available
 
-logging.basicConfig(level=logging.DEBUG)
+HOST = "geofon.gfz.de"
+PORT = 18000
+TIMEOUT = 60.0
 
 
-def get_seedlink_client():
-    return SeedLink(
-        clients=[
-            SeedLinkClient(
-                host="geofon.gfz.de",
-                port=18000,
-                station_selection=[
-                    StationSelection(nsl=_NSL("1D", "SYRAU"), channel="HH?"),
-                    StationSelection(nsl=_NSL("1D", "WBERG"), channel="HH?"),
-                    StationSelection(nsl=_NSL("WB", "KOC"), channel="HH?"),
-                    StationSelection(nsl=_NSL("WB", "KRC"), channel="HH?"),
-                    StationSelection(nsl=_NSL("WB", "LBC"), channel="HH?"),
-                    StationSelection(nsl=_NSL("WB", "SKC"), channel="HH?"),
-                    StationSelection(nsl=_NSL("WB", "STC"), channel="HH?"),
-                    StationSelection(nsl=_NSL("WB", "VAC"), channel="HH?"),
-                ],
+def seedlink_reachable() -> bool:
+    try:
+        with socket.create_connection((HOST, PORT), timeout=5.0):
+            return True
+    except OSError:
+        return False
+
+
+pytestmark = [
+    pytest.mark.skipif(not slinktool_available(), reason="slinktool not available"),
+    pytest.mark.skipif(not seedlink_reachable(), reason=f"{HOST}:{PORT} unreachable"),
+]
+
+
+@pytest.fixture
+def stations() -> StationInventory:
+    return StationInventory(
+        stations=[
+            Station(
+                network="GE",
+                station="RUE",
+                location="",
+                lat=52.4759,
+                lon=13.78,
+                elevation=40.0,
             )
         ]
     )
 
 
-async def seedlink_client():
-    client = SeedLinkClient(
-        host="geofon.gfz-potsdam.de",
-        port=18000,
-        station_selection=[
-            StationSelection(nsl=_NSL("1D", "SYRAU", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("1D", "WBERG", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("WB", "KOC", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("WB", "KRC", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("WB", "LBC", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("WB", "SKC", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("WB", "STC", ""), channel="HH?"),
-            StationSelection(nsl=_NSL("WB", "VAC", ""), channel="HH?"),
+@pytest_asyncio.fixture
+async def seedlink(tmp_path: Path, stations: StationInventory):
+    seedlink = SeedLink(
+        clients=[
+            SeedLinkClient(
+                host=HOST,
+                port=PORT,
+                station_selection=[
+                    StationSelection(nsl=_NSL("GE", "RUE", ""), channel="HH?"),
+                ],
+            )
         ],
+        sds_archive=tmp_path / "sds",
     )
-    # print(await client.get_available_stations())
-
-    client.start_streams()
-
-    i_batch = 0
-    while True:
-        await asyncio.sleep(0)
-        start = datetime_now()
-        traces = []
-
-        traces = await asyncio.gather(
-            *[
-                stream.get_trace(
-                    start_time=start,
-                    end_time=start + timedelta(seconds=5),
-                    timeout=20.0,
-                )
-                for stream in client.streams
-            ],
-            return_exceptions=True,
-        )
-        assert traces
-        i_batch += 1
-        if i_batch >= 3:
-            break
+    await seedlink.prepare(stations)
+    assert seedlink.available_nsls() == {_NSL("GE", "RUE", "")}
+    yield seedlink
+    for client in seedlink.clients:
+        client.stop_stream()
 
 
-@pytest.mark.skipif(not slinktool_available(), reason="slinktool not available")
-@pytest.mark.asyncio
-async def test_seedlink():
-    seedlink = get_seedlink_client()
+async def first_batch_traces(seedlink: SeedLink, start_time) -> int:
+    """Number of traces in the first streamed batch, 0 if none within the timeout."""
 
-    received_traces = 0
-
-    async def get_batches():
-        nonlocal received_traces
+    async def get_first_batch() -> int:
         async for batch in seedlink.iter_batches(
             window_increment=timedelta(seconds=5),
             window_padding=timedelta(seconds=5),
-            start_time=datetime_now(),
+            start_time=start_time,
             min_length=timedelta(seconds=5),
             min_stations=1,
         ):
-            assert batch.traces
-            received_traces += len(batch.traces)
+            assert {tr.station for tr in batch.traces} == {"RUE"}
+            return len(batch.traces)
+        return 0
 
     with contextlib.suppress(asyncio.TimeoutError):
-        await asyncio.wait_for(get_batches(), timeout=30.0)
+        return await asyncio.wait_for(get_first_batch(), timeout=TIMEOUT)
+    return 0
 
-    assert received_traces > 0
 
-
-@pytest.mark.skipif(not slinktool_available(), reason="slinktool not available")
 @pytest.mark.asyncio
-async def test_seedlink_past():
-    seedlink = get_seedlink_client()
-
-    received_traces = 0
-
-    async def get_batches():
-        nonlocal received_traces
-
-        async for batch in seedlink.iter_batches(
-            window_increment=timedelta(seconds=5),
-            window_padding=timedelta(seconds=5),
-            start_time=datetime_now() - timedelta(days=2),
-            min_length=timedelta(seconds=5),
-            min_stations=1,
-        ):
-            assert batch.traces
-            received_traces += len(batch.traces)
-
-    with contextlib.suppress(asyncio.TimeoutError):
-        await asyncio.wait_for(get_batches(), timeout=30.0)
-    assert received_traces > 0
+async def test_seedlink(seedlink: SeedLink):
+    assert await first_batch_traces(seedlink, start_time=datetime_now()) > 0
 
 
-if __name__ == "__main__":
-    asyncio.run(test_seedlink_past())
+@pytest.mark.asyncio
+async def test_seedlink_past(seedlink: SeedLink):
+    # The server's ring buffer holds several hours of data
+    start_time = datetime_now() - timedelta(minutes=10)
+    assert await first_batch_traces(seedlink, start_time=start_time) > 0

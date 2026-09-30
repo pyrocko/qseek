@@ -62,8 +62,8 @@ def test_sptree_model(travel_time_tree: TravelTimeTree):
         tmp = Path(d)
         file = model.save(tmp)
 
-        model2 = TravelTimeTree.load(file)
-        model2._get_sptree()
+        loaded_model = TravelTimeTree.load(file)
+        loaded_model._get_sptree()
 
     source = Location(
         lat=0.0,
@@ -80,7 +80,10 @@ def test_sptree_model(travel_time_tree: TravelTimeTree):
         depth=0,
     )
 
-    model.get_travel_time(source, receiver)
+    travel_time = model.get_travel_time(source, receiver)
+    assert np.isfinite(travel_time)
+    assert travel_time > 0.0
+    assert loaded_model.get_travel_time(source, receiver) == pytest.approx(travel_time)
 
 
 @pytest.mark.asyncio
@@ -117,7 +120,6 @@ async def test_travel_times_constant_velocity(
 ):
     octree = small_octree
     stations = small_stations
-    octree.n_levels = 3
     cake_tracer = CakeTracer(
         phases={"cake:P": Timing(definition="P,p,P\\,p\\")},
         earthmodel=LayeredEarthModel1D(

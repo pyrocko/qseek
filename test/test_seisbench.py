@@ -173,9 +173,12 @@ def test_picker_config():
 async def test_annotation_sample_times(
     monkeypatch, sampling_rate, model, leading_samples, trailing_samples, stride
 ):
-    """Restore annotation offsets without depending on downloaded model weights."""
+    """Restore annotation offsets without depending on downloaded model weights.
+
+    The pre-trained model's sampling rate is set to the input sampling rate, the
+    model annotates the input without resampling.
+    """
     tmin = 1700000000.123
-    scale = sampling_rate / 100
     traces = []
     # Include different component starts, a gap, and a second station. The earliest
     # trace is deliberately not first in the stream.
@@ -201,17 +204,17 @@ async def test_annotation_sample_times(
     def annotate(stream, **kwargs):
         annotations = Stream()
         for original, trace in zip(traces, stream, strict=True):
-            assert trace.stats.sampling_rate == 100
+            assert trace.stats.sampling_rate == sampling_rate
             assert trace.stats.starttime.timestamp == pytest.approx(
-                tmin + (original.tmin - tmin) * scale, rel=0, abs=1e-6
+                original.tmin, rel=0, abs=1e-6
             )
             for phase in ("P", "S"):
                 annotation = trace.copy()
                 annotation.data = trace.data[
                     leading_samples : -trailing_samples or None : stride
                 ].copy()
-                annotation.stats.starttime += leading_samples / 100
-                annotation.stats.sampling_rate = 100 / stride
+                annotation.stats.starttime += leading_samples / sampling_rate
+                annotation.stats.sampling_rate = sampling_rate / stride
                 annotation.stats.channel = f"{model}_{phase}"
                 annotations.append(annotation)
         return annotations
@@ -222,8 +225,9 @@ async def test_annotation_sample_times(
 
     monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
     function = SeisBench(model=model, sampling_rate=sampling_rate)
-    function._rescale_input = scale
-    function._seisbench_model = SimpleNamespace(annotate=annotate, sampling_rate=100)
+    function._seisbench_model = SimpleNamespace(
+        annotate=annotate, sampling_rate=sampling_rate
+    )
 
     images = await function.process_traces(traces)
     for image in images:
