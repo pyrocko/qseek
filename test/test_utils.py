@@ -146,6 +146,8 @@ def test_check_simd_support(monkeypatch, build_flags, cpu_features, warns):
 
 def test_get_cpu_features():
     features = utils.get_cpu_features()
-    if platform.system() in ("Linux", "Darwin"):
+    if platform.system() in ("Linux", "Darwin") and platform.machine() == "x86_64":
         assert features
+        assert "sse2" in features
+    if features is not None:
         assert all(feature == feature.lower() for feature in features)

@@ -895,18 +895,15 @@ def get_cpu_features() -> set[str] | None:
                         return set(line.split(":", 1)[1].lower().split())
             return None
         if system == "Darwin":
-            features = subprocess.run(
-                [
-                    "sysctl",
-                    "-n",
-                    "machdep.cpu.features",
-                    "machdep.cpu.leaf7_features",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout
-            return set(features.lower().split())
+            # The keys exist on Intel Macs only
+            features: set[str] = set()
+            for key in ("machdep.cpu.features", "machdep.cpu.leaf7_features"):
+                result = subprocess.run(
+                    ["sysctl", "-n", key], capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    features.update(result.stdout.lower().split())
+            return features or None
     except (OSError, subprocess.SubprocessError):
         return None
     return None
