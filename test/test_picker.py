@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
+import pytest
 from pyrocko.trace import Trace
 
 from qseek.images.base import (
@@ -197,3 +198,11 @@ def test_add_picks_modelled_arrival_with_station_delay():
     MaxPicker().add_picks([event], images)
 
     assert observed(event, "STA", "cake:P").time == time(8.0)
+
+
+def test_images_mixed_sampling_rates():
+    traces = [image_trace("STA", {}), image_trace("STB", {})]
+    traces[1].resample(0.05)
+    images = WaveformImages(start_time=time(0), end_time=time(30))
+    with pytest.raises(ValueError, match="different sampling rates"):
+        images.add_image(waveform_image("cake:P", traces))

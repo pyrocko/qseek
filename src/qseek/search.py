@@ -66,7 +66,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SamplingRate = Literal[10, 20, 25, 50, 100, 200, 400]
 IgnoreBoundary = Literal[False, "with_surface", "without_surface"]
 
 KM = 1e3
@@ -304,11 +303,6 @@ class Search(Model):
         "`load()` function returning a `Callback` instance.",
     )
 
-    semblance_sampling_rate: SamplingRate = Field(
-        default=100,
-        description="Sampling rate for the semblance image function. "
-        "Choose from `10, 20, 25, 50, 100, 200 or 400` Hz.",
-    )
     detection_threshold: Literal["MAD"] | PositiveFloat = Field(
         default="MAD",
         description="Detection threshold for semblance.",
@@ -611,7 +605,6 @@ class Search(Model):
             await self._run_callbacks("on_batch_start", batch)
 
             images.set_stations(self.stations)
-            images.resample(self.semblance_sampling_rate)
 
             detections, semblance_trace = await search_octree.search(
                 images=images,

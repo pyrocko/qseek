@@ -22,7 +22,6 @@ from qseek.utils import (
     PhaseDescription,
     datetime_now,
     human_readable_bytes,
-    resample,
 )
 
 if TYPE_CHECKING:
@@ -297,30 +296,6 @@ class WaveformImage:
         """Set stations from the image's available traces."""
         self._stations = StationList(stations.select_from_traces(self.traces))
 
-    def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
-        """Resample traces in-place.
-
-        Args:
-            sampling_rate (float): Desired sampling rate in Hz.
-            max_normalize (bool): Normalize by maximum value to keep the scale of the
-                maximum detection. Defaults to False.
-        """
-        if not self.has_traces():
-            return
-
-        for tr in self.traces:
-            trace_sampling_rate = 1.0 / tr.deltat
-            if trace_sampling_rate == sampling_rate:
-                continue
-
-            downsample = trace_sampling_rate > sampling_rate
-            resample(tr, sampling_rate)
-
-            if max_normalize and downsample:
-                _, max_value = tr.max()
-                tr.ydata /= tr.ydata.max()
-                tr.ydata *= max_value
-
     def get_trace_data(self) -> list[np.ndarray]:
         """Get all trace data in a list.
 
@@ -402,6 +377,13 @@ class WaveformImages:
         Args:
             image (WaveformImage): Image to add.
         """
+        trace_sampling_rates = {1.0 / tr.deltat for tr in image.traces}
+        if len(trace_sampling_rates) > 1:
+            raise ValueError(
+                f"Traces of image {image.phase} have different sampling rates "
+                f"{', '.join(f'{sr:g}' for sr in sorted(trace_sampling_rates))} Hz. "
+                "Resample the waveforms in the pre-processing."
+            )
         self._sampling_rate = self._sampling_rate or image.sampling_rate
         if self._sampling_rate != image.sampling_rate:
             raise ValueError(
@@ -409,18 +391,6 @@ class WaveformImages:
                 f"sampling rate {self._sampling_rate}"
             )
         self.images.append(image)
-
-    def resample(self, sampling_rate: float, max_normalize: bool = False) -> None:
-        """Resample traces in-place.
-
-        Args:
-            sampling_rate (float): Desired sampling rate in Hz.
-            max_normalize (bool): Normalize by maximum value to keep the scale of the
-                maximum detection. Defaults to False
-        """
-        for image in self:
-            image.resample(sampling_rate, max_normalize)
-        self._sampling_rate = sampling_rate
 
     def set_stations(self, stations: StationInventory) -> None:
         """Set the images stations.
