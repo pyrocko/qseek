@@ -106,3 +106,37 @@ class StatCard(ui.card):
 
         self.bind_value = self._value.bind_text_from
         self.bind_subtitle = self._subtitle.bind_text_from
+
+
+ESRI_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/{service}/MapServer/tile/{{z}}/{{y}}/{{x}}"
+BASEMAP_ATTRIBUTION = (
+    'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, HERE, Garmin,'
+    " &copy; OpenStreetMap contributors, USGS, NGA, NASA, CGIAR"
+    " and the GIS user community"
+)
+
+
+def add_basemap(m: ui.leaflet) -> None:
+    """Replace the layers of a Leaflet map with a muted terrain basemap.
+
+    The Esri Light Gray Canvas shows coastlines and roads, the Esri World Hillshade on
+    top, multiplied into the canvas, adds the relief.
+    """
+    m.clear_layers()
+    m.tile_layer(
+        url_template=ESRI_TILES.format(service="Canvas/World_Light_Gray_Base"),
+        options={
+            "attribution": BASEMAP_ATTRIBUTION,
+            "maxNativeZoom": 16,
+            "maxZoom": 20,
+        },
+    )
+    m.tile_layer(
+        url_template=ESRI_TILES.format(service="Elevation/World_Hillshade"),
+        options={
+            "className": "qseek-hillshade",
+            "maxNativeZoom": 16,
+            "maxZoom": 20,
+        },
+    )
+    ui.add_css(".qseek-hillshade { mix-blend-mode: multiply; }")
