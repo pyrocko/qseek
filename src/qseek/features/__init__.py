@@ -12,17 +12,17 @@ from qseek.features.base import (
     ReceiverFeature,
 )
 
-FeatureExtractorType = Annotated[
-    Union[(FeatureExtractor, *FeatureExtractor.get_subclasses())],
-    Field(..., discriminator="feature"),
+type FeatureExtractorType = Annotated[
+    Union[FeatureExtractor.get_subclasses()],
+    Field(discriminator="feature"),
 ]
 
-ReceiverFeaturesType = Annotated[
-    Union[(ReceiverFeature, *ReceiverFeature.get_subclasses())],
-    Field(..., discriminator="feature"),
+type ReceiverFeaturesType = Annotated[
+    Union[ReceiverFeature.get_subclasses()],
+    Field(discriminator="feature"),
 ]
 
-EventFeaturesType = Annotated[
-    Union[(EventFeature, *EventFeature.get_subclasses())],
-    Field(..., discriminator="feature"),
+type EventFeaturesType = Annotated[
+    Union[EventFeature.get_subclasses()],
+    Field(discriminator="feature"),
 ]

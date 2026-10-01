@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Annotated, Union
 
 from pydantic import Field
@@ -9,12 +11,12 @@ from qseek.magnitudes import (
 )
 from qseek.magnitudes.base import EventMagnitude, EventMagnitudeCalculator
 
-EventMagnitudeType = Annotated[
-    Union[(EventMagnitude, *EventMagnitude.get_subclasses())],
-    Field(..., discriminator="magnitude"),
+type EventMagnitudeType = Annotated[
+    Union[EventMagnitude.get_subclasses()],
+    Field(discriminator="magnitude"),
 ]
 
-EventMagnitudeCalculatorType = Annotated[
-    Union[(EventMagnitudeCalculator, *EventMagnitudeCalculator.get_subclasses())],
-    Field(..., discriminator="magnitude"),
+type EventMagnitudeCalculatorType = Annotated[
+    Union[EventMagnitudeCalculator.get_subclasses()],
+    Field(discriminator="magnitude"),
 ]

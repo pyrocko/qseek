@@ -25,9 +25,9 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-BatchPreProcessingType = Annotated[
-    Union[(BatchPreProcessing, *BatchPreProcessing.get_subclasses())],
-    Field(..., discriminator="process"),
+type BatchPreProcessingType = Annotated[
+    Union[BatchPreProcessing.get_subclasses()],
+    Field(discriminator="process"),
 ]
 
 
