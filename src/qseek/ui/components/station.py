@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 from qseek.models.station import Station
 from qseek.ui.base import Panel
 from qseek.ui.state import get_tab_state
-from qseek.ui.utils import attach_plotly_events
+from qseek.ui.utils import add_basemap, attach_plotly_events
 
 _STATION_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">'
@@ -41,19 +41,7 @@ class StationMap(StationComponent):
             m = ui.leaflet(
                 center=(station.effective_lat, station.effective_lon), zoom=10
             ).classes("w-full h-80 rounded-lg shadow")
-        m.clear_layers()
-        m.tile_layer(
-            url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-            options={
-                "attribution": (
-                    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    " contributors"
-                    ' &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                ),
-                "subdomains": "abcd",
-                "maxZoom": 20,
-            },
-        )
+        add_basemap(m)
         await m.initialized()
 
         async def add_marker():

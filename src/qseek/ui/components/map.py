@@ -12,7 +12,7 @@ from nicegui import background_tasks, ui
 from qseek.ui.base import Panel
 from qseek.ui.models import EventMinimal
 from qseek.ui.state import CatalogStore
-from qseek.ui.utils import EVENT_ANIMATED_SVG
+from qseek.ui.utils import EVENT_ANIMATED_SVG, add_basemap
 
 if TYPE_CHECKING:
     from nicegui.elements.leaflet import Leaflet
@@ -42,15 +42,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
             m = ui.leaflet(center=(center_lat, center_lon)).classes(
                 "w-full h-128 rounded-lg shadow"
             )
-            m.clear_layers()
-            m.tile_layer(
-                url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-                options={
-                    "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                    "subdomains": "abcd",
-                    "maxZoom": 20,
-                },
-            )
+            add_basemap(m)
             self._map = m
 
     async def initialize(self):

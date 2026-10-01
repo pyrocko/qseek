@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 
 from qseek.magnitudes.base import EventMagnitude
 from qseek.ui.base import EventComponent
-from qseek.ui.utils import EVENT_ANIMATED_SVG
+from qseek.ui.utils import EVENT_ANIMATED_SVG, add_basemap
 
 KM = 1e3
 
@@ -504,14 +504,7 @@ Map showing event location and online stations contributing to the location.
             m = ui.leaflet(
                 center=(ev.effective_lat, ev.effective_lon), zoom=12
             ).classes("w-full h-128 rounded-lg shadow")
-        m.tile_layer(
-            url_template="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-            options={
-                "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                "subdomains": "abcd",
-                "maxZoom": 20,
-            },
-        )
+        add_basemap(m)
         stations = [
             {
                 "lat": r.effective_lat,
