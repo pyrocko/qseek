@@ -6,9 +6,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from fastapi import Response
 from nicegui import app, core, ui
 
-from qseek.utils import load_insights, setup_rich_logging
-
-load_insights()
+from qseek.utils import setup_rich_logging
 
 _LOGO_SVG = (Path(__file__).parent / "static" / "logo_light.svg").read_text()
 

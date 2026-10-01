@@ -653,23 +653,6 @@ def camel_case_to_snake_case(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
-def load_insights() -> None:
-    """Imports the qseek.insights package if available.
-
-    This function attempts to import the qseek.insights package and logs a debug message
-    indicating whether the package was successfully imported or not.
-
-    Raises:
-        ImportError: If the qseek.insights package is not installed.
-    """
-    try:
-        import qseek.insights  # noqa: F401
-
-        logger.debug("loaded qseek.insights package")
-    except ImportError:
-        logger.debug("package qseek.insights not installed")
-
-
 def _validate_cpu_count(
     reserved_cores: int,
 ) -> Callable[[int | Literal["auto"], Callable], int]:
