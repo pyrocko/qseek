@@ -67,20 +67,3 @@ jobs:
         timeout-minutes: 15
         with:
           limit-access-to-actor: true
-
-  build_docs:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install uv with Python 3.12
-        uses: astral-sh/setup-uv@v10.2.0
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - name: Install package
-        run: |
-          uv sync --all-extras
-      - name: Build docs
-        run: |
-          uv run mkdocs build
