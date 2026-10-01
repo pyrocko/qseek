@@ -27,7 +27,7 @@ A larger [`batch_size`][qseek.images.seisbench.SeisBench.batch_size] can improve
 
 - **Threads:** [`n_threads`][qseek.search.Search.n_threads] of the search sets the threads for stacking and migration. The default `"auto"` uses the available cores and leaves resources for loading the data and the annotation.
 - **Search volume:** Qseek stacks every root node in every window. Fewer, larger root nodes make the search faster; add octree levels instead of shrinking the root nodes. See [search volume](../configuration/search-volume.md).
-- **Distance weighting:** stations with a weight of zero are skipped in the stack. The [distance weights](../configuration/distance-weighting.md) limit large networks to the stations close to each node.
+- **Station weighting:** stations with a weight of zero are skipped in the stack. The [station weights](../configuration/distance-weighting.md) limit large networks to the stations close to each node.
 
 ## Waveform data
 
