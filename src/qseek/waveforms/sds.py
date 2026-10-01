@@ -214,8 +214,10 @@ class SDSArchive(WaveformProvider):
     )
     channel_orientations: str = Field(
         default="ENZ0123",
-        description="Allowed channel orientations in the SDS archive. Default is"
-        "`ENZ0123` which includes all standard orientations.",
+        description=(
+            'Channel orientations to load from the SDS archive. `"ENZ0123"` includes '
+            "all standard orientations."
+        ),
     )
 
     n_threads: PositiveInt = Field(

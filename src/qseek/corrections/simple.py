@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class SimpleCorrections(TravelTimeCorrections):
     """Constant travel time corrections per station and phase.
 
-    The station delays are added to the modelled travel times of all source
+    The station delays are added to the modeled travel times of all source
     locations.
     """
 

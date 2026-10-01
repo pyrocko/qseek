@@ -142,10 +142,12 @@ class PyrockoSquirrel(WaveformProvider):
     )
     end_time: DateTime | None = Field(
         default=None,
-        description="Start time for the search as in "
-        "[ISO8601](https://en.wikipedia.org/wiki/ISO_8601) as a "
-        "date or datetime including timezone. "
-        "E.g. `today`, `yesterday`, `2025-12-24` or `2024-12-30T00:00:00Z`.",
+        description=(
+            "End time for the search in [ISO "
+            "8601](https://en.wikipedia.org/wiki/ISO_8601), as a date or a datetime "
+            "with time zone, e.g. `today`, `yesterday`, `2025-12-24` or "
+            "`2024-12-30T00:00:00Z`."
+        ),
     )
 
     n_threads: PositiveInt = Field(
@@ -155,9 +157,10 @@ class PyrockoSquirrel(WaveformProvider):
     )
     watch_waveforms: bool | timedelta = Field(
         default=False,
-        description="Watch the waveform directories for changes. If `True` it will "
-        "check every ten minutes. If a `timedelta` is provided it will check every "
-        "specified time. Default is False.",
+        description=(
+            "Watch the waveform directories for new data. `true` checks every ten "
+            "minutes, a duration sets the interval."
+        ),
     )
     queue_size: int = Field(
         default=QUEUE_SIZE,

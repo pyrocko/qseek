@@ -17,6 +17,12 @@ CoordSystem = Literal["cartesian", "geographic", "raw"]
 
 
 class Location(BaseModel):
+    """A geographic location with a relative shift.
+
+    The location is the geographic reference `lat`, `lon` plus a shift in meters to the
+    east and north. Elevation and depth are in meters.
+    """
+
     lat: float = Field(
         ...,
         ge=-90.0,

@@ -251,43 +251,53 @@ class EventMomentMagnitude(EventMagnitude):
 
 
 class MomentMagnitude(EventMagnitudeCalculator):
-    """Moment magnitude calculator from peak amplitudes."""
+    """Moment magnitude (Mw) from peak amplitudes.
+
+    The peak amplitudes are compared to modeled peak amplitudes from Pyrocko GF stores
+    ([Dahm et al., 2024](https://doi.org/10.26443/seismica.v3i2.1205)).
+    """
 
     magnitude: Literal["MomentMagnitude"] = "MomentMagnitude"
 
     noise_window: PositiveFloat = Field(
         default=5.0,
         ge=1.5,
-        description="Waveforms to extract before P phase arrival. The noise amplitude "
-        "is extracted from before the P phase arrival, with a one second padding.",
+        description=(
+            "Length in seconds of the waveform before the P arrival. The noise "
+            "amplitude is measured in this window, up to 0.5 s before the P arrival."
+        ),
     )
     seconds_after: PositiveFloat = Field(
         default=4.0,
-        description="Waveforms to extract after S phase arrival.",
+        description="Length in seconds of the waveform after the S arrival.",
     )
     taper_seconds: PositiveFloat = Field(
         default=10.0,
-        description="Seconds tapering before and after the extraction window."
-        " The taper stabalizes the restitution and is cut off from the traces "
-        "before the analysis.",
+        description=(
+            "Length in seconds of the taper before and after the waveform. The taper "
+            "stabilizes the restitution and is cut off before the analysis."
+        ),
     )
     min_signal_noise_ratio: float = Field(
         default=1.5,
         ge=1.0,
-        description="Minimum signal-to-noise ratio for the magnitude estimation. "
-        "The noise amplitude is extracted from before the P phase arrival,"
-        " with 0.5 s padding.",
+        description=(
+            "Minimum signal-to-noise ratio of a station magnitude. The noise amplitude "
+            "is measured in the `noise_window`, up to 0.5 s before the P arrival."
+        ),
     )
     max_station_std: float = Field(
         default=3.0,
         ge=0.0,
-        description="Maximum standard deviation of the station magnitudes to include "
-        "in the local magnitude estimation.",
+        description=(
+            "Station magnitudes that deviate from the network magnitude by more than "
+            "this many standard deviations are disregarded."
+        ),
     )
 
     gf_store_dirs: list[DirectoryPath] = Field(
         default=[Path(".")],
-        description="The directories of the Pyrocko GF stores.",
+        description="Directories with the Pyrocko GF stores.",
     )
     export_mseed: Path | None = Field(
         default=None,

@@ -32,8 +32,7 @@ class DeepDenoiser(BatchPreProcessing):
     )
     torch_use_cuda: bool | str = Field(
         False,
-        description="Whether to use CUDA for the PyTorch model."
-        "A string can be used to specify the device.",
+        description="Use CUDA for the PyTorch model. A string selects the device.",
     )
 
     _denoiser: SeisBenchDeepDenoiser = PrivateAttr()

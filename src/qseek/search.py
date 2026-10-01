@@ -239,7 +239,20 @@ class SearchProgress(BaseModel):
 
 
 class Search(Model):
-    project_dir: Path = Path(".")
+    """The search: configuration of the earthquake detection and localization.
+
+    This is the root of the JSON configuration file. Every field configures one part of
+    the search, from the stations and waveform data to the image function, the travel
+    times and the extracted event features.
+    """
+
+    project_dir: Path = Field(
+        default=Path("."),
+        description=(
+            "Directory in which the run directory is created, relative to the "
+            "configuration file."
+        ),
+    )
     stations: StationInventory = Field(
         default_factory=StationInventory,
         description="Station inventory from StationXML or Pyrocko Station YAML.",
@@ -305,7 +318,11 @@ class Search(Model):
 
     detection_threshold: Literal["MAD"] | PositiveFloat = Field(
         default="MAD",
-        description="Detection threshold for semblance.",
+        description=(
+            'Minimum semblance of a detection. `"MAD"` sets the threshold to 10 times '
+            "the median absolute deviation of the maximum semblance in each processed "
+            "window."
+        ),
     )
     min_stations: int = Field(
         default=3,
@@ -321,26 +338,32 @@ class Search(Model):
     )
     ignore_boundary_width: float | Literal["root_node_size"] = Field(
         default="root_node_size",
-        description="Width of the absorbing boundary around the octree volume. "
-        "If 'octree' the width is set to the root node size of the octree.",
+        description=(
+            "Width of the absorbing boundary around the search volume in meters. "
+            '`"root_node_size"` uses the root node size of the octree.'
+        ),
     )
     node_interpolation: bool = Field(
         default=True,
-        description="Interpolate intranode locations for detected events using radial"
-        " basis functions. If `False`, the node center location is used for "
-        "the event hypocentre.",
+        description=(
+            "Interpolate the location of a detection within its node using radial basis"
+            " functions. If `false`, the node center is the hypocenter."
+        ),
     )
     detection_blinding: timedelta = Field(
         default=timedelta(seconds=1.0),
-        description="Blinding time in seconds before and after the detection peak. "
-        "This is used to avoid detecting the same event multiple times. "
-        "Default is 2 seconds.",
+        description=(
+            "Blinding time before and after a detection in which no other detection is "
+            "made. Prevents detecting the same event twice."
+        ),
     )
 
     window_length: timedelta = Field(
         default=timedelta(minutes=5),
-        description="Window length for processing. Smaller window size will be less RAM"
-        " consuming. Default is 5 minutes.",
+        description=(
+            "Length of the waveform windows processed at once. Shorter windows need "
+            "less memory."
+        ),
     )
 
     n_threads: CpuCount = Field(
@@ -355,7 +378,10 @@ class Search(Model):
         default=False,
         description="Save annotation images to disk for debugging and analysis.",
     )
-    created: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created: datetime = Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc),
+        description="Creation time of the search, set by Qseek.",
+    )
 
     _progress: SearchProgress = PrivateAttr(default_factory=SearchProgress)
 

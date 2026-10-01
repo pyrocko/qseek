@@ -368,6 +368,13 @@ class Node:
 
 
 class Octree(BaseModel, Iterator[Node], Sequence[Node]):
+    """The search volume, divided into an octree of nodes.
+
+    The volume is set by its center `location` and its bounds in east, north and depth
+    direction, and divided into root nodes of `root_node_size`. Around detected events,
+    Qseek splits nodes into eight smaller nodes to refine the localization.
+    """
+
     location: Location = Field(
         default=Location(lat=0.0, lon=0.0),
         description="The geographical center of the octree.",
@@ -379,8 +386,11 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
     n_levels: int = Field(
         default=5,
         ge=1,
-        description="Number of levels in the octree, defining the final resolution"
-        " of the detection. Default is 5.",
+        description=(
+            "Number of levels of the octree, including the root level. The smallest "
+            "node size, and the resolution of the localization, is `root_node_size / "
+            "2**(n_levels - 1)`."
+        ),
     )
     east_bounds: Range = Field(
         default=Range(-10 * KM, 10 * KM),

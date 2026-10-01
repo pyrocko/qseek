@@ -70,7 +70,7 @@ class Bandpass(BatchPreProcessing):
     )
     bandpass: Range = Field(
         default=Range(0.5, 30.0),
-        description="The highpass frequency.",
+        description="Lower and upper corner frequency of the bandpass in Hz.",
     )
     demean: bool = Field(
         default=True,
@@ -137,7 +137,7 @@ class Highpass(BatchPreProcessing):
     )
     frequency: PositiveFloat = Field(
         default=0.1,
-        description="The highpass frequency.",
+        description="Corner frequency of the highpass in Hz.",
     )
     demean: bool = Field(
         default=True,
@@ -179,7 +179,7 @@ class Lowpass(BatchPreProcessing):
     )
     frequency: PositiveFloat = Field(
         default=0.1,
-        description="The lowpass frequency.",
+        description="Corner frequency of the lowpass in Hz.",
     )
     demean: bool = Field(
         default=True,
