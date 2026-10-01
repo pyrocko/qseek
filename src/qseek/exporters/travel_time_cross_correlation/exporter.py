@@ -52,7 +52,7 @@ class TravelTimeCrossCorrelation(Exporter):
         search = Search.load_rundir(rundir)
         catalog = search.catalog
         waveform_provider = search.data_provider
-        phases = search.image_functions.get_phases()
+        phases = search.image_function.get_phases()
 
         events = [ev for ev in catalog if ev.semblance >= self.min_event_semblance]
         total_pairs = math.comb(len(events), 2) if len(events) > 1 else 0
