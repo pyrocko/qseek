@@ -425,7 +425,7 @@ class Search(Model):
         if rundir.exists() and not create_backup:
             logger.warning("overwriting existing rundir %s", rundir)
             # Move directory first for slow HPC storage
-            rm_rundir = rundir.move(rundir.with_suffix("-del"))
+            rm_rundir = rundir.rename(rundir.with_name(f"{rundir.name}-del"))
             shutil.rmtree(rm_rundir)
 
         if not rundir.exists():
