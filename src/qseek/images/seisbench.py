@@ -208,8 +208,9 @@ class SeisBench(ImageFunction):
     )
     torch_use_cuda: bool | int = Field(
         default=True,
-        description="Use CUDA for inference. If `True` use default device, if `int` use"
-        " the specified device.",
+        description="Use CUDA for the inference. `true` uses the default device, a"
+        " number selects the device, e.g. `0` for the first one. `false` runs on the"
+        " CPU.",
     )
     torch_cpu_threads: PositiveInt = Field(
         default=4,
@@ -293,7 +294,8 @@ class SeisBench(ImageFunction):
             logger.info("loading pre-trained SeisBench model %s...", self.pretrained)
             self._seisbench_model = model.from_pretrained(self.pretrained, update=False)
             self._seisbench_model.sampling_rate = self.sampling_rate
-        if self.torch_use_cuda:
+        # 0 selects the first device, only False runs on the CPU
+        if self.torch_use_cuda is not False:
             try:
                 if isinstance(self.torch_use_cuda, bool):
                     self._seisbench_model.cuda()
