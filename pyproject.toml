@@ -45,7 +45,7 @@ dependencies = [
     "psutil>=7.0",
     "aiofiles>=23.0",
     "scikit-fmm >= 2025.1",
-    "eikonalfm @ git+https://github.com/kevinganster/eikonalfm",
+    "eikonalfm>=0.9.9",
     "sdnotify>=0.3.0",
     "fudgeo>=1.5",
     "scikit-learn>=1.9",
