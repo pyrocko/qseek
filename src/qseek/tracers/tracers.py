@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RayTracerType = Annotated[
-    Union[(RayTracer, *RayTracer.get_subclasses())],
-    Field(..., discriminator="tracer"),
+type RayTracerType = Annotated[
+    Union[RayTracer.get_subclasses()],
+    Field(discriminator="tracer"),
 ]
 
 

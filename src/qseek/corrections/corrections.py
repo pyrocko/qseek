@@ -13,9 +13,9 @@ from qseek.corrections.simple import SimpleCorrections  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-StationCorrectionType = Annotated[
-    Union[(TravelTimeCorrections, *TravelTimeCorrections.get_subclasses())],
-    Field(..., discriminator="corrections"),
+type StationCorrectionType = Annotated[
+    Union[TravelTimeCorrections.get_subclasses()],
+    Field(discriminator="corrections"),
 ]
 
 

@@ -12,9 +12,9 @@ from qseek.plugins.telegram import TelegramAlert  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-CallbackType = Annotated[
-    Union[(Callback, *Callback.get_subclasses())],
-    Field(..., discriminator="callback"),
+type CallbackType = Annotated[
+    Union[Callback.get_subclasses()],
+    Field(discriminator="callback"),
 ]
 
 

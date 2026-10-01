@@ -135,7 +135,7 @@ ignore = [
 ]
 
 [tool.ruff]
-target-version = 'py311'
+target-version = 'py312'
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
