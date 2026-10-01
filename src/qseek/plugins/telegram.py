@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 from collections import deque
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import aiohttp
-from pydantic import Field, PrivateAttr, SecretStr
+from pydantic import Field, PrivateAttr, SecretStr, model_validator
 
 from qseek.magnitudes.base import EventMagnitude
 from qseek.plugins.callback import Callback
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
+ENV_BOT_TOKEN = "QSEEK_TELEGRAM_BOT_TOKEN"
+ENV_CHAT_ID = "QSEEK_TELEGRAM_CHAT_ID"
 
 
 def get_magnitude_name(magnitude: EventMagnitude) -> str:
@@ -78,6 +81,19 @@ class TelegramAlert(Callback):
     )
 
     _recent_events: deque[datetime] = PrivateAttr(default_factory=deque)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _credentials_from_env(cls, data: Any) -> Any:
+        """Fill `bot_token` and `chat_id` from the environment if not given."""
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        for field, env in (("bot_token", ENV_BOT_TOKEN), ("chat_id", ENV_CHAT_ID)):
+            if field not in data and os.environ.get(env):
+                data[field] = os.environ[env]
+        return data
+
     _rate_alerted: bool = PrivateAttr(False)
     _project_name: str = PrivateAttr("unknown")
 
