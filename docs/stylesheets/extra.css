@@ -1,0 +1,117 @@
+/* Qseek brand colors, taken from the logo and the wordmark. */
+:root {
+  --qs-navy: #122a36;
+  --qs-navy-light: #1f4253;
+  --qs-navy-dark: #0b1c24;
+  --qs-red: #d92c54;
+  --qs-red-light: #f06486;
+  --qs-sky: #8cc4e0;
+}
+
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--qs-navy);
+  --md-primary-fg-color--light: var(--qs-navy-light);
+  --md-primary-fg-color--dark: var(--qs-navy-dark);
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--qs-red);
+  --md-accent-fg-color--transparent: #d92c541a;
+  --md-accent-bg-color: #ffffff;
+}
+
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #1f5a78;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 200;
+  --md-default-bg-color: #0f1d24;
+  --md-typeset-a-color: var(--qs-sky);
+  --md-accent-fg-color: var(--qs-red-light);
+  --md-accent-fg-color--transparent: #f064861a;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--qs-navy-dark);
+}
+
+/* Dark wordmark on light backgrounds, white wordmark on dark backgrounds. */
+.md-header__button.md-logo img.qs-logo {
+  width: auto;
+}
+
+.md-header__button.md-logo img.qs-logo--dark,
+[data-md-color-scheme="slate"] .md-header__button.md-logo img.qs-logo--light {
+  display: none;
+}
+
+[data-md-color-scheme="slate"] .md-header__button.md-logo img.qs-logo--dark {
+  display: block;
+}
+
+/* The wordmark already shows the name; keep the header title for page titles on scroll. */
+.md-header__title .md-header__topic:first-child {
+  visibility: hidden;
+}
+
+/* Landing page. */
+.qs-hero {
+  margin: 1rem 0 2.5rem;
+}
+
+.qs-hero .grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.md-typeset .qs-hero h1 {
+  margin: 0 0 0.6em;
+  font-size: 2.6em;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--md-default-fg-color);
+}
+
+.md-typeset .qs-hero h1 + p {
+  font-size: 1.1em;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset .qs-hero img {
+  border-radius: 0.6rem;
+  box-shadow: var(--md-shadow-z2);
+}
+
+
+.md-typeset .qs-supporters p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.md-typeset .grid.qs-four {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-typeset .grid.qs-four {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  border-color: var(--md-accent-fg-color);
+  background-color: var(--md-accent-fg-color);
+  color: var(--md-default-bg-color);
+}
+
+/* Configuration pages show the fields of a model, not its methods. */
+.qs-config .doc-object.doc-function {
+  display: none;
+}

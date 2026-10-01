@@ -1,3 +1,0 @@
-# Octree
-
-::: qseek.octree.Octree

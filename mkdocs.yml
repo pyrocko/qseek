@@ -1,82 +1,139 @@
-site_name: "Earthqake Detection and Localization"
-site_description: Lightning-fast earthquake detection and localization for large-data.
+site_name: Qseek
+site_description: Data-driven earthquake detection and localization for large seismic data sets.
 site_author: Marius Isken
+site_url: https://pyrocko.github.io/qseek/
 
 repo_url: https://github.com/pyrocko/qseek
-repo_name: pyrocko/qeek
+repo_name: pyrocko/qseek
 edit_uri: edit/main/docs/
+copyright: Qseek is free software, licensed under the GNU General Public License v3.
 
 theme:
   name: material
-  custom_dir: docs/theme
+  custom_dir: overrides
+  logo: images/logo-dark.svg
+  favicon: images/logo-q.png
+  font:
+    text: Inter
+    code: JetBrains Mono
   palette:
-    # Palette toggle for automatic mode
     - media: "(prefers-color-scheme)"
       toggle:
         icon: material/brightness-auto
         name: Switch to light mode
-
-    # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue grey
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-
-    # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: blue grey
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to system preference
   icon:
-    repo: fontawesome/brands/git-alt
-  logo: images/logo-white.webp
+    repo: fontawesome/brands/github
   features:
-    - navigation.tabs
-    - search.suggest
     - announce.dismiss
-    - content.code.copy
     - content.action.edit
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pyrocko/qseek
+      name: Qseek on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/qseek/
+      name: Qseek on PyPI
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.blocks.caption
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:zensical.extensions.emoji.twemoji
+      emoji_generator: !!python/name:zensical.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
-  - pymdownx.blocks.caption
+  - pymdownx.inlinehilite
+  - pymdownx.keys
   - pymdownx.snippets
-  - pymdownx.tilde
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
-
-  - pymdownx.details
-  - pymdownx.tasklist
-  - pymdownx.arithmatex:
-      generic: true
   - pymdownx.tabbed:
       alternate_style: true
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - admonition
-  - def_list
-  - attr_list
-
-extra_javascript:
-  - javascripts/mathjax.js
-  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
 
 watch:
   - src/qseek
 
 plugins:
   - search
+  - redirects:
+      redirect_maps:
+        getting_started.md: getting-started/installation.md
+        visualizing_results.md: results/explore.md
+        benchmark.md: about/benchmark.md
+        components/configuration.md: configuration/index.md
+        components/general.md: configuration/conventions.md
+        components/octree.md: configuration/search-volume.md
+        components/station_metadata.md: configuration/stations.md
+        components/waveform_data.md: configuration/waveforms.md
+        components/pre_processing.md: configuration/pre-processing.md
+        components/ray_tracer.md: configuration/ray-tracers.md
+        components/image_function.md: configuration/image-functions.md
+        components/distance_weighting.md: configuration/distance-weighting.md
+        components/magnitudes.md: configuration/magnitudes.md
+        components/feature_extraction.md: configuration/features.md
+        components/station_corrections.md: configuration/station-corrections.md
+        components/callbacks.md: configuration/callbacks.md
+        api/overview.md: reference/api/index.md
+        api/models.md: reference/api/detections.md
+        api/stations.md: reference/api/stations.md
+        api/octree.md: configuration/search-volume.md
+        api/ray_tracer.md: reference/api/modules.md
+        api/images.md: reference/api/modules.md
+        api/utils.md: reference/api/utils.md
   - markdown-exec
   - mkdocstrings:
       default_handler: python
@@ -96,32 +153,54 @@ plugins:
             show_symbol_type_toc: true
             separate_signature: true
             show_root_heading: true
+            show_root_full_path: false
+            members_order: source
+            filters: ["!^_", "!^model_"]
             show_source: false
             show_symbol_type_heading: true
             signature_crossrefs: true
             summary: true
 
 nav:
-  - Home:
-      - Welcome: index.md
-      - Quick Start 🚀: getting_started.md
-      - Visualising Detections: visualizing_results.md
-      - Benchmark: benchmark.md
+  - Home: index.md
+  - Get started:
+      - Installation: getting-started/installation.md
+      - Quick start: getting-started/quick-start.md
+      - Set up your own search: getting-started/first-search.md
+  - Concepts:
+      - How Qseek works: concepts/how-it-works.md
+  - Guides:
+      - Tune the detection: guides/tune-detection.md
+      - Real-time monitoring: guides/real-time.md
+      - Performance: guides/performance.md
+      - Manage runs: guides/manage-runs.md
+  - Results:
+      - Run directory: results/run-directory.md
+      - Explore results: results/explore.md
   - Configuration:
-      - The Search: components/configuration.md
-      - Search Volume: components/octree.md
-      - Metadata: components/station_metadata.md
-      - Waveforms: components/waveform_data.md
-      - Ray Tracers: components/ray_tracer.md
-      - Phase Annotation: components/image_function.md
-      - Distance Weighting: components/distance_weighting.md
-      - Magnitudes: components/magnitudes.md
-      - Station Corrections: components/station_corrections.md
-      - General Configuration: components/general.md
+      - configuration/index.md
+      - Conventions: configuration/conventions.md
+      - Stations: configuration/stations.md
+      - Waveforms: configuration/waveforms.md
+      - Pre-processing: configuration/pre-processing.md
+      - Image functions: configuration/image-functions.md
+      - Ray tracers: configuration/ray-tracers.md
+      - Search volume: configuration/search-volume.md
+      - Distance weighting: configuration/distance-weighting.md
+      - Station corrections: configuration/station-corrections.md
+      - Magnitudes: configuration/magnitudes.md
+      - Event features: configuration/features.md
+      - Callbacks: configuration/callbacks.md
   - Reference:
-      - API Overview: api/overview.md
-      - Models: api/models.md
-      - Stations: api/stations.md
-      - Octree: api/octree.md
-      - Ray Tracer: api/ray_tracer.md
-      - Utils: api/utils.md
+      - Command line: reference/cli.md
+      - Extending Qseek: reference/extending.md
+      - Python API:
+          - reference/api/index.md
+          - Detections: reference/api/detections.md
+          - Stations: reference/api/stations.md
+          - Module base classes: reference/api/modules.md
+          - Utilities: reference/api/utils.md
+  - About:
+      - Showcase: about/showcase.md
+      - Benchmark: about/benchmark.md
+      - Related projects: about/related-projects.md

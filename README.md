@@ -1,6 +1,6 @@
 # Qseek
 
-*Data-driven Earthquake Detection*
+*Data-driven earthquake detection and localization*
 
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -8,85 +8,79 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://python.org/)
 [![PyPI - Version](https://img.shields.io/pypi/v/qseek)](https://pypi.org/project/qseek/)
 [![Documentation](https://img.shields.io/badge/read-documentation-blue)](https://pyrocko.github.io/qseek/)
-<!-- [![PyPI](https://img.shields.io/pypi/v/lassie)](https://pypi.org/project/lassie/) -->
 
-Qseek is a an automatic, data-driven earthquake detection and localisation tool designed for large seismic data sets. It combines neural network phase annotations with a stacking-and-migration and an adaptive octree localisation approach.
+Qseek detects and locates earthquakes in large seismic data sets. It stacks machine learning phase annotations along modeled travel times and focuses an adaptive octree on the seismic sources, in continuous archives and in real time.
 
-Key features are:
+![Earthquakes detected by Qseek on the Reykjanes Peninsula](docs/images/reykjanes-demo.webp)
 
-* Earthquake phase detection using machine-learning model from [SeisBench](https://github.com/seisbench/seisbench), pre-trained on different data sets:
-  * [PhaseNet (Zhu and Beroza, 2018)](https://doi.org/10.1093/gji/ggy423)
-  * [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
-  * [OBSTransformer (Niksejel and Zahng, 2024)](https://doi.org/10.1093/gji/ggae049)
-  * LFEDetect
-* Travel time calculation:
-  * 1D Layered velocity model (Pyrocko Cake and Fast Marching)
-  * 3D fast-marching velocity model (NonLinLoc compatible)
-  * Constant velocity
-* Earthquake magnitudes and other features:
-  * Local magnitudes (ML) with different attenuation models
-  * Moment Magnitudes (MW) based on modelled attenuation curves ([Dahm et al., 2024](https://doi.org/10.26443/seismica.v3i2.1205))
-  * Ground motion attributes (e.g. PGA, PGV, ...)
-* Station Corrections
-  * SST: station specific corrections
-  * SSST: source specific station corrections
+*More than 30 000 earthquakes detected during the 2020 unrest on the Reykjanes Peninsula, Iceland.*
 
-Qseek is built on top of [Pyrocko](https://pyrocko.org).
+## Features
+
+- Phase detection with machine learning pickers from [SeisBench](https://github.com/seisbench/seisbench), pre-trained on different data sets:
+  - [PhaseNet (Zhu and Beroza, 2019)](https://doi.org/10.1093/gji/ggy423)
+  - [EQTransformer (Mousavi et al., 2020)](https://doi.org/10.1038/s41467-020-17591-w)
+  - [OBSTransformer (Niksejel and Zhang, 2024)](https://doi.org/10.1093/gji/ggae049)
+  - LFEDetect
+- STA/LTA phase detection, adapted from [QuakeMigrate](https://github.com/QuakeMigrate/QuakeMigrate)
+- Travel times:
+  - Constant velocity
+  - 1D layered velocity models (fast marching and Pyrocko Cake)
+  - 3D fast marching velocity models (NonLinLoc compatible)
+- Magnitudes and other event features:
+  - Local magnitudes (ML) with regional attenuation models
+  - Moment magnitudes (Mw) from modeled peak amplitudes ([Dahm et al., 2024](https://doi.org/10.26443/seismica.v3i2.1205))
+  - Ground motions (PGA, PGV)
+- Station corrections:
+  - SST: station-specific corrections
+  - SSST: source-specific station corrections
+- Real-time monitoring of SeedLink streams with alerts
+- A web UI to explore the detections
+
+Qseek is built on [Pyrocko](https://pyrocko.org).
 
 ## Documentation
 
-Online documentation is available at <https://pyrocko.github.io/qseek/>.
+The documentation is at <https://pyrocko.github.io/qseek/>.
 
 ## Installation
 
-From [PyPi](https://pypi.org/project/qseek/).
+Install Qseek from [PyPI](https://pypi.org/project/qseek/):
 
 ```sh
 pip install qseek
 ```
 
-Pre-built packages are available for Linux (x86_64, aarch64) and macOS 15+ (arm64, x86_64). The x86_64 packages require a CPU with AVX2 and FMA; on older CPUs install from source with `pip install --no-binary qseek qseek`.
+Pre-built packages are available for Linux (x86_64, aarch64) and macOS 15 or newer (arm64, x86_64). The x86_64 packages require a CPU with AVX2 and FMA; on older CPUs, install from source with `pip install --no-binary qseek qseek`.
 
-Installation from GitHub.
+Install the development version from GitHub:
 
 ```sh
 pip install git+https://github.com/pyrocko/qseek
 ```
 
-## Project Initialisation
+## Quick start
 
-Print the default config with
-
-```sh
-qseek config
-```
-
-Edit the `my-project.json`
-
-Start the earthquake detection with
+Create a configuration, add your stations, waveform data and velocity model, and start the search:
 
 ```sh
-qseek search search.json
+qseek config > my-search.json
+qseek search my-search.json
 ```
 
-## Packaging
+The detections are written into the run directory `my-search/`.
 
-The simplest and recommended way of installing from source:
+## Development
 
-### Development
-
-Local development through pip.
+Install Qseek from the repository with [uv](https://github.com/astral-sh/uv) and set up the [prek](https://github.com/j178/prek) hooks:
 
 ```sh
 cd qseek
-uv pip install -e .
-```
-
-The project utilizes prek for clean commits, install the hooks via:
-
-```sh
+uv sync --dev
 prek install
 ```
+
+Contributions and merge requests are welcome!
 
 ## Citation
 
@@ -96,6 +90,4 @@ Please cite Qseek as:
 
 ## License
 
-Contribution and merge requests by the community are welcome!
-
-Qseek was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3.
+Qseek was written by Marius Paul Isken and is licensed under the GNU General Public License v3.
