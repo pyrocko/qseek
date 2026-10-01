@@ -247,15 +247,13 @@ except ImportError:
 
 def main() -> None:
     from qseek.console import console
-    from qseek.utils import CACHE_DIR, load_insights, setup_rich_logging
+    from qseek.utils import CACHE_DIR, setup_rich_logging
 
     args = parser.parse_args()
 
     log_level = logging.INFO - args.verbose * 10
     loop_debug = log_level < logging.INFO
     setup_rich_logging(level=log_level)
-
-    load_insights()
 
     match args.command:
         case "config":
@@ -506,8 +504,7 @@ def main() -> None:
                 else:
                     parser.error(f"unknown module: {args.name}")
 
-            def is_insight(module: type) -> bool:
-                return "insight" in module.__module__
+            from qseek.plugin_loader import get_plugin
 
             for modules in module_classes:
                 table.add_row(f"[bold]{modules.__name__}")
@@ -516,14 +513,15 @@ def main() -> None:
                     key=lambda m: m.__name__,
                 ):
                     name = module.__name__
-                    if is_insight(module):
-                        name += " 🚀"
+                    plugin = get_plugin(module)
+                    if plugin:
+                        name += f" [cyan]({plugin})[/cyan]"
                     module_doc = module.__doc__ or " "
                     table.add_row(f" {name}", module_doc.splitlines()[0], style="dim")
                 table.add_section()
 
             console.print(table)
-            console.print("Insight module are marked by 🚀\n")
+            console.print("Modules from plugins are marked with the plugin name.\n")
             console.print(
                 "Use [bold]qseek modules <module_name>[/bold] to print the JSON schema"
             )
