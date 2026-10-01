@@ -1,0 +1,54 @@
+qseek Plugin Exception
+
+Additional permission under GNU GPL version 3 section 7
+
+qseek is licensed under the GNU General Public License version 3 (the "GPL",
+see the file LICENSE). In addition, the copyright holders of qseek grant the
+following permission.
+
+1. Definitions
+
+"qseek" means the software distributed with this file, including any
+modifications of it.
+
+The "Plugin Interface" consists of:
+
+  a) the entry point group `qseek.modules`, through which qseek loads
+     plugins, and
+
+  b) qseek's public module base classes, which plugins use, subclass or
+     instantiate to provide modules (such as ray tracers, travel time
+     corrections, image functions, pickers, waveform providers,
+     pre-processing steps, feature extractors, magnitude calculators,
+     exporters and callbacks), together with the public data models these
+     modules exchange with qseek (such as stations, locations, octree nodes,
+     waveform images and event detections).
+
+An "Independent Module" is a separately distributed package which
+
+  a) is registered as an entry point in the `qseek.modules` group,
+
+  b) interacts with qseek only through the Plugin Interface, and
+
+  c) does not contain code copied from qseek, nor code derived from qseek
+     other than by using, subclassing or instantiating the Plugin Interface.
+
+2. Permission
+
+As a special exception, the copyright holders of qseek give you permission
+to combine qseek with Independent Modules, and to convey Independent Modules
+and the resulting combinations under terms of your choice, regardless of the
+license terms of these Independent Modules, provided that you also meet, for
+qseek itself, the terms and conditions of the GPL. Using, subclassing or
+instantiating the Plugin Interface does not by itself make an Independent
+Module a work based on qseek.
+
+3. Limitations
+
+This permission applies to qseek only. It does not grant any permission for,
+and does not change the license terms of, other software used by qseek or by
+an Independent Module, such as third-party libraries licensed under the GPL.
+
+If you modify qseek, you may extend this exception to your version of qseek,
+but you are not obligated to do so. If you do not wish to do so, delete this
+exception statement from your version.

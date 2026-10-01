@@ -98,4 +98,6 @@ Please cite Qseek as:
 
 Contribution and merge requests by the community are welcome!
 
-Qseek was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3.
+Qseek was written by Marius Paul Isken and is licensed under the GNU GENERAL PUBLIC LICENSE v3 ([LICENSE](LICENSE)).
+
+As an additional permission under GPLv3 section 7, the [qseek Plugin Exception](LICENSE-EXCEPTION) allows separate plugin packages, which use qseek only through its plugin interface (the `qseek.modules` entry point group and qseek's module base classes), to be distributed under terms of their authors' choice. qseek itself remains under the GPLv3.
