@@ -335,10 +335,11 @@ class SDSArchive(WaveformProvider):
             for covarage in self._archive_stations.values()
         ]
         start_dates, end_dates = zip(*all_dates, strict=False)
+        # SDS day files hold UTC days
         time = datetime.min.time()
         return (
-            datetime.combine(min(start_dates), time).astimezone(timezone.utc),
-            datetime.combine(max(end_dates), time).astimezone(timezone.utc),
+            datetime.combine(min(start_dates), time, tzinfo=timezone.utc),
+            datetime.combine(max(end_dates), time, tzinfo=timezone.utc),
         )
 
     def available_nsls(self) -> set[NSL]:
