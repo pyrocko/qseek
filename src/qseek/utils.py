@@ -31,8 +31,6 @@ from typing import (
     NamedTuple,
     ParamSpec,
     TypeVar,
-    get_args,
-    get_origin,
 )
 
 import numpy as np
@@ -782,64 +780,22 @@ class ChannelSelectors:
     NorthEast = ChannelSelector("NE", number_channels=2)
 
 
-def _dedent(text: str) -> str:
-    lines = text.split("\n")
-    for i, line in enumerate(lines):
-        lines[i] = line.lstrip()
-    return "\n".join(lines)
+def json_example(model: BaseModel, exclude: dict | set | None = None) -> str:
+    """Return the JSON of a model as a Markdown code block for the documentation.
 
+    Args:
+        model: The model instance to dump.
+        exclude: Fields to exclude from the dump, as for `BaseModel.model_dump`.
 
-def generate_docs(model: BaseModel, exclude: dict | set | None = None) -> str:
-    """Takes model and dumps markdown for documentation."""
+    Absolute paths in the working directory and the home directory of the machine
+    that builds the documentation are shortened to `.` and `~`.
 
-    def generate_submodel(model: BaseModel) -> list[str]:
-        lines = []
-        for name, field in model.__class__.model_fields.items():
-            if field.description is None:
-                continue
-            lines += [
-                f"        - **`{name}`** *`{field.annotation}`*\n",
-                f"            {field.description}",
-            ]
-        return lines
-
-    model_name = model.__class__.__name__
-    lines = [f"### {model_name} Module"]
-    if model.__class__.__doc__ is not None:
-        lines += [f"{_dedent(model.__class__.__doc__)}\n"]
-    lines += [f'=== "Config {model_name}"']
-    for name, field in model.__class__.model_fields.items():
-        annotation = ""
-
-        if field.annotation in (int, float, bool, dict, str):
-            annotation = f"{field.default}"
-        elif field.annotation in (list, set):
-            annotation = f"{field.annotation}"
-        elif get_origin(field.annotation) is Literal:
-            annotation = f"{' | '.join(map(str, get_args(field.annotation)))}"
-        else:
-            ...
-
-        if annotation:
-            annotation = f": `{annotation}`"
-
-        if field.description is None:
-            continue
-        lines += [
-            f"    **`{name}`{annotation}**\n",
-            f"    :   {field.description}\n",
-        ]
-
-    def dump_json() -> list[str]:
-        dump = model.model_dump_json(by_alias=False, indent=2, exclude=exclude)
-        lines = dump.split("\n")
-        return [f"    {line}" for line in lines]
-
-    lines += ['=== "JSON :material-code-braces:"']
-    lines += [f"    ```json title='JSON for {model_name}'"]
-    lines.extend(dump_json())
-    lines += ["    ```"]
-    return "\n".join(lines)
+    Returns:
+        A fenced JSON code block, titled with the model's class name.
+    """
+    dump = model.model_dump_json(indent=2, exclude=exclude)
+    dump = dump.replace(str(Path.cwd()), ".").replace(str(Path.home()), "~")
+    return f'```json title="{model.__class__.__name__}"\n{dump}\n```'
 
 
 async def to_threadpool(pool: ThreadPoolExecutor | None, func, *args, **kwargs):
