@@ -81,8 +81,5 @@ class TravelTimeCorrections(Model):
             stations (Stations): The station to prepare.
             octree (Octree): The octree to use for the preparation.
             phases (Iterable[PhaseDescription]): The phases to prepare the station for.
-            rundir (Path): The rundir to use for the delay.
-                Defaults to None.
-            import_rundir (Path): The import rundir to use
-                for extracting the delays.
+            rundir (Path): The run directory of the search.
         """

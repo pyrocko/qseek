@@ -60,25 +60,36 @@ def weights_gaussian(
 
 
 class DistanceWeights(Model):
+    """Weights of the stations for every node of the search volume.
+
+    The closest stations of a node get full weight, more distant stations are tapered
+    with a Gaussian decay. Close stations constrain the location of an event best.
+    """
+
     distance_taper: PositiveFloat | Literal["mean_interstation"] = Field(
         default="mean_interstation",
-        description="Taper distance for the Gaussian weighting function"
-        " in meters. 'mean_interstation' uses twice the mean interstation distance for"
-        " the radius. Default is 'mean_interstation'.",
+        description=(
+            "Distance in meters over which the weight of distant stations decays with a"
+            ' Gaussian function. `"mean_interstation"` uses twice the mean interstation'
+            " distance of the network."
+        ),
     )
     required_closest_stations: PositiveInt = Field(
         default=4,
-        description="Number of stations to assign full weight in the"
-        " spatial weighting function, only more distant stations are tapered with a"
-        " Gaussian decay. This ensures that the closest _N_ stations have an equal and"
-        " the highest contribution to the detection and localization. Default is 4.",
+        description=(
+            "Number of closest stations of a node that get full weight. Only more "
+            "distant stations are tapered, so that the closest stations contribute "
+            "equally and the most to the detection and localization."
+        ),
     )
     waterlevel: float = Field(
         default=0.0,
         ge=0.0,
         le=1.0,
-        description="Stations outside the taper are lifted by this fraction. "
-        "Default is 0.0.",
+        description=(
+            "Minimum weight of stations outside the taper, as a fraction of the full "
+            "weight. With `0.0`, distant stations do not contribute."
+        ),
     )
 
     _node_lut: ArrayLRUCache[bytes] = PrivateAttr()

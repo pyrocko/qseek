@@ -105,6 +105,12 @@ class Station(Location):
 
 
 class StationInventory(Model):
+    """The seismic stations used in the search.
+
+    Stations are loaded from StationXML or Pyrocko station YAML files. When the search
+    starts, stations without waveform data are removed.
+    """
+
     pyrocko_station_yamls: list[FilePath] = Field(
         default_factory=list,
         description="List of [Pyrocko station YAML]"
@@ -118,8 +124,9 @@ class StationInventory(Model):
 
     blacklist: Blacklist = Field(
         default_factory=Blacklist,
-        description="Blacklist stations and exclude from detecion. "
-        "Format is `['NET.STA.LOC', ...]`.",
+        description=(
+            'Stations to exclude from the search, as NSL codes, e.g. `["GE.RUE."]`.'
+        ),
     )
     stations: list[Station] = Field(
         default_factory=list,

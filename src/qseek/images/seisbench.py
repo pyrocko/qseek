@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, get_args
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import numpy as np
 from obspy import Stream
@@ -81,7 +81,7 @@ StackMethod = Literal["avg", "max"]
 class AnnotationPicker(Picker):
     """Pick phase arrivals from SeisBench annotations.
 
-    The pick is the annotation peak closest to the modelled arrival time within the
+    The pick is the annotation peak closest to the modeled arrival time within the
     search window. Peaks before the event origin time are rejected.
     """
 
@@ -100,7 +100,7 @@ class AnnotationPicker(Picker):
     search_window_seconds: PositiveFloat = Field(
         default=5.0,
         description="Total length of the search window in seconds, centered on the"
-        " modelled arrival time.",
+        " modeled arrival time.",
     )
     peak_separation_seconds: NonNegativeFloat = Field(
         default=0.1,
@@ -178,22 +178,27 @@ class AnnotationPicker(Picker):
 
 
 class SeisBench(ImageFunction):
-    """SeisBench AI image function. For more details see SeisBench documentation."""
+    """Phase annotations from machine learning pickers in SeisBench.
+
+    The image is the probability of a P or S phase arrival, as annotated by a
+    pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.
+    """
 
     image: Literal["SeisBench"] = "SeisBench"
 
     model: ModelName = Field(
         default="PhaseNet",
-        description="The model to use for the image function. Currently supported "
-        "models are `PhaseNet`, `EQTransformer`, `GPD`, `OBSTransformer`, `LFEDetect`.",
+        description="The SeisBench model.",
     )
 
     pretrained: PreTrainedName | FilePath = Field(
         default="original",
-        description="SeisBench pre-trained model to use. "
-        "Choose from the available pre-trained models or provide a path to a "
-        "custom model .json file. For more details see SeisBench documentation.\n"
-        "Available models are:" + ", ".join(sorted(get_args(PreTrainedName))),
+        description=(
+            'The pre-trained weights of the model, e.g. `"original"`, `"ethz"`, '
+            '`"instance"` or `"stead"`, or the path to a custom model `.json` file. The'
+            " [SeisBench documentation](https://seisbench.readthedocs.io/) lists which "
+            "weights are available for which model."
+        ),
     )
     window_overlap_samples: int = Field(
         default=2000,
@@ -217,14 +222,19 @@ class SeisBench(ImageFunction):
     )
     stack_method: StackMethod = Field(
         default="avg",
-        description="Method to stack the overlaping blocks internally. "
-        "Choose from `avg` and `max`.",
+        description=(
+            "How overlapping annotation windows are combined, by their average "
+            '(`"avg"`) or maximum (`"max"`).'
+        ),
     )
     sampling_rate: PositiveFloat = Field(
         default=100.0,
-        description="Upscale input by factor. "
-        "This augments the input data from e.g. 100 Hz to 50 Hz (factor: `2`). Can be"
-        " useful for high-frequency microseismic events.",
+        description=(
+            "Sampling rate in Hz that the model assumes for its input. A rate above the"
+            " native rate of the model, e.g. 200 Hz for a model trained at 100 Hz, "
+            "rescales the input by their ratio. This can help to detect high-frequency "
+            "microseismic events."
+        ),
     )
     phase_map: dict[PhaseName, str] = Field(
         default={

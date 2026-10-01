@@ -18,12 +18,18 @@ if TYPE_CHECKING:
 
 
 class ConstantVelocityTracer(RayTracer):
-    """Constant velocity model."""
+    """Travel times for a constant velocity: the distance divided by the velocity.
+
+    Useful for testing and for small volumes with little velocity variation.
+    """
 
     tracer: Literal["ConstantVelocityTracer"] = "ConstantVelocityTracer"
     phase: PhaseDescription = Field(
         default="constant:P",
-        description="Name of the phase.",
+        description=(
+            'Phase description of the travel times, e.g. `"constant:P"`. The image '
+            "function maps its phases to this description."
+        ),
     )
     velocity: PositiveFloat = Field(
         default=5000.0,

@@ -207,7 +207,7 @@ class EventCatalog(BaseModel):
         """Sort the detections by time."""
         self.events = sorted(self.events, key=lambda d: d.time)
 
-    def get_event(self, uid: UUID):
+    def get_event(self, uid: UUID) -> EventDetection:
         """Get an event by its UUID.
 
         Args:

@@ -220,11 +220,11 @@ class StationTravelTimeTable(BaseModel):
 
 
 class FastMarchingTracer(RayTracer):
-    """1D layered velocity model travel time calculation using fast marching (fastest).
+    """Travel times in a 1D layered velocity model from the fast marching method.
 
-    Calculation is based on fast marching method to solve the Eikonal solution.
-    This the more perfomant than the Pyrocko Cake ray tracer, especially for
-    large number of stations and nodes.
+    The fast marching method solves the Eikonal equation for the first arrivals on a
+    grid. It is faster than the Pyrocko Cake ray tracer for large numbers of stations
+    and nodes.
     """
 
     tracer: Literal["FastMarching"] = "FastMarching"
@@ -236,13 +236,14 @@ class FastMarchingTracer(RayTracer):
 
     interpolation_method: InterpolationMethod = Field(
         default="linear",
-        description="Interpolation method for travel times in the volume."
-        " Choose from `nearest`, `linear` or `cubic`.",
+        description="Interpolation of the travel times between the grid points.",
     )
     nthreads: int = Field(
         default=0,
-        description="Number of threads to use for travel time."
-        " If set to `0`, `cpu_count*2` will be used.",
+        description=(
+            "Number of threads for the travel time calculation. `0` uses twice the "
+            "number of CPU cores."
+        ),
     )
 
     implementation: FMMImplementation = Field(

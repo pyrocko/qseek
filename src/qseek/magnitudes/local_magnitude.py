@@ -117,38 +117,49 @@ class EventLocalMagnitude(EventMagnitude):
 
 
 class LocalMagnitude(EventMagnitudeCalculator):
-    """Local magnitude calculator for different regional models."""
+    """Local magnitude (ML) from peak amplitudes.
+
+    The station magnitudes are calculated with a regional attenuation model from the
+    peak amplitudes of the restituted waveforms. The network magnitude combines the
+    station magnitudes.
+    """
 
     magnitude: Literal["LocalMagnitude"] = "LocalMagnitude"
 
     noise_window: PositiveFloat = Field(
         default=5.0,
         ge=1.5,
-        description="Waveforms to extract before P phase arrival. The noise amplitude "
-        "is extracted from before the P phase arrival, with 0.5 s padding.",
+        description=(
+            "Length in seconds of the waveform before the P arrival. The noise "
+            "amplitude is measured in this window, up to 1 s before the P arrival."
+        ),
     )
     seconds_after: PositiveFloat = Field(
         default=4.0,
-        description="Waveforms to extract after S phase arrival.",
+        description="Length in seconds of the waveform after the S arrival.",
     )
     taper_seconds: PositiveFloat = Field(
         default=10.0,
-        description="Seconds tapering before and after the extraction window."
-        " The taper stabalizes the restitution and is cut off from the traces "
-        "before the analysis.",
+        description=(
+            "Length in seconds of the taper before and after the waveform. The taper "
+            "stabilizes the restitution and is cut off before the analysis."
+        ),
     )
     min_signal_noise_ratio: float = Field(
         default=3.0,
         ge=1.0,
-        description="Minimum signal-to-noise ratio for the local magnitude estimation. "
-        "The noise amplitude is extracted from before the P phase arrival,"
-        " with 0.5 s padding.",
+        description=(
+            "Minimum signal-to-noise ratio of a station magnitude. The noise amplitude "
+            "is measured in the `noise_window`, up to 1 s before the P arrival."
+        ),
     )
     max_station_std: float = Field(
         default=3.0,
         ge=0.0,
-        description="Maximum allowed standard deviation of a station magnitude before "
-        "it is disregarded relative to the network magnitude.",
+        description=(
+            "Station magnitudes that deviate from the network magnitude by more than "
+            "this many standard deviations are disregarded."
+        ),
     )
 
     model: ModelName | CustomLocalMagnitudeModel = Field(

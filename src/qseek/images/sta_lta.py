@@ -253,8 +253,8 @@ class StaLtaPicker(Picker):
     Triggers are detected on the station's full STA/LTA trace. A trigger turns on
     where the ratio exceeds `median + mad_factor * MAD` of the trace and turns off
     when it falls below half of that excess, `median + mad_factor / 2 * MAD`. The
-    pick is the peak of the trigger closest to the modelled arrival within the
-    search window, the centred STA/LTA peaks at the phase onset. Peaks before the
+    pick is the peak of the trigger closest to the modeled arrival within the
+    search window, the centered STA/LTA peaks at the phase onset. Peaks before the
     event origin time are rejected.
     """
 
@@ -267,7 +267,7 @@ class StaLtaPicker(Picker):
     search_window_seconds: PositiveFloat = Field(
         default=5.0,
         description="Total length of the search window in seconds, centered on the"
-        " modelled arrival time.",
+        " modeled arrival time.",
     )
 
     def get_trigger_thresholds(self, data: np.ndarray) -> tuple[float, float]:
@@ -361,8 +361,10 @@ class StaLta(ImageFunction):
 
     sta_seconds: PositiveFloat = Field(
         default=0.2,
-        description="Short-term average (STA) window length in seconds. A long STA"
-        " window flattens the peak of the centred STA/LTA at the phase onset.",
+        description=(
+            "Length of the short-term average (STA) window in seconds. A long STA "
+            "window flattens the peak of the centered STA/LTA at the phase onset."
+        ),
     )
     lta_seconds: PositiveFloat = Field(
         default=1.0,
