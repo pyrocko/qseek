@@ -38,6 +38,15 @@ print(json_example(SeisBench()))
 
 </div>
 
+### Sampling rate
+
+The pre-trained models are trained at a fixed sampling rate, e.g. 100 Hz for PhaseNet. The [`sampling_rate`][qseek.images.seisbench.SeisBench.sampling_rate] field sets the rate that the model assumes for its input. It matters because the model sees the waveform in samples: it recognizes a phase onset by its shape over a fixed number of samples. If the assumed rate differs from the real rate of the data, the model sees the waveform stretched or compressed in time.
+
+- **`"input"` (default):** Qseek takes the rate from the input traces. The model sees the data at its real rate. All traces of the search need the same rate, otherwise Qseek raises an error. If your stations record at different rates, [resample](pre-processing.md#resampling) them to one rate.
+- **A rate in Hz, e.g. `100.0`:** The model assumes this rate for all traces. A rate above the native rate of the model, e.g. 200 Hz for a model trained at 100 Hz, rescales the input by their ratio. This can help to detect high-frequency microseismic events. Make sure that the data actually has this rate, otherwise the model sees distorted phases.
+
+The rescaling by the ratio of assumed rate to native rate also narrows the detection window by the same ratio (0.2 s at the native rate). The blinding of the image function uses the assumed rate. With `"input"`, it uses the native rate of the model until the first traces are processed.
+
 ### SeisBench picker
 
 ```python exec='on'
