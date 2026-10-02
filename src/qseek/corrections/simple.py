@@ -6,7 +6,7 @@ import numpy as np
 from pydantic import Field
 
 from qseek.corrections.base import TravelTimeCorrections
-from qseek.utils import NSL, PhaseDescription
+from qseek.utils import NSL, NSLType, PhaseDescription
 
 if TYPE_CHECKING:
     from qseek.octree import Octree
@@ -21,7 +21,7 @@ class SimpleCorrections(TravelTimeCorrections):
 
     corrections: Literal["SimpleCorrections"] = "SimpleCorrections"
 
-    stations: dict[NSL, dict[PhaseDescription, float]] = Field(
+    stations: dict[NSLType, dict[PhaseDescription, float]] = Field(
         default={},
         description="Travel time delay in seconds per station and phase, e.g. "
         '`{"GE.RUE.": {"cake:P": 0.12, "cake:S": 0.2}}`. Stations and phases '

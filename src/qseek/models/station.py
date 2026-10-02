@@ -21,7 +21,7 @@ from pyrocko.squirrel import Squirrel
 
 from qseek.base import Model
 from qseek.types import DirectoryPath, FilePath
-from qseek.utils import _NSL, NSL
+from qseek.utils import NSL, NSLType
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -40,7 +40,7 @@ class NSLRejectList(set[NSL]):
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
-        return core_schema.no_info_after_validator_function(cls, handler(set[NSL]))
+        return core_schema.no_info_after_validator_function(cls, handler(set[NSLType]))
 
 
 class Station(Location):
@@ -92,13 +92,13 @@ class Station(Location):
         )
 
     @property
-    def nsl(self) -> _NSL:
+    def nsl(self) -> NSL:
         """Network Station Location code as tuple.
 
         Returns:
             tuple[str, str, str]: Network, Station, Location
         """
-        return _NSL(self.network, self.station, self.location)
+        return NSL(self.network, self.station, self.location)
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.nsl))
@@ -310,11 +310,11 @@ class StationInventory(Model):
         available_stations = {sta.nsl: sta for sta in self}
         try:
             selected_stations = [
-                available_stations[_NSL(tr.network, tr.station, tr.location)]
+                available_stations[NSL(tr.network, tr.station, tr.location)]
                 for tr in traces
             ]
         except KeyError as exc:
-            tr_nsls = {_NSL(tr.network, tr.station, tr.location) for tr in traces}
+            tr_nsls = {NSL(tr.network, tr.station, tr.location) for tr in traces}
             missing_nsls = tr_nsls - set(available_stations.keys())
             raise ValueError(
                 "could not find station information for NSLs: "

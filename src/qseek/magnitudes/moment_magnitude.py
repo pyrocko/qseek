@@ -28,6 +28,7 @@ from qseek.utils import (
     ChannelSelector,
     ChannelSelectors,
     MeasurementUnit,
+    NSLType,
     Range,
     _Range,
     time_to_path,
@@ -127,7 +128,7 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
 
 
 class StationMomentMagnitude(NamedTuple):
-    station: NSL
+    station: NSLType
     distance_epi: float
     magnitude: float
     error: float

@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 from qseek.models.station import Station, StationInventory
-from qseek.utils import _NSL, datetime_now
+from qseek.utils import NSL, datetime_now
 from qseek.waveforms.seedlink.client import SeedLinkClient, StationSelection
 from qseek.waveforms.seedlink.seedlink import SeedLink, slinktool_available
 
@@ -55,14 +55,14 @@ async def seedlink(tmp_path: Path, stations: StationInventory):
                 host=HOST,
                 port=PORT,
                 station_selection=[
-                    StationSelection(nsl=_NSL("GE", "RUE", ""), channel="HH?"),
+                    StationSelection(nsl=NSL("GE", "RUE", ""), channel="HH?"),
                 ],
             )
         ],
         sds_archive=tmp_path / "sds",
     )
     await seedlink.prepare(stations)
-    assert seedlink.available_nsls() == {_NSL("GE", "RUE", "")}
+    assert seedlink.available_nsls() == {NSL("GE", "RUE", "")}
     yield seedlink
     for client in seedlink.clients:
         client.stop_stream()

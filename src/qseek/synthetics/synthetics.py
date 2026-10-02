@@ -14,7 +14,7 @@ from pyrocko.trace import Trace
 from qseek.models.location import Location
 from qseek.models.station import Station, StationInventory
 from qseek.tracers.base import RayTracer
-from qseek.utils import NSL, PhaseDescription
+from qseek.utils import NSL, NSLType, PhaseDescription
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class SyntheticEvent(Location):
         default=2.0,
         description="Magnitude of the synthetic event.",
     )
-    receivers: dict[NSL, Receiver] = Field(
+    receivers: dict[NSLType, Receiver] = Field(
         default_factory=dict,
         description="List of stations receiving this event.",
     )

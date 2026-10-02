@@ -5,7 +5,7 @@ import pytest
 from pydantic import BaseModel
 
 from qseek import utils
-from qseek.utils import _NSL, NSL
+from qseek.utils import NSL, NSLType
 
 
 def test_nsl():
@@ -17,8 +17,8 @@ def test_nsl():
     assert nsl.location == ""
 
     class Model(BaseModel):
-        nsl: NSL
-        nsl_list: list[NSL]
+        nsl: NSLType
+        nsl_list: list[NSLType]
 
     Model(nsl=nsl, nsl_list=[nsl, nsl, nsl])
 
@@ -51,76 +51,76 @@ def test_nsl():
         with pytest.raises(ValueError):
             Model.model_validate_json(json_tpl.format(code=code))
 
-    net_code = _NSL(network="6E", station="", location="")
-    sta_code = _NSL(network="6E", station="TE234", location="")
+    net_code = NSL(network="6E", station="", location="")
+    sta_code = NSL(network="6E", station="TE234", location="")
     assert net_code.match(sta_code)
 
-    code1 = _NSL(network="6E", station="TE234", location="")
-    code2 = _NSL(network="6E", station="TE234", location="")
+    code1 = NSL(network="6E", station="TE234", location="")
+    code2 = NSL(network="6E", station="TE234", location="")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE234", location="AB")
-    code2 = _NSL(network="6E", station="TE234", location="AB")
+    code1 = NSL(network="6E", station="TE234", location="AB")
+    code2 = NSL(network="6E", station="TE234", location="AB")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE*", location="AB")
-    code2 = _NSL(network="6E", station="TE234", location="AB")
+    code1 = NSL(network="6E", station="TE*", location="AB")
+    code2 = NSL(network="6E", station="TE234", location="AB")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE???", location="AB")
-    code2 = _NSL(network="6E", station="TE234", location="AB")
+    code1 = NSL(network="6E", station="TE???", location="AB")
+    code2 = NSL(network="6E", station="TE234", location="AB")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE234", location="A?")
-    code2 = _NSL(network="6E", station="TE234", location="AB")
+    code1 = NSL(network="6E", station="TE234", location="A?")
+    code2 = NSL(network="6E", station="TE234", location="AB")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE???", location="AC")
-    code2 = _NSL(network="6E", station="TE234", location="AB")
+    code1 = NSL(network="6E", station="TE???", location="AC")
+    code2 = NSL(network="6E", station="TE234", location="AB")
     assert not code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE???")
-    code2 = _NSL(network="6E", station="TE234")
+    code1 = NSL(network="6E", station="TE???")
+    code2 = NSL(network="6E", station="TE234")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6E", station="")
-    code2 = _NSL(network="6E", station="")
+    code1 = NSL(network="6E", station="")
+    code2 = NSL(network="6E", station="")
     assert code1.match(code2)
 
-    code1 = _NSL(network="6?", station="")
-    code2 = _NSL(network="6E", station="")
+    code1 = NSL(network="6?", station="")
+    code2 = NSL(network="6E", station="")
     assert code1.match(code2)
 
-    code1 = _NSL(network="5?", station="")
-    code2 = _NSL(network="6E", station="")
+    code1 = NSL(network="5?", station="")
+    code2 = NSL(network="6E", station="")
     assert not code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE234", location="AB")
-    code2 = _NSL(network="6E", station="TE234", location="")
+    code1 = NSL(network="6E", station="TE234", location="AB")
+    code2 = NSL(network="6E", station="TE234", location="")
     assert not code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE", location="")
-    code2 = _NSL(network="6E", station="TE234", location="")
+    code1 = NSL(network="6E", station="TE", location="")
+    code2 = NSL(network="6E", station="TE234", location="")
     assert not code1.match(code2)
 
-    code1 = _NSL(network="6E", station="TE", location="")
-    code2 = _NSL(network="5E", station="TE234", location="")
+    code1 = NSL(network="6E", station="TE", location="")
+    code2 = NSL(network="5E", station="TE234", location="")
     assert not code1.match(code2)
 
 
 def test_nsl_exclusion():
-    exclude_nsls = {_NSL.parse("6E.TE234."), _NSL.parse("6E.TE235.")}
+    exclude_nsls = {NSL.parse("6E.TE234."), NSL.parse("6E.TE235.")}
     nsls = [
-        _NSL.parse("6E.TE234."),
-        _NSL.parse("6E.TE235."),
-        _NSL.parse("6E.TE236."),
-        _NSL.parse("6E.TE237."),
+        NSL.parse("6E.TE234."),
+        NSL.parse("6E.TE235."),
+        NSL.parse("6E.TE236."),
+        NSL.parse("6E.TE237."),
     ]
     filtered_nsls = [
         nsl for nsl in nsls if not any(ex_nsl.match(nsl) for ex_nsl in exclude_nsls)
     ]
 
-    assert filtered_nsls == [_NSL.parse("6E.TE236."), _NSL.parse("6E.TE237.")]
+    assert filtered_nsls == [NSL.parse("6E.TE236."), NSL.parse("6E.TE237.")]
 
 
 @pytest.mark.parametrize(

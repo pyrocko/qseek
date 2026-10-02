@@ -17,7 +17,7 @@ from qseek.base import Model
 from qseek.models.station import StationInventory, StationList
 from qseek.stats import Stats
 from qseek.utils import (
-    _NSL,
+    NSL,
     QUEUE_SIZE,
     SDS_PYROCKO_SCHEME,
     PhaseDescription,
@@ -86,9 +86,9 @@ class Picker(Model):
         """
         for image in images:
             # Stations can have multiple traces due to data gaps
-            station_traces: dict[_NSL, list[Trace]] = defaultdict(list)
+            station_traces: dict[NSL, list[Trace]] = defaultdict(list)
             for tr in image.traces:
-                station_traces[_NSL(tr.network, tr.station, tr.location)].append(tr)
+                station_traces[NSL(tr.network, tr.station, tr.location)].append(tr)
 
             for detection in detections:
                 for receiver in detection.receivers:
