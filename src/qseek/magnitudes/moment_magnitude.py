@@ -30,7 +30,7 @@ from qseek.utils import (
     MeasurementUnit,
     NSLType,
     Range,
-    _Range,
+    RangeType,
     time_to_path,
 )
 
@@ -77,12 +77,12 @@ class PeakAmplitudeDefinition(PeakAmplitudesBase):
         default="absolute",
         description="The peak amplitude to use.",
     )
-    station_epicentral_range: Range = Field(
-        default=_Range(start=1 * KM, end=100 * KM),
+    station_epicentral_range: RangeType = Field(
+        default=Range(start=1 * KM, end=100 * KM),
         description="The epicentral distance range of the stations.",
     )
-    frequency_range: Range = Field(
-        default=_Range(start=2.0, end=20.0),
+    frequency_range: RangeType = Field(
+        default=Range(start=2.0, end=20.0),
         description="The frequency range in Hz to filter the traces.",
     )
 

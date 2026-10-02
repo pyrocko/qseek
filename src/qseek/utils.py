@@ -237,7 +237,7 @@ class NSLC(NamedTuple):
     channel: str
 
 
-class _Range(NamedTuple):
+class Range(NamedTuple):
     start: float
     end: float
 
@@ -261,7 +261,7 @@ class _Range(NamedTuple):
         return self.end - self.start
 
     @classmethod
-    def from_list(cls, array: np.ndarray | list[float]) -> _Range:
+    def from_list(cls, array: np.ndarray | list[float]) -> Range:
         """Create a Range object from a numpy array.
 
         Parameters:
@@ -269,18 +269,18 @@ class _Range(NamedTuple):
             The array from which to create the Range object.
 
         Returns:
-        - _Range: The created Range object.
+        - Range: The created Range object.
         """
         return cls(start=np.min(array), end=np.max(array))
 
 
-def _range_validator(v: _Range) -> _Range:
+def _range_validator(v: Range) -> Range:
     if v.start > v.end:
         raise ValueError(f"Bad range {v}, must be (min, max)")
     return v
 
 
-Range = Annotated[_Range, AfterValidator(_range_validator)]
+type RangeType = Annotated[Range, AfterValidator(_range_validator)]
 
 
 def _parse_date(v, handler) -> datetime:

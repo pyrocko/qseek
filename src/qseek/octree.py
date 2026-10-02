@@ -36,7 +36,7 @@ from pydantic import (
 from pyrocko import orthodrome as od
 
 from qseek.models.location import CoordSystem, Location, get_coordinates
-from qseek.utils import Range
+from qseek.utils import Range, RangeType
 
 if TYPE_CHECKING:
     from qseek.models.station import StationInventory
@@ -392,15 +392,15 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
             "2**(n_levels - 1)`."
         ),
     )
-    east_bounds: Range = Field(
+    east_bounds: RangeType = Field(
         default=Range(-10 * KM, 10 * KM),
         description="East bounds of the octree in meters.",
     )
-    north_bounds: Range = Field(
+    north_bounds: RangeType = Field(
         default=Range(-10 * KM, 10 * KM),
         description="North bounds of the octree in meters.",
     )
-    depth_bounds: Range = Field(
+    depth_bounds: RangeType = Field(
         default=Range(0 * KM, 20 * KM),
         description="Depth bounds of the octree in meters.",
     )

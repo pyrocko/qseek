@@ -23,7 +23,7 @@ from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
 from qseek.tracers.utils import LayeredEarthModel1D, surface_distances_reference
-from qseek.utils import Range, _get_cpu_count, alog_call, datetime_now
+from qseek.utils import Range, RangeType, _get_cpu_count, alog_call, datetime_now
 
 if TYPE_CHECKING:
     from qseek.models.location import Location
@@ -41,7 +41,7 @@ class StationTravelTimeTable(BaseModel):
     phase: Phase
 
     distance_max: float
-    depth_range: Range = Field(
+    depth_range: RangeType = Field(
         ...,
         description="Depth range for the travel time table. Relative to the station.",
     )

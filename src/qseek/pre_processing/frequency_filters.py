@@ -10,7 +10,7 @@ from pydantic import Field, PositiveFloat, field_validator
 from scipy import signal
 
 from qseek.pre_processing.base import BatchPreProcessing, group_traces, traces_data
-from qseek.utils import Range
+from qseek.utils import Range, RangeType
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -68,7 +68,7 @@ class Bandpass(BatchPreProcessing):
         ge=2,
         description="Number of corners for the filter.",
     )
-    bandpass: Range = Field(
+    bandpass: RangeType = Field(
         default=Range(0.5, 30.0),
         description="Lower and upper corner frequency of the bandpass in Hz.",
     )
