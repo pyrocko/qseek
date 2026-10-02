@@ -370,11 +370,6 @@ class StaLta(ImageFunction):
         default=1.0,
         description="Long-term average (LTA) window length in seconds.",
     )
-    blinding_window: PositiveFloat = Field(
-        default=5,
-        description="Blinding window in which no new detection can be set. "
-        "Typically the duration of the seismic event.",
-    )
     position: StaLtaPosition = Field(
         default="centred",
         description="Position of the STA window. `centred` places the STA window"
@@ -461,14 +456,14 @@ class StaLta(ImageFunction):
             image_function=self.name,
             weight=self.weights["P"],
             phase=self.phase_map["P"],
-            detection_half_width=self._detection_half_width(),
+            detection_half_width=self.get_blinding(),  # unused
             traces=p_traces,
         )
         annotation_s = WaveformImage(
             image_function=self.name,
             weight=self.weights["S"],
             phase=self.phase_map["S"],
-            detection_half_width=self._detection_half_width(),
+            detection_half_width=self.get_blinding(),
             traces=s_traces,
         )
         return [annotation_s, annotation_p]
