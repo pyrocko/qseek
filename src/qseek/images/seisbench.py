@@ -262,6 +262,7 @@ class SeisBench(ImageFunction):
     _seisbench_model: WaveformModel = PrivateAttr()
     _native_sampling_rate: PositiveFloat = PrivateAttr(100.0)
     _rescale_input: PositiveFloat = PrivateAttr(1.0)
+    _padded_blinding: timedelta | None = PrivateAttr(None)
 
     @property
     def seisbench_model(self) -> WaveformModel:
@@ -348,7 +349,11 @@ class SeisBench(ImageFunction):
             if self.sampling_rate == "input"
             else self.sampling_rate
         )
-        return timedelta(seconds=max(self.get_blinding_samples()) / sampling_rate)
+        blinding = timedelta(seconds=max(self.get_blinding_samples()) / sampling_rate)
+        if self._padded_blinding is None:
+            # The search pads the waveforms with the first value, before any data
+            self._padded_blinding = blinding
+        return blinding
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
@@ -365,6 +370,16 @@ class SeisBench(ImageFunction):
                     f"homogeneous sampling rate, got {sorted(rates)} Hz."
                 )
             self._set_model_sampling_rate(rates.pop())
+            blinding = self.get_blinding()
+            if self._padded_blinding and blinding > self._padded_blinding:
+                logger.warning(
+                    "input sampling rate yields a blinding of %s, longer than the "
+                    "%s the window padding was computed with. Annotations at the "
+                    "window edges can be affected, set `sampling_rate` explicitly.",
+                    blinding,
+                    self._padded_blinding,
+                )
+                self._padded_blinding = blinding
 
         stream = Stream(tr.to_obspy_trace() for tr in traces)
 

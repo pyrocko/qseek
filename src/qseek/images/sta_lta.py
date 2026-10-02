@@ -456,14 +456,14 @@ class StaLta(ImageFunction):
             image_function=self.name,
             weight=self.weights["P"],
             phase=self.phase_map["P"],
-            detection_half_width=self.get_blinding(),  # unused
+            detection_half_width=self.get_blinding().total_seconds(),
             traces=p_traces,
         )
         annotation_s = WaveformImage(
             image_function=self.name,
             weight=self.weights["S"],
             phase=self.phase_map["S"],
-            detection_half_width=self.get_blinding(),
+            detection_half_width=self.get_blinding().total_seconds(),
             traces=s_traces,
         )
         return [annotation_s, annotation_p]
@@ -483,7 +483,3 @@ class StaLta(ImageFunction):
             tuple[PhaseDescription, ...]: The phases provided by the image function.
         """
         return tuple(self.phase_map.values())
-
-    def _detection_half_width(self) -> float:
-        """Half width of the detection window in seconds."""
-        return self.blinding_window / 2
