@@ -35,7 +35,7 @@ parser.add_argument(
     "-q",
     action="store_true",
     default=False,
-    help="only log warnings and errors and disable the live statistics view, "
+    help="only log errors and disable the live statistics view, "
     "useful for non-interactive runs and automation",
 )
 parser.add_argument(
@@ -268,7 +268,7 @@ def main() -> None:
 
     if args.quiet:
         console.quiet = True
-        log_level = logging.WARNING - args.verbose * 10
+        log_level = logging.ERROR - args.verbose * 10
     else:
         log_level = logging.INFO - args.verbose * 10
     loop_debug = log_level < logging.INFO
