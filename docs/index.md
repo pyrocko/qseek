@@ -6,8 +6,8 @@ hide:
 ---
 
 <div class="qs-hero" markdown>
-<div class="grid" markdown>
-<div markdown>
+<div class="qs-hero__bg" aria-hidden="true"></div>
+<div class="qs-hero__text" markdown>
 
 # Find the earthquakes hidden in your seismic data
 
@@ -15,13 +15,6 @@ Qseek detects and locates earthquakes in large seismic data sets. It stacks mach
 
 [:lucide-rocket: Get started](getting-started/installation.md){ .md-button .md-button--primary }
 [:lucide-settings-2: Configuration](configuration/index.md){ .md-button }
-
-</div>
-
-![Earthquakes detected by Qseek on the Reykjanes Peninsula](images/reykjanes-demo.webp)
-/// caption
-More than 30 000 earthquakes detected during the 2020 unrest on the Reykjanes Peninsula, Iceland, outlining a dike intrusion before the 2021 Fagradalsfjall eruption.
-///
 
 </div>
 </div>
