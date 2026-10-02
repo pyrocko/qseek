@@ -125,6 +125,7 @@ class LocalMagnitudeModel:
 
     author: ClassVar[str] = "Unknown"
     doi: ClassVar[str] = ""
+    reference: ClassVar[str] = ""
 
     station_depth_only: ClassVar[bool] = False
 
@@ -211,6 +212,7 @@ class WoodAnderson:
 
 class IaspeiSouthernCalifornia(LocalMagnitudeModel):
     author = "Hutton and Boore (1987)"
+    doi = "10.1785/0120130085"
 
     hypocentral_range = DistanceRange(10.0 * KM, 700.0 * KM)
     component = "north-east-separate"
@@ -234,6 +236,7 @@ class IaspeiSouthernCalifornia(LocalMagnitudeModel):
 
 class SouthernCalifornia(WoodAnderson, LocalMagnitudeModel):
     author = "Hutton and Boore (1987)"
+    doi = "10.1785/0120130085"
 
     hypocentral_range = DistanceRange(10.0 * KM, 700.0 * KM)
     component = "north-east-separate"
@@ -281,6 +284,7 @@ class CaliforniaIntegratedSeismicNetwork(WoodAnderson, LocalMagnitudeModel):
 
 class EasternNorthAmerica(WoodAnderson, LocalMagnitudeModel):
     author = "Kim (1998)"
+    doi = "10.1785/BSSA0880040935"
 
     epicentral_range = DistanceRange(100.0 * KM, 800.0 * KM)
     component = "north-east-separate"
@@ -306,6 +310,7 @@ class ArgentiereGlacier(WoodAnderson, LocalMagnitudeModel):
 
 class Albania(WoodAnderson, LocalMagnitudeModel):
     author = "Muco and Minga (1991)"
+    reference = "https://bgo.ogs.it/sites/default/files/2023-07/bgta33.129_MUCO.pdf"
 
     epicentral_range = DistanceRange(10.0 * KM, 600.0 * KM)
     component = "north-east-separate"
@@ -317,6 +322,7 @@ class Albania(WoodAnderson, LocalMagnitudeModel):
 
 class SouthWestGermany(WoodAnderson, LocalMagnitudeModel):
     author = "Stange (2006)"
+    doi = "10.1007/s10950-006-9010-6"
 
     hypocentral_range = DistanceRange(10.0 * KM, 1000.0 * KM)
     component = "vertical"
@@ -328,6 +334,7 @@ class SouthWestGermany(WoodAnderson, LocalMagnitudeModel):
 
 class SouthAustralia(WoodAnderson, LocalMagnitudeModel):
     author = "Greenhalgh and Singh (1986)"
+    doi = "10.1785/BSSA0760030757"
 
     epicentral_range = DistanceRange(40.0 * KM, 700.0 * KM)
     component = "vertical"
@@ -339,6 +346,7 @@ class SouthAustralia(WoodAnderson, LocalMagnitudeModel):
 
 class NorwayFennoscandia(WoodAnderson, LocalMagnitudeModel):
     author = "Alsaker et al. (1991)"
+    doi = "10.1785/BSSA0810020379"
 
     hypocentral_range = DistanceRange(0.0 * KM, 1500.0 * KM)
     component = "vertical"
@@ -350,6 +358,7 @@ class NorwayFennoscandia(WoodAnderson, LocalMagnitudeModel):
 
 class IcelandAskja(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2020)"
+    doi = "10.1016/j.jvolgeores.2018.08.010"
 
     hypocentral_range = DistanceRange(0.0 * KM, 150.0 * KM)
     component = "north-east-separate"
@@ -361,6 +370,7 @@ class IcelandAskja(WoodAnderson, LocalMagnitudeModel):
 
 class IcelandBardabunga(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2020)"
+    doi = "10.1016/j.jvolgeores.2018.08.010"
 
     hypocentral_range = DistanceRange(0.0 * KM, 150.0 * KM)
     component = "north-east-separate"
@@ -372,6 +382,7 @@ class IcelandBardabunga(WoodAnderson, LocalMagnitudeModel):
 
 class IcelandAskjaBardabungaCombined(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2020)"
+    doi = "10.1016/j.jvolgeores.2018.08.010"
 
     hypocentral_range = DistanceRange(0.0 * KM, 150.0 * KM)
     component = "north-east-separate"
@@ -383,6 +394,7 @@ class IcelandAskjaBardabungaCombined(WoodAnderson, LocalMagnitudeModel):
 
 class IcelandReykjanes(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2022)"
+    doi = "10.1007/s00445-022-01603-2"
 
     hypocentral_range = DistanceRange(0.0 * KM, 40.0 * KM)
     component = "north-east-separate"
@@ -394,6 +406,7 @@ class IcelandReykjanes(WoodAnderson, LocalMagnitudeModel):
 
 class Azores(WoodAnderson, LocalMagnitudeModel):
     author = "Gongora et al. (2004)"
+    doi = "10.1007/s00024-003-2467-0"
 
     epicentral_range = DistanceRange(10.0 * KM, 800.0 * KM)
     component = "north-east-separate"
@@ -405,6 +418,7 @@ class Azores(WoodAnderson, LocalMagnitudeModel):
 
 class ArgentinaVolcanoes(WoodAnderson, LocalMagnitudeModel):
     author = "Montenegro et al. (2021)"
+    doi = "10.21203/rs.3.rs-10910103/v1"
 
     epicentral_range = DistanceRange(0.0 * KM, 100.0 * KM)  # Bounds are not clear
     component = "north-east-separate"
@@ -416,6 +430,7 @@ class ArgentinaVolcanoes(WoodAnderson, LocalMagnitudeModel):
 
 class NetherlandsGroningen(WoodAnderson, LocalMagnitudeModel):
     author = "Dost et al. (2018)"
+    doi = "10.1785/02201700247"
 
     epicentral_range = DistanceRange(0.0 * KM, 80.0 * KM)
     component = "horizontal-avg"

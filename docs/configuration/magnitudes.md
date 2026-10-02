@@ -35,7 +35,8 @@ for model in LocalMagnitudeModel.__subclasses__():
     name = model.model_name()
     if name not in names:
         continue
-    reference = f"[{model.author}](https://doi.org/{model.doi})" if model.doi else model.author
+    url = f"https://doi.org/{model.doi}" if model.doi else model.reference
+    reference = f"[{model.author}]({url})" if url else model.author
     if model.epicentral_range:
         rng, kind = model.epicentral_range, "epicentral"
     else:
