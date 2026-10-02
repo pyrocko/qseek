@@ -210,6 +210,13 @@ export.add_argument(
     help="overwrite existing output directory",
 )
 
+export.add_argument(
+    "--config",
+    type=Path,
+    default=None,
+    help="JSON file with the settings of the export module",
+)
+
 
 subparsers.add_parser(
     "clear-cache",
@@ -432,28 +439,43 @@ def main() -> None:
             if args.export_dir is None:
                 parser.error("export directory is required")
 
-            if args.export_dir.exists():
-                if not args.force:
-                    parser.error(f"export directory {args.export_dir} already exists")
-                shutil.rmtree(args.export_dir)
+            if args.export_dir.exists() and not args.force:
+                parser.error(f"export directory {args.export_dir} already exists")
 
             for exporter in Exporter.get_subclasses():
                 if exporter.__name__.lower() == args.format.lower():
-                    exporter_instance = exporter()
-                    asyncio.run(
-                        exporter_instance.export(
-                            rundir=args.rundir,
-                            outdir=args.export_dir,
-                        )
-                    )
                     break
             else:
                 available_exporters = ", ".join(
                     exporter.__name__ for exporter in Exporter.get_subclasses()
                 )
                 parser.error(
-                    f"unknown exporter: {args.format}choose fom: {available_exporters}"
+                    f"unknown exporter: {args.format}, choose from: "
+                    f"{available_exporters}"
                 )
+
+            if args.config:
+                exporter_instance = exporter.model_validate_json(
+                    args.config.read_text()
+                )
+            else:
+                exporter_instance = exporter()
+
+            # Export into a temporary directory, an existing export directory is
+            # replaced only after a successful export
+            tmp_dir = args.export_dir.with_name(f".{args.export_dir.name}.tmp")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            try:
+                asyncio.run(
+                    exporter_instance.export(rundir=args.rundir, outdir=tmp_dir)
+                )
+            except BaseException:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                raise
+            if args.export_dir.exists():
+                shutil.rmtree(args.export_dir)
+            tmp_dir.rename(args.export_dir)
+            logger.info("exported detections to %s", args.export_dir)
 
         case "modules":
             from rich import box

@@ -43,16 +43,17 @@ After a first run, extract [station corrections](../configuration/station-correc
 
 ## Export the detections
 
-Export the detections of a run to other formats, e.g. a VELEST project for velocity model inversion:
+Export the detections of a run to other formats, e.g. a HypoDD project for double-difference relocation:
 
 ```sh title="Export detections"
 qseek export list
-qseek export velest my-search/ velest-project/
+qseek export hypodd my-search/ hypodd-project/
 ```
 
 | Format | Description |
 | --- | --- |
+| `hypodd` | A HypoDD project folder for double-difference relocation, see [relocate with HypoDD](relocate-hypodd.md). |
 | `simple` | Travel times of the picks in CSV format. |
 | `velest` | A VELEST project folder for 1D velocity model inversion. |
 
-`--force` overwrites an existing export directory.
+`--force` overwrites an existing export directory. `--config` reads the settings of the export module from a JSON file.
