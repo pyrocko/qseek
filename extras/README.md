@@ -1,5 +1,7 @@
 # Extras
 
+Files to copy by hand from the repository. Helper scripts that Qseek ships and copies into its exports, e.g. `hypodd_results.py` of `qseek export hypodd`, are in [`src/qseek/extras/`](../src/qseek/extras/).
+
 ## systemd Service (`qseek.service`)
 
 Runs qseek as a managed system service with watchdog monitoring. The service uses `Type=notify`, so systemd tracks readiness and health directly from the process. If qseek stops petting the watchdog for more than 30 seconds (e.g. due to a data stall), systemd kills and restarts it automatically.

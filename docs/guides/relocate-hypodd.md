@@ -29,11 +29,12 @@ Qseek writes these files:
 | `station.dat` | Stations with their elevation in meters |
 | `ph2dt.inp` | Control file of ph2dt |
 | `hypoDD.inp` | Control file of hypoDD, catalog differential times only |
-| `event_ids.csv` | HypoDD event ID, Qseek detection UID and origin time |
+| `event_ids.csv` | HypoDD event ID, Qseek detection UID, origin time, location and magnitude |
 | `stations.csv` | HypoDD station label and station code (NSL) |
 | `velocity_model.csv` | The layered velocity model in `hypoDD.inp` |
 | `export_info.json` | Settings of the export |
-| `run.sh` | Runs ph2dt and hypoDD |
+| `run.sh` | Runs ph2dt, hypoDD and `hypodd_results.py` |
+| `hypodd_results.py` | Converts the relocations to CSV and Pyrocko events, see [results](#results) |
 | `README.md` | Summary of the export and how to run HypoDD |
 
 The export selects the detections and picks:
@@ -43,7 +44,7 @@ The export selects the detections and picks:
 - `station.dat` lists the stations with exported picks.
 - The travel times are the observed picks minus the origin time. Station corrections of the run are not applied; the double-difference method does not need them.
 
-HypoDD needs unique integer event IDs and station labels of up to 7 characters. Qseek numbers the detections in time order and uses the station code as the label, or network and station code if the station code is not unique. Map the IDs in `hypoDD.reloc` back to the detections with `event_ids.csv`.
+HypoDD needs unique integer event IDs and station labels of up to 7 characters. Qseek numbers the detections in time order and uses the station code as the label, or network and station code if the station code is not unique. `hypodd_results.py` maps the IDs in `hypoDD.reloc` back to the detections with `event_ids.csv`.
 
 ## Run HypoDD
 
@@ -64,6 +65,36 @@ Check the log before you use the relocations:
 
 !!! warning
     The errors of the LSQR solver in `hypoDD.reloc` are not meaningful. Use the SVD solver on small clusters, below 200 events, or a bootstrap for error estimates.
+
+## Results
+
+After hypoDD, `run.sh` runs `hypodd_results.py`. It writes the relocated events with their Qseek detections to two files:
+
+- `hypodd_relocations.csv`: one event per row, sorted by origin time.
+- `hypodd_relocations.yaml`: the events as Pyrocko events, named by their origin time like the Qseek detections. Open them in Pyrocko Snuffler or load them with `pyrocko.model.load_events`. This file needs Pyrocko: `run.sh` runs the script with `python3`, set `PYTHON` to the Python of your Qseek installation, e.g. `PYTHON=.venv/bin/python ./run.sh`.
+
+| Column | Content |
+| --- | --- |
+| `time` | Origin time after relocation, ISO 8601 in UTC, e.g. `2024-05-20T00:17:52.510Z` |
+| `lat`, `lon`, `depth` | Location after relocation; depth in m below sea level |
+| `magnitude`, `magnitude_type` | Magnitude of the Qseek detection, e.g. `ML-campi-flegrei` |
+| `uid`, `hypodd_id` | UID of the Qseek detection and HypoDD event ID |
+| `cluster` | HypoDD cluster |
+| `x`, `y`, `z` | Location relative to the cluster centroid in m |
+| `error_x`, `error_y`, `error_z` | HypoDD location errors in m, not meaningful for LSQR |
+| `n_ct_p`, `n_ct_s`, `n_cc_p`, `n_cc_s` | Catalog and cross-correlation differential times of the event |
+| `rms_ct`, `rms_cc` | RMS of the double-difference residuals in s, empty for data types not used |
+| `qseek_time`, `qseek_lat`, `qseek_lon`, `qseek_depth` | Location of the Qseek detection |
+| `shift_east`, `shift_north`, `shift_horizontal`, `shift_depth`, `shift_time` | Shift from the Qseek location in m and of the origin time in s |
+| `WKT_geom` | `POINT Z(lon lat -depth)` for QGIS |
+
+To load the CSV file in QGIS, add it as a delimited text layer with the geometry definition *Well known text (WKT)*, the field `WKT_geom` and the CRS EPSG:4326.
+
+After you change `hypoDD.inp` and run hypoDD by hand, convert the relocations again:
+
+```sh title="Convert the relocations"
+python3 hypodd_results.py
+```
 
 ## Velocity model
 
