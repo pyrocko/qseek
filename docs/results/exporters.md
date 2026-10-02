@@ -58,7 +58,7 @@ What the export does:
 
 - **Selection:** picks with a confidence of at least 0.3 and a residual of at most 1 s to the modeled arrival, detections with at least 6 of these picks. The confidence is the pick weight in HypoDD. `max_rms` and `min_distance_border` select detections by their residual RMS and their distance to the border of the search volume.
 - **Velocity model:** the 1D model of the ray tracer of the P phase, from Pyrocko Cake or fast marching. Gradient layers are split into constant velocity layers of at most 500 m, each with the harmonic mean velocity of its depth range. A constant velocity becomes HypoDD's straight-ray model.
-- **Data:** catalog differential times only; HypoDD forms them with ph2dt from the picks. Station corrections of the run are not applied, the double-difference method does not need them.
+- **Data:** catalog differential times, which ph2dt forms from the picks. With `cross_correlation`, the export also correlates the waveforms of close events for differential times in `dt.cc`. Station corrections of the run are not applied, the double-difference method does not need them.
 
 On the Campi Flegrei example of the [quick start](../getting-started/quick-start.md), 20 May 2024, Qseek exports 424 detections with 5893 picks and hypoDD relocates 340 of them in about 2 s.
 

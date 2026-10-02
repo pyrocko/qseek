@@ -16,12 +16,14 @@ from typing import Literal
 import numpy as np
 import pytest
 from pydantic import ValidationError
-from pyrocko import cake
+from pyrocko import cake, io, trace
 from pyrocko.model import load_events
 
+from qseek.exporters.cross_correlation import CrossCorrelation
 from qseek.exporters.hypodd import (
     TOP_FIRST_LAYER,
     HypoDD,
+    IterationSet,
     discretize_earthmodel,
     phase_hint,
     round_time,
@@ -167,17 +169,91 @@ def cake_travel_time(
     return min(arrival.t for arrival in arrivals)
 
 
+SAMPLING_INTERVAL = 0.01
+# Gains of the P and S wavelets on the channels
+GAINS = {"P": {"Z": 1.0, "N": 0.3, "E": 0.2}, "S": {"Z": 0.2, "N": 1.0, "E": 0.8}}
+
+
+def wavelet(times: np.ndarray, seed: int) -> np.ndarray:
+    """A band-limited wavelet of 2 to 12 Hz around 0.15 s after the arrival."""
+    rng = np.random.default_rng(seed)
+    frequencies = rng.uniform(2.0, 12.0, 5)
+    phases = rng.uniform(0.0, 2 * np.pi, 5)
+    amplitudes = rng.uniform(0.5, 1.0, 5)
+    envelope = np.exp(-(((times - 0.15) / 0.12) ** 2))
+    oscillation = np.sum(
+        amplitudes[:, None]
+        * np.sin(2 * np.pi * frequencies[:, None] * times + phases[:, None]),
+        axis=0,
+    )
+    return envelope * oscillation
+
+
+def write_waveforms(
+    archive: Path,
+    stations: list[Station],
+    arrivals: dict[tuple[int, str], list[tuple[float, float]]],
+    start: datetime,
+    duration: float,
+) -> None:
+    """Write synthetic waveforms to an SDS archive.
+
+    Each station and phase has its own wavelet, the same for all events, scaled by
+    the event amplitude. The arrivals are (time, amplitude) per station and phase.
+    """
+    rng = np.random.default_rng(1)
+    n_samples = round(duration / SAMPLING_INTERVAL)
+    tmin = start.timestamp()
+    times = np.arange(n_samples) * SAMPLING_INTERVAL
+    for i_station, station in enumerate(stations):
+        for i_comp, comp in enumerate("ZNE"):
+            data = rng.normal(0.0, 0.01, n_samples)
+            for i_phase, phase in enumerate("PS"):
+                seed = 1000 * i_station + 10 * i_phase + i_comp
+                for time, amplitude in arrivals[(i_station, phase)]:
+                    i0 = max(0, int((time - tmin - 1.0) / SAMPLING_INTERVAL))
+                    i1 = min(n_samples, int((time - tmin + 1.5) / SAMPLING_INTERVAL))
+                    data[i0:i1] += (
+                        amplitude
+                        * GAINS[phase][comp]
+                        * wavelet(times[i0:i1] - (time - tmin), seed)
+                    )
+            channel = f"HH{comp}"
+            tr = trace.Trace(
+                network=station.network,
+                station=station.station,
+                location=station.location,
+                channel=channel,
+                tmin=tmin,
+                deltat=SAMPLING_INTERVAL,
+                ydata=data.astype(np.float32),
+            )
+            path = (
+                archive
+                / f"{start:%Y}"
+                / station.network
+                / station.station
+                / f"{channel}.D"
+                / f"{station.network}.{station.station}.{station.location}."
+                f"{channel}.D.{start:%Y}.{start:%j}"
+            )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            io.save([tr], str(path), format="mseed")
+
+
 def synthetic_rundir(
     rundir: Path,
     n_events: int = 40,
     n_stations: int = 15,
     model: Literal["constant", "layered"] = "constant",
+    waveforms: bool = False,
 ):
     """Write a run directory with synthetic picks.
 
     The picks are the travel times from the true locations plus 5 ms noise, for
     constant velocities or for a layered model with gradients. The detections are
-    shifted by up to 300 m from the true locations.
+    shifted by up to 300 m from the true locations. With `waveforms`, the SDS
+    archive holds synthetic waveforms with the true arrivals.
     """
     rng = random.Random(42)
     reference = Location(lat=40.0, lon=14.0)
@@ -248,6 +324,9 @@ def synthetic_rundir(
     origin = datetime(2024, 5, 20, tzinfo=UTC)
     truth: dict[datetime, Location] = {}
     detections = []
+    arrivals: dict[tuple[int, str], list[tuple[float, float]]] = {
+        (i_station, phase): [] for i_station in range(n_stations) for phase in "PS"
+    }
     for i_event in range(n_events):
         true_location = Location(
             lat=reference.lat,
@@ -256,7 +335,10 @@ def synthetic_rundir(
             north_shift=rng.gauss(0, 500),
             depth=3 * KM + rng.gauss(0, 500),
         )
-        time = origin + timedelta(minutes=i_event, microseconds=rng.randint(0, 999999))
+        # the waveforms start a minute before the first event
+        time = origin + timedelta(
+            minutes=i_event + 1, microseconds=rng.randint(0, 999999)
+        )
         detection = EventDetection(
             lat=reference.lat,
             lon=reference.lon,
@@ -268,13 +350,17 @@ def synthetic_rundir(
             distance_border=2 * KM,
         )
         receivers = []
-        for station in stations:
+        amplitude = rng.uniform(0.5, 2.0)
+        for i_station, station in enumerate(stations):
             receiver = Receiver.from_station(station)
             receiver.phase_arrivals = {}
             for phase in phases:
+                true_traveltime = travel_time(phase, true_location, station)
+                arrivals[(i_station, phase_hint(phase))].append(
+                    (time.timestamp() + true_traveltime, amplitude)
+                )
                 observed = time + timedelta(
-                    seconds=travel_time(phase, true_location, station)
-                    + rng.gauss(0, 0.005)
+                    seconds=true_traveltime + rng.gauss(0, 0.005)
                 )
                 modeled = time + timedelta(
                     seconds=travel_time(phase, detection, station)
@@ -294,6 +380,11 @@ def synthetic_rundir(
         )
         detections.append(detection)
         truth[time] = true_location
+
+    if waveforms:
+        write_waveforms(
+            archive, stations, arrivals, origin, duration=(n_events + 2) * 60.0
+        )
 
     catalog = EventCatalog(rundir=rundir)
     catalog.events = detections
@@ -588,3 +679,118 @@ def test_hypodd_results_old_event_ids(tmp_path: Path) -> None:
     assert rows[1]["magnitude"] == "0.70"
     assert rows[1]["shift_horizontal"] == ""
     assert rows[1]["qseek_time"] == "2024-05-20T00:40:51.558Z"
+
+
+def cc_errors(
+    outdir: Path, catalog: EventCatalog, truth: dict[datetime, Location]
+) -> dict[str, list[float]]:
+    """Errors of the differential times in dt.cc to the true travel times."""
+    with (outdir / "event_ids.csv").open(newline="") as f:
+        ids = {
+            int(row["id"]): (
+                datetime.fromisoformat(row["time"]),
+                datetime.fromisoformat(row["hypodd_time"]),
+            )
+            for row in csv.DictReader(f)
+        }
+    receivers = {rcv.nsl.pretty: rcv for rcv in next(iter(catalog)).receivers}
+    with (outdir / "stations.csv").open(newline="") as f:
+        stations = {row["label"]: receivers[row["nsl"]] for row in csv.DictReader(f)}
+
+    def traveltime(event_id: int, label: str, phase: str) -> float:
+        time, hypodd_time = ids[event_id]
+        velocity = VP if phase == "P" else VS
+        distance = truth[time].distance_to(stations[label])
+        return (time - hypodd_time).total_seconds() + distance / velocity
+
+    errors: dict[str, list[float]] = {"P": [], "S": []}
+    for line in (outdir / "dt.cc").read_text().splitlines():
+        values = line.split()
+        if values[0] == "#":
+            id_1, id_2 = int(values[1]), int(values[2])
+            assert float(values[3]) == 0.0
+            continue
+        label, dt, weight, phase = values
+        assert 0.0 < float(weight) <= 1.0
+        expected = traveltime(id_1, label, phase) - traveltime(id_2, label, phase)
+        errors[phase].append(float(dt) - expected)
+    return errors
+
+
+@pytest.mark.asyncio
+async def test_hypodd_export_cc(tmp_path: Path) -> None:
+    rundir = tmp_path / "run"
+    catalog, truth = synthetic_rundir(rundir, waveforms=True)
+    # weak picks at three stations: correlated around the modeled arrivals
+    first = next(iter(catalog))
+    for receiver in first.receivers.receivers[:3]:
+        for arrival in receiver.phase_arrivals.values():
+            arrival.observed.detection_value = 0.1
+    await catalog.save()
+
+    outdir_ct = tmp_path / "hypodd-ct"
+    exporter = HypoDD(min_picks=10)
+    exporter.ph2dt.max_separation = 10 * KM
+    await exporter.export(rundir, outdir_ct)
+
+    outdir = tmp_path / "hypodd-cc"
+    exporter = HypoDD(min_picks=10, cross_correlation=CrossCorrelation())
+    exporter.ph2dt.max_separation = 10 * KM
+    await exporter.export(rundir, outdir)
+
+    control = (outdir / "hypoDD.inp").read_text().splitlines()
+    assert control[control.index("* IDAT IPHA DIST") + 1].split()[0] == "3"
+    assert "dt.cc" in control
+    assert "station.dat" in control
+    weighting = control[
+        control.index("* NITER WTCCP WTCCS WRCC WDCC WTCTP WTCTS WRCT WDCT DAMP") + 1 :
+    ]
+    assert len(weighting[0].split()) == 10
+
+    errors = cc_errors(outdir, catalog, truth)
+    assert len(errors["P"]) > 1000
+    assert len(errors["S"]) > 1000
+    for phase_errors in errors.values():
+        assert np.median(np.abs(phase_errors)) < 0.001
+        assert np.max(np.abs(phase_errors)) < 0.005
+    # the weak picks of the first event are not in phase.dat, but in dt.cc
+    blocks = (outdir / "dt.cc").read_text().split("# 1 ")[1:]
+    labels = {line.split()[0] for block in blocks for line in block.splitlines()[1:]}
+    weak = {rcv.station for rcv in first.receivers.receivers[:3]}
+    assert weak <= labels
+
+    await run_hypodd(outdir_ct)
+    await run_hypodd(outdir)
+    _, errors_ct = relocation_errors(outdir_ct, catalog, truth)
+    errors_initial, errors_cc = relocation_errors(outdir, catalog, truth)
+    assert len(errors_cc) >= 0.9 * len(truth)
+    assert np.median(errors_cc) < 0.2 * np.median(errors_initial)
+    assert np.median(errors_cc) < np.median(errors_ct)
+
+
+def test_cc_iterations() -> None:
+    exporter = HypoDD(cross_correlation=CrossCorrelation())
+    lines = [it.as_line() for it in exporter.hypodd.iterations]
+    # Table 1 of the HypoDD user guide
+    assert lines == [
+        "5 0.01 0.01 -999 -999 1 0.5 -999 -999 80",
+        "5 0.01 0.01 -999 -999 1 0.5 6 4 80",
+        "5 1 0.5 -999 2 0.01 0.005 6 4 80",
+        "5 1 0.5 6 2 0.01 0.005 6 4 80",
+        "5 1 0.5 6 0.5 0.01 0.005 6 4 80",
+    ]
+    # the settings of the export reproduce the export
+    copy = HypoDD.model_validate_json(exporter.model_dump_json())
+    assert copy.hypodd.iterations == exporter.hypodd.iterations
+
+    iterations = [IterationSet(weight_cc_p=1.0, weight_cc_s=1.0)]
+    exporter = HypoDD.model_validate(
+        {
+            "cross_correlation": {"bandpass": [2.0, 10.0]},
+            "hypodd": {"iterations": [it.model_dump() for it in iterations]},
+        }
+    )
+    assert exporter.hypodd.iterations == iterations
+    assert HypoDD().hypodd.iterations[0].as_line().startswith("5 -999 -999 -999 -999")
+    with pytest.raises(ValidationError):
+        CrossCorrelation(bandpass=(10.0, 2.0))
