@@ -41,6 +41,7 @@ from qseek.utils import (
     ChannelSelectors,
     MeasurementUnit,
     Range,
+    RangeType,
     human_readable_bytes,
 )
 
@@ -125,7 +126,7 @@ class PeakAmplitudesBase(BaseModel):
         default="displacement",
         description="Quantity for the peak amplitude.",
     )
-    frequency_range: Range | None = Field(
+    frequency_range: RangeType | None = Field(
         default=None,
         description="Frequency range for the peak amplitude.",
     )
@@ -143,11 +144,11 @@ class PeakAmplitudesBase(BaseModel):
         le=8.0,
         description="Reference moment magnitude in Mw.",
     )
-    rupture_velocities: Range = Field(
+    rupture_velocities: RangeType = Field(
         default=Range(0.8, 0.9),
         description="Rupture velocity range as fraction of the shear wave velocity.",
     )
-    stress_drop: Range = Field(
+    stress_drop: RangeType = Field(
         default=Range(1.0e6, 10.0e6),
         description="Stress drop range in Pa.",
     )
@@ -248,10 +249,10 @@ class ModelledAmplitude(NamedTuple):
 class SiteAmplitudesCollection(BaseModel):
     source_depth: float
     quantity: MeasurementUnit
-    rupture_velocities: Range
-    stress_drop: Range
+    rupture_velocities: RangeType
+    stress_drop: RangeType
     gf_store_id: str
-    frequency_range: Range
+    frequency_range: RangeType
 
     site_amplitudes: list[SiteAmplitude] = Field(default_factory=list)
 
@@ -474,7 +475,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         default_factory=list,
         description="Site amplitudes per source depth.",
     )
-    frequency_range: Range = Field(
+    frequency_range: RangeType = Field(
         ...,
         description="Frequency range for the peak amplitude.",
     )
@@ -482,7 +483,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         default="",
         description="Hash of the GF store configuration.",
     )
-    magnitude_range: Range = Field(
+    magnitude_range: RangeType = Field(
         default=Range(0.0, 6.0),
         description="Range of moment magnitudes for the seismic sources.",
     )
