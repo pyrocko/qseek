@@ -10,7 +10,7 @@ from pyrocko.trace import Trace
 
 from qseek.base import Model
 from qseek.models.location import Location
-from qseek.utils import NSL
+from qseek.utils import NSL, NSLType
 
 if TYPE_CHECKING:
     from qseek.models.detection import EventDetection, Receiver
@@ -24,7 +24,7 @@ PeakMeasurement = Literal["peak-to-peak", "max-amplitude", "max-amplitude-separa
 
 
 class StationLocalMagnitude(NamedTuple):
-    station: NSL
+    station: NSLType
     magnitude: float
     error: float
     peak_amp: float
@@ -83,7 +83,7 @@ class EventMagnitudeCalculator(Model):
         "the network magnitude.",
     )
 
-    exclude_stations: list[NSL] = Field(
+    exclude_stations: list[NSLType] = Field(
         default=[],
         description="List of station NSLs to exclude from magnitude calculation.",
     )

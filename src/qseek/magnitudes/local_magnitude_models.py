@@ -10,7 +10,7 @@ from pyrocko.trace import PoleZeroResponse, Trace
 
 from qseek.base import Model
 from qseek.magnitudes.base import PeakMeasurement
-from qseek.utils import NSL, ChannelSelector, ChannelSelectors, MeasurementUnit
+from qseek.utils import NSL, ChannelSelector, ChannelSelectors, MeasurementUnit, NSLType
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class Range(NamedTuple):
 
 
 class StationLocalMagnitude(NamedTuple):
-    station: NSL
+    station: NSLType
     magnitude: float
     error: float
     peak_amp: float
@@ -478,7 +478,7 @@ class CustomLocalMagnitudeModel(Model):
     highpass_freq: float | None = None
     lowpass_freq: float | None = None
 
-    attenuation_models: dict[NSL, AttenuationModel] = Field(default_factory=dict)
+    attenuation_models: dict[NSLType, AttenuationModel] = Field(default_factory=dict)
 
     _model: LocalMagnitudeModel = PrivateAttr()
 

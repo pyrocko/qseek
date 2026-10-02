@@ -34,7 +34,7 @@ Dates and times follow [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) and ne
 
 Durations follow ISO 8601 as well: `"PT5M"` is 5 minutes, `"PT600S"` 600 seconds, `"PT1H30M"` one and a half hours.
 
-[](){ #qseek.utils.NSL }
+[](){ #qseek.utils.NSLType }
 
 ## Station codes
 

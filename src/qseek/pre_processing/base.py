@@ -7,7 +7,7 @@ import numpy as np
 from pydantic import BaseModel, Field, field_validator
 from pyrocko.trace import Trace
 
-from qseek.utils import NSL
+from qseek.utils import NSL, NSLType
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class BatchPreProcessing(BaseModel):
     process: Literal["BasePreProcessing"] = "BasePreProcessing"
 
-    stations: set[NSL] = Field(
+    stations: set[NSLType] = Field(
         default=set(),
         description="List of station codes to process. E.g. ['6E.BFO', '6E.BHZ']. "
         "If empty, all stations are processed.",

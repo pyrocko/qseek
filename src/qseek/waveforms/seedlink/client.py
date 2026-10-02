@@ -14,7 +14,7 @@ from pydantic.dataclasses import dataclass
 from pyrocko.io import load
 from pyrocko.trace import NoData, Trace, degapper
 
-from qseek.utils import NSL, NSLC, datetime_now, human_readable_bytes
+from qseek.utils import NSL, NSLC, NSLType, datetime_now, human_readable_bytes
 
 if TYPE_CHECKING:
     from rich.table import Table
@@ -80,7 +80,7 @@ def _parse_seedlink_time(text: str) -> datetime:
 
 
 class SeedLinkStation(BaseModel):
-    nsl: NSL
+    nsl: NSLType
     channel: str
     dataquality: str
 
@@ -118,7 +118,7 @@ class SeedLinkStation(BaseModel):
 
 @dataclass(frozen=True)
 class StationSelection:
-    nsl: NSL = Field(
+    nsl: NSLType = Field(
         default=NSL("1D", "SYRAU", ""),
         description="Network, station, and location code.",
     )
