@@ -14,6 +14,7 @@ import aiohttp
 import rfc3986
 from pydantic import ValidationError
 
+from qseek.models.detection import FILENAME_DETECTIONS, FILENAME_RECEIVERS
 from qseek.server import WebsocketMessage
 from qseek.ui.explorer.base import RunExplorer, RunSource
 from qseek.utils import datetime_now
@@ -143,8 +144,8 @@ class QseekWebSource(RunSource):
             base_url=f"{self.name}/api/v1/",
             raise_for_status=True,
         ) as session:
-            detections_path = self._tmp_path / "detections.json"
-            detections_receivers_path = self._tmp_path / "detections_receivers.json"
+            detections_path = self._tmp_path / FILENAME_DETECTIONS
+            detections_receivers_path = self._tmp_path / FILENAME_RECEIVERS
 
             logger.debug("fetching detections from %s", self.name)
             async with (

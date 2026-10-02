@@ -11,8 +11,8 @@ my-search/
 ├── search.json                     # the configuration of the run
 ├── progress.json                   # how far the search got, for `qseek continue`
 ├── qseek.log                       # the log of the search
-├── detections.json                 # all detections, one JSON object per line
-├── detections_receivers.json       # modeled and picked arrivals of every detection
+├── detections.jsonl                # all detections, one JSON object per line
+├── detections_receivers.jsonl      # modeled and picked arrivals of every detection
 ├── semblance.mseed                 # the detection function over time
 ├── csv/
 │   ├── detections.csv              # the detections as a table
@@ -28,7 +28,7 @@ With `save_images`, Qseek also writes the phase images into `images/`. Searches 
 
 ## Detections
 
-`detections.json` holds all detections in the [JSON Lines](https://jsonlines.org/) format, one detection per line. The modeled and picked arrivals at every station are in `detections_receivers.json`, in the same order.
+`detections.jsonl` holds all detections in the [JSON Lines](https://jsonlines.org/) format, one detection per line. The modeled and picked arrivals at every station are in `detections_receivers.jsonl`, in the same order.
 
 `csv/detections.csv` is a table of the detections, for spreadsheets, GIS software and plotting:
 

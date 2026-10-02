@@ -53,8 +53,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FILENAME_DETECTIONS = "detections.json"
-FILENAME_RECEIVERS = "detections_receivers.json"
+FILENAME_DETECTIONS = "detections.jsonl"
+FILENAME_RECEIVERS = "detections_receivers.jsonl"
 
 
 class PhaseDetection(BaseModel):
