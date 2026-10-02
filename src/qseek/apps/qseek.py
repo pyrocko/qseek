@@ -31,6 +31,14 @@ parser.add_argument(
     "Default level is INFO",
 )
 parser.add_argument(
+    "--quiet",
+    "-q",
+    action="store_true",
+    default=False,
+    help="only log warnings and errors and disable the live statistics view, "
+    "useful for non-interactive runs and automation",
+)
+parser.add_argument(
     "--version",
     action="version",
     version=version("qseek"),
@@ -258,9 +266,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    log_level = logging.INFO - args.verbose * 10
+    if args.quiet:
+        console.quiet = True
+        log_level = logging.WARNING - args.verbose * 10
+    else:
+        log_level = logging.INFO - args.verbose * 10
     loop_debug = log_level < logging.INFO
-    setup_rich_logging(level=log_level)
+    # The run's qseek.log keeps INFO messages when the console is quiet.
+    setup_rich_logging(level=log_level, file_level=logging.INFO)
 
     match args.command:
         case "config":

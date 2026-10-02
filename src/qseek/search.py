@@ -25,6 +25,7 @@ from scipy import stats
 
 from qseek.base import Model
 from qseek.cache_lru import CACHES
+from qseek.console import console
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
@@ -609,7 +610,9 @@ class Search(Model):
         stats.reset_search_begin()
 
         processing_start = datetime_now()
-        console = asyncio.create_task(RuntimeStats.live_view())
+        live_view = (
+            None if console.quiet else asyncio.create_task(RuntimeStats.live_view())
+        )
 
         search_octree = OctreeSearch(
             ray_tracers=self.ray_tracers,
@@ -663,7 +666,8 @@ class Search(Model):
         if self.webserver:
             await self.webserver.stop()
         await self._run_callbacks("on_stop", self)
-        console.cancel()
+        if live_view:
+            live_view.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
 
