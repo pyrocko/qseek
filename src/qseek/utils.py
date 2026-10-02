@@ -88,12 +88,21 @@ class Symbols:
     Cross = "✗"
 
 
-def setup_rich_logging(level: int) -> None:
+def setup_rich_logging(level: int, file_level: int | None = None) -> None:
+    """Set up logging to the console.
+
+    Args:
+        level: Log level of the console.
+        file_level: Level of the root logger if lower than `level`, so that file
+            handlers added later, like the `qseek.log` of a run, receive more
+            messages than the console.
+    """
+    console_handler = RichHandler(level=level)
     logging.basicConfig(
-        level=level,
+        level=min(level, file_level) if file_level is not None else level,
         format=FORMAT,
         datefmt="[%X]",
-        handlers=[RichHandler()],
+        handlers=[console_handler],
     )
 
 
