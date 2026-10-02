@@ -210,6 +210,13 @@ export.add_argument(
     help="overwrite existing output directory",
 )
 
+export.add_argument(
+    "--config",
+    type=Path,
+    default=None,
+    help="JSON file with the settings of the export module",
+)
+
 
 subparsers.add_parser(
     "clear-cache",
@@ -439,7 +446,12 @@ def main() -> None:
 
             for exporter in Exporter.get_subclasses():
                 if exporter.__name__.lower() == args.format.lower():
-                    exporter_instance = exporter()
+                    if args.config:
+                        exporter_instance = exporter.model_validate_json(
+                            args.config.read_text()
+                        )
+                    else:
+                        exporter_instance = exporter()
                     asyncio.run(
                         exporter_instance.export(
                             rundir=args.rundir,

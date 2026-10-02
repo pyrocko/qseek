@@ -95,7 +95,7 @@ Qseek detects and locates earthquakes in large seismic data sets. It stacks mach
 
 -   :lucide-file-output:{ .lg .middle } __Open formats__
 
-    Detections as JSON, CSV and Pyrocko markers, and export to VELEST for velocity model inversion.
+    Detections as JSON, CSV and Pyrocko markers, and export to HypoDD for double-difference relocation and to VELEST for velocity model inversion.
 
     [Export detections :lucide-arrow-right:](guides/manage-runs.md#export-the-detections)
 

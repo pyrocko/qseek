@@ -175,6 +175,7 @@ nav:
       - Real-time monitoring: guides/real-time.md
       - Performance: guides/performance.md
       - Manage runs: guides/manage-runs.md
+      - Relocate with HypoDD: guides/relocate-hypodd.md
   - Results:
       - Run directory: results/run-directory.md
       - Explore results: results/explore.md
