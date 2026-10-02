@@ -1,11 +1,13 @@
 /*
  * Landing page backdrop: an adaptive octree searching for a hypocentre.
  *
- * Each cycle replays one detection. A wavefront leaves a hidden source and
- * reaches the stations, the root nodes light up with the stacked semblance,
- * the octree refines the most coherent nodes level by level (pruning a ghost
- * maximum on the way), locks onto the hypocentre and migrates the rays back
- * to the stations. Located events accumulate into a catalog along a fault.
+ * Each cycle replays one detection. Nature comes first, soft and warm: an
+ * earthquake ruptures a patch of the fault and its P and S waves ripple out
+ * to the surface and the stations. Then Qseek, crisp and geometric: the root
+ * nodes light up with the stacked semblance, the octree refines the most
+ * coherent nodes level by level (pruning a ghost maximum on the way), locks
+ * onto the hypocentre and migrates the rays back to the stations. Located
+ * events accumulate into a catalog along a fault.
  */
 (() => {
   "use strict";
@@ -19,9 +21,11 @@
   const DOT_BUCKETS = 5;
   const DEPTH_BUCKETS = 3;
   const CATALOG_SIZE = 46;
-  const V_P = 1.35;
+  const V_P = 0.85;
   const V_S = V_P / 1.75;
   const CAMERA = 5.2;
+  const RIPPLES = [ 1, 0.42, 0.16 ]; // opacity of a crest and its ripples
+  const WAVELENGTH = 0.075;
   const EDGES = [
     [ 0, 1 ],
     [ 2, 3 ],
@@ -39,8 +43,8 @@
 
   // Timeline of a single event, in seconds.
   const T = {
-    stack : 0.45,
-    split : 1.8,
+    stack : 1,
+    split : 2.6,
     step : 0.95,
     grow : 0.6,
   };
@@ -216,6 +220,11 @@
          glow);
       el("stop", {offset : "1", class : "oct-glow-stop", "stop-opacity" : "0"},
          glow);
+      const warm = el("radialGradient", {id : "qs-octree-quake"}, defs);
+      for (const [offset, o] of [[ 0, 0.5 ], [ 0.4, 0.14 ], [ 1, 0 ]]) {
+        el("stop", {offset, class : "oct-nature-stop", "stop-opacity" : o},
+           warm);
+      }
 
       const path = (cls, attrs = {}) =>
           el("path", {class : cls, d : "", ...attrs}, svg);
@@ -266,8 +275,25 @@
         this.cubePaths.push(row);
       }
 
-      this.waveP = el("circle", {class : "oct-wave", r : 0}, svg);
-      this.waveS = el("circle", {class : "oct-wave oct-wave--s", r : 0}, svg);
+      // Wavefronts: a soft crest followed by fading ripples.
+      const wave = (cls) => {
+        const g = el("g", {class : `oct-waves ${cls}`, opacity : 0}, svg);
+        const glow = el("path", {class : "oct-wave-glow", d : ""}, g);
+        const crests = RIPPLES.map(
+            (o) => el("path",
+                      {class : "oct-wave", d : "", "stroke-opacity" : o}, g));
+        return {g, glow, crests};
+      };
+      this.waveP = wave("oct-waves--p");
+      this.waveS = wave("oct-waves--s");
+
+      this.quake = el("g", {class : "oct-quake", opacity : 0}, svg);
+      this.quakeGlow =
+          el("circle", {r : 0, fill : "url(#qs-octree-quake)"}, this.quake);
+      this.quakePatch =
+          el("path", {class : "oct-quake-patch", d : ""}, this.quake);
+      this.quakeCore =
+          el("circle", {class : "oct-quake-core", r : 0}, this.quake);
 
       this.rays = el("g", {class : "oct-rays"}, svg);
       for (const st of this.stations) {
@@ -305,6 +331,17 @@
       this.pause = rand(0.2, 1.4);
       this.fault.migrate();
       this.h = this.fault.sample();
+      // Heterogeneities of the crust that bend the wavefronts.
+      this.wobble = [ 0, 1, 2, 3 ].map(() => {
+        const k = [ gauss(), gauss(), gauss() ];
+        const len = Math.hypot(...k);
+        return {
+          k : k.map((x) => x / len),
+          freq : rand(2, 5.5),
+          phase : rand(0, 2 * Math.PI),
+          amp : rand(0.01, 0.025),
+        };
+      });
       do {
         this.ghost = [ 0, 1, 2 ].map((i) => rand(-HALF[i], HALF[i]) * 0.8);
       } while (dist2(this.ghost, this.h) < 0.75 ** 2);
@@ -536,6 +573,7 @@
       this.drawCatalog();
       this.drawNodes(t, fade);
       this.drawWaves(t);
+      this.drawQuake(t);
       this.drawRays(t, fade);
       this.drawMarkers(t, fade);
     }
@@ -608,17 +646,123 @@
       this.prunedPath.setAttribute("d", pruned);
     }
 
-    drawWaves(t) {
-      const [x, y, , k] = this.project(this.h);
-      for (const [circle, v] of [[ this.waveP, V_P ], [ this.waveS, V_S ], ]) {
-        const r = v * t;
-        const o =
-            r > 0 ? 0.6 * (1 - smooth(0.2, 2.6, r)) * smooth(0, 0.15, r) : 0;
-        circle.setAttribute("cx", r1(x));
-        circle.setAttribute("cy", r1(y));
-        circle.setAttribute("r", r1(r * this.scale * k));
-        circle.setAttribute("stroke-opacity", o.toFixed(3));
+    /** Radius of a wavefront in direction g, bent by the heterogeneities. */
+    bend(g, r) {
+      let f = 0;
+      for (const w of this.wobble) {
+        const kg = w.k[0] * g[0] + w.k[1] * g[1] + w.k[2] * g[2];
+        f += w.amp * Math.sin(w.freq * kg + w.phase + 0.5 * this.t);
       }
+      return r * (1 + f);
+    }
+
+    /**
+     * Path data of a wavefront of radius r around the source: its outline
+     * below the surface and the ring where it reaches the surface.
+     */
+    wavefront(r) {
+      const h = this.h;
+      const top = HALF[2];
+      let d = "";
+      let pen = false;
+      const to = (p) => {
+        const [x, y] = this.project(p);
+        d += `${pen ? "L" : "M"}${r1(x)} ${r1(y)}`;
+        pen = true;
+      };
+      const surface = (a, b) => lerp3(a, b, (top - a[2]) / (b[2] - a[2]));
+
+      // Outline facing the camera, cut off at the surface.
+      const R = [ this.cyaw, -this.syaw, 0 ];
+      const U =
+          [ this.syaw * this.spitch, this.cyaw * this.spitch, this.cpitch ];
+      let prev = null;
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * 2 * Math.PI;
+        const g =
+            [ 0, 1, 2 ].map((j) => Math.cos(a) * R[j] + Math.sin(a) * U[j]);
+        const rr = this.bend(g, r);
+        const p = [ h[0] + rr * g[0], h[1] + rr * g[1], h[2] + rr * g[2] ];
+        if (p[2] <= top) {
+          if (prev && prev[2] > top)
+            to(surface(prev, p));
+          to(p);
+        } else if (prev && prev[2] <= top) {
+          to(surface(prev, p));
+          pen = false;
+        }
+        prev = p;
+      }
+
+      // The ring spreading over the surface.
+      const below = top - h[2];
+      pen = false;
+      if (r > below) {
+        const rho0 = Math.sqrt(r * r - below * below);
+        for (let i = 0; i <= 72; i++) {
+          const a = (i / 72) * 2 * Math.PI;
+          const g =
+              [ (rho0 * Math.cos(a)) / r, (rho0 * Math.sin(a)) / r, below / r ];
+          const rr = this.bend(g, r);
+          if (rr <= below) {
+            pen = false;
+            continue;
+          }
+          const rho = Math.sqrt(rr * rr - below * below);
+          to([ h[0] + rho * Math.cos(a), h[1] + rho * Math.sin(a), top ]);
+        }
+      }
+      return d;
+    }
+
+    drawWaves(t) {
+      for (const [wave, speed] of [[ this.waveP, V_P ], [ this.waveS, V_S ]]) {
+        const r = speed * t;
+        const o =
+            r > 0 ? 0.85 * (1 - smooth(0.3, 2.4, r)) * smooth(0, 0.12, r) : 0;
+        wave.g.setAttribute("opacity", o.toFixed(3));
+        const fronts = RIPPLES.map((_, i) => {
+          const ri = r - i * WAVELENGTH * (1 + 0.6 * r);
+          return o > 0.003 && ri > 0 ? this.wavefront(ri) : "";
+        });
+        wave.crests.forEach((p, i) => p.setAttribute("d", fronts[i]));
+        wave.glow.setAttribute("d", fronts[0]);
+      }
+    }
+
+    /** The earthquake: a warm glow and the rupture spreading over the fault. */
+    drawQuake(t) {
+      const on = 1 - smooth(1.2, 2.8, t);
+      this.quake.setAttribute("opacity", on.toFixed(3));
+      if (on <= 0)
+        return;
+      const h = this.h;
+      const {s, d} = this.fault;
+      const [x, y, , k] = this.project(h);
+      const flash = Math.exp(-t * 1.8);
+      this.quakeGlow.setAttribute("cx", r1(x));
+      this.quakeGlow.setAttribute("cy", r1(y));
+      this.quakeGlow.setAttribute("r", r1((26 + 44 * flash) * k));
+      this.quakeCore.setAttribute("cx", r1(x));
+      this.quakeCore.setAttribute("cy", r1(y));
+      this.quakeCore.setAttribute("r", r1((2.4 + 2.4 * flash) * k));
+
+      // An irregular rupture patch growing on the fault plane.
+      const grow = 0.16 * ease(t / 1.4);
+      let patch = "";
+      for (let i = 0; i < 48; i++) {
+        const a = (i / 48) * 2 * Math.PI;
+        let rho = 1;
+        this.wobble.forEach(
+            (w, j) => { rho += 7 * w.amp * Math.sin((j + 2) * a + w.phase); });
+        rho *= grow;
+        const c = Math.cos(a) * rho;
+        const sn = Math.sin(a) * rho;
+        const [px, py] =
+            this.project([ 0, 1, 2 ].map((j) => h[j] + c * s[j] + sn * d[j]));
+        patch += `${i ? "L" : "M"}${r1(px)} ${r1(py)}`;
+      }
+      this.quakePatch.setAttribute("d", `${patch}Z`);
     }
 
     drawRays(t, fade) {
@@ -648,7 +792,7 @@
         }
 
         const [x, y] = this.project(st.p);
-        const s = 3.8 + 2.6 * ping + 0.6 * linked;
+        const s = 5 + 3 * ping + 0.8 * linked;
         st.el.setAttribute(
             "d",
             `M${r1(x)} ${r1(y - s)}L${r1(x + s * 0.87)} ${r1(y + s * 0.5)}L${

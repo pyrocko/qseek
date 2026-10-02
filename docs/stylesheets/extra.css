@@ -95,6 +95,7 @@
   --oct-line: #1f4253;
   --oct-accent: #d92c54;
   --oct-glow: #8cc4e033;
+  --oct-nature: #c26a2b;
   position: absolute;
   z-index: 0;
   top: -1rem;
@@ -116,6 +117,7 @@
   --oct-line: #8cc4e0;
   --oct-accent: #f06486;
   --oct-glow: #1f5a7840;
+  --oct-nature: #f2b27a;
 }
 
 .qs-octree {
@@ -147,7 +149,6 @@
 .qs-octree .oct-dot--hot,
 .qs-octree .oct-catalog,
 .qs-octree .oct-cube--fine,
-.qs-octree .oct-wave--s,
 .qs-octree .oct-ray,
 .qs-octree .oct-drop,
 .qs-octree .oct-pulse {
@@ -172,13 +173,25 @@
   stroke-dasharray: 2 3;
 }
 
+/* Nature, the earthquake and its waves, is soft and warm; Qseek is crisp. */
 .qs-octree .oct-wave {
-  stroke: var(--oct-line);
-  stroke-width: 1.2;
+  stroke: var(--oct-nature);
+  stroke-width: 1.1;
 }
 
-.qs-octree .oct-wave--s {
-  stroke-dasharray: 3 5;
+.qs-octree .oct-wave-glow {
+  stroke: var(--oct-nature);
+  stroke-width: 7;
+  stroke-opacity: 0.1;
+}
+
+.qs-octree .oct-waves--s .oct-wave {
+  stroke-width: 1.5;
+}
+
+.qs-octree .oct-waves--s .oct-wave-glow {
+  stroke-width: 11;
+  stroke-opacity: 0.07;
 }
 
 .qs-octree .oct-ray {
@@ -215,6 +228,19 @@
 
 .qs-octree .oct-hypo-core {
   fill: var(--oct-accent);
+}
+
+.qs-octree .oct-nature-stop {
+  stop-color: var(--oct-nature);
+}
+
+.qs-octree .oct-quake-patch {
+  fill: var(--oct-nature);
+  fill-opacity: 0.3;
+}
+
+.qs-octree .oct-quake-core {
+  fill: var(--oct-nature);
 }
 
 @media screen and (max-width: 59.9844em) {
