@@ -88,7 +88,7 @@ class EventLocalMagnitude(EventMagnitude):
         valid_magnitudes = [sta for sta in station_magnitudes if sta.flag == "valid"]
         if len(valid_magnitudes) < min_stations:
             ml.station_magnitudes = station_magnitudes
-            logger.warning(
+            logger.info(
                 "Not enough station magnitudes available for local magnitude "
                 "calculation after removing outliers."
             )
