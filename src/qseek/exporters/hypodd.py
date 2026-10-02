@@ -18,16 +18,19 @@ from pydantic import (
     PositiveFloat,
     PositiveInt,
     ValidationError,
+    model_validator,
 )
 from pyrocko.cake import GradientLayer
 
 from qseek.exporters.base import Exporter
+from qseek.exporters.cross_correlation import CorrelationEvent, CrossCorrelation
 from qseek.search import Search
 from qseek.tracers.cake import CakeTracer
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.tracers.fast_marching import FastMarchingTracer
 
 if TYPE_CHECKING:
+    from qseek.exporters.cross_correlation import DifferentialTime
     from qseek.models.detection import EventDetection
     from qseek.tracers.base import RayTracer
     from qseek.tracers.utils import LayeredEarthModel1D
@@ -70,13 +73,13 @@ hypoDD_2
 * hypoDD.inp, written by Qseek
 *--- INPUT FILE SELECTION
 * filename of cross-corr diff. time input (blank if not available):
-
+{cc_file}
 * filename of catalog travel time input (blank if not available):
 dt.ct
 * filename of initial hypocenter input:
 event.sel
 * filename of station input:
-station.sel
+{station_file}
 *--- OUTPUT FILE SELECTION
 * filename of initial hypocenter output (if blank: output to hypoDD.loc):
 hypoDD.loc
@@ -90,7 +93,7 @@ hypoDD.res
 hypoDD.src
 *--- DATA SELECTION:
 * IDAT IPHA DIST
-2 3 {max_distance:.1f}
+{idat:d} 3 {max_distance:.1f}
 *--- EVENT CLUSTERING:
 * OBSCC OBSCT MINDS MAXDS MAXGAP
 0 {min_links:d} {UNUSED} {UNUSED} {UNUSED}
@@ -142,7 +145,7 @@ Qseek detections of `{rundir}`, prepared for double-difference relocation with
 input to ph2dt |
 | `station.dat` | {n_stations} stations |
 | `ph2dt.inp` | ph2dt control file |
-| `hypoDD.inp` | hypoDD control file, catalog differential times only (`IDAT=2`) |
+| `hypoDD.inp` | hypoDD control file, {data} |
 | `event_ids.csv` | HypoDD event ID, Qseek detection UID, origin time, location \
 and magnitude |
 | `stations.csv` | HypoDD station label and Qseek station code (NSL) |
@@ -151,7 +154,7 @@ and magnitude |
 | `run.sh` | Runs ph2dt, hypoDD and `hypodd_results.py` |
 | `hypodd_results.py` | Converts `hypoDD.reloc` to `hypodd_relocations.csv` and \
 `hypodd_relocations.yaml` |
-
+{cc_files}
 ## Run HypoDD
 
 ```sh
@@ -220,7 +223,7 @@ class Ph2DTSettings(BaseModel):
 
 
 class IterationSet(BaseModel):
-    """Weighting of the catalog differential times for a set of iterations."""
+    """Weighting of the differential times for a set of iterations."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -248,18 +251,42 @@ class IterationSet(BaseModel):
         description="Maximum separation of the linked events in m (`WDCT`). "
         "`null` does not limit the separation.",
     )
+    weight_cc_p: float = Field(
+        default=UNUSED,
+        description="A priori weight of the P cross-correlation differential times "
+        "(`WTCCP`), only with `cross_correlation`. `-999` excludes them.",
+    )
+    weight_cc_s: float = Field(
+        default=UNUSED,
+        description="A priori weight of the S cross-correlation differential times "
+        "(`WTCCS`), only with `cross_correlation`. `-999` excludes them.",
+    )
+    max_residual_cc: PositiveFloat | None = Field(
+        default=None,
+        description="Residual cutoff of the cross-correlation differential times "
+        "(`WRCC`), like `max_residual`.",
+    )
+    max_separation_cc: PositiveFloat | None = Field(
+        default=None,
+        description="Maximum separation of the events linked by cross-correlation "
+        "in m (`WDCC`). `null` does not limit the separation.",
+    )
     damping: PositiveFloat = Field(
         default=80.0,
         description="Damping of the LSQR solver (`DAMP`). Tune it for a condition "
         "number (`CND` in `hypoDD.log`) of about 40 to 80.",
     )
 
+    def uses_cc(self) -> bool:
+        return self.weight_cc_p != UNUSED or self.weight_cc_s != UNUSED
+
     def as_line(self) -> str:
         def opt(value: float | None, scale: float = 1.0) -> str:
             return str(UNUSED) if value is None else f"{value / scale:g}"
 
         return (
-            f"{self.n_iterations:d} {UNUSED} {UNUSED} {UNUSED} {UNUSED} "
+            f"{self.n_iterations:d} {self.weight_cc_p:g} {self.weight_cc_s:g} "
+            f"{opt(self.max_residual_cc)} {opt(self.max_separation_cc, KM)} "
             f"{self.weight_p:g} {self.weight_s:g} {opt(self.max_residual)} "
             f"{opt(self.max_separation, KM)} {self.damping:g}"
         )
@@ -270,6 +297,29 @@ def _default_iterations() -> list[IterationSet]:
         IterationSet(n_iterations=5),
         IterationSet(n_iterations=5, max_residual=6.0, max_separation=4000.0),
         IterationSet(n_iterations=5, max_residual=4.0, max_separation=2000.0),
+    ]
+
+
+def default_iterations_cc() -> list[IterationSet]:
+    """Weighting scheme for catalog and cross-correlation data.
+
+    Table 1 of the HypoDD user guide: the down-weighted cross-correlation data let
+    the catalog data restore the large-scale picture first. Then the
+    cross-correlation data dominate for event pairs closer than 2 km, at last
+    closer than 500 m.
+    """
+    catalog = {"max_residual": 6.0, "max_separation": 4000.0}
+    catalog_low = {"weight_p": 0.01, "weight_s": 0.005, **catalog}
+    cc_low = {"weight_cc_p": 0.01, "weight_cc_s": 0.01}
+    cc = {"weight_cc_p": 1.0, "weight_cc_s": 0.5}
+    return [
+        IterationSet(**cc_low),
+        IterationSet(**cc_low, **catalog),
+        IterationSet(**cc, max_separation_cc=2000.0, **catalog_low),
+        IterationSet(
+            **cc, max_residual_cc=6.0, max_separation_cc=2000.0, **catalog_low
+        ),
+        IterationSet(**cc, max_residual_cc=6.0, max_separation_cc=500.0, **catalog_low),
     ]
 
 
@@ -309,7 +359,9 @@ class HypoDDSettings(BaseModel):
         default_factory=_default_iterations,
         min_length=1,
         max_length=10,
-        description="Sets of iterations with their weighting (`NSET`, at most 10).",
+        description="Sets of iterations with their weighting (`NSET`, at most 10). "
+        "With `cross_correlation`, the default is the weighting scheme of Table 1 "
+        "of the HypoDD user guide for catalog and cross-correlation data.",
     )
 
 
@@ -367,9 +419,40 @@ class HypoDD(Exporter):
         default_factory=HypoDDSettings,
         description="Settings of hypoDD.",
     )
+    cross_correlation: CrossCorrelation | None = Field(
+        default=None,
+        description="Cross-correlate the waveforms of close events for "
+        "differential times in `dt.cc`. Needs the waveforms of the run. `null` "
+        "exports catalog differential times only.",
+    )
+
+    @model_validator(mode="after")
+    def _cc_iterations(self) -> HypoDD:
+        self.set_cc_iterations()
+        return self
+
+    def set_cc_iterations(self) -> None:
+        """Use the weighting scheme for cross-correlation data by default.
+
+        Runs on validation and again on export, for `cross_correlation` set after
+        the exporter was created.
+        """
+        if self.cross_correlation is None:
+            return
+        if "iterations" not in self.hypodd.model_fields_set:
+            # a copy, the settings of hypoDD may be shared
+            self.hypodd = self.hypodd.model_copy(
+                update={"iterations": default_iterations_cc()}
+            )
+        elif not any(it.uses_cc() for it in self.hypodd.iterations):
+            logger.warning(
+                "no iteration set weights the cross-correlation differential times,"
+                " set weight_cc_p and weight_cc_s"
+            )
 
     async def export(self, rundir: Path, outdir: Path) -> Path:
         logger.info("exporting detections of %s to HypoDD project folder", rundir)
+        self.set_cc_iterations()
         try:
             search = Search.load_rundir(rundir)
         except ValidationError as exc:
@@ -436,6 +519,26 @@ class HypoDD(Exporter):
 
         used = {nsl for picks in event_picks for nsl, *_ in picks}
         stations = {nsl: coords for nsl, coords in stations.items() if nsl in used}
+        max_distance = self.ph2dt.max_distance or 1.1 * max_event_station_distance(
+            [event for _, event, _ in events], list(stations.values())
+        )
+
+        cc_times: dict[tuple[int, int], list[DifferentialTime]] = {}
+        if self.cross_correlation is not None:
+            cc_times = await self.correlate(
+                search, events, event_picks, max_distance, stations
+            )
+            # hypoDD reads the stations of the cross-correlation data from
+            # station.dat, ph2dt keeps only the stations of the picks in station.sel
+            used |= {time.nsl for times in cc_times.values() for time in times}
+            stations = {nsl: coords for nsl, coords in stations.items() if nsl in used}
+            if not cc_times:
+                logger.warning(
+                    "no cross-correlation differential times, exporting catalog"
+                    " differential times only"
+                )
+        use_cc = bool(cc_times)
+
         if len(stations) > MAX_STATIONS:
             logger.warning(
                 "%d stations exceed MAXSTA=%d of the HypoDD distribution,"
@@ -444,9 +547,6 @@ class HypoDD(Exporter):
                 MAX_STATIONS,
             )
         labels = station_labels(list(stations))
-        max_distance = self.ph2dt.max_distance or 1.1 * max_event_station_distance(
-            [event for _, event, _ in events], list(stations.values())
-        )
 
         layers, imod = self.get_velocity_model(search)
         below_sea_level = [
@@ -462,6 +562,8 @@ class HypoDD(Exporter):
 
         outdir.mkdir(parents=True)
         n_picks = self.write_phases(outdir / "phase.dat", events, event_picks, labels)
+        if use_cc:
+            n_cc = write_cc_times(outdir / "dt.cc", cc_times, labels)
         with (outdir / "station.dat").open("w") as file:
             for nsl, (lat, lon, elevation) in stations.items():
                 file.write(f"{labels[nsl]} {lat:.6f} {lon:.6f} {elevation:.1f}\n")
@@ -520,6 +622,9 @@ class HypoDD(Exporter):
                 iaq=int(hypodd.remove_airquakes),
                 nset=len(hypodd.iterations),
                 weighting="\n".join(it.as_line() for it in hypodd.iterations),
+                cc_file="dt.cc" if use_cc else "",
+                station_file="station.dat" if use_cc else "station.sel",
+                idat=3 if use_cc else 2,
                 imod=imod,
                 model=model_block(layers),
             )
@@ -532,6 +637,15 @@ class HypoDD(Exporter):
             shutil.copy(source, results_script)
         results_script.chmod(0o755)
 
+        if use_cc:
+            data = "catalog and cross-correlation differential times (`IDAT=3`)"
+            cc_files = (
+                f"| `dt.cc` | {n_cc['P']} P and {n_cc['S']} S cross-correlation "
+                f"differential times of {len(cc_times)} event pairs |\n"
+            )
+        else:
+            data = "catalog differential times only (`IDAT=2`)"
+            cc_files = ""
         (outdir / "README.md").write_text(
             README.format(
                 rundir=rundir.resolve().name,
@@ -539,6 +653,8 @@ class HypoDD(Exporter):
                 n_picks_p=n_picks["P"],
                 n_picks_s=n_picks["S"],
                 n_stations=len(stations),
+                data=data,
+                cc_files=cc_files,
             )
         )
         (outdir / "export_info.json").write_text(self.model_dump_json(indent=2))
@@ -552,6 +668,65 @@ class HypoDD(Exporter):
             outdir,
         )
         return outdir
+
+    async def correlate(
+        self,
+        search: Search,
+        events: list[tuple[int, EventDetection, datetime]],
+        event_picks: list[list[tuple[NSL, float, float, str]]],
+        max_distance: float,
+        stations: dict[NSL, tuple[float, float, float]],
+    ) -> dict[tuple[int, int], list[DifferentialTime]]:
+        """Cross-correlate the waveforms of close events.
+
+        The windows start at the exported picks, and at the modeled arrivals of the
+        other stations up to `max_distance` if `modeled_arrivals` is set. Adds the
+        stations of the modeled arrivals to `stations`.
+        """
+        settings = self.cross_correlation
+        assert settings is not None
+        search.stations.prepare(search.octree.location)
+        await search.data_provider.prepare(search.stations)
+
+        cc_events = []
+        for (event_id, event, origin), picks in zip(events, event_picks, strict=True):
+            # the first pick of a phase type, e.g. of P if there are P and Pn
+            arrivals: dict[tuple[NSL, str], float] = {}
+            for nsl, traveltime, _, phase_type in picks:
+                arrivals.setdefault(
+                    (nsl, phase_type),
+                    (origin + timedelta(seconds=traveltime)).timestamp(),
+                )
+            if settings.modeled_arrivals:
+                for receiver in event.receivers:
+                    if receiver.surface_distance_to(event) > max_distance:
+                        continue
+                    for phase, arrival in receiver.phase_arrivals.items():
+                        phase_type = phase_hint(phase)
+                        key = (receiver.nsl, phase_type)
+                        if phase_type is None or key in arrivals:
+                            continue
+                        arrivals[key] = arrival.model.time.timestamp()
+                        stations.setdefault(
+                            receiver.nsl,
+                            (
+                                receiver.effective_lat,
+                                receiver.effective_lon,
+                                receiver.effective_elevation,
+                            ),
+                        )
+            cc_events.append(
+                CorrelationEvent(event_id, event, origin.timestamp(), arrivals)
+            )
+
+        cc_times = await settings.correlate(cc_events, search.data_provider)
+        n_times = sum(len(times) for times in cc_times.values())
+        logger.info(
+            "%d cross-correlation differential times of %d event pairs",
+            n_times,
+            len(cc_times),
+        )
+        return cc_times
 
     def write_phases(
         self,
@@ -669,6 +844,33 @@ class HypoDD(Exporter):
                 f" {MAX_LAYERS}; {hint}"
             )
         return layers, 1
+
+
+def write_cc_times(
+    file: Path,
+    cc_times: dict[tuple[int, int], list[DifferentialTime]],
+    labels: dict[NSL, str],
+) -> dict[str, int]:
+    """Write the cross-correlation differential times for hypoDD.
+
+    The differential times refer to the origin times in `event.sel`, so the origin
+    time correction `OTC` is 0. The weight is the squared correlation coefficient.
+
+    Returns:
+        dict[str, int]: Number of written P and S differential times.
+    """
+    n_times = {"P": 0, "S": 0}
+    lines = []
+    for (id_1, id_2), times in cc_times.items():
+        lines.append(f"# {id_1:d} {id_2:d} 0.0")
+        for time in times:
+            lines.append(
+                f"{labels[time.nsl]} {time.time:.6f} {time.coefficient**2:.4f} "
+                f"{time.phase}"
+            )
+            n_times[time.phase] += 1
+    file.write_text("\n".join(lines) + "\n" if lines else "")
+    return n_times
 
 
 def round_time(time: datetime, resolution: float = 0.01) -> datetime:

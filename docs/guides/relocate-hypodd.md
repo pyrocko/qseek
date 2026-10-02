@@ -28,7 +28,8 @@ Qseek writes these files:
 | `phase.dat` | Detections and their picks, the input of ph2dt |
 | `station.dat` | Stations with their elevation in meters |
 | `ph2dt.inp` | Control file of ph2dt |
-| `hypoDD.inp` | Control file of hypoDD, catalog differential times only |
+| `hypoDD.inp` | Control file of hypoDD |
+| `dt.cc` | Cross-correlation differential times, with [`cross_correlation`](#cross-correlation) |
 | `event_ids.csv` | HypoDD event ID, Qseek detection UID, origin time, location and magnitude |
 | `stations.csv` | HypoDD station label and station code (NSL) |
 | `velocity_model.csv` | The layered velocity model in `hypoDD.inp` |
@@ -96,6 +97,38 @@ After you change `hypoDD.inp` and run hypoDD by hand, convert the relocations ag
 python3 hypodd_results.py
 ```
 
+## Cross-correlation
+
+Waveform cross-correlation measures the differential times of close events more precisely than picks: for similar waveforms, to a fraction of a sample. With [`cross_correlation`][qseek.exporters.hypodd.HypoDD.cross_correlation], the export correlates the waveforms of the detections and writes the differential times to `dt.cc`. hypoDD combines them with the catalog differential times of ph2dt (`IDAT=3`).
+
+```json title="hypodd.json"
+{
+  "cross_correlation": {}
+}
+```
+
+The export loads the waveforms with the waveform provider of the run, so start it in the directory of the search configuration. For each event pair, it correlates the P and S phases at the stations of both events:
+
+- **Event pairs:** each event with up to [`max_neighbors`][qseek.exporters.cross_correlation.CrossCorrelation.max_neighbors] nearest events closer than [`max_separation`][qseek.exporters.cross_correlation.CrossCorrelation.max_separation] (default 20 events within 2 km). hypoDD skips pairs with events that ph2dt did not keep.
+- **Windows:** [`window_p`][qseek.exporters.cross_correlation.CrossCorrelation.window_p] and [`window_s`][qseek.exporters.cross_correlation.CrossCorrelation.window_s] start before and end after the exported pick, or the modeled arrival at stations without a pick ([`modeled_arrivals`][qseek.exporters.cross_correlation.CrossCorrelation.modeled_arrivals]). The P window ends before the S window starts, so at close stations it holds the P wave only. The window of the first event is the template; the window of the second event is longer by the maximum lag on both sides.
+- **Filter:** one zero-phase Butterworth bandpass for all channels, [`bandpass`][qseek.exporters.cross_correlation.CrossCorrelation.bandpass] (default 1 to 15 Hz), applied to the windows with a padding of three periods of the low corner. Channels with gaps in the padded windows are skipped.
+- **Correlation:** the normalized correlation of the components of the phase, stacked: Z for P, the horizontals for S by default. The maximum is interpolated with a parabola to a fraction of a sample. Maxima at the maximum lag and below [`min_correlation`][qseek.exporters.cross_correlation.CrossCorrelation.min_correlation] (default 0.7) are rejected; the weight is the squared correlation coefficient.
+- **Differential times:** the travel time differences of the matched windows, relative to the origin times in `event.sel`. The windows only select the waveforms, so a modeled arrival gives the same differential time as a pick. The origin time correction `OTC` in `dt.cc` is 0.
+
+With `cross_correlation`, the default [`iterations`][qseek.exporters.hypodd.HypoDDSettings.iterations] follow Table 1 of the HypoDD user guide: 10 iterations with down-weighted cross-correlation data, so the catalog data restore the large-scale picture, then 15 iterations in which the cross-correlation data dominate for event pairs closer than 2 km, at last closer than 500 m. Check the `RMSCC` and `CC` columns of the iteration table in `hypoDD.log`: the residuals of the cross-correlation data should fall to a few milliseconds, while most data stay in use.
+
+Choose the settings for your data. The defaults are a starting point for local seismicity recorded at about 100 Hz; at lower sampling rates, the windows hold fewer samples and the lag is less precise:
+
+- The **bandpass** should hold the energy of the smallest events above the noise, below 90% of the Nyquist frequency.
+- A **window** should hold the phase and its first oscillations, not the coda.
+- The **maximum lag** must exceed the error of the arrival times of both events, but a large lag lets the correlation jump by a period of the dominant frequency.
+
+On Campi Flegrei, the export correlates 1391 event pairs with 8458 differential times in about 30 s. On 340 common events, the median absolute double-difference residual of the cross-correlation times is 54 ms at the plain Qseek locations, 48 ms with station corrections (SSST), 47 ms after hypoDD with catalog data only and 21 ms after hypoDD with both data types. The cross-correlation residuals do not depend on the picks, so they also compare Qseek locations with HypoDD on independent data.
+
+The export logs how many traces it dropped: without data covering the windows and the filter padding, e.g. at gaps or at the start and end of the archive, or with a Nyquist frequency below the low corner of the bandpass. If no event pair has [`min_observations`][qseek.exporters.cross_correlation.CrossCorrelation.min_observations] differential times, the export warns and writes catalog differential times only.
+
+The filtered waveforms of the events stay in a cache of [`cache_size`][qseek.exporters.cross_correlation.CrossCorrelation.cache_size] (default 2 GB); events that do not fit are loaded again.
+
 ## Velocity model
 
 The export takes the 1D velocity model of the ray tracer of the P phase: the [Pyrocko Cake](../configuration/ray-tracers.md#pyrocko-cake) or [fast marching](../configuration/ray-tracers.md#fast-marching) model, written as layers with their P velocity and Vp/Vs ratio (`IMOD=1`). A [constant velocity](../configuration/ray-tracers.md#constant-velocity) becomes HypoDD's straight-ray model (`IMOD=5`). 3D models are not exported.
@@ -143,6 +176,14 @@ Distances are in meters, as everywhere in Qseek; the export converts them to the
       heading_level: 3
 
 ::: qseek.exporters.hypodd.IterationSet
+    options:
+      heading_level: 3
+
+::: qseek.exporters.cross_correlation.CrossCorrelation
+    options:
+      heading_level: 3
+
+::: qseek.exporters.cross_correlation.PhaseWindow
     options:
       heading_level: 3
 
