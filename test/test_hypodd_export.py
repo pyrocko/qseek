@@ -7,11 +7,15 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
+from pyrocko import cake
 
 from qseek.exporters.hypodd import (
     TOP_FIRST_LAYER,
@@ -35,6 +39,7 @@ from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.search import Search
 from qseek.tracers.base import ModelledArrival
+from qseek.tracers.cake import CakeTracer, Timing
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.tracers.tracers import RayTracers
 from qseek.tracers.utils import LayeredEarthModel1D
@@ -125,14 +130,51 @@ def test_phase_hint() -> None:
     assert phase_hint("cake:P") == "P"
     assert phase_hint("fm:S") == "S"
     assert phase_hint("constant:Pg") == "P"
+    assert phase_hint("cake:p") == "P"
+    assert phase_hint("cake:S*") == "S"
     assert phase_hint("cake:Rayleigh") is None
+    assert phase_hint("cake:Surface") is None
+    assert phase_hint("cake:PmP") is None
 
 
-def synthetic_rundir(rundir: Path, n_events: int = 40, n_stations: int = 15):
-    """Write a run directory with picks from constant velocities.
+def test_settings_forbid_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        HypoDD.model_validate_json('{"min_pick": 3}')
+    with pytest.raises(ValidationError):
+        HypoDD.model_validate_json('{"hypodd": {"solvr": "SVD"}}')
+    with pytest.raises(ValidationError):
+        HypoDD.model_validate_json('{"hypodd": {"iterations": [{"damp": 50}]}}')
+    exporter = HypoDD.model_validate_json(
+        '{"max_rms": 0.2, "hypodd": {"solver": "SVD"}}'
+    )
+    assert exporter.max_rms == 0.2
+    assert exporter.hypodd.solver == "SVD"
 
-    The detections are shifted by up to 300 m from the true locations, the picks
-    are the travel times from the true locations plus 5 ms noise.
+
+def cake_travel_time(
+    model: cake.LayeredModel, phases: list[cake.PhaseDef], source: Location, receiver
+) -> float:
+    distance = source.surface_distance_to(receiver)
+    arrivals = model.arrivals(
+        distances=[distance * cake.m2d],
+        phases=phases,
+        zstart=source.effective_depth,
+        zstop=-receiver.effective_elevation,
+    )
+    return min(arrival.t for arrival in arrivals)
+
+
+def synthetic_rundir(
+    rundir: Path,
+    n_events: int = 40,
+    n_stations: int = 15,
+    model: Literal["constant", "layered"] = "constant",
+):
+    """Write a run directory with synthetic picks.
+
+    The picks are the travel times from the true locations plus 5 ms noise, for
+    constant velocities or for a layered model with gradients. The detections are
+    shifted by up to 300 m from the true locations.
     """
     rng = random.Random(42)
     reference = Location(lat=40.0, lon=14.0)
@@ -148,6 +190,28 @@ def synthetic_rundir(rundir: Path, n_events: int = 40, n_stations: int = 15):
         )
         for i in range(n_stations)
     ]
+    if model == "constant":
+        ray_tracers = [
+            ConstantVelocityTracer(phase="constant:P", velocity=VP),
+            ConstantVelocityTracer(phase="constant:S", velocity=VS),
+        ]
+    else:
+        earthmodel = LayeredEarthModel1D(raw_file_data=GRADIENT_MODEL_ND)
+        ray_tracers = [
+            CakeTracer(
+                earthmodel=earthmodel,
+                phases={
+                    "cake:P": Timing(definition="P,p"),
+                    "cake:S": Timing(definition="S,s"),
+                },
+            )
+        ]
+        cake_model = earthmodel.layered_model
+        cake_phases = {
+            "cake:P": [cake.PhaseDef("P"), cake.PhaseDef("p")],
+            "cake:S": [cake.PhaseDef("S"), cake.PhaseDef("s")],
+        }
+
     archive = rundir.parent / "sds"
     archive.mkdir()
     search = Search(
@@ -162,16 +226,22 @@ def synthetic_rundir(rundir: Path, n_events: int = 40, n_stations: int = 15):
             north_bounds=Range(-10 * KM, 10 * KM),
             depth_bounds=Range(0 * KM, 8 * KM),
         ),
-        ray_tracers=RayTracers(
-            root=[
-                ConstantVelocityTracer(phase="constant:P", velocity=VP),
-                ConstantVelocityTracer(phase="constant:S", velocity=VS),
-            ]
-        ),
+        ray_tracers=RayTracers(root=ray_tracers),
     )
     rundir.mkdir(parents=True)
     search.write_config(rundir)
 
+    def travel_time(phase: str, source: Location, receiver: Station) -> float:
+        if model == "constant":
+            velocity = VP if phase == "constant:P" else VS
+            return source.distance_to(receiver) / velocity
+        return cake_travel_time(cake_model, cake_phases[phase], source, receiver)
+
+    phases = [
+        tracer_phase
+        for tracer in ray_tracers
+        for tracer_phase in (tracer.get_available_phases())
+    ]
     origin = datetime(2024, 5, 20, tzinfo=UTC)
     truth: dict[datetime, Location] = {}
     detections = []
@@ -198,13 +268,13 @@ def synthetic_rundir(rundir: Path, n_events: int = 40, n_stations: int = 15):
         for station in stations:
             receiver = Receiver.from_station(station)
             receiver.phase_arrivals = {}
-            for phase, velocity in (("constant:P", VP), ("constant:S", VS)):
+            for phase in phases:
                 observed = time + timedelta(
-                    seconds=true_location.distance_to(station) / velocity
+                    seconds=travel_time(phase, true_location, station)
                     + rng.gauss(0, 0.005)
                 )
                 modeled = time + timedelta(
-                    seconds=detection.distance_to(station) / velocity
+                    seconds=travel_time(phase, detection, station)
                 )
                 receiver.add_phase_detection(
                     PhaseDetection(
@@ -225,6 +295,45 @@ def synthetic_rundir(rundir: Path, n_events: int = 40, n_stations: int = 15):
     catalog = EventCatalog(rundir=rundir)
     catalog.events = detections
     return catalog, truth
+
+
+async def run_hypodd(outdir: Path) -> None:
+    hypodd_bin = os.environ.get("HYPODD_BIN")
+    if not hypodd_bin and not shutil.which("hypoDD"):
+        pytest.skip("hypoDD binaries not available, set HYPODD_BIN")
+    await asyncio.to_thread(
+        subprocess.run,
+        ["./run.sh"],
+        cwd=outdir,
+        env={**os.environ, "HYPODD_BIN": hypodd_bin or ""},
+        check=True,
+        timeout=120,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def relocation_errors(
+    outdir: Path, catalog: EventCatalog, truth: dict[datetime, Location]
+) -> tuple[list[float], list[float]]:
+    """Distances of the detections and the relocations to the true locations."""
+    ids = {}
+    for line in (outdir / "event_ids.csv").read_text().splitlines()[1:]:
+        event_id, _, time, _ = line.split(",")
+        ids[int(event_id)] = datetime.fromisoformat(time)
+
+    errors_initial, errors_relocated = [], []
+    detections = {ev.time: ev for ev in catalog}
+    for line in (outdir / "hypoDD.reloc").read_text().splitlines():
+        values = line.split()
+        time = ids[int(values[0])]
+        true_location = truth[time]
+        relocated = Location(
+            lat=float(values[1]), lon=float(values[2]), depth=float(values[3]) * KM
+        )
+        errors_initial.append(detections[time].distance_to(true_location))
+        errors_relocated.append(relocated.distance_to(true_location))
+    return errors_initial, errors_relocated
 
 
 @pytest.mark.asyncio
@@ -264,38 +373,132 @@ async def test_hypodd_export(tmp_path: Path) -> None:
     station_lines = (outdir / "station.dat").read_text().splitlines()
     assert len(station_lines) == 15
 
-    hypodd_bin = os.environ.get("HYPODD_BIN")
-    if not hypodd_bin and not shutil.which("hypoDD"):
-        pytest.skip("hypoDD binaries not available, set HYPODD_BIN")
-
-    env = {**os.environ, "HYPODD_BIN": hypodd_bin or ""}
-    await asyncio.to_thread(
-        subprocess.run,
-        ["./run.sh"],
-        cwd=outdir,
-        env=env,
-        check=True,
-        timeout=120,
-        capture_output=True,
-        stdin=subprocess.DEVNULL,
-    )
-
-    ids = {}
-    for line in (outdir / "event_ids.csv").read_text().splitlines()[1:]:
-        event_id, _, time, _ = line.split(",")
-        ids[int(event_id)] = datetime.fromisoformat(time)
-
-    errors_initial, errors_relocated = [], []
-    detections = {ev.time: ev for ev in catalog}
-    for line in (outdir / "hypoDD.reloc").read_text().splitlines():
-        values = line.split()
-        time = ids[int(values[0])]
-        true_location = truth[time]
-        relocated = Location(
-            lat=float(values[1]), lon=float(values[2]), depth=float(values[3]) * KM
-        )
-        errors_initial.append(detections[time].distance_to(true_location))
-        errors_relocated.append(relocated.distance_to(true_location))
-
+    await run_hypodd(outdir)
+    errors_initial, errors_relocated = relocation_errors(outdir, catalog, truth)
     assert len(errors_relocated) >= 0.9 * len(truth)
     assert np.median(errors_relocated) < 0.3 * np.median(errors_initial)
+
+
+@pytest.mark.asyncio
+async def test_hypodd_export_layered(tmp_path: Path) -> None:
+    rundir = tmp_path / "run"
+    catalog, truth = synthetic_rundir(rundir, model="layered")
+    await catalog.save()
+
+    outdir = tmp_path / "hypodd"
+    exporter = HypoDD(min_picks=10)
+    exporter.ph2dt.max_separation = 10 * KM
+    await exporter.export(rundir, outdir)
+
+    control = (outdir / "hypoDD.inp").read_text().splitlines()
+    assert control[control.index("* IMOD") + 1] == "1"
+    tops = control[control.index("* TOP:") + 1].split()
+    assert float(tops[0]) == TOP_FIRST_LAYER
+    assert len(tops) <= 30
+
+    await run_hypodd(outdir)
+    errors_initial, errors_relocated = relocation_errors(outdir, catalog, truth)
+    assert len(errors_relocated) >= 0.9 * len(truth)
+    assert np.median(errors_relocated) < 0.5 * np.median(errors_initial)
+
+
+def headers(outdir: Path) -> list[list[str]]:
+    return [
+        line.split()
+        for line in (outdir / "phase.dat").read_text().splitlines()
+        if line.startswith("#")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hypodd_export_selection(tmp_path: Path) -> None:
+    rundir = tmp_path / "run"
+    catalog, _ = synthetic_rundir(rundir, n_events=6)
+    events = list(catalog)
+    # weak picks: only 4 picks pass min_pick_confidence
+    for receiver in events[0].receivers:
+        for arrival in receiver.phase_arrivals.values():
+            arrival.observed.detection_value = 0.1
+    for receiver in events[0].receivers.receivers[:2]:
+        for arrival in receiver.phase_arrivals.values():
+            arrival.observed.detection_value = 0.9
+    # STA/LTA-like confidences above 1
+    for receiver in events[1].receivers:
+        for arrival in receiver.phase_arrivals.values():
+            arrival.observed.detection_value = 4.2
+    # picks far from the modeled arrival
+    for receiver in events[2].receivers.receivers[:5]:
+        arrival = receiver.phase_arrivals["constant:P"]
+        arrival.observed.time += timedelta(seconds=3.0)
+    # above sea level
+    events[3].depth = -100.0
+    await catalog.save()
+
+    outdir = tmp_path / "hypodd"
+    await HypoDD(min_picks=6).export(rundir, outdir)
+    phase_lines = (outdir / "phase.dat").read_text().splitlines()
+    header_lines = headers(outdir)
+    assert len(header_lines) == 5  # event 0 has too few picks
+
+    blocks: list[list[str]] = []
+    for line in phase_lines:
+        if line.startswith("#"):
+            blocks.append([])
+        else:
+            blocks[-1].append(line)
+    weights = {float(line.split()[2]) for line in blocks[0]}
+    assert weights == {1.0}
+    assert len(blocks[1]) == 30 - 5
+    assert float(header_lines[2][9]) == 0.0
+    assert all(float(line.split()[1]) > 0.0 for block in blocks for line in block)
+
+    max_rms = float(np.median([ev.rms for ev in events[1:]]))
+    outdir = tmp_path / "hypodd-rms"
+    await HypoDD(max_rms=max_rms).export(rundir, outdir)
+    expected = sum(1 for ev in events[1:] if ev.rms <= max_rms)
+    assert 0 < expected < 5
+    assert len(headers(outdir)) == expected
+
+    with pytest.raises(ValueError, match="no detections"):
+        await HypoDD(max_rms=1e-9).export(rundir, tmp_path / "hypodd-none")
+
+
+def test_cli_force_keeps_export_on_error(tmp_path: Path) -> None:
+    rundir = tmp_path / "run"
+    catalog, _ = synthetic_rundir(rundir, n_events=10)
+    asyncio.run(catalog.save())
+
+    outdir = tmp_path / "hypodd"
+    outdir.mkdir()
+    (outdir / "marker").touch()
+    bad_config = tmp_path / "bad.json"
+    bad_config.write_text('{"min_pick": 3}')
+    good_config = tmp_path / "good.json"
+    good_config.write_text('{"min_picks": 10}')
+
+    def export(config: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "qseek.apps.qseek",
+                "export",
+                "hypodd",
+                str(rundir),
+                str(outdir),
+                "--force",
+                "--config",
+                str(config),
+            ],
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+
+    assert export(bad_config).returncode != 0
+    assert (outdir / "marker").exists()
+
+    assert export(good_config).returncode == 0
+    assert not (outdir / "marker").exists()
+    assert (outdir / "phase.dat").exists()
+    assert not list(tmp_path.glob(".hypodd*"))

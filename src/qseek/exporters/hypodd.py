@@ -3,11 +3,20 @@ from __future__ import annotations
 import itertools
 import logging
 import math
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
+import numpy as np
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    ValidationError,
+)
 from pyrocko.cake import GradientLayer
 
 from qseek.exporters.base import Exporter
@@ -25,15 +34,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 KM = 1000.0
-# HypoDD limits: layers in the control file, characters per line of the control
-# file, characters of a station label, events in hypoDD.inc of the distribution
+# HypoDD limits: layers in the control file (user guide; MAXLAY in hypoDD.inc of
+# the distribution is 50), characters per line of the control file, characters of a
+# station label, events and stations in hypoDD.inc of the distribution
 MAX_LAYERS = 30
 MAX_LINE_LENGTH = 220
 MAX_STATION_LABEL = 7
 MAX_EVENTS = 6500
+MAX_STATIONS = 400
+# Picks with lower weights are not used by HypoDD
+MIN_WEIGHT = 1e-5
 UNUSED = -999
 # Top of the first layer in km, above all sources, see discretize_earthmodel
 TOP_FIRST_LAYER = -1.0
+# P and S phase names, e.g. P, Pg, Pn, p, S, Sg, S*
+PHASE_NAME = re.compile(r"^([PpSs])[a-z*]?$")
 
 PH2DT_TPL = """\
 * ph2dt.inp, written by Qseek
@@ -137,12 +152,15 @@ Check the condition number (`CND`) of the LSQR iterations in `hypoDD.log`. It
 should be about 40 to 80; tune `DAMP` in `hypoDD.inp` if it is not.
 
 Depths are in km below sea level. HypoDD places the top of the velocity model
-at each station's elevation.
+at each station's elevation. Events that move above sea level are air-quakes:
+`IAQ=0` keeps them at their previous depth, `IAQ=1` removes them.
 """
 
 
 class Ph2DTSettings(BaseModel):
     """Settings of ph2dt, which forms the event pairs and their differential times."""
+
+    model_config = ConfigDict(extra="forbid")
 
     min_weight: float = Field(
         default=0.0,
@@ -183,6 +201,8 @@ class Ph2DTSettings(BaseModel):
 class IterationSet(BaseModel):
     """Weighting of the catalog differential times for a set of iterations."""
 
+    model_config = ConfigDict(extra="forbid")
+
     n_iterations: PositiveInt = Field(
         default=5,
         description="Number of iterations with these weights (`NITER`).",
@@ -197,7 +217,7 @@ class IterationSet(BaseModel):
         description="A priori weight of the S differential times (`WTCTS`). "
         "`-999` excludes them.",
     )
-    max_residual: float | None = Field(
+    max_residual: PositiveFloat | None = Field(
         default=None,
         description="Residual cutoff (`WRCT`): below 1 a static cutoff in s, from 1 "
         "a multiple of the residual standard deviation. `null` keeps all data.",
@@ -235,6 +255,8 @@ def _default_iterations() -> list[IterationSet]:
 class HypoDDSettings(BaseModel):
     """Settings of hypoDD, which relocates the events."""
 
+    model_config = ConfigDict(extra="forbid")
+
     max_distance: PositiveFloat | None = Field(
         default=None,
         description="Maximum distance between the centroid of a cluster and a "
@@ -256,8 +278,11 @@ class HypoDDSettings(BaseModel):
         "but is limited to about 200 events.",
     )
     remove_airquakes: bool = Field(
-        default=True,
-        description="Remove events that locate above the surface (`IAQ`).",
+        default=False,
+        description="Remove events that locate above sea level, the top of the "
+        "model in HypoDD, also when they are below the stations (`IAQ=1`). By "
+        "default these air-quakes stay at their depth of the previous iteration "
+        "(`IAQ=0`).",
     )
     iterations: list[IterationSet] = Field(
         default_factory=_default_iterations,
@@ -276,15 +301,17 @@ class HypoDDLayer(NamedTuple):
 class HypoDD(Exporter):
     """Create a HypoDD project folder for double-difference relocation."""
 
-    min_semblance: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Minimum semblance of an exported detection.",
-    )
+    model_config = ConfigDict(extra="forbid")
+
     min_picks: PositiveInt = Field(
         default=6,
         description="Minimum number of selected P and S picks of an exported "
         "detection.",
+    )
+    max_rms: PositiveFloat | None = Field(
+        default=None,
+        description="Maximum residual RMS of an exported detection in s. `null` "
+        "exports detections with any RMS.",
     )
     min_distance_border: float = Field(
         default=0.0,
@@ -295,9 +322,10 @@ class HypoDD(Exporter):
     min_pick_confidence: float = Field(
         default=0.3,
         ge=0.0,
-        le=1.0,
-        description="Minimum confidence of an exported pick. The confidence is the "
-        "pick weight in `phase.dat`.",
+        description="Minimum confidence of an exported pick. The confidence, "
+        "limited to 1, is the pick weight in `phase.dat`. Machine learning pickers "
+        "give a probability from 0 to 1; STA/LTA gives the peak of its image, "
+        "which can exceed 1.",
     )
     max_residual: PositiveFloat = Field(
         default=1.0,
@@ -321,16 +349,25 @@ class HypoDD(Exporter):
 
     async def export(self, rundir: Path, outdir: Path) -> Path:
         logger.info("exporting detections of %s to HypoDD project folder", rundir)
-        search = Search.load_rundir(rundir)
+        try:
+            search = Search.load_rundir(rundir)
+        except ValidationError as exc:
+            raise ValueError(
+                f"cannot load the search configuration of {rundir}. Start the export"
+                " in the directory of the search configuration, so that its relative"
+                f" paths, e.g. of the velocity model, are found.\n{exc}"
+            ) from exc
 
         events: list[tuple[int, EventDetection, datetime]] = []
         event_picks: list[list[tuple[NSL, float, float, str]]] = []
         stations: dict[NSL, tuple[float, float, float]] = {}
 
         for event in search.catalog:
-            if event.semblance < self.min_semblance:
-                continue
             if event.distance_border < self.min_distance_border:
+                continue
+            if self.max_rms is not None and (
+                event.rms is None or event.rms > self.max_rms
+            ):
                 continue
 
             # HypoDD keeps the origin time with 10 ms resolution, the travel times
@@ -348,26 +385,21 @@ class HypoDD(Exporter):
                     delay = arrival.traveltime_delay
                     if delay is None or abs(delay.total_seconds()) > self.max_residual:
                         continue
-                    picks.append(
+                    traveltime = (observed.time - origin).total_seconds()
+                    weight = min(observed.detection_value, 1.0)
+                    if traveltime <= 0.0 or weight < MIN_WEIGHT:
+                        continue
+                    picks.append((receiver.nsl, traveltime, weight, phase_type))
+                    stations.setdefault(
+                        receiver.nsl,
                         (
-                            receiver.nsl,
-                            (observed.time - origin).total_seconds(),
-                            observed.detection_value,
-                            phase_type,
-                        )
+                            receiver.effective_lat,
+                            receiver.effective_lon,
+                            receiver.effective_elevation,
+                        ),
                     )
             if len(picks) < self.min_picks:
                 continue
-
-            for receiver in event.receivers:
-                stations.setdefault(
-                    receiver.nsl,
-                    (
-                        receiver.effective_lat,
-                        receiver.effective_lon,
-                        receiver.effective_elevation,
-                    ),
-                )
             events.append((len(events) + 1, event, origin))
             event_picks.append(picks)
 
@@ -381,12 +413,31 @@ class HypoDD(Exporter):
                 MAX_EVENTS,
             )
 
+        used = {nsl for picks in event_picks for nsl, *_ in picks}
+        stations = {nsl: coords for nsl, coords in stations.items() if nsl in used}
+        if len(stations) > MAX_STATIONS:
+            logger.warning(
+                "%d stations exceed MAXSTA=%d of the HypoDD distribution,"
+                " increase MAXSTA in include/hypoDD.inc",
+                len(stations),
+                MAX_STATIONS,
+            )
         labels = station_labels(list(stations))
         max_distance = self.ph2dt.max_distance or 1.1 * max_event_station_distance(
             [event for _, event, _ in events], list(stations.values())
         )
 
         layers, imod = self.get_velocity_model(search)
+        below_sea_level = [
+            labels[nsl] for nsl, (_, _, elevation) in stations.items() if elevation < 0
+        ]
+        if below_sea_level and imod != 5:
+            logger.warning(
+                "stations below sea level, HypoDD moves them to 0 m elevation in a"
+                " layered model: %s. Only its constant velocity model (IMOD 5) keeps"
+                " them below sea level.",
+                ", ".join(below_sea_level),
+            )
 
         outdir.mkdir(parents=True)
         n_picks = self.write_phases(outdir / "phase.dat", events, event_picks, labels)
@@ -447,7 +498,7 @@ class HypoDD(Exporter):
 
         (outdir / "README.md").write_text(
             README.format(
-                rundir=rundir.name,
+                rundir=rundir.resolve().name,
                 n_events=len(events),
                 n_picks_p=n_picks["P"],
                 n_picks_s=n_picks["S"],
@@ -507,7 +558,8 @@ class HypoDD(Exporter):
 
         if n_shallow:
             logger.warning(
-                "%d events above sea level, set to 0 km depth for HypoDD",
+                "%d detections above sea level, set to 0 km depth: the top of the"
+                " velocity model in HypoDD",
                 n_shallow,
             )
         return n_picks
@@ -521,14 +573,26 @@ class HypoDD(Exporter):
                 velocity.
         """
         phases = search.ray_tracers.get_available_phases()
-        phase_p = next((ph for ph in phases if phase_hint(ph) == "P"), None)
-        if phase_p is None:
+        phases_p = [ph for ph in phases if phase_hint(ph) == "P"]
+        phases_s = [ph for ph in phases if phase_hint(ph) == "S"]
+        if not phases_p:
             raise ValueError("no ray tracer for a P phase found")
-        tracer = search.ray_tracers.get_phase_tracer(phase_p)
+        for hint, hint_phases in (("P", phases_p), ("S", phases_s)):
+            if len(hint_phases) > 1:
+                logger.warning(
+                    "several %s phases (%s), HypoDD gets their picks as %s with the"
+                    " velocity model of %s",
+                    hint,
+                    ", ".join(hint_phases),
+                    hint,
+                    phases_p[0],
+                )
+        tracer = search.ray_tracers.get_phase_tracer(phases_p[0])
+        tracer_s = (
+            search.ray_tracers.get_phase_tracer(phases_s[0]) if phases_s else None
+        )
 
         if isinstance(tracer, ConstantVelocityTracer):
-            phase_s = next((ph for ph in phases if phase_hint(ph) == "S"), None)
-            tracer_s = search.ray_tracers.get_phase_tracer(phase_s) if phase_s else None
             if isinstance(tracer_s, ConstantVelocityTracer):
                 vp_vs = tracer.velocity / tracer_s.velocity
             else:
@@ -537,6 +601,19 @@ class HypoDD(Exporter):
             return [HypoDDLayer(0.0, tracer.velocity / KM, vp_vs)], 5
 
         earthmodel = get_earthmodel(tracer)
+        if tracer_s is not None and tracer_s is not tracer:
+            try:
+                same_model = get_earthmodel(tracer_s).hash == earthmodel.hash
+            except TypeError:
+                same_model = False
+            if not same_model:
+                logger.warning(
+                    "the S phase %s has another velocity model than the P phase %s,"
+                    " HypoDD uses the Vp and Vs of the P model",
+                    phases_s[0],
+                    phases_p[0],
+                )
+
         max_depth = search.octree.effective_depth_bounds.end
         layers = discretize_earthmodel(
             earthmodel,
@@ -544,9 +621,16 @@ class HypoDD(Exporter):
             max_depth=max_depth,
         )
         if len(layers) > MAX_LAYERS:
+            n_model_layers = len(
+                discretize_earthmodel(earthmodel, max_thickness=math.inf, max_depth=0.0)
+            )
+            if n_model_layers > MAX_LAYERS:
+                hint = "use a velocity model with fewer layers"
+            else:
+                hint = "increase max_layer_thickness"
             raise ValueError(
                 f"the velocity model has {len(layers)} layers, HypoDD allows"
-                f" {MAX_LAYERS}; increase max_layer_thickness"
+                f" {MAX_LAYERS}; {hint}"
             )
         return layers, 1
 
@@ -567,12 +651,10 @@ def phase_hint(phase: str) -> Literal["P", "S"] | None:
     Returns:
         `P` or `S`, or `None` if the phase is neither.
     """
-    name = phase.rsplit(":", 1)[-1][:1].upper()
-    if name == "P":
-        return "P"
-    if name == "S":
-        return "S"
-    return None
+    match = PHASE_NAME.match(phase.rsplit(":", 1)[-1])
+    if not match:
+        return None
+    return "P" if match.group(1).upper() == "P" else "S"
 
 
 def station_labels(nsls: list[NSL]) -> dict[NSL, str]:
@@ -598,6 +680,8 @@ def station_labels(nsls: list[NSL]) -> dict[NSL, str]:
                 if candidate not in used:
                     label = candidate
                     break
+            else:
+                raise ValueError(f"no unique HypoDD station label for {nsl.pretty}")
         used.add(label)
         labels[nsl] = label
     return labels
@@ -610,11 +694,14 @@ def max_event_station_distance(
     """Largest epicentral distance between an event and a station in m."""
     from pyrocko import orthodrome as od
 
-    return max(
-        od.distance_accurate50m(event.effective_lat, event.effective_lon, lat, lon)
-        for event in events
-        for lat, lon, _ in stations
-    )
+    event_coords = np.array([event.effective_lat_lon for event in events])
+    max_distance = 0.0
+    for lat, lon, _ in stations:
+        distances = od.distance_accurate50m_numpy(
+            event_coords[:, 0], event_coords[:, 1], lat, lon
+        )
+        max_distance = max(max_distance, float(np.max(distances)))
+    return max_distance
 
 
 def get_earthmodel(tracer: RayTracer) -> LayeredEarthModel1D:
@@ -627,12 +714,6 @@ def get_earthmodel(tracer: RayTracer) -> LayeredEarthModel1D:
         raise TypeError(
             f"cannot export the velocity model of {tracer.__class__.__name__},"
             " HypoDD needs a 1D layered model"
-        )
-    filename = earthmodel.filename
-    if earthmodel.raw_file_data is None and filename and not filename.exists():
-        raise FileNotFoundError(
-            f"velocity model {filename} not found, run the export from the"
-            " directory of the search configuration"
         )
     return earthmodel
 
@@ -649,10 +730,10 @@ def discretize_earthmodel(
     harmonic mean velocity of its depth range, which keeps the vertical travel time.
     The part of the model above sea level is merged into the top layer. HypoDD
     places the top of the model at the station elevation, the top of the first layer
-    is written as `TOP_FIRST_LAYER` above sea level: hypoDD v2.1 looks up the
-    velocity at the source in the layer above the first layer top that is not
-    shallower than the source, a source at the top of the first layer gets an
-    undefined velocity and the inversion fails with NaN.
+    is written as `TOP_FIRST_LAYER` above sea level: hypoDD v2.1 moves a source on a
+    layer top up by 1 m and looks up the velocity at the source in the layer above
+    the first layer top below it. For a source at the top of the first layer it
+    reads outside the velocity array, which can make the inversion fail with NaN.
 
     Args:
         earthmodel: The velocity model.
