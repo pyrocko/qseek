@@ -58,4 +58,4 @@ For other alerts, write a [custom callback](../configuration/callbacks.md#custom
 
 ## Run as a service
 
-Qseek reports its state to systemd through `sd_notify`, so you can run the monitoring as a systemd service of `Type=notify` that systemd restarts when it stops.
+Qseek reports its state to systemd through `sd_notify`, so you can run the monitoring as a systemd service of `Type=notify` that systemd restarts when it stops. The [service file template](https://github.com/pyrocko/qseek/blob/main/extras/qseek.service) can be found in the GitHub repository.
