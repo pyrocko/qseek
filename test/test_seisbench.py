@@ -287,7 +287,9 @@ async def test_sampling_rate_input(monkeypatch):
     monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
     function = SeisBench(sampling_rate="input")
     function._seisbench_model = SimpleNamespace(
-        annotate=lambda stream, **kwargs: Stream(), sampling_rate=100.0
+        annotate=lambda stream, **kwargs: Stream(),
+        sampling_rate=100.0,
+        default_args={"blinding": (100, 300)},
     )
     function._native_sampling_rate = 100.0
 
@@ -297,3 +299,33 @@ async def test_sampling_rate_input(monkeypatch):
 
     with pytest.raises(ValueError, match="homogeneous"):
         await function.process_traces([trace(100.0), trace(200.0)])
+
+
+@pytest.mark.asyncio
+async def test_sampling_rate_input_warns_on_longer_blinding(monkeypatch, caplog):
+    """A lower input rate than the padded one lengthens the blinding."""
+
+    async def inline_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
+    function = SeisBench(sampling_rate="input")
+    function._seisbench_model = SimpleNamespace(
+        annotate=lambda stream, **kwargs: Stream(),
+        sampling_rate=100.0,
+        default_args={"blinding": (100, 300)},
+    )
+    function._native_sampling_rate = 100.0
+    assert function.get_blinding().total_seconds() == 3.0
+
+    trace = Trace(
+        network="XX",
+        station="STA",
+        channel="HHZ",
+        tmin=TMIN,
+        deltat=1 / 50.0,
+        ydata=np.zeros(500),
+    )
+    with caplog.at_level("WARNING"):
+        await function.process_traces([trace])
+    assert "longer than" in caplog.text
