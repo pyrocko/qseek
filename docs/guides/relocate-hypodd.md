@@ -117,13 +117,15 @@ The export loads the waveforms with the waveform provider of the run, so start i
 
 With `cross_correlation`, the default [`iterations`][qseek.exporters.hypodd.HypoDDSettings.iterations] follow Table 1 of the HypoDD user guide: 10 iterations with down-weighted cross-correlation data, so the catalog data restore the large-scale picture, then 15 iterations in which the cross-correlation data dominate for event pairs closer than 2 km, at last closer than 500 m. Check the `RMSCC` and `CC` columns of the iteration table in `hypoDD.log`: the residuals of the cross-correlation data should fall to a few milliseconds, while most data stay in use.
 
-Choose the settings for your data, the defaults are a starting point for local seismicity:
+Choose the settings for your data. The defaults are a starting point for local seismicity recorded at about 100 Hz; at lower sampling rates, the windows hold fewer samples and the lag is less precise:
 
 - The **bandpass** should hold the energy of the smallest events above the noise, below 90% of the Nyquist frequency.
 - A **window** should hold the phase and its first oscillations, not the coda.
 - The **maximum lag** must exceed the error of the arrival times of both events, but a large lag lets the correlation jump by a period of the dominant frequency.
 
 On Campi Flegrei, the export correlates 1391 event pairs with 8458 differential times in about 30 s. On 340 common events, the median absolute double-difference residual of the cross-correlation times is 54 ms at the plain Qseek locations, 48 ms with station corrections (SSST), 47 ms after hypoDD with catalog data only and 21 ms after hypoDD with both data types. The cross-correlation residuals do not depend on the picks, so they also compare Qseek locations with HypoDD on independent data.
+
+The export logs how many traces it dropped: without data covering the windows and the filter padding, e.g. at gaps or at the start and end of the archive, or with a Nyquist frequency below the low corner of the bandpass. If no event pair has [`min_observations`][qseek.exporters.cross_correlation.CrossCorrelation.min_observations] differential times, the export warns and writes catalog differential times only.
 
 The filtered waveforms of the events stay in a cache of [`cache_size`][qseek.exporters.cross_correlation.CrossCorrelation.cache_size] (default 2 GB); events that do not fit are loaded again.
 

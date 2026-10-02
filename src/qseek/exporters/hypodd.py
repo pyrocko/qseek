@@ -428,19 +428,31 @@ class HypoDD(Exporter):
 
     @model_validator(mode="after")
     def _cc_iterations(self) -> HypoDD:
+        self.set_cc_iterations()
+        return self
+
+    def set_cc_iterations(self) -> None:
+        """Use the weighting scheme for cross-correlation data by default.
+
+        Runs on validation and again on export, for `cross_correlation` set after
+        the exporter was created.
+        """
         if self.cross_correlation is None:
-            return self
+            return
         if "iterations" not in self.hypodd.model_fields_set:
-            self.hypodd.iterations = default_iterations_cc()
+            # a copy, the settings of hypoDD may be shared
+            self.hypodd = self.hypodd.model_copy(
+                update={"iterations": default_iterations_cc()}
+            )
         elif not any(it.uses_cc() for it in self.hypodd.iterations):
             logger.warning(
                 "no iteration set weights the cross-correlation differential times,"
                 " set weight_cc_p and weight_cc_s"
             )
-        return self
 
     async def export(self, rundir: Path, outdir: Path) -> Path:
         logger.info("exporting detections of %s to HypoDD project folder", rundir)
+        self.set_cc_iterations()
         try:
             search = Search.load_rundir(rundir)
         except ValidationError as exc:
@@ -520,6 +532,12 @@ class HypoDD(Exporter):
             # station.dat, ph2dt keeps only the stations of the picks in station.sel
             used |= {time.nsl for times in cc_times.values() for time in times}
             stations = {nsl: coords for nsl, coords in stations.items() if nsl in used}
+            if not cc_times:
+                logger.warning(
+                    "no cross-correlation differential times, exporting catalog"
+                    " differential times only"
+                )
+        use_cc = bool(cc_times)
 
         if len(stations) > MAX_STATIONS:
             logger.warning(
@@ -544,7 +562,7 @@ class HypoDD(Exporter):
 
         outdir.mkdir(parents=True)
         n_picks = self.write_phases(outdir / "phase.dat", events, event_picks, labels)
-        if self.cross_correlation is not None:
+        if use_cc:
             n_cc = write_cc_times(outdir / "dt.cc", cc_times, labels)
         with (outdir / "station.dat").open("w") as file:
             for nsl, (lat, lon, elevation) in stations.items():
@@ -604,9 +622,9 @@ class HypoDD(Exporter):
                 iaq=int(hypodd.remove_airquakes),
                 nset=len(hypodd.iterations),
                 weighting="\n".join(it.as_line() for it in hypodd.iterations),
-                cc_file="dt.cc" if self.cross_correlation else "",
-                station_file="station.dat" if self.cross_correlation else "station.sel",
-                idat=3 if self.cross_correlation else 2,
+                cc_file="dt.cc" if use_cc else "",
+                station_file="station.dat" if use_cc else "station.sel",
+                idat=3 if use_cc else 2,
                 imod=imod,
                 model=model_block(layers),
             )
@@ -619,7 +637,7 @@ class HypoDD(Exporter):
             shutil.copy(source, results_script)
         results_script.chmod(0o755)
 
-        if self.cross_correlation is not None:
+        if use_cc:
             data = "catalog and cross-correlation differential times (`IDAT=3`)"
             cc_files = (
                 f"| `dt.cc` | {n_cc['P']} P and {n_cc['S']} S cross-correlation "
@@ -672,10 +690,13 @@ class HypoDD(Exporter):
 
         cc_events = []
         for (event_id, event, origin), picks in zip(events, event_picks, strict=True):
-            arrivals = {
-                (nsl, phase_type): (origin + timedelta(seconds=traveltime)).timestamp()
-                for nsl, traveltime, _, phase_type in picks
-            }
+            # the first pick of a phase type, e.g. of P if there are P and Pn
+            arrivals: dict[tuple[NSL, str], float] = {}
+            for nsl, traveltime, _, phase_type in picks:
+                arrivals.setdefault(
+                    (nsl, phase_type),
+                    (origin + timedelta(seconds=traveltime)).timestamp(),
+                )
             if settings.modeled_arrivals:
                 for receiver in event.receivers:
                     if receiver.surface_distance_to(event) > max_distance:

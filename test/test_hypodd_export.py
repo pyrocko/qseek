@@ -19,10 +19,11 @@ from pydantic import ValidationError
 from pyrocko import cake, io, trace
 from pyrocko.model import load_events
 
-from qseek.exporters.cross_correlation import CrossCorrelation
+from qseek.exporters.cross_correlation import CrossCorrelation, PhaseWindow
 from qseek.exporters.hypodd import (
     TOP_FIRST_LAYER,
     HypoDD,
+    HypoDDSettings,
     IterationSet,
     discretize_earthmodel,
     phase_hint,
@@ -794,3 +795,44 @@ def test_cc_iterations() -> None:
     assert HypoDD().hypodd.iterations[0].as_line().startswith("5 -999 -999 -999 -999")
     with pytest.raises(ValidationError):
         CrossCorrelation(bandpass=(10.0, 2.0))
+
+
+def test_cc_iterations_after_construction() -> None:
+    settings = HypoDDSettings()
+    exporter = HypoDD(hypodd=settings, cross_correlation=CrossCorrelation())
+    assert len(exporter.hypodd.iterations) == 5
+    # the shared settings of hypoDD stay as they are
+    assert len(settings.iterations) == 3
+
+    exporter = HypoDD()
+    exporter.cross_correlation = CrossCorrelation()
+    exporter.set_cc_iterations()
+    assert all(it.uses_cc() for it in exporter.hypodd.iterations)
+
+
+@pytest.mark.asyncio
+async def test_hypodd_export_cc_without_times(tmp_path: Path) -> None:
+    rundir = tmp_path / "run"
+    catalog, _ = synthetic_rundir(rundir, n_events=6, waveforms=True)
+    await catalog.save()
+
+    # no channel has the orientation X: no waveforms to correlate
+    exporter = HypoDD(min_picks=10)
+    exporter.cross_correlation = CrossCorrelation(
+        window_p=PhaseWindow(
+            seconds_before=0.1, seconds_after=0.5, max_lag=0.2, components="X"
+        ),
+        window_s=PhaseWindow(
+            seconds_before=0.2, seconds_after=1.0, max_lag=0.3, components="X"
+        ),
+    )
+    outdir = tmp_path / "hypodd"
+    await exporter.export(rundir, outdir)
+
+    assert not (outdir / "dt.cc").exists()
+    control = (outdir / "hypoDD.inp").read_text().splitlines()
+    assert control[control.index("* IDAT IPHA DIST") + 1].split()[0] == "2"
+    assert "station.sel" in control
+    # export() switched to the weighting of the cross-correlation data
+    info = HypoDD.model_validate_json((outdir / "export_info.json").read_text())
+    assert len(info.hypodd.iterations) == 5

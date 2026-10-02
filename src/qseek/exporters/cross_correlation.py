@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import lru_cache
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
@@ -17,6 +17,7 @@ from pydantic import (
     NonNegativeFloat,
     PositiveFloat,
     PositiveInt,
+    field_validator,
     model_validator,
 )
 from scipy import signal
@@ -64,6 +65,13 @@ class PhaseWindow(BaseModel):
         "`NE12`. The normalized correlations of all components are stacked.",
     )
 
+    @field_validator("components")
+    @classmethod
+    def _unique_components(cls, components: str) -> str:
+        if len(set(components)) != len(components):
+            raise ValueError(f"components {components!r} repeat an orientation code")
+        return components
+
 
 class DifferentialTime(NamedTuple):
     nsl: NSL
@@ -94,6 +102,7 @@ class WaveformCache:
 
     def __setitem__(self, key: object, traces: list[Trace]) -> None:
         size = sum(tr.ydata.nbytes for tr in traces)
+        self.n_bytes -= self._sizes.get(key, 0)
         self._cache[key] = traces
         self._sizes[key] = size
         self.n_bytes += size
@@ -251,24 +260,27 @@ class CrossCorrelation(BaseModel):
         loading: dict[int, asyncio.Task[list[Trace]]] = {}
         semaphore = asyncio.Semaphore(self.n_parallel)
         results: dict[tuple[int, int], list[DifferentialTime]] = {}
+        stats: Counter[str] = Counter()
         n_done = 0
         n_report = max(1, len(neighbors) // 10)
 
-        async def get_waveforms(idx: int) -> list[Trace]:
+        async def load(idx: int) -> list[Trace]:
             event = events[idx]
-            traces = cache.get(event.detection.uid)
+            try:
+                traces = await self.load_waveforms(event, waveform_provider, stats)
+                cache[event.detection.uid] = traces
+            finally:
+                loading.pop(idx, None)
+            return traces
+
+        async def get_waveforms(idx: int) -> list[Trace]:
+            traces = cache.get(events[idx].detection.uid)
             if traces is not None:
                 return traces
             if idx not in loading:
-                loading[idx] = asyncio.create_task(
-                    self.load_waveforms(event, waveform_provider)
-                )
-            try:
-                traces = await loading[idx]
-            finally:
-                loading.pop(idx, None)
-            cache[event.detection.uid] = traces
-            return traces
+                loading[idx] = asyncio.create_task(load(idx))
+            # other events wait for the same load, do not cancel it for them
+            return await asyncio.shield(loading[idx])
 
         async def correlate_neighbors(idx: int) -> None:
             nonlocal n_done
@@ -301,12 +313,37 @@ class CrossCorrelation(BaseModel):
                 )
 
         await asyncio.gather(*(correlate_neighbors(idx) for idx in sorted(neighbors)))
+        self.log_stats(stats, len(results))
         return dict(sorted(results.items()))
+
+    def log_stats(self, stats: Counter[str], n_pairs: int) -> None:
+        """Log the traces that were dropped, warn if no data are left."""
+        dropped = {
+            "no_data": "without data covering the windows and the filter padding",
+            "nyquist": f"with a Nyquist frequency below {self.bandpass[0]:g} Hz",
+            "filter": "that cannot be filtered",
+        }
+        for key, reason in dropped.items():
+            if stats[key]:
+                logger.info("dropped %d traces %s", stats[key], reason)
+        if not stats["filtered"]:
+            logger.warning(
+                "no waveforms to correlate: check the waveform archive, `channels`,"
+                " the `components` of the windows and `bandpass`"
+            )
+        elif not n_pairs:
+            logger.warning(
+                "no event pair has %d differential times with a correlation of at"
+                " least %g",
+                self.min_observations,
+                self.min_correlation,
+            )
 
     async def load_waveforms(
         self,
         event: CorrelationEvent,
         waveform_provider: WaveformProvider,
+        stats: Counter[str] | None = None,
     ) -> list[Trace]:
         """Load and filter the waveforms of an event around its arrivals."""
         spans: dict[NSL, tuple[float, float]] = {}
@@ -339,46 +376,57 @@ class CrossCorrelation(BaseModel):
         except OSError as exc:
             logger.warning("cannot load the waveforms of event %d: %s", event.id, exc)
             return []
-        return await asyncio.to_thread(self.filter_waveforms, traces, spans)
+        return await asyncio.to_thread(self.filter_waveforms, traces, spans, stats)
 
     def filter_waveforms(
         self,
         traces: list[Trace],
         spans: dict[NSL, tuple[float, float]],
+        stats: Counter[str] | None = None,
     ) -> list[Trace]:
         """Cut the traces to their spans plus padding, filter and remove the padding.
 
-        Traces with gaps in their span are dropped.
+        Traces with gaps in their span are dropped. `stats` counts the traces that
+        were filtered and dropped.
         """
         from qseek.utils import NSL
 
+        stats = Counter() if stats is None else stats
         components = self.window_p.components + self.window_s.components
         low, high = self.bandpass
         padding = self.padding
         filtered = []
         for tr in traces:
-            if tr.channel[-1:] not in components:
+            span = spans.get(NSL(*tr.nslc_id[:3]))
+            if span is None or tr.channel[-1:] not in components:
                 continue
-            start, end = spans[NSL(*tr.nslc_id[:3])]
             # a few samples more, the windows start and end between samples
-            start -= 2 * tr.deltat
-            end += 2 * tr.deltat
+            start = span[0] - 2 * tr.deltat
+            end = span[1] + 2 * tr.deltat
             # a segment covering the span with its padding has no gap in it
             if tr.tmin > start - padding or tr.tmax < end + padding:
+                stats["no_data"] += 1
                 continue
-            tr = tr.chop(start - padding, end + padding, inplace=False)
             high_corner = min(high, MAX_NYQUIST_FRACTION * 0.5 / tr.deltat)
             if high_corner <= low:
+                stats["nyquist"] += 1
                 continue
-            data = signal.detrend(tr.ydata.astype(np.float64))
-            taper = min(1.0, 2 * padding / (tr.tmax - tr.tmin))
-            data *= signal.windows.tukey(data.size, alpha=taper)
-            data = signal.sosfiltfilt(
-                butterworth(round(1.0 / tr.deltat, 6), low, high_corner), data
-            )
+            tr = tr.chop(start - padding, end + padding, inplace=False)
+            try:
+                data = signal.detrend(tr.ydata.astype(np.float64))
+                taper = min(1.0, 2 * padding / (tr.tmax - tr.tmin))
+                data *= signal.windows.tukey(data.size, alpha=taper)
+                data = signal.sosfiltfilt(
+                    butterworth(round(1.0 / tr.deltat, 6), low, high_corner), data
+                )
+            except ValueError as exc:
+                logger.debug("cannot filter %s: %s", ".".join(tr.nslc_id), exc)
+                stats["filter"] += 1
+                continue
             tr.set_ydata(data.astype(np.float32))
             tr.chop(start, end)
             filtered.append(tr)
+            stats["filtered"] += 1
         return filtered
 
     def correlate_pair(
