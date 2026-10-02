@@ -228,13 +228,15 @@ class SeisBench(ImageFunction):
             '(`"avg"`) or maximum (`"max"`).'
         ),
     )
-    sampling_rate: PositiveFloat = Field(
+    sampling_rate: PositiveFloat | Literal["input"] = Field(
         default=100.0,
         description=(
             "Sampling rate in Hz that the model assumes for its input. A rate above the"
             " native rate of the model, e.g. 200 Hz for a model trained at 100 Hz, "
             "rescales the input by their ratio. This can help to detect high-frequency "
-            "microseismic events."
+            'microseismic events. `"input"` uses the sampling rate of the input '
+            "traces, which must all have the same rate. Until the first traces are "
+            "processed, the blinding assumes the native rate of the model."
         ),
     )
     phase_map: dict[PhaseName, str] = Field(
@@ -258,6 +260,7 @@ class SeisBench(ImageFunction):
     )
 
     _seisbench_model: WaveformModel = PrivateAttr()
+    _native_sampling_rate: PositiveFloat = PrivateAttr(100.0)
     _rescale_input: PositiveFloat = PrivateAttr(1.0)
 
     @property
@@ -293,7 +296,9 @@ class SeisBench(ImageFunction):
         else:
             logger.info("loading pre-trained SeisBench model %s...", self.pretrained)
             self._seisbench_model = model.from_pretrained(self.pretrained, update=False)
-            self._seisbench_model.sampling_rate = self.sampling_rate
+        self._native_sampling_rate = self._seisbench_model.sampling_rate
+        if self.sampling_rate != "input":
+            self._set_model_sampling_rate(self.sampling_rate)
         # 0 selects the first device, only False runs on the CPU
         if self.torch_use_cuda is not False:
             try:
@@ -307,8 +312,6 @@ class SeisBench(ImageFunction):
                     "failed to use CUDA for SeisBench model, using CPU",
                     exc_info=exc,
                 )
-        self._rescale_input = self.sampling_rate / self._seisbench_model.sampling_rate
-        logger.debug("rescaling SeisBench input by factor %.2f", self._rescale_input)
 
         self._seisbench_model.eval()
         try:
@@ -323,6 +326,14 @@ class SeisBench(ImageFunction):
                 exc_info=exc,
             )
 
+    def _set_model_sampling_rate(self, sampling_rate: float) -> None:
+        """Set the sampling rate the model assumes and the input rescaling."""
+        # torch.compile wraps the model, the attribute has to be set on the original
+        model = getattr(self._seisbench_model, "_orig_mod", self._seisbench_model)
+        model.sampling_rate = sampling_rate
+        self._rescale_input = sampling_rate / self._native_sampling_rate
+        logger.debug("rescaling SeisBench input by factor %.2f", self._rescale_input)
+
     def get_blinding_samples(self) -> tuple[int, int]:
         if self.model == "GPD":
             return (0, 0)
@@ -332,7 +343,12 @@ class SeisBench(ImageFunction):
             return self.seisbench_model._annotate_args["blinding"][1]
 
     def get_blinding(self) -> timedelta:
-        return timedelta(seconds=max(self.get_blinding_samples()) / self.sampling_rate)
+        sampling_rate = (
+            self._seisbench_model.sampling_rate
+            if self.sampling_rate == "input"
+            else self.sampling_rate
+        )
+        return timedelta(seconds=max(self.get_blinding_samples()) / sampling_rate)
 
     def _detection_half_width(self) -> float:
         """Half width of the detection window in seconds."""
@@ -341,6 +357,15 @@ class SeisBench(ImageFunction):
 
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
+        if self.sampling_rate == "input" and traces:
+            rates = {round(1.0 / tr.deltat, 6) for tr in traces}
+            if len(rates) != 1:
+                raise ValueError(
+                    "SeisBench `sampling_rate='input'` requires traces with a "
+                    f"homogeneous sampling rate, got {sorted(rates)} Hz."
+                )
+            self._set_model_sampling_rate(rates.pop())
+
         stream = Stream(tr.to_obspy_trace() for tr in traces)
 
         annotations: Stream = await asyncio.to_thread(

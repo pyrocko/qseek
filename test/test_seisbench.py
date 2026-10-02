@@ -265,3 +265,35 @@ def test_blinding_duration(sampling_rate):
     function._rescale_input = sampling_rate / 100
     function._seisbench_model = SimpleNamespace(default_args={"blinding": (100, 300)})
     assert function.get_blinding().total_seconds() == 300 / sampling_rate
+
+
+@pytest.mark.asyncio
+async def test_sampling_rate_input(monkeypatch):
+    """`sampling_rate="input"` follows the traces and rejects mixed rates."""
+
+    def trace(sampling_rate: float) -> Trace:
+        return Trace(
+            network="XX",
+            station="STA",
+            channel="HHZ",
+            tmin=TMIN,
+            deltat=1 / sampling_rate,
+            ydata=np.zeros(int(10 * sampling_rate)),
+        )
+
+    async def inline_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
+    function = SeisBench(sampling_rate="input")
+    function._seisbench_model = SimpleNamespace(
+        annotate=lambda stream, **kwargs: Stream(), sampling_rate=100.0
+    )
+    function._native_sampling_rate = 100.0
+
+    await function.process_traces([trace(200.0)])
+    assert function._seisbench_model.sampling_rate == 200.0
+    assert function._rescale_input == 2.0
+
+    with pytest.raises(ValueError, match="homogeneous"):
+        await function.process_traces([trace(100.0), trace(200.0)])
