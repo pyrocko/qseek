@@ -167,6 +167,7 @@ nav:
   - Get started:
       - Installation: getting-started/installation.md
       - Quick start: getting-started/quick-start.md
+      - Playground: getting-started/playground.md
       - Set up your own search: getting-started/first-search.md
   - Concepts:
       - How Qseek works: concepts/how-it-works.md
@@ -179,6 +180,7 @@ nav:
   - Results:
       - Run directory: results/run-directory.md
       - Explore results: results/explore.md
+      - Exporters: results/exporters.md
   - Configuration:
       - configuration/index.md
       - Conventions: configuration/conventions.md

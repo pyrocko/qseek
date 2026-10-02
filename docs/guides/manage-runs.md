@@ -54,6 +54,6 @@ qseek export hypodd my-search/ hypodd-project/
 | --- | --- |
 | `hypodd` | A HypoDD project folder for double-difference relocation, see [relocate with HypoDD](relocate-hypodd.md). |
 | `simple` | Travel times of the picks in CSV format. |
-| `velest` | A VELEST project folder for 1D velocity model inversion. |
+| `velest` | A VELEST project folder for 1D velocity model inversion, see [exporters](../results/exporters.md#velest). |
 
-`--force` overwrites an existing export directory. `--config` reads the settings of the export module from a JSON file.
+`--force` overwrites an existing export directory. `--config` reads the settings of the export module from a JSON file. The [exporters](../results/exporters.md) page describes the formats.

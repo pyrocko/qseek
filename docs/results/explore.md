@@ -80,4 +80,4 @@ Detections in QGIS, styled by their attributes.
 
 ## Export detections
 
-Qseek exports the detections to other formats, e.g. a HypoDD project for double-difference relocation or a VELEST project for velocity model inversion. See [export the detections](../guides/manage-runs.md#export-the-detections).
+Qseek exports the detections to other formats, e.g. a HypoDD project for double-difference relocation or a VELEST project for velocity model inversion. See [exporters](exporters.md).

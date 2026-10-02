@@ -191,6 +191,7 @@ qseek snuffler campi-flegrei/ --show-observed --show-modelled
 
 ## Next steps
 
+- The [playground](playground.md) runs this example with one command per step and compares searches with different settings.
 - [How Qseek works](../concepts/how-it-works.md) explains the steps of the search.
 - [Tune the detection](../guides/tune-detection.md) shows how to check and improve the results.
 - [Station corrections](../configuration/station-corrections.md) refine the locations in a second search.
