@@ -91,7 +91,7 @@ WOOD_ANDERSON_PIDSA = PoleZeroResponse(
 )
 
 
-class Range(NamedTuple):
+class DistanceRange(NamedTuple):
     min: float
     max: float
 
@@ -111,8 +111,8 @@ class StationLocalMagnitude(NamedTuple):
 
 
 class LocalMagnitudeModel:
-    epicentral_range: ClassVar[Range | None] = None
-    hypocentral_range: ClassVar[Range | None] = None
+    epicentral_range: ClassVar[DistanceRange | None] = None
+    hypocentral_range: ClassVar[DistanceRange | None] = None
 
     max_amplitude: ClassVar[MaxAmplitudeQuantity] = "wood-anderson"
 
@@ -165,7 +165,7 @@ class WebnetWesternBohemia(LocalMagnitudeModel):
     author = "Horálek et al. (2000)"
     doi = "10.1023/A:1022198406514"
 
-    hypocentral_range = Range(0.0 * KM, 100.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 100.0 * KM)
     component = "all-abs"
     max_amplitude = "velocity"
 
@@ -212,7 +212,7 @@ class WoodAnderson:
 class IaspeiSouthernCalifornia(LocalMagnitudeModel):
     author = "Hutton and Boore (1987)"
 
-    hypocentral_range = Range(10.0 * KM, 700.0 * KM)
+    hypocentral_range = DistanceRange(10.0 * KM, 700.0 * KM)
     component = "north-east-separate"
     max_amplitude = "wood-anderson-old"
 
@@ -235,7 +235,7 @@ class IaspeiSouthernCalifornia(LocalMagnitudeModel):
 class SouthernCalifornia(WoodAnderson, LocalMagnitudeModel):
     author = "Hutton and Boore (1987)"
 
-    hypocentral_range = Range(10.0 * KM, 700.0 * KM)
+    hypocentral_range = DistanceRange(10.0 * KM, 700.0 * KM)
     component = "north-east-separate"
     max_amplitude = "wood-anderson-old"
 
@@ -248,7 +248,7 @@ class CentralCalifornia(WoodAnderson, LocalMagnitudeModel):
     author = "Bakun and Joyner (1984)"
     doi = "10.1785/BSSA0740051827"
 
-    epicentral_range = Range(0.0 * KM, 400.0 * KM)
+    epicentral_range = DistanceRange(0.0 * KM, 400.0 * KM)
     component = "horizontal-avg"
     max_amplitude = "wood-anderson-old"
 
@@ -261,7 +261,7 @@ class CaliforniaIntegratedSeismicNetwork(WoodAnderson, LocalMagnitudeModel):
     author = "Urhammer et. al (2011)"
     doi = "10.1785/0120100106"
 
-    epicentral_range = Range(0.0 * KM, 450.0 * KM)  # actually 500
+    epicentral_range = DistanceRange(0.0 * KM, 450.0 * KM)  # actually 500
     component = "horizontal-separate"
     max_amplitude = "wood-anderson-old"
     peak_measurement = "max-amplitude"
@@ -282,7 +282,7 @@ class CaliforniaIntegratedSeismicNetwork(WoodAnderson, LocalMagnitudeModel):
 class EasternNorthAmerica(WoodAnderson, LocalMagnitudeModel):
     author = "Kim (1998)"
 
-    epicentral_range = Range(100.0 * KM, 800.0 * KM)
+    epicentral_range = DistanceRange(100.0 * KM, 800.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -297,7 +297,7 @@ class ArgentiereGlacier(WoodAnderson, LocalMagnitudeModel):
     max_amplitude = "wood-anderson-2800"
     component = "north-east-separate"
     # not specified by authors; sensible default for near-field
-    hypocentral_range = Range(0.0 * KM, 100.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 100.0 * KM)
 
     @staticmethod
     def get_amp_attenuation(dist_hypo_km: float, dist_epi_km: float) -> float:
@@ -307,7 +307,7 @@ class ArgentiereGlacier(WoodAnderson, LocalMagnitudeModel):
 class Albania(WoodAnderson, LocalMagnitudeModel):
     author = "Muco and Minga (1991)"
 
-    epicentral_range = Range(10.0 * KM, 600.0 * KM)
+    epicentral_range = DistanceRange(10.0 * KM, 600.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -318,7 +318,7 @@ class Albania(WoodAnderson, LocalMagnitudeModel):
 class SouthWestGermany(WoodAnderson, LocalMagnitudeModel):
     author = "Stange (2006)"
 
-    hypocentral_range = Range(10.0 * KM, 1000.0 * KM)
+    hypocentral_range = DistanceRange(10.0 * KM, 1000.0 * KM)
     component = "vertical"
 
     @staticmethod
@@ -329,7 +329,7 @@ class SouthWestGermany(WoodAnderson, LocalMagnitudeModel):
 class SouthAustralia(WoodAnderson, LocalMagnitudeModel):
     author = "Greenhalgh and Singh (1986)"
 
-    epicentral_range = Range(40.0 * KM, 700.0 * KM)
+    epicentral_range = DistanceRange(40.0 * KM, 700.0 * KM)
     component = "vertical"
 
     @staticmethod
@@ -340,7 +340,7 @@ class SouthAustralia(WoodAnderson, LocalMagnitudeModel):
 class NorwayFennoscandia(WoodAnderson, LocalMagnitudeModel):
     author = "Alsaker et al. (1991)"
 
-    hypocentral_range = Range(0.0 * KM, 1500.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 1500.0 * KM)
     component = "vertical"
 
     @staticmethod
@@ -351,7 +351,7 @@ class NorwayFennoscandia(WoodAnderson, LocalMagnitudeModel):
 class IcelandAskja(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2020)"
 
-    hypocentral_range = Range(0.0 * KM, 150.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 150.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -362,7 +362,7 @@ class IcelandAskja(WoodAnderson, LocalMagnitudeModel):
 class IcelandBardabunga(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2020)"
 
-    hypocentral_range = Range(0.0 * KM, 150.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 150.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -373,7 +373,7 @@ class IcelandBardabunga(WoodAnderson, LocalMagnitudeModel):
 class IcelandAskjaBardabungaCombined(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2020)"
 
-    hypocentral_range = Range(0.0 * KM, 150.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 150.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -384,7 +384,7 @@ class IcelandAskjaBardabungaCombined(WoodAnderson, LocalMagnitudeModel):
 class IcelandReykjanes(WoodAnderson, LocalMagnitudeModel):
     author = "Greenfield et al. (2022)"
 
-    hypocentral_range = Range(0.0 * KM, 40.0 * KM)
+    hypocentral_range = DistanceRange(0.0 * KM, 40.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -395,7 +395,7 @@ class IcelandReykjanes(WoodAnderson, LocalMagnitudeModel):
 class Azores(WoodAnderson, LocalMagnitudeModel):
     author = "Gongora et al. (2004)"
 
-    epicentral_range = Range(10.0 * KM, 800.0 * KM)
+    epicentral_range = DistanceRange(10.0 * KM, 800.0 * KM)
     component = "north-east-separate"
 
     @staticmethod
@@ -406,7 +406,7 @@ class Azores(WoodAnderson, LocalMagnitudeModel):
 class ArgentinaVolcanoes(WoodAnderson, LocalMagnitudeModel):
     author = "Montenegro et al. (2021)"
 
-    epicentral_range = Range(0.0 * KM, 100.0 * KM)  # Bounds are not clear
+    epicentral_range = DistanceRange(0.0 * KM, 100.0 * KM)  # Bounds are not clear
     component = "north-east-separate"
 
     @staticmethod
@@ -417,7 +417,7 @@ class ArgentinaVolcanoes(WoodAnderson, LocalMagnitudeModel):
 class NetherlandsGroningen(WoodAnderson, LocalMagnitudeModel):
     author = "Dost et al. (2018)"
 
-    epicentral_range = Range(0.0 * KM, 80.0 * KM)
+    epicentral_range = DistanceRange(0.0 * KM, 80.0 * KM)
     component = "horizontal-avg"
 
     @staticmethod
@@ -430,7 +430,7 @@ class CampiFlegrei(WoodAnderson, LocalMagnitudeModel):
     doi = "10.1785/0120070131"
 
     max_amplitude = "wood-anderson-2800"
-    epicentral_range = Range(0.2 * KM, 8.0 * KM)
+    epicentral_range = DistanceRange(0.2 * KM, 8.0 * KM)
     component = "horizontal-avg"
 
     @staticmethod
@@ -460,8 +460,8 @@ class CustomLocalMagnitudeModel(Model):
     max_amplitude: MaxAmplitudeQuantity = "wood-anderson"
 
     distance: Literal["epicentral", "hypocentral"] = "hypocentral"
-    epicentral_range: Range | None = None
-    hypocentral_range: Range | None = None
+    epicentral_range: DistanceRange | None = None
+    hypocentral_range: DistanceRange | None = None
 
     component: Component = "horizontal-abs"
     peak_measurement: PeakMeasurement = "peak-to-peak"
