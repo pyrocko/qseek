@@ -2167,12 +2167,12 @@
 <p>Qseek needs the location and the code of every station. Load them from <a href="https://www.fdsn.org/xml/station/">StationXML</a> or <a href="https://pyrocko.org/docs/current/formats/yaml.html">Pyrocko station YAML</a> files:</p>
 <div class="language-json highlight"><span class="filename">Stations from StationXML</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"station_xmls"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"meta/stations.xml"</span><span class="p">,</span><span class="w"> </span><span class="s2">"meta/temporary-network/"</span><span class="p">],</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"blacklist"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"GE.RUE."</span><span class="p">,</span><span class="w"> </span><span class="s2">"6A.STA*"</span><span class="p">]</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"exclude_stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"GE.RUE."</span><span class="p">,</span><span class="w"> </span><span class="s2">"6A.STA*"</span><span class="p">]</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
 </span></code></pre></div>
 <p><code>station_xmls</code> takes files and directories; Qseek loads all <code>.xml</code> files of a directory. Pyrocko station YAML files go into <code>pyrocko_station_yamls</code>. When the search starts, Qseek removes stations without waveform data.</p>
 <ul>
-<li><strong>Exclude stations</strong> with the <code>blacklist</code>, as <a href="../conventions/#station-codes">station codes</a>. Partial codes and wildcards exclude whole networks or groups of stations.</li>
+<li><strong>Exclude stations</strong> with <code>exclude_stations</code>, as <a href="../conventions/#station-codes">station codes</a>. Partial codes and wildcards exclude whole networks or groups of stations.</li>
 <li><strong>Limit the network</strong> with <code>max_distance</code> in meters from the center of the stations, e.g. to ignore distant stations of a regional network.</li>
 </ul>
 <div class="admonition note">
@@ -2182,7 +2182,7 @@
 <div class="language-json highlight"><span class="filename">StationInventory</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"pyrocko_station_yamls"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"station_xmls"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"blacklist"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"exclude_stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"max_distance"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
@@ -2236,13 +2236,13 @@ starts, stations without waveform data are removed.</p>
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Paths (qseek.types.FilePath)" href="../conventions/#paths">FilePath</a> | <a class="autorefs autorefs-internal" title="Paths (qseek.types.DirectoryPath)" href="../conventions/#paths">DirectoryPath</a>]</code>)
             </li>
             <li>
-              <code><a class="autorefs autorefs-internal" title="            blacklist
+              <code><a class="autorefs autorefs-internal" title="            exclude_stations
 
 
   
       pydantic-field
-   (qseek.models.station.StationInventory.blacklist)" href="./#qseek.models.station.StationInventory.blacklist">blacklist</a></code>
-                (<code><span title="qseek.models.station.Blacklist">Blacklist</span></code>)
+   (qseek.models.station.StationInventory.exclude_stations)" href="./#qseek.models.station.StationInventory.exclude_stations">exclude_stations</a></code>
+                (<code><span title="qseek.models.station.NSLRejectList">NSLRejectList</span></code>)
             </li>
             <li>
               <code><a class="autorefs autorefs-internal" title="            stations
@@ -2332,16 +2332,16 @@ starts, stations without waveform data are removed.</p>
 
 
 
-<h4 id="qseek.models.station.StationInventory.blacklist" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">blacklist</span>
+<h4 id="qseek.models.station.StationInventory.exclude_stations" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">exclude_stations</span>
 
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
   </span>
 
-<a href="#qseek.models.station.StationInventory.blacklist" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">blacklist</span><span class="p">:</span> <span class="n"><span title="qseek.models.station.Blacklist">Blacklist</span></span>
+<a href="#qseek.models.station.StationInventory.exclude_stations" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">exclude_stations</span><span class="p">:</span> <span class="n"><span title="qseek.models.station.NSLRejectList">NSLRejectList</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2484,7 +2484,7 @@ starts, stations without waveform data are removed.</p>
 
 
 <a href="#qseek.models.station.StationInventory.filter_stations" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">filter_stations</span><span class="p">(</span><span class="n">nsls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Iterable" href="https://docs.python.org/3/library/typing.html#typing.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">filter_stations</span><span class="p">(</span><span class="n">nsls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Iterable" href="https://docs.python.org/3/library/typing.html#typing.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2509,7 +2509,7 @@ starts, stations without waveform data are removed.</p>
                 <code>nsls</code>
             </td>
             <td>
-                  <code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a>]</code>
+                  <code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<span title="qseek.utils.NSL">NSL</span>]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -2663,7 +2663,7 @@ starts, stations without waveform data are removed.</p>
 
 
 <a href="#qseek.models.station.StationInventory.get_nsls" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_nsls</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_nsls</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2683,9 +2683,7 @@ starts, stations without waveform data are removed.</p>
 
 
 <a href="#qseek.models.station.StationInventory.select_from_traces" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">select_from_traces</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">traces</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">],</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Station
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">select_from_traces</span><span class="p">(</span><span class="n">traces</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Station
 
 
   
@@ -2972,11 +2970,7 @@ starts, stations without waveform data are removed.</p>
   </span>
 
 <a href="#qseek.models.station.StationInventory.get_responses" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_responses</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">start_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">end_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">traces</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_responses</span><span class="p">(</span><span class="n">start_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span> <span class="n">end_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span> <span class="n">traces</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3222,6 +3216,8 @@ starts, stations without waveform data are removed.</p>
       <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="../../javascripts/octree-hero.js"></script>
       
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       

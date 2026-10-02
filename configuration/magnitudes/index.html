@@ -2496,7 +2496,7 @@ station magnitudes.</p>
   
       pydantic-field
    (qseek.magnitudes.local_magnitude.LocalMagnitude.exclude_stations)" href="./#qseek.magnitudes.local_magnitude.LocalMagnitude.exclude_stations">exclude_stations</a></code>
-                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a>]</code>)
+                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
             </li>
             <li>
               <code><span title="qseek.magnitudes.local_magnitude.LocalMagnitude.magnitude">magnitude</span></code>
@@ -2726,9 +2726,7 @@ station magnitudes.</p>
   </span>
 
 <a href="#qseek.magnitudes.local_magnitude.LocalMagnitude.model" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">model</span><span class="p">:</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.ModelName">ModelName</span></span> <span class="o">|</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.CustomLocalMagnitudeModel">CustomLocalMagnitudeModel</span></span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s2">"iaspei-southern-california"</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">model</span><span class="p">:</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.ModelName">ModelName</span></span> <span class="o">|</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.CustomLocalMagnitudeModel">CustomLocalMagnitudeModel</span></span> <span class="o">=</span> <span class="s1">'iaspei-southern-california'</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2824,7 +2822,7 @@ station magnitudes.</p>
   </span>
 
 <a href="#qseek.magnitudes.local_magnitude.LocalMagnitude.exclude_stations" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">exclude_stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">exclude_stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2850,26 +2848,22 @@ station magnitudes.</p>
   </span>
 
 <a href="#qseek.magnitudes.local_magnitude.LocalMagnitude.get_magnitude" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_magnitude</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">waveform_provider</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            WaveformProvider
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_magnitude</span><span class="p">(</span><span class="n">waveform_provider</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            WaveformProvider
 
 
   
       pydantic-model
-   (qseek.waveforms.providers.WaveformProvider)" href="../../reference/api/modules/#qseek.waveforms.base.WaveformProvider">WaveformProvider</a></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
+   (qseek.waveforms.providers.WaveformProvider)" href="../../reference/api/modules/#qseek.waveforms.base.WaveformProvider">WaveformProvider</a></span><span class="p">,</span> <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
 
 
   
       pydantic-model
-   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">event</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
+   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
 
 
   
       pydantic-model
-   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.magnitudes.local_magnitude.EventLocalMagnitude">EventLocalMagnitude</span></span>
+   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.magnitudes.local_magnitude.EventLocalMagnitude">EventLocalMagnitude</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2972,17 +2966,12 @@ magnitudes.</p>
 
 
 <a href="#qseek.magnitudes.local_magnitude.LocalMagnitude.get_station_magnitude" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_station_magnitude</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">model</span><span class="p">:</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.LocalMagnitudeModel">LocalMagnitudeModel</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">event</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_station_magnitude</span><span class="p">(</span><span class="n">model</span><span class="p">:</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.LocalMagnitudeModel">LocalMagnitudeModel</span></span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
 
 
   
       pydantic-model
-   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">receiver</span><span class="p">:</span> <span class="n"><span title="qseek.models.detection.Receiver">Receiver</span></span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">traces</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">],</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.StationLocalMagnitude">StationLocalMagnitude</span></span>
+   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">,</span> <span class="n">receiver</span><span class="p">:</span> <span class="n"><span title="qseek.models.detection.Receiver">Receiver</span></span><span class="p">,</span> <span class="n">traces</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.magnitudes.local_magnitude_models.StationLocalMagnitude">StationLocalMagnitude</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3115,14 +3104,12 @@ could not be determined.</p>
   </span>
 
 <a href="#qseek.magnitudes.local_magnitude.LocalMagnitude.get_subclasses" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_subclasses</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#type">type</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventMagnitudeCalculator
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_subclasses</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#type">type</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventMagnitudeCalculator
 
 
   
       pydantic-model
-   (qseek.magnitudes.base.EventMagnitudeCalculator)" href="../../reference/api/modules/#qseek.magnitudes.base.EventMagnitudeCalculator">EventMagnitudeCalculator</a></span><span class="p">],</span> <span class="o">...</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">]</span>
+   (qseek.magnitudes.base.EventMagnitudeCalculator)" href="../../reference/api/modules/#qseek.magnitudes.base.EventMagnitudeCalculator">EventMagnitudeCalculator</a></span><span class="p">],</span> <span class="o">...</span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3374,7 +3361,7 @@ could not be determined.</p>
   
       pydantic-field
    (qseek.magnitudes.moment_magnitude.MomentMagnitude.exclude_stations)" href="./#qseek.magnitudes.moment_magnitude.MomentMagnitude.exclude_stations">exclude_stations</a></code>
-                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a>]</code>)
+                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
             </li>
             <li>
               <code><span title="qseek.magnitudes.moment_magnitude.MomentMagnitude.magnitude">magnitude</span></code>
@@ -3646,9 +3633,7 @@ could not be determined.</p>
   </span>
 
 <a href="#qseek.magnitudes.moment_magnitude.MomentMagnitude.models" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">models</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="qseek.magnitudes.moment_magnitude.PeakAmplitudeDefinition">PeakAmplitudeDefinition</span></span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n"><span title="qseek.magnitudes.moment_magnitude.PeakAmplitudeDefinition">PeakAmplitudeDefinition</span></span><span class="p">()</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">models</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="qseek.magnitudes.moment_magnitude.PeakAmplitudeDefinition">PeakAmplitudeDefinition</span></span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n"><span title="qseek.magnitudes.moment_magnitude.PeakAmplitudeDefinition">PeakAmplitudeDefinition</span></span><span class="p">()]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3696,7 +3681,7 @@ could not be determined.</p>
   </span>
 
 <a href="#qseek.magnitudes.moment_magnitude.MomentMagnitude.exclude_stations" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">exclude_stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSL)" href="../conventions/#station-codes">NSL</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">exclude_stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3722,14 +3707,12 @@ could not be determined.</p>
   </span>
 
 <a href="#qseek.magnitudes.moment_magnitude.MomentMagnitude.get_subclasses" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_subclasses</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#type">type</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventMagnitudeCalculator
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_subclasses</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#type">type</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventMagnitudeCalculator
 
 
   
       pydantic-model
-   (qseek.magnitudes.base.EventMagnitudeCalculator)" href="../../reference/api/modules/#qseek.magnitudes.base.EventMagnitudeCalculator">EventMagnitudeCalculator</a></span><span class="p">],</span> <span class="o">...</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">]</span>
+   (qseek.magnitudes.base.EventMagnitudeCalculator)" href="../../reference/api/modules/#qseek.magnitudes.base.EventMagnitudeCalculator">EventMagnitudeCalculator</a></span><span class="p">],</span> <span class="o">...</span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3781,26 +3764,22 @@ could not be determined.</p>
   </span>
 
 <a href="#qseek.magnitudes.moment_magnitude.MomentMagnitude.get_magnitude" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_magnitude</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">waveform_provider</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            WaveformProvider
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_magnitude</span><span class="p">(</span><span class="n">waveform_provider</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            WaveformProvider
 
 
   
       pydantic-model
-   (qseek.waveforms.providers.WaveformProvider)" href="../../reference/api/modules/#qseek.waveforms.base.WaveformProvider">WaveformProvider</a></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
+   (qseek.waveforms.providers.WaveformProvider)" href="../../reference/api/modules/#qseek.waveforms.base.WaveformProvider">WaveformProvider</a></span><span class="p">,</span> <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
 
 
   
       pydantic-model
-   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">event</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
+   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
 
 
   
       pydantic-model
-   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.magnitudes.base.EventMagnitude">EventMagnitude</span></span>
+   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.magnitudes.base.EventMagnitude">EventMagnitude</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4106,6 +4085,8 @@ could not be determined.</p>
       <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="../../javascripts/octree-hero.js"></script>
       
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       

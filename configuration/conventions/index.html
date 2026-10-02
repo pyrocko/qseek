@@ -2347,10 +2347,10 @@
 </span></code></pre></div>
 <h2 id="durations">Durations<a class="headerlink" href="#durations" title="Permanent link">&para;</a></h2>
 <p>Durations follow ISO 8601 as well: <code>"PT5M"</code> is 5 minutes, <code>"PT600S"</code> 600 seconds, <code>"PT1H30M"</code> one and a half hours.</p>
-<p><a href="" id="qseek.utils.NSL"></a></p>
+<p><a href="" id="qseek.utils.NSLType"></a></p>
 <h2 id="station-codes">Station codes<a class="headerlink" href="#station-codes" title="Permanent link">&para;</a></h2>
 <p>Stations are identified by their network, station and location code (NSL), written as <code>"&lt;network&gt;.&lt;station&gt;.&lt;location&gt;"</code>, e.g. <code>"6A.STA13.00"</code>. The location code is often empty: <code>"GE.RUE."</code>. Network and location codes have up to two characters, station codes up to five.</p>
-<p>Where a field selects stations, such as the <code>blacklist</code> of the <a href="../stations/">stations</a>, partial codes and wildcards match several stations: <code>"6A."</code> matches the whole network, <code>"6A.STA*"</code> all stations starting with <code>STA</code>.</p>
+<p>Where a field selects stations, such as the <code>exclude_stations</code> of the <a href="../stations/">stations</a>, partial codes and wildcards match several stations: <code>"6A."</code> matches the whole network, <code>"6A.STA*"</code> all stations starting with <code>STA</code>.</p>
 <p><a href="" id="qseek.utils.PhaseDescription"></a></p>
 <h2 id="phase-descriptions">Phase descriptions<a class="headerlink" href="#phase-descriptions" title="Permanent link">&para;</a></h2>
 <p>A phase description names a phase of a ray tracer as <code>"&lt;tracer&gt;:&lt;phase&gt;"</code>, e.g. <code>"cake:P"</code>, <code>"fm:S"</code> or <code>"constant:P"</code>. The <code>phase_map</code> of the <a href="../image-functions/">image function</a> assigns its P and S images to these phase descriptions, and every phase needs a <a href="../ray-tracers/">ray tracer</a> that calculates its travel times.</p>
@@ -3339,6 +3339,8 @@ east and north. Elevation and depth are in meters.</p>
       <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="../../javascripts/octree-hero.js"></script>
       
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
