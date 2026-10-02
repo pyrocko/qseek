@@ -8,7 +8,7 @@ icon: lucide/crosshair
 
 `qseek export hypodd` writes a HypoDD project folder from a run: the picks, the stations, the velocity model and the control files for ph2dt and hypoDD, ready to run.
 
-On the [Campi Flegrei example](../getting-started/quick-start.md), 20 May 2024, Qseek exports 424 detections with 5893 picks. ph2dt links 347 of them and hypoDD relocates 340 in about 2 s. On these 340 events, the median absolute double-difference residual of the catalog differential times falls from 73 ms at the Qseek locations to 54 ms at the HypoDD locations, and from 67 ms to 34 ms for P.
+On the [Campi Flegrei example](../getting-started/quick-start.md), 20 May 2024, Qseek exports 424 detections with 5893 picks. ph2dt links 347 of them and hypoDD relocates 340 in about 2 s. On these 340 events, the median absolute double-difference residual of the catalog differential times falls from 73 ms at the Qseek locations to 54 ms at the HypoDD locations, and from 67 ms to 34 ms for P. The [playground](../getting-started/playground.md#relocate-with-hypodd) runs this export and the comparison for you.
 
 !!! abstract "Citation"
     Waldhauser, F., and W. L. Ellsworth (2000). A double-difference earthquake location algorithm: Method and application to the northern Hayward fault, California. *Bulletin of the Seismological Society of America*, 90(6), 1353–1368. [doi:10.1785/0120000006](https://doi.org/10.1785/0120000006)

@@ -167,6 +167,7 @@ nav:
   - Get started:
       - Installation: getting-started/installation.md
       - Quick start: getting-started/quick-start.md
+      - Playground: getting-started/playground.md
       - Set up your own search: getting-started/first-search.md
   - Concepts:
       - How Qseek works: concepts/how-it-works.md
