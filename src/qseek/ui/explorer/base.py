@@ -65,7 +65,7 @@ class RunSource(Protocol):
     async def get_catalog_path(self) -> Path:
         """Get the path to the catalog directory.
 
-        Holding detections.json and detections_receivers.json.
+        Holding detections.jsonl and detections_receivers.jsonl.
 
         Returns:
             Path: The path to the catalog directory.

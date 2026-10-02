@@ -12,6 +12,7 @@ from pathlib import Path
 import asyncssh
 import rfc3986
 
+from qseek.models.detection import FILENAME_DETECTIONS, FILENAME_RECEIVERS
 from qseek.ui.explorer.base import RunExplorer, RunSource
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,8 @@ class SshSource(RunSource):
         return Path(self._tempfolder.name) / "search.json"
 
     async def _copy_files(self, force: bool = False) -> None:
-        detections_json = Path(self._tempfolder.name) / "detections.json"
-        receivers_json = Path(self._tempfolder.name) / "detections_receivers.json"
+        detections_json = Path(self._tempfolder.name) / FILENAME_DETECTIONS
+        receivers_json = Path(self._tempfolder.name) / FILENAME_RECEIVERS
 
         if not force and detections_json.exists() and receivers_json.exists():
             logger.debug(
@@ -75,8 +76,8 @@ class SshSource(RunSource):
         await asyncssh.scp(
             [
                 (self.connection, str(self.remote_path / "search.json")),
-                (self.connection, str(self.remote_path / "detections.json")),
-                (self.connection, str(self.remote_path / "detections_receivers.json")),
+                (self.connection, str(self.remote_path / FILENAME_DETECTIONS)),
+                (self.connection, str(self.remote_path / FILENAME_RECEIVERS)),
             ],
             self._tempfolder.name,
         )
@@ -87,7 +88,7 @@ class SshSource(RunSource):
         return Path(self._tempfolder.name)
 
     async def watch_for_updates(self, poll_interval: float = 60.0):
-        detections_json = self.remote_path / "detections.json"
+        detections_json = self.remote_path / FILENAME_DETECTIONS
         while True:
             await asyncio.sleep(poll_interval)
             # Fetch mtime and line count in a single SSH channel
@@ -164,9 +165,9 @@ class SshExplorer(RunExplorer):
             f"runs = [p.parent for p in directory.glob('*/search.json')]; "
             f"[print(str(r), "
             f"hashlib.sha1(open(r/'search.json','rb').read()).hexdigest(), "
-            f"int(os.stat(r/'detections.json').st_mtime), "
-            f"sum(1 for _ in open(r/'detections.json'))) "
-            f"for r in runs if (r/'detections.json').exists()]"
+            f"int(os.stat(r/'{FILENAME_DETECTIONS}').st_mtime), "
+            f"sum(1 for _ in open(r/'{FILENAME_DETECTIONS}'))) "
+            f"for r in runs if (r/'{FILENAME_DETECTIONS}').exists()]"
             f'"',
             check=True,
         )

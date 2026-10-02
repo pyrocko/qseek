@@ -9,6 +9,7 @@ from pathlib import Path
 
 from watchfiles import awatch
 
+from qseek.models.detection import FILENAME_DETECTIONS, FILENAME_RECEIVERS
 from qseek.ui.explorer.base import RunExplorer, RunSource
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,12 @@ class LocalSource(RunSource):
         search_json = self.run_dir / "search.json"
         if not search_json.is_file():
             raise ValueError(f"search.json not found in {self.run_dir}")
-        detections_json = self.run_dir / "detections.json"
-        detections_receivers = self.run_dir / "detections_receivers.json"
+        detections_json = self.run_dir / FILENAME_DETECTIONS
+        detections_receivers = self.run_dir / FILENAME_RECEIVERS
 
         if not detections_json.is_file() or not detections_receivers.is_file():
             raise ValueError(
-                f"detections.json or detections_receivers.json "
+                f"{FILENAME_DETECTIONS} or {FILENAME_RECEIVERS} "
                 f"not found in {self.run_dir}"
             )
         self.name = self.run_dir.name
@@ -54,7 +55,7 @@ class LocalSource(RunSource):
         return self.run_dir
 
     async def watch_for_updates(self):
-        detections_json = self.run_dir / "detections.json"
+        detections_json = self.run_dir / FILENAME_DETECTIONS
         async for changes in awatch(detections_json):
             for _ in changes:
                 logger.info("Detected change in %s", detections_json)
