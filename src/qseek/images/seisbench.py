@@ -229,7 +229,7 @@ class SeisBench(ImageFunction):
         ),
     )
     sampling_rate: PositiveFloat | Literal["input"] = Field(
-        default=100.0,
+        default="input",
         description=(
             "Sampling rate in Hz that the model assumes for its input. A rate above the"
             " native rate of the model, e.g. 200 Hz for a model trained at 100 Hz, "
