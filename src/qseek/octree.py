@@ -739,6 +739,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
     async def interpolate_max_semblance(
         self,
         peak_node: Node,
+        tolerance: float = 0.1,
     ) -> Location:
         """Interpolate the location of the maximum semblance value.
 
@@ -746,6 +747,10 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         interpolation using surrounding nodes. It uses the scipy Rbf (Radial basis function)
         interpolation method to fit a smooth function to the given data points. The function
         is then minimized to find the location of the maximum value.
+
+        Args:
+            peak_node (Node): The node with the peak semblance value.
+            tolerance (float, optional): The tolerance for the optimization. Defaults to 0.1
 
         Returns:
             Location: Location of the maximum semblance value.
@@ -770,7 +775,8 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
             neighbor_semblance,
             kernel="cubic",
         )
-        bound = peak_node.size / 1.5
+        bound = peak_node.size / 2
+        simplex_step = np.eye(3) * peak_node.size / 4
         res = await asyncio.to_thread(
             scipy.optimize.minimize,
             lambda x: -rbf(np.atleast_2d(x)),
@@ -781,6 +787,13 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
                 (peak_node.depth - bound, peak_node.depth + bound),
             ),
             x0=(peak_node.east, peak_node.north, peak_node.depth),
+            options={
+                # scipy's default simplex scales with the absolute coordinates
+                "initial_simplex": np.vstack(
+                    [peak_node.coordinates, peak_node.coordinates + simplex_step]
+                ),
+                "xatol": tolerance,
+            },
         )
 
         reference = self.location
