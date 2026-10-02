@@ -1,4 +1,4 @@
-name: Deploy
+name: Release
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       - "v*"
   pull_request:
     paths:
-      - ".github/workflows/deploy.yaml"
+      - ".github/workflows/release.yaml"
       - "pyproject.toml"
       - "setup.py"
       - "src/qseek/ext/**"
