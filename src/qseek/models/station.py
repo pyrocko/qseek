@@ -32,7 +32,7 @@ from qseek.models.location import CoordSystem, Location
 logger = logging.getLogger(__name__)
 
 
-class Blacklist(set[NSL]):
+class NSLRejectList(set[NSL]):
     def __contains__(self, other: NSL) -> bool:
         return any(nsl.match(other) for nsl in self)
 
@@ -122,8 +122,8 @@ class StationInventory(Model):
         "directories containing StationXML (.xml) files.",
     )
 
-    blacklist: Blacklist = Field(
-        default_factory=Blacklist,
+    exclude_stations: NSLRejectList = Field(
+        default_factory=NSLRejectList,
         description=(
             'Stations to exclude from the search, as NSL codes, e.g. `["GE.RUE."]`.'
         ),
@@ -145,7 +145,7 @@ class StationInventory(Model):
         self._squirrel = Squirrel()
 
     def __iter__(self) -> Iterator[Station]:
-        return (sta for sta in self.stations if sta.nsl not in self.blacklist)
+        return (sta for sta in self.stations if sta.nsl not in self.exclude_stations)
 
     def __contains__(self, other: NSL) -> bool:
         return any(sta.nsl == other for sta in self)
@@ -175,11 +175,11 @@ class StationInventory(Model):
         # if not self.stations:
         #     logger.warning("no stations available, add stations to start detection")
 
-    def blacklist_station(self, station: Station, reason: str) -> None:
-        logger.warning("blacklisting station %s: %s", station.nsl.pretty, reason)
-        self.blacklist.add(station.nsl)
+    def exclude_station(self, station: Station, reason: str) -> None:
+        logger.warning("excluding station %s: %s", station.nsl.pretty, reason)
+        self.exclude_stations.add(station.nsl)
         if self.n_stations == 0:
-            raise ValueError("no stations available, all stations blacklisted")
+            raise ValueError("no stations available, all stations excluded")
 
     def filter_stations(self, nsls: Iterable[NSL]) -> None:
         """Filter stations by NSL codes.

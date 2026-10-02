@@ -40,7 +40,7 @@ Durations follow ISO 8601 as well: `"PT5M"` is 5 minutes, `"PT600S"` 600 seconds
 
 Stations are identified by their network, station and location code (NSL), written as `"<network>.<station>.<location>"`, e.g. `"6A.STA13.00"`. The location code is often empty: `"GE.RUE."`. Network and location codes have up to two characters, station codes up to five.
 
-Where a field selects stations, such as the `blacklist` of the [stations](stations.md), partial codes and wildcards match several stations: `"6A."` matches the whole network, `"6A.STA*"` all stations starting with `STA`.
+Where a field selects stations, such as the `exclude_stations` of the [stations](stations.md), partial codes and wildcards match several stations: `"6A."` matches the whole network, `"6A.STA*"` all stations starting with `STA`.
 
 [](){ #qseek.utils.PhaseDescription }
 
