@@ -4,7 +4,9 @@ import itertools
 import logging
 import math
 import re
+import shutil
 from datetime import datetime, timedelta
+from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
@@ -117,6 +119,15 @@ cd "$(dirname "$0")"
 BIN="${HYPODD_BIN:+$HYPODD_BIN/}"
 "${BIN}ph2dt" ph2dt.inp
 "${BIN}hypoDD" hypoDD.inp
+
+# Convert the relocations to CSV and Pyrocko events. Set PYTHON to a Python with
+# Pyrocko for the Pyrocko events.
+PYTHON="${PYTHON:-python3}"
+if command -v "$PYTHON" > /dev/null 2>&1; then
+    "$PYTHON" hypodd_results.py
+else
+    echo "$PYTHON not found, run hypodd_results.py to convert the relocations" >&2
+fi
 """
 
 README = """\
@@ -132,11 +143,14 @@ input to ph2dt |
 | `station.dat` | {n_stations} stations |
 | `ph2dt.inp` | ph2dt control file |
 | `hypoDD.inp` | hypoDD control file, catalog differential times only (`IDAT=2`) |
-| `event_ids.csv` | HypoDD event ID, Qseek detection UID and origin time |
+| `event_ids.csv` | HypoDD event ID, Qseek detection UID, origin time, location \
+and magnitude |
 | `stations.csv` | HypoDD station label and Qseek station code (NSL) |
 | `velocity_model.csv` | The layered velocity model written to `hypoDD.inp` |
 | `export_info.json` | Settings of the export |
-| `run.sh` | Runs ph2dt and hypoDD |
+| `run.sh` | Runs ph2dt, hypoDD and `hypodd_results.py` |
+| `hypodd_results.py` | Converts `hypoDD.reloc` to `hypodd_relocations.csv` and \
+`hypodd_relocations.yaml` |
 
 ## Run HypoDD
 
@@ -145,8 +159,15 @@ HYPODD_BIN=~/src/HypoDD/bin ./run.sh
 ```
 
 ph2dt writes the differential times `dt.ct` and the initial locations
-`event.sel`; hypoDD writes the relocations to `hypoDD.reloc`. Map the event IDs
-in `hypoDD.reloc` back to the Qseek detections with `event_ids.csv`.
+`event.sel`; hypoDD writes the relocations to `hypoDD.reloc`. Then
+`hypodd_results.py` writes the relocated events with their Qseek detections:
+
+- `hypodd_relocations.csv`: ISO 8601 origin times, locations, HypoDD statistics,
+  the shift from the Qseek location and a `WKT_geom` column for QGIS;
+- `hypodd_relocations.yaml`: Pyrocko events, if Pyrocko is installed (set
+  `PYTHON` for `run.sh`).
+
+Run `python3 hypodd_results.py` again after you changed and ran hypoDD by hand.
 
 Check the condition number (`CND`) of the LSQR iterations in `hypoDD.log`. It
 should be about 40 to 80; tune `DAMP` in `hypoDD.inp` if it is not.
@@ -451,11 +472,22 @@ class HypoDD(Exporter):
                     f"{labels[nsl]},{nsl.pretty},{lat:.6f},{lon:.6f},{elevation:.1f}\n"
                 )
         with (outdir / "event_ids.csv").open("w") as file:
-            file.write("id,uid,time,hypodd_time\n")
+            file.write(
+                "id,uid,time,hypodd_time,lat,lon,depth,magnitude,magnitude_type\n"
+            )
             for event_id, event, origin in events:
+                magnitude = event.magnitude
+                mag, mag_type = "", ""
+                if magnitude is not None and magnitude.average is not None:
+                    # the label of the detection table, e.g. ML-campi-flegrei or Mw
+                    label = next(iter(magnitude.csv_row()), "magnitude")
+                    mag = f"{magnitude.average:.3f}"
+                    mag_type = magnitude.name if label == "magnitude" else label
                 file.write(
                     f"{event_id},{event.uid},{event.time.isoformat()},"
-                    f"{origin.isoformat()}\n"
+                    f"{origin.isoformat()},{event.effective_lat:.6f},"
+                    f"{event.effective_lon:.6f},{event.effective_depth:.1f},"
+                    f"{mag},{mag_type}\n"
                 )
         with (outdir / "velocity_model.csv").open("w") as file:
             file.write("top_km,vp_km_s,vs_km_s,vp_vs\n")
@@ -495,6 +527,10 @@ class HypoDD(Exporter):
         run_script = outdir / "run.sh"
         run_script.write_text(RUN_SCRIPT)
         run_script.chmod(0o755)
+        results_script = outdir / "hypodd_results.py"
+        with as_file(files("qseek.extras") / "hypodd_results.py") as source:
+            shutil.copy(source, results_script)
+        results_script.chmod(0o755)
 
         (outdir / "README.md").write_text(
             README.format(

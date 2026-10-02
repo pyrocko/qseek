@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import itertools
 import math
 import os
@@ -16,6 +17,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 from pyrocko import cake
+from pyrocko.model import load_events
 
 from qseek.exporters.hypodd import (
     TOP_FIRST_LAYER,
@@ -25,6 +27,7 @@ from qseek.exporters.hypodd import (
     round_time,
     station_labels,
 )
+from qseek.extras import hypodd_results
 from qseek.images.base import ObservedArrival
 from qseek.models.catalog import EventCatalog
 from qseek.models.detection import (
@@ -305,22 +308,28 @@ async def run_hypodd(outdir: Path) -> None:
         subprocess.run,
         ["./run.sh"],
         cwd=outdir,
-        env={**os.environ, "HYPODD_BIN": hypodd_bin or ""},
+        env={**os.environ, "HYPODD_BIN": hypodd_bin or "", "PYTHON": sys.executable},
         check=True,
         timeout=120,
         capture_output=True,
         stdin=subprocess.DEVNULL,
     )
+    # run.sh converts the relocations
+    n_relocated = len((outdir / "hypoDD.reloc").read_text().splitlines())
+    with (outdir / "hypodd_relocations.csv").open(newline="") as f:
+        assert len(list(csv.DictReader(f))) == n_relocated
+    assert len(load_events(str(outdir / "hypodd_relocations.yaml"))) == n_relocated
 
 
 def relocation_errors(
     outdir: Path, catalog: EventCatalog, truth: dict[datetime, Location]
 ) -> tuple[list[float], list[float]]:
     """Distances of the detections and the relocations to the true locations."""
-    ids = {}
-    for line in (outdir / "event_ids.csv").read_text().splitlines()[1:]:
-        event_id, _, time, _ = line.split(",")
-        ids[int(event_id)] = datetime.fromisoformat(time)
+    with (outdir / "event_ids.csv").open(newline="") as f:
+        ids = {
+            int(row["id"]): datetime.fromisoformat(row["time"])
+            for row in csv.DictReader(f)
+        }
 
     errors_initial, errors_relocated = [], []
     detections = {ev.time: ev for ev in catalog}
@@ -356,8 +365,19 @@ async def test_hypodd_export(tmp_path: Path) -> None:
         "stations.csv",
         "run.sh",
         "README.md",
+        "hypodd_results.py",
     ):
         assert (outdir / filename).exists()
+
+    with (outdir / "event_ids.csv").open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == len(truth)
+    detections = {str(ev.uid): ev for ev in catalog}
+    for row in rows:
+        detection = detections[row["uid"]]
+        assert float(row["lat"]) == pytest.approx(detection.effective_lat, abs=1e-6)
+        assert float(row["depth"]) == pytest.approx(detection.effective_depth, abs=0.1)
+        assert row["magnitude"] == ""
 
     phase_lines = (outdir / "phase.dat").read_text().splitlines()
     headers = [line for line in phase_lines if line.startswith("#")]
@@ -502,3 +522,69 @@ def test_cli_force_keeps_export_on_error(tmp_path: Path) -> None:
     assert not (outdir / "marker").exists()
     assert (outdir / "phase.dat").exists()
     assert not list(tmp_path.glob(".hypodd*"))
+
+
+RELOC = """\
+        2  40.843648   14.135918     1.307       46.6     1941.2     -388.5    102.3    119.4    139.9 2024  5 20  0 40 51.540  0.70     0     0    78    66 -9.000  0.109   1
+        1  40.830623   14.146896     1.270      972.6      494.8     -425.9     73.2     83.6     73.3 2024  5 20  0 17 59.995  0.00     0     0    83   103 -9.000  0.078   1
+"""
+
+
+def test_hypodd_results(tmp_path: Path) -> None:
+    (tmp_path / "hypoDD.reloc").write_text(RELOC)
+    (tmp_path / "event_ids.csv").write_text(
+        "id,uid,time,hypodd_time,lat,lon,depth,magnitude,magnitude_type\n"
+        "1,uid-1,2024-05-20T00:17:59.958485+00:00,2024-05-20T00:17:59.960000+00:00,"
+        "40.830000,14.146000,1500.0,,\n"
+        "2,uid-2,2024-05-20T00:40:51.558485+00:00,2024-05-20T00:40:51.560000+00:00,"
+        "40.843246,14.146983,2447.8,0.703,ML-campi-flegrei\n"
+        "3,uid-3,2024-05-20T01:00:00+00:00,2024-05-20T01:00:00+00:00,"
+        "40.8,14.1,1000.0,,\n"
+    )
+    relocations = hypodd_results.convert(tmp_path)
+    assert [r.hypodd_id for r in relocations] == [1, 2]
+
+    with (tmp_path / "hypodd_relocations.csv").open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert list(rows[0]) == list(hypodd_results.CSV_COLUMNS)
+    first, second = rows
+    # ISO 8601, the seconds roll over into the next minute
+    assert first["time"] == "2024-05-20T00:17:59.995Z"
+    assert first["uid"] == "uid-1"
+    assert first["depth"] == "1270.0"
+    assert first["magnitude"] == ""
+    assert first["rms_cc"] == ""
+    assert first["rms_ct"] == "0.0780"
+    assert first["WKT_geom"] == "POINT Z(14.146896 40.830623 -1270.0)"
+    assert float(first["shift_depth"]) == pytest.approx(-230.0)
+    assert float(first["shift_time"]) == pytest.approx(0.037, abs=1e-3)
+    assert float(first["shift_north"]) == pytest.approx(
+        math.radians(0.000623) * 6371e3, abs=0.1
+    )
+    assert second["magnitude"] == "0.70"
+    assert second["magnitude_type"] == "ML-campi-flegrei"
+    assert second["n_ct_p"] == "78"
+
+    events = load_events(str(tmp_path / "hypodd_relocations.yaml"))
+    assert [ev.name for ev in events] == [first["time"], second["time"]]
+    assert events[0].depth == pytest.approx(1270.0)
+    assert events[0].magnitude is None
+    assert events[1].magnitude == pytest.approx(0.703)
+    assert events[1].extras["qseek_uid"] == "uid-2"
+    assert events[1].extras["hypodd_id"] == 2
+
+
+def test_hypodd_results_old_event_ids(tmp_path: Path) -> None:
+    """Exports of the first version list only UID and time in event_ids.csv."""
+    (tmp_path / "hypoDD.reloc").write_text(RELOC)
+    (tmp_path / "event_ids.csv").write_text(
+        "id,uid,time,hypodd_time\n"
+        "1,uid-1,2024-05-20T00:17:59.958485+00:00,2024-05-20T00:17:59.960000+00:00\n"
+        "2,uid-2,2024-05-20T00:40:51.558485+00:00,2024-05-20T00:40:51.560000+00:00\n"
+    )
+    hypodd_results.convert(tmp_path)
+    with (tmp_path / "hypodd_relocations.csv").open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert rows[1]["magnitude"] == "0.70"
+    assert rows[1]["shift_horizontal"] == ""
+    assert rows[1]["qseek_time"] == "2024-05-20T00:40:51.558Z"
