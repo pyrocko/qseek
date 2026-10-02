@@ -58,14 +58,22 @@
 }
 
 /* Landing page. */
-.qs-hero {
-  margin: 1rem 0 2.5rem;
+.md-main:has(.qs-hero) {
+  overflow-x: clip;
 }
 
-.qs-hero .grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+.qs-hero {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 2.5rem;
+  min-height: clamp(24rem, 64vh, 34rem);
+  margin: -1.2rem 0 2.5rem;
+}
+
+.qs-hero__text {
+  position: relative;
+  z-index: 1;
+  max-width: 29rem;
 }
 
 .md-typeset .qs-hero h1 {
@@ -82,17 +90,274 @@
   color: var(--md-default-fg-color--light);
 }
 
-.md-typeset .qs-hero img {
-  border-radius: 0.6rem;
-  box-shadow: var(--md-shadow-z2);
+/* Octree backdrop, bleeding to the edges of the viewport. */
+.qs-hero__bg {
+  --oct-line: #1f4253;
+  --oct-accent: #d92c54;
+  --oct-glow: #8cc4e033;
+  --oct-nature: #c26a2b;
+  position: absolute;
+  z-index: 0;
+  top: -1rem;
+  bottom: -2rem;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--oct-x, 72%) var(--oct-y, 50%),
+    var(--oct-glow),
+    transparent min(32rem, 60%)
+  );
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 72%, transparent);
 }
 
+[data-md-color-scheme="slate"] .qs-hero__bg {
+  --oct-line: #8cc4e0;
+  --oct-accent: #f06486;
+  --oct-glow: #1f5a7840;
+  --oct-nature: #f2b27a;
+}
 
-.md-typeset .qs-supporters p {
+.qs-octree {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.qs-octree .oct-frame {
+  stroke: var(--oct-line);
+  stroke-opacity: 0.32;
+  stroke-width: 1;
+}
+
+.qs-octree .oct-surface {
+  stroke: var(--oct-line);
+  stroke-opacity: 0.08;
+  stroke-width: 1;
+}
+
+.qs-octree .oct-dot {
+  stroke: var(--oct-line);
+}
+
+.qs-octree .oct-dot--hot,
+.qs-octree .oct-catalog,
+.qs-octree .oct-cube--fine,
+.qs-octree .oct-ray,
+.qs-octree .oct-drop,
+.qs-octree .oct-pulse {
+  stroke: var(--oct-accent);
+}
+
+.qs-octree .oct-catalog {
+  stroke-width: 2.6;
+}
+
+.qs-octree .oct-cube {
+  stroke: var(--oct-line);
+  stroke-width: 1;
+}
+
+.qs-octree .oct-cube--fine {
+  stroke: var(--oct-accent);
+}
+
+.qs-octree .oct-cube--pruned {
+  stroke-opacity: 0.12;
+  stroke-dasharray: 2 3;
+}
+
+/* Nature, the earthquake and its waves, is soft and warm; Qseek is crisp. */
+.qs-octree .oct-wave {
+  stroke: var(--oct-nature);
+  stroke-width: 1.1;
+}
+
+.qs-octree .oct-wave-glow {
+  stroke: var(--oct-nature);
+  stroke-width: 7;
+  stroke-opacity: 0.1;
+}
+
+.qs-octree .oct-waves--s .oct-wave {
+  stroke-width: 1.5;
+}
+
+.qs-octree .oct-waves--s .oct-wave-glow {
+  stroke-width: 11;
+  stroke-opacity: 0.07;
+}
+
+.qs-octree .oct-ray {
+  stroke-width: 1;
+  stroke-dasharray: 1 1;
+}
+
+.qs-octree .oct-drop {
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.qs-octree .oct-station {
+  fill: var(--oct-line);
+  stroke: none;
+}
+
+.qs-octree .oct-station.is-linked {
+  fill: var(--oct-accent);
+}
+
+.qs-octree .oct-estimate {
+  stroke: var(--oct-accent);
+  stroke-width: 1.3;
+}
+
+.qs-octree .oct-glow-stop {
+  stop-color: var(--oct-accent);
+}
+
+.qs-octree .oct-pulse {
+  stroke-width: 1.2;
+}
+
+.qs-octree .oct-hypo-core {
+  fill: var(--oct-accent);
+}
+
+.qs-octree .oct-nature-stop {
+  stop-color: var(--oct-nature);
+}
+
+.qs-octree .oct-quake-patch {
+  fill: var(--oct-nature);
+  fill-opacity: 0.3;
+}
+
+.qs-octree .oct-quake-core {
+  fill: var(--oct-nature);
+}
+
+@media screen and (max-width: 59.9844em) {
+  .qs-hero__bg {
+    opacity: 0.4;
+  }
+}
+
+/* Citation card. */
+.md-typeset .qs-cite {
+  margin: 2.5rem 0 3rem;
+  padding: 1.2rem 1.4rem 0.4rem;
+  border: 1px solid var(--qs-card-border);
+  border-radius: 0.8rem;
+  background:
+    radial-gradient(120% 140% at 0% 0%, var(--qs-tile-bg), transparent 55%),
+    var(--qs-card-bg);
+  box-shadow: var(--qs-card-shadow);
+}
+
+.md-typeset .qs-cite > p:first-child {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 2.5rem;
+  gap: 0.7rem;
+  margin: 0 0 0.5rem;
+  font-size: 1.05em;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset .qs-cite > p:first-child .twemoji {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 0.6rem;
+  background: linear-gradient(135deg, var(--qs-navy-light), #1f5a78);
+  color: #ffffff;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .qs-cite > p:first-child .twemoji {
+  background: linear-gradient(135deg, #1f5a78, #2f7ea6);
+}
+
+.md-typeset .qs-cite > p:first-child .twemoji svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  max-height: none;
+}
+
+.md-typeset .qs-cite > p:nth-child(2) {
+  margin: 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.92em;
+}
+
+.md-typeset .qs-cite .tabbed-set {
+  margin: 0.6rem 0 0;
+}
+
+.md-typeset .qs-cite .tabbed-block > p {
+  font-size: 0.88em;
+  line-height: 1.65;
+}
+
+/* Supporters: a calm logo wall that comes to colour on hover. */
+.md-typeset .qs-supporters p {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.8rem;
+}
+
+.md-typeset .qs-supporters a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  height: 5rem;
+  padding: 0 1.2rem;
+  border: 1px solid var(--qs-card-border);
+  border-radius: 0.8rem;
+  background: var(--qs-card-bg);
+  color: var(--md-default-fg-color);
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.md-typeset .qs-supporters img {
+  width: auto;
+  max-width: 100%;
+  height: 2.6rem;
+  filter: grayscale(1);
+  opacity: 0.75;
+  transition:
+    filter 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.md-typeset .qs-supporters a:is(:hover, :focus-visible) {
+  border-color: color-mix(in srgb, var(--md-accent-fg-color) 40%, transparent);
+  box-shadow: var(--qs-card-shadow-hover);
+}
+
+.md-typeset .qs-supporters a:is(:hover, :focus-visible) img {
+  filter: none;
+  opacity: 1;
+}
+
+/* The logos are drawn for light backgrounds: show them as light monochrome. */
+[data-md-color-scheme="slate"] .md-typeset .qs-supporters img,
+[data-md-color-scheme="slate"] .md-typeset .qs-supporters a:is(:hover, :focus-visible) img {
+  filter: grayscale(1) invert(1);
 }
 
 .md-typeset .grid.qs-four {
@@ -102,6 +367,217 @@
 @media screen and (min-width: 76.25em) {
   .md-typeset .grid.qs-four {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Landing page cards: the pillars under the hero and the feature cards. */
+:root {
+  --qs-card-bg: #ffffff;
+  --qs-card-border: #122a361a;
+  --qs-card-shadow: 0 1px 2px #122a360a;
+  --qs-card-shadow-hover: 0 14px 32px -14px #122a3640;
+  --qs-tile-bg: #1f5a7814;
+  --qs-tile-fg: #1f5a78;
+}
+
+[data-md-color-scheme="slate"] {
+  --qs-card-bg: #ffffff06;
+  --qs-card-border: #8cc4e01f;
+  --qs-card-shadow: none;
+  --qs-card-shadow-hover: 0 14px 32px -14px #00000080;
+  --qs-tile-bg: #8cc4e01a;
+  --qs-tile-fg: #8cc4e0;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+/* Icon tile and title. */
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.95em;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:first-child .twemoji {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 0.6rem;
+  background: var(--qs-tile-bg);
+  color: var(--qs-tile-fg);
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:first-child .twemoji svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  max-height: none;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:not(:first-child, :last-child) {
+  margin: 0 0 1rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.92em;
+  line-height: 1.6;
+}
+
+/* The link sits at the bottom and makes the whole card clickable. */
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:last-child {
+  margin: auto 0 0;
+  font-size: 0.88em;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:last-child a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:last-child a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:last-child .twemoji {
+  transition: transform 0.25s ease;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li:hover > p:last-child .twemoji {
+  transform: translateX(0.2rem);
+}
+
+/* Links inside the text stay clickable above the card link. */
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:not(:last-child) a {
+  position: relative;
+  z-index: 1;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li:has(a:focus-visible) {
+  outline: 0.1rem solid var(--md-accent-fg-color);
+  outline-offset: 0.2rem;
+}
+
+.md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li > p:last-child a:focus-visible {
+  outline: none;
+}
+
+/* Pillars: an open strip with large tiles and hairline dividers. */
+.md-typeset .grid.cards.qs-pillars {
+  gap: 1.6rem 0;
+  margin: 0 0 2.5rem;
+}
+
+.md-typeset .grid.cards.qs-pillars > ul > li {
+  padding: 0.2rem 1.4rem 0.2rem 0;
+  border: none;
+  border-radius: 0.6rem;
+  background: none;
+  box-shadow: none;
+}
+
+.md-typeset .grid.cards.qs-pillars > ul > li > p:first-child {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+  font-size: 1.05em;
+}
+
+.md-typeset .grid.cards.qs-pillars > ul > li > p:first-child .twemoji {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, var(--qs-navy-light), #1f5a78);
+  color: #ffffff;
+  box-shadow: 0 6px 16px -8px #1f5a78;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards.qs-pillars > ul > li > p:first-child .twemoji {
+  background: linear-gradient(135deg, #1f5a78, #2f7ea6);
+  box-shadow: 0 6px 18px -8px #000000;
+}
+
+.md-typeset .grid.cards.qs-pillars > ul > li:hover > p:first-child .twemoji {
+  background: linear-gradient(135deg, var(--qs-red), var(--qs-red-light));
+}
+
+@media screen and (max-width: 44.9844em) {
+  .md-typeset .grid.cards.qs-pillars {
+    gap: 1.4rem 0;
+  }
+
+  .md-typeset .grid.cards.qs-pillars > ul > li > p:first-child {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.8rem;
+  }
+
+  .md-typeset .grid.cards.qs-pillars > ul > li > p:first-child .twemoji {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 0.6rem;
+  }
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-typeset .grid.cards.qs-pillars > ul > li + li {
+    padding-left: 1.4rem;
+    border-left: 1px solid var(--qs-card-border);
+    border-radius: 0;
+  }
+}
+
+/* Features: soft cards that lift on hover. */
+.md-typeset .grid.cards.qs-features {
+  gap: 0.8rem;
+}
+
+.md-typeset .grid.cards.qs-features > ul > li {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--qs-card-border);
+  border-radius: 0.8rem;
+  background: var(--qs-card-bg);
+  box-shadow: var(--qs-card-shadow);
+}
+
+.md-typeset .grid.cards.qs-features > ul > li:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--md-accent-fg-color) 40%, transparent);
+  box-shadow: var(--qs-card-shadow-hover);
+}
+
+.md-typeset .grid.cards.qs-features > ul > li:hover > p:first-child .twemoji {
+  background: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset .grid.cards:is(.qs-pillars, .qs-features) > ul > li,
+  .md-typeset .grid.cards:is(.qs-pillars, .qs-features) .twemoji {
+    transition: none;
+  }
+
+  .md-typeset .grid.cards.qs-features > ul > li:hover {
+    transform: none;
   }
 }
 

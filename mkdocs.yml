@@ -68,6 +68,7 @@ extra_css:
 
 extra_javascript:
   - javascripts/mathjax.js
+  - javascripts/octree-hero.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 markdown_extensions:
