@@ -65,17 +65,26 @@ class DetectionUncertainty(BaseModel):
 
     @computed_field
     def total(self) -> float:
-        """Calculate the total uncertainty in [m]."""
+        """Calculate the total uncertainty in [m], the diagonal of the extent."""
         return float(
-            np.sqrt(sum(self.east) ** 2 + sum(self.north) ** 2 + sum(self.depth) ** 2)
+            np.sqrt(
+                _width(self.east) ** 2
+                + _width(self.north) ** 2
+                + _width(self.depth) ** 2
+            )
         )
 
     @computed_field
     def horizontal(self) -> float:
-        """Calculate the horizontal uncertainty in [m]."""
-        return float(np.sqrt(sum(self.east) ** 2 + sum(self.north) ** 2))
+        """Calculate the horizontal uncertainty in [m], the diagonal of the extent."""
+        return float(np.sqrt(_width(self.east) ** 2 + _width(self.north) ** 2))
 
     @computed_field
     def vertical(self) -> float:
         """Calculate the vertical uncertainty in [m]."""
-        return float(self.depth[1] - self.depth[0])
+        return _width(self.depth)
+
+
+def _width(bounds: tuple[float, float]) -> float:
+    """Width of the (min, max) offsets in [m]."""
+    return float(bounds[1] - bounds[0])
