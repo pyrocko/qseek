@@ -61,6 +61,9 @@
         <loc>https://pyrocko.github.io/qseek/getting-started/installation/</loc>
       </url>
       <url>
+        <loc>https://pyrocko.github.io/qseek/getting-started/playground/</loc>
+      </url>
+      <url>
         <loc>https://pyrocko.github.io/qseek/getting-started/quick-start/</loc>
       </url>
       <url>
@@ -71,6 +74,9 @@
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/guides/real-time/</loc>
+      </url>
+      <url>
+        <loc>https://pyrocko.github.io/qseek/guides/relocate-hypodd/</loc>
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/guides/tune-detection/</loc>
@@ -98,6 +104,9 @@
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/results/explore/</loc>
+      </url>
+      <url>
+        <loc>https://pyrocko.github.io/qseek/results/exporters/</loc>
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/results/run-directory/</loc>
