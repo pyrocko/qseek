@@ -31,7 +31,7 @@ just search campi-flegrei dev    # search into campi-flegrei/runs/dev/
 just explore campi-flegrei dev   # open the run in the web UI
 ```
 
-`just search` writes the run directory `campi-flegrei/runs/dev/` and ends with the metrics of the run: the number of detections, how many events of the reference catalog Qseek found and how far its locations are from the catalog.
+`just search` writes the run directory `campi-flegrei/runs/dev/` and ends with one line of metrics: the number of detections, how many events of the reference catalog Qseek found and how far its locations are from the catalog. Add `--verbose` to print all metrics.
 
 ## Change the configuration and compare
 
@@ -42,9 +42,11 @@ just search campi-flegrei original --set image_function.pretrained=original
 just compare campi-flegrei original
 ```
 
-The comparison pairs the detections of both runs by origin time. It reports the detections lost and added, how far the paired detections moved, and how their picks, residuals and semblance changed. `just dashboard` shows the same comparison with maps and histograms in the browser.
+The comparison pairs the detections of both runs by origin time. It reports the detections lost and added, how far the paired detections moved, and how their picks, residuals and semblance changed. `just compare` prints only the rows that changed; add `--full` for all rows. `just dashboard` shows the same comparison with maps and histograms in the browser.
 
 A run of the same Qseek version on the same machine reproduces the baseline exactly. The playground runs `qseek --quiet search`, which prints only errors; the full log stays in `runs/<run>/qseek.log`.
+
+To try several values of a parameter, run `just sweep campi-flegrei levels --vary octree.n_levels=3,4`. It runs one search per value and lists the runs in one table with their `--set` overrides.
 
 ## Relocate with HypoDD
 
