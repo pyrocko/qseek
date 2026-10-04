@@ -261,7 +261,34 @@ except ImportError:
     pass
 
 
+EXIT_CONFIG = 2
+EXIT_ERROR = 1
+EXIT_INTERRUPT = 130
+
+
 def main() -> None:
+    try:
+        run()
+    except KeyboardInterrupt:
+        _report_failure("interrupted", EXIT_INTERRUPT)
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        # ValueError includes pydantic's ValidationError
+        logger.error("%s", exc)
+        _report_failure(f"{type(exc).__name__}: {exc}".splitlines()[0], EXIT_CONFIG)
+    except Exception as exc:
+        logger.exception("qseek failed")
+        _report_failure(f"{type(exc).__name__}: {exc}".splitlines()[0], EXIT_ERROR)
+
+
+def _report_failure(error: str, code: int) -> None:
+    from qseek.console import report
+
+    report("status", "failed")
+    report("error", error)
+    raise SystemExit(code)
+
+
+def run() -> None:
     from qseek import console as console_module
     from qseek.console import console
     from qseek.utils import CACHE_DIR, setup_rich_logging
