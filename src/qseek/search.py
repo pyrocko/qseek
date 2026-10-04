@@ -699,6 +699,7 @@ class Search(Model):
             live_view.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
+        self.set_progress(self._progress.time_progress, stats)
         results_file = self._rundir / "results.json"
         results_file.write_text(stats.model_dump_json(indent=2))
         report("results", results_file.resolve())
