@@ -354,6 +354,7 @@ def main() -> None:
         case "feature-extraction":
             from rich.progress import Progress
 
+            console.quiet = False
             from qseek.search import Search
 
             search = Search.load_rundir(args.rundir)
