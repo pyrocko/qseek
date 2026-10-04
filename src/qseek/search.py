@@ -474,7 +474,9 @@ class Search(Model):
         csv_dir.mkdir(exist_ok=True)
         self.stations.export_csv(csv_dir / "stations.csv")
 
-    def set_progress(self, time: datetime, stats: SearchStats | None = None) -> None:
+    def set_progress(
+        self, time: datetime | None, stats: SearchStats | None = None
+    ) -> None:
         progress = self._progress
         progress.time_progress = time
         progress.n_events = self._catalog.n_events
@@ -608,6 +610,7 @@ class Search(Model):
             self.init_rundir(force=force_rundir, create_backup=create_backup)
 
         self.create_folders()
+        (self._rundir / "results.json").unlink(missing_ok=True)
         report("log", (self._rundir / "qseek.log").resolve())
         report("rundir", self._rundir.resolve())
         report("progress", (self._rundir / "progress.json").resolve())
