@@ -236,7 +236,15 @@ class SearchStats(Stats):
 
 
 class SearchProgress(BaseModel):
+    """Progress of a search, written to `progress.json` after every batch."""
+
     time_progress: datetime | None = None
+    batch_count: int = 0
+    batch_count_total: int = 0
+    percent: float = 0.0
+    n_events: int = 0
+    time_remaining: timedelta = timedelta()
+    updated: datetime | None = None
 
 
 class Search(Model):
@@ -434,8 +442,9 @@ class Search(Model):
             rundir.mkdir()
 
         self._init_logging()
+        report("log", (self._rundir / "qseek.log").resolve())
         report("rundir", rundir.resolve())
-        report("log", (rundir / "qseek.log").resolve())
+        report("progress", (rundir / "progress.json").resolve())
 
         logger.info("created new rundir %s", rundir)
         self._catalog = EventCatalog(rundir=rundir)
@@ -467,10 +476,18 @@ class Search(Model):
         csv_dir.mkdir(exist_ok=True)
         self.stations.export_csv(csv_dir / "stations.csv")
 
-    def set_progress(self, time: datetime) -> None:
-        self._progress.time_progress = time
+    def set_progress(self, time: datetime, stats: SearchStats | None = None) -> None:
+        progress = self._progress
+        progress.time_progress = time
+        progress.n_events = self._catalog.n_events
+        progress.updated = datetime_now()
+        if stats:
+            progress.batch_count = stats.batch_count
+            progress.batch_count_total = stats.batch_count_total
+            progress.percent = round(stats.processed_percent, 1)
+            progress.time_remaining = stats.time_remaining
         progress_file = self._rundir / "progress.json"
-        progress_file.write_text(self._progress.model_dump_json())
+        progress_file.write_text(progress.model_dump_json())
 
     async def get_window_padding(self) -> timedelta:
         """Get window padding length based on maximum travel time shifts.
@@ -655,7 +672,7 @@ class Search(Model):
                 duration=datetime_now() - batch_processing_start,
                 show_log=True,
             )
-            self.set_progress(batch.end_time)
+            self.set_progress(batch.end_time, stats)
             await self._run_callbacks("on_batch_end", batch)
             n.notify("WATCHDOG=1")
 
