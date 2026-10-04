@@ -598,6 +598,7 @@ class Search(Model):
         n.notify("STATUS=Preparing search...")
         await self.prepare()
         self.write_config()
+        report("config", (self._rundir / "search.json").resolve())
 
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
@@ -689,6 +690,10 @@ class Search(Model):
             live_view.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
+        results_file = self._rundir / "results.json"
+        results_file.write_text(stats.model_dump_json(indent=2))
+        report("results", results_file.resolve())
+        report("catalog", (self._rundir / "csv" / "detections.csv").resolve())
         report("duration", str(datetime_now() - processing_start).split(".")[0])
         report("detections", self._catalog.n_events)
         report("status", "finished")

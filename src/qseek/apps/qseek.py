@@ -286,6 +286,7 @@ def main() -> None:
             from qseek.search import Search
 
             config = Search()
+            console.quiet = False
             console.print_json(config.model_dump_json(by_alias=False, indent=2))
 
         case "search":
@@ -354,7 +355,6 @@ def main() -> None:
         case "feature-extraction":
             from rich.progress import Progress
 
-            console.quiet = False
             from qseek.search import Search
 
             search = Search.load_rundir(args.rundir)
