@@ -443,9 +443,6 @@ class Search(Model):
             rundir.mkdir()
 
         self._init_logging()
-        report("log", (self._rundir / "qseek.log").resolve())
-        report("rundir", rundir.resolve())
-        report("progress", (rundir / "progress.json").resolve())
 
         logger.info("created new rundir %s", rundir)
         self._catalog = EventCatalog(rundir=rundir)
@@ -605,6 +602,9 @@ class Search(Model):
             self.init_rundir(force=force_rundir, create_backup=create_backup)
 
         self.create_folders()
+        report("log", (self._rundir / "qseek.log").resolve())
+        report("rundir", self._rundir.resolve())
+        report("progress", (self._rundir / "progress.json").resolve())
         n.notify("STATUS=Preparing search...")
         await self.prepare()
         self.write_config()
