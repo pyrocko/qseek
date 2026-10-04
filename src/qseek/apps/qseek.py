@@ -371,7 +371,9 @@ def run() -> None:
             search = Search.from_config(args.config)
 
             if args.check:
-                asyncio.run(search.check(), debug=loop_debug)
+                console_module.NON_INTERACTIVE = True
+                if not asyncio.run(search.check(), debug=loop_debug):
+                    _report_failure("no stations with waveform data", EXIT_CONFIG)
                 return
 
             asyncio.run(
