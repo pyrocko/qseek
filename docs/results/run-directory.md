@@ -10,6 +10,7 @@ Every search writes its results into a run directory, named after the configurat
 my-search/
 ├── search.json                     # the configuration of the run
 ├── progress.json                   # how far the search got, for `qseek continue`
+├── results.json                    # statistics of the finished search
 ├── qseek.log                       # the log of the search
 ├── detections.jsonl                # all detections, one JSON object per line
 ├── detections_receivers.jsonl      # modeled and picked arrivals of every detection
@@ -25,6 +26,12 @@ my-search/
 ```
 
 With `save_images`, Qseek also writes the phase images into `images/`. Searches with 3D velocity models export the models to `3d-models/`, see [visualize 3D models](../configuration/ray-tracers.md#visualize-3d-models). `pyrocko_markers/` holds one file per detection with its event marker and the modeled and picked phase markers, which `qseek snuffler` shows with the waveforms.
+
+## Scripts and agents
+
+`qseek --non-interactive search` prints only errors and `key: value` lines: `qseek`, `rundir`, `log`, `progress`, `config`, `results`, `catalog`, `duration`, `detections` and `status`. A failed run prints `status: failed` and `error:`, and exits with 2 for a configuration or rundir problem, 1 for any other error and 130 when interrupted. `progress.json` holds the processed percentage, the number of events and the remaining time, and is updated after every batch.
+
+`qseek search --check config.json` validates the configuration and the available stations and waveform data without creating a run directory. `qseek --non-interactive summary my-search` prints the paths and the state of an existing run.
 
 ## Detections
 

@@ -88,6 +88,24 @@ class Symbols:
     Cross = "✗"
 
 
+class LogCounter(logging.Handler):
+    """Count the warnings and errors logged during a run."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.warnings = 0
+        self.errors = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno >= logging.ERROR:
+            self.errors += 1
+        else:
+            self.warnings += 1
+
+
+LOG_COUNTER = LogCounter()
+
+
 def setup_rich_logging(level: int, file_level: int | None = None) -> None:
     """Set up logging to the console.
 
@@ -102,7 +120,7 @@ def setup_rich_logging(level: int, file_level: int | None = None) -> None:
         level=min(level, file_level) if file_level is not None else level,
         format=FORMAT,
         datefmt="[%X]",
-        handlers=[console_handler],
+        handlers=[console_handler, LOG_COUNTER],
     )
 
 

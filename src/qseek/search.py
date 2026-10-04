@@ -25,7 +25,7 @@ from scipy import stats
 
 from qseek.base import Model
 from qseek.cache_lru import CACHES
-from qseek.console import console
+from qseek.console import console, report
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
@@ -45,6 +45,7 @@ from qseek.server import WebServer
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
+    LOG_COUNTER,
     BackgroundTasks,
     CpuCount,
     PhaseDescription,
@@ -236,7 +237,15 @@ class SearchStats(Stats):
 
 
 class SearchProgress(BaseModel):
+    """Progress of a search, written to `progress.json` after every batch."""
+
     time_progress: datetime | None = None
+    batch_count: int = 0
+    batch_count_total: int = 0
+    percent: float = 0.0
+    n_events: int = 0
+    time_remaining: timedelta = timedelta()
+    updated: datetime | None = None
 
 
 class Search(Model):
@@ -465,10 +474,20 @@ class Search(Model):
         csv_dir.mkdir(exist_ok=True)
         self.stations.export_csv(csv_dir / "stations.csv")
 
-    def set_progress(self, time: datetime) -> None:
-        self._progress.time_progress = time
+    def set_progress(
+        self, time: datetime | None, stats: SearchStats | None = None
+    ) -> None:
+        progress = self._progress
+        progress.time_progress = time
+        progress.n_events = self._catalog.n_events
+        progress.updated = datetime_now()
+        if stats:
+            progress.batch_count = stats.batch_count
+            progress.batch_count_total = stats.batch_count_total
+            progress.percent = round(stats.processed_percent, 1)
+            progress.time_remaining = stats.time_remaining
         progress_file = self._rundir / "progress.json"
-        progress_file.write_text(self._progress.model_dump_json())
+        progress_file.write_text(progress.model_dump_json())
 
     async def get_window_padding(self) -> timedelta:
         """Get window padding length based on maximum travel time shifts.
@@ -558,6 +577,21 @@ class Search(Model):
 
         await self._run_callbacks("on_start", self)
 
+    async def check(self) -> bool:
+        """Check the stations and the waveform data without creating a rundir.
+
+        Returns:
+            bool: True if there are stations with waveform data.
+        """
+        self.stations.prepare(self.octree.location)
+        await self.data_provider.prepare(self.stations)
+        n_stations = self.stations.n_stations
+        self.stations.filter_stations(self.data_provider.available_nsls())
+        report("stations", f"{self.stations.n_stations} with data of {n_stations}")
+        if self.stations.n_stations:
+            report("status", "ok")
+        return bool(self.stations.n_stations)
+
     async def _run_callbacks(self, hook: str, *args: Any) -> None:
         for callback in self.callbacks:
             try:
@@ -576,9 +610,14 @@ class Search(Model):
             self.init_rundir(force=force_rundir, create_backup=create_backup)
 
         self.create_folders()
+        (self._rundir / "results.json").unlink(missing_ok=True)
+        report("log", (self._rundir / "qseek.log").resolve())
+        report("rundir", self._rundir.resolve())
+        report("progress", (self._rundir / "progress.json").resolve())
         n.notify("STATUS=Preparing search...")
         await self.prepare()
         self.write_config()
+        report("config", (self._rundir / "search.json").resolve())
 
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
@@ -653,7 +692,7 @@ class Search(Model):
                 duration=datetime_now() - batch_processing_start,
                 show_log=True,
             )
-            self.set_progress(batch.end_time)
+            self.set_progress(batch.end_time, stats)
             await self._run_callbacks("on_batch_end", batch)
             n.notify("WATCHDOG=1")
 
@@ -670,6 +709,16 @@ class Search(Model):
             live_view.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
+        self.set_progress(self._progress.time_progress, stats)
+        results_file = self._rundir / "results.json"
+        results_file.write_text(stats.model_dump_json(indent=2))
+        report("results", results_file.resolve())
+        report("catalog", (self._rundir / "csv" / "detections.csv").resolve())
+        report("duration", str(datetime_now() - processing_start).split(".")[0])
+        report("detections", self._catalog.n_events)
+        report("warnings", LOG_COUNTER.warnings)
+        report("errors", LOG_COUNTER.errors)
+        report("status", "finished")
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
         """Process new detections.

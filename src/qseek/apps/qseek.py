@@ -31,12 +31,13 @@ parser.add_argument(
     "Default level is INFO",
 )
 parser.add_argument(
-    "--quiet",
-    "-q",
+    "--non-interactive",
     action="store_true",
     default=False,
-    help="only log errors and disable the live statistics view, "
-    "useful for non-interactive runs and automation",
+    help="disable the live statistics view and log only errors to the console, "
+    "plus a few `key: value` lines with the rundir, the log file and the "
+    "result of the run. For scripts and agents; the full log is in the "
+    "`qseek.log` of the rundir",
 )
 parser.add_argument(
     "--version",
@@ -68,6 +69,13 @@ search_config = search.add_argument(
     "config",
     type=Path,
     help="path to config file",
+)
+search.add_argument(
+    "--check",
+    action="store_true",
+    default=False,
+    help="validate the config and check stations and waveform data, "
+    "then exit without creating a rundir",
 )
 search.add_argument(
     "--force",
@@ -226,6 +234,17 @@ export.add_argument(
 )
 
 
+summary = subparsers.add_parser(
+    "summary",
+    help="print the status of a run as key: value lines",
+    description="Print the paths and the progress of an existing run",
+)
+summary_rundir = summary.add_argument(
+    "rundir",
+    type=Path,
+    help="path of existing run",
+)
+
 subparsers.add_parser(
     "clear-cache",
     help="clear the cach directory",
@@ -251,6 +270,7 @@ try:
 
     search_config.completer = FilesCompleter(["*.json"])
     continue_rundir.completer = DirectoriesCompleter()
+    summary_rundir.completer = DirectoriesCompleter()
     snuffler_rundir.completer = DirectoriesCompleter()
     features_rundir.completer = DirectoriesCompleter()
     dump_dir.completer = DirectoriesCompleter()
@@ -260,18 +280,76 @@ except ImportError:
     pass
 
 
+class UsageError(Exception):
+    """A wrong path or argument given by the user."""
+
+
+EXIT_CONFIG = 2
+EXIT_ERROR = 1
+EXIT_INTERRUPT = 130
+
+
+def summarize_rundir(rundir: Path) -> None:
+    from qseek.console import report
+    from qseek.search import SearchProgress
+
+    if not (rundir / "search.json").is_file():
+        raise UsageError(f"{rundir} is not a qseek rundir")
+    report("rundir", rundir.resolve())
+    report("log", (rundir / "qseek.log").resolve())
+    report("config", (rundir / "search.json").resolve())
+    report("catalog", (rundir / "csv" / "detections.csv").resolve())
+    progress_file = rundir / "progress.json"
+    if progress_file.is_file():
+        progress = SearchProgress.model_validate_json(progress_file.read_text())
+        report("progress", progress_file.resolve())
+        report("processed", f"{progress.percent}% until {progress.time_progress}")
+        report("detections", progress.n_events)
+    results_file = rundir / "results.json"
+    if results_file.is_file():
+        report("results", results_file.resolve())
+    report("status", "finished" if results_file.is_file() else "incomplete")
+
+
 def main() -> None:
+    from pydantic import ValidationError
+
+    try:
+        run()
+    except KeyboardInterrupt:
+        _report_failure("interrupted", EXIT_INTERRUPT)
+    except (UsageError, FileExistsError, ValidationError) as exc:
+        logger.error("%s", exc)
+        _report_failure(f"{type(exc).__name__}: {exc}".splitlines()[0], EXIT_CONFIG)
+    except Exception as exc:
+        logger.exception("qseek failed")
+        _report_failure(f"{type(exc).__name__}: {exc}".splitlines()[0], EXIT_ERROR)
+
+
+def _report_failure(error: str, code: int) -> None:
+    from qseek.console import report
+
+    report("status", "failed")
+    report("error", error)
+    raise SystemExit(code)
+
+
+def run() -> None:
+    from qseek import console as console_module
     from qseek.console import console
     from qseek.utils import CACHE_DIR, setup_rich_logging
 
     args = parser.parse_args()
 
-    if args.quiet:
+    if args.non_interactive:
         console.quiet = True
+        console_module.NON_INTERACTIVE = True
         log_level = logging.ERROR - args.verbose * 10
     else:
         log_level = logging.INFO - args.verbose * 10
     loop_debug = log_level < logging.INFO
+    if args.command in {"search", "continue"}:
+        console_module.report("qseek", f"{version('qseek')} {args.command}")
     # The run's qseek.log keeps INFO messages when the console is quiet.
     setup_rich_logging(level=log_level, file_level=logging.INFO)
 
@@ -281,13 +359,22 @@ def main() -> None:
             from qseek.search import Search
 
             config = Search()
+            console.quiet = False
             console.print_json(config.model_dump_json(by_alias=False, indent=2))
 
         case "search":
             nest_asyncio.apply()
             from qseek.search import Search
 
+            if not args.config.exists():
+                raise UsageError(f"config {args.config} does not exist")
             search = Search.from_config(args.config)
+
+            if args.check:
+                console_module.NON_INTERACTIVE = True
+                if not asyncio.run(search.check(), debug=loop_debug):
+                    _report_failure("no stations with waveform data", EXIT_CONFIG)
+                return
 
             asyncio.run(
                 search.start(
@@ -305,14 +392,14 @@ def main() -> None:
                 search_file = args.rundir
                 rundir = args.rundir.parent / args.rundir.stem
                 if not rundir.is_dir():
-                    raise FileNotFoundError(
+                    raise UsageError(
                         f"JSON config provided, but rundir {rundir} does not exist"
                     )
             elif args.rundir.is_dir():
                 search_file = None
                 rundir = args.rundir
             else:
-                raise FileNotFoundError(
+                raise UsageError(
                     f"rundir {args.rundir} does not exist or is not a valid config file"
                 )
 
@@ -323,6 +410,10 @@ def main() -> None:
                 console.rule("Starting search from scratch")
 
             asyncio.run(search.start(), debug=loop_debug)
+
+        case "summary":
+            console_module.NON_INTERACTIVE = True
+            summarize_rundir(args.rundir)
 
         case "snuffler":
             from qseek.search import Search
