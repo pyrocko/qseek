@@ -32,7 +32,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--non-interactive",
-    "-q",
     action="store_true",
     default=False,
     help="disable the live statistics view and log only errors to the console, "
