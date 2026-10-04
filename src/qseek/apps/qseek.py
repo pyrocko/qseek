@@ -280,6 +280,10 @@ except ImportError:
     pass
 
 
+class UsageError(Exception):
+    """A wrong path or argument given by the user."""
+
+
 EXIT_CONFIG = 2
 EXIT_ERROR = 1
 EXIT_INTERRUPT = 130
@@ -290,7 +294,7 @@ def summarize_rundir(rundir: Path) -> None:
     from qseek.search import SearchProgress
 
     if not (rundir / "search.json").is_file():
-        raise FileNotFoundError(f"{rundir} is not a qseek rundir")
+        raise UsageError(f"{rundir} is not a qseek rundir")
     report("rundir", rundir.resolve())
     report("log", (rundir / "qseek.log").resolve())
     report("config", (rundir / "search.json").resolve())
@@ -308,12 +312,13 @@ def summarize_rundir(rundir: Path) -> None:
 
 
 def main() -> None:
+    from pydantic import ValidationError
+
     try:
         run()
     except KeyboardInterrupt:
         _report_failure("interrupted", EXIT_INTERRUPT)
-    except (FileExistsError, FileNotFoundError, ValueError) as exc:
-        # ValueError includes pydantic's ValidationError
+    except (UsageError, FileExistsError, ValidationError) as exc:
         logger.error("%s", exc)
         _report_failure(f"{type(exc).__name__}: {exc}".splitlines()[0], EXIT_CONFIG)
     except Exception as exc:
@@ -361,6 +366,8 @@ def run() -> None:
             nest_asyncio.apply()
             from qseek.search import Search
 
+            if not args.config.exists():
+                raise UsageError(f"config {args.config} does not exist")
             search = Search.from_config(args.config)
 
             if args.check:
@@ -383,14 +390,14 @@ def run() -> None:
                 search_file = args.rundir
                 rundir = args.rundir.parent / args.rundir.stem
                 if not rundir.is_dir():
-                    raise FileNotFoundError(
+                    raise UsageError(
                         f"JSON config provided, but rundir {rundir} does not exist"
                     )
             elif args.rundir.is_dir():
                 search_file = None
                 rundir = args.rundir
             else:
-                raise FileNotFoundError(
+                raise UsageError(
                     f"rundir {args.rundir} does not exist or is not a valid config file"
                 )
 
