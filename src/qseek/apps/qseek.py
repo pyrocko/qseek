@@ -71,6 +71,13 @@ search_config = search.add_argument(
     help="path to config file",
 )
 search.add_argument(
+    "--check",
+    action="store_true",
+    default=False,
+    help="validate the config and check stations and waveform data, "
+    "then exit without creating a rundir",
+)
+search.add_argument(
     "--force",
     action="store_true",
     default=False,
@@ -321,6 +328,10 @@ def run() -> None:
             from qseek.search import Search
 
             search = Search.from_config(args.config)
+
+            if args.check:
+                asyncio.run(search.check(), debug=loop_debug)
+                return
 
             asyncio.run(
                 search.start(

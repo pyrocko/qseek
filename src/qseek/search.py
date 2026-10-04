@@ -577,6 +577,15 @@ class Search(Model):
 
         await self._run_callbacks("on_start", self)
 
+    async def check(self) -> None:
+        """Check the stations and the waveform data without creating a rundir."""
+        self.stations.prepare(self.octree.location)
+        await self.data_provider.prepare(self.stations)
+        n_stations = self.stations.n_stations
+        self.stations.filter_stations(self.data_provider.available_nsls())
+        report("stations", f"{self.stations.n_stations} with data of {n_stations}")
+        report("status", "ok" if self.stations.n_stations else "no data")
+
     async def _run_callbacks(self, hook: str, *args: Any) -> None:
         for callback in self.callbacks:
             try:
