@@ -25,7 +25,7 @@ from scipy import stats
 
 from qseek.base import Model
 from qseek.cache_lru import CACHES
-from qseek.console import console
+from qseek.console import console, report
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
 from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
@@ -434,6 +434,8 @@ class Search(Model):
             rundir.mkdir()
 
         self._init_logging()
+        report("rundir", rundir.resolve())
+        report("log", (rundir / "qseek.log").resolve())
 
         logger.info("created new rundir %s", rundir)
         self._catalog = EventCatalog(rundir=rundir)
@@ -670,6 +672,9 @@ class Search(Model):
             live_view.cancel()
         logger.info("finished search in %s", datetime_now() - processing_start)
         logger.info("detected %d events", self._catalog.n_events)
+        report("duration", str(datetime_now() - processing_start).split(".")[0])
+        report("detections", self._catalog.n_events)
+        report("status", "finished")
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
         """Process new detections.

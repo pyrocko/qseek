@@ -31,12 +31,14 @@ parser.add_argument(
     "Default level is INFO",
 )
 parser.add_argument(
-    "--quiet",
+    "--non-interactive",
     "-q",
     action="store_true",
     default=False,
-    help="only log errors and disable the live statistics view, "
-    "useful for non-interactive runs and automation",
+    help="disable the live statistics view and log only errors to the console, "
+    "plus a few `key: value` lines with the rundir, the log file and the "
+    "result of the run. For scripts and agents; the full log is in the "
+    "`qseek.log` of the rundir",
 )
 parser.add_argument(
     "--version",
@@ -261,17 +263,21 @@ except ImportError:
 
 
 def main() -> None:
+    from qseek import console as console_module
     from qseek.console import console
     from qseek.utils import CACHE_DIR, setup_rich_logging
 
     args = parser.parse_args()
 
-    if args.quiet:
+    if args.non_interactive:
         console.quiet = True
+        console_module.NON_INTERACTIVE = True
         log_level = logging.ERROR - args.verbose * 10
     else:
         log_level = logging.INFO - args.verbose * 10
     loop_debug = log_level < logging.INFO
+    if args.command in {"search", "continue"}:
+        console_module.report("qseek", f"{version('qseek')} {args.command}")
     # The run's qseek.log keeps INFO messages when the console is quiet.
     setup_rich_logging(level=log_level, file_level=logging.INFO)
 
