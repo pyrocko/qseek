@@ -45,6 +45,7 @@ from qseek.server import WebServer
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
+    LOG_COUNTER,
     BackgroundTasks,
     CpuCount,
     PhaseDescription,
@@ -706,6 +707,8 @@ class Search(Model):
         report("catalog", (self._rundir / "csv" / "detections.csv").resolve())
         report("duration", str(datetime_now() - processing_start).split(".")[0])
         report("detections", self._catalog.n_events)
+        report("warnings", LOG_COUNTER.warnings)
+        report("errors", LOG_COUNTER.errors)
         report("status", "finished")
 
     async def new_detections(self, detections: list[EventDetection]) -> None:
