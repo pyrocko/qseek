@@ -234,6 +234,17 @@ export.add_argument(
 )
 
 
+summary = subparsers.add_parser(
+    "summary",
+    help="print the status of a run as key: value lines",
+    description="Print the paths and the progress of an existing run",
+)
+summary_rundir = summary.add_argument(
+    "rundir",
+    type=Path,
+    help="path of existing run",
+)
+
 subparsers.add_parser(
     "clear-cache",
     help="clear the cach directory",
@@ -259,6 +270,7 @@ try:
 
     search_config.completer = FilesCompleter(["*.json"])
     continue_rundir.completer = DirectoriesCompleter()
+    summary_rundir.completer = DirectoriesCompleter()
     snuffler_rundir.completer = DirectoriesCompleter()
     features_rundir.completer = DirectoriesCompleter()
     dump_dir.completer = DirectoriesCompleter()
@@ -271,6 +283,28 @@ except ImportError:
 EXIT_CONFIG = 2
 EXIT_ERROR = 1
 EXIT_INTERRUPT = 130
+
+
+def summarize_rundir(rundir: Path) -> None:
+    from qseek.console import report
+    from qseek.search import SearchProgress
+
+    if not (rundir / "search.json").is_file():
+        raise FileNotFoundError(f"{rundir} is not a qseek rundir")
+    report("rundir", rundir.resolve())
+    report("log", (rundir / "qseek.log").resolve())
+    report("config", (rundir / "search.json").resolve())
+    report("catalog", (rundir / "csv" / "detections.csv").resolve())
+    progress_file = rundir / "progress.json"
+    if progress_file.is_file():
+        progress = SearchProgress.model_validate_json(progress_file.read_text())
+        report("progress", progress_file.resolve())
+        report("processed", f"{progress.percent}% until {progress.time_progress}")
+        report("detections", progress.n_events)
+    results_file = rundir / "results.json"
+    if results_file.is_file():
+        report("results", results_file.resolve())
+    report("status", "finished" if results_file.is_file() else "incomplete")
 
 
 def main() -> None:
@@ -367,6 +401,10 @@ def run() -> None:
                 console.rule("Starting search from scratch")
 
             asyncio.run(search.start(), debug=loop_debug)
+
+        case "summary":
+            console_module.NON_INTERACTIVE = True
+            summarize_rundir(args.rundir)
 
         case "snuffler":
             from qseek.search import Search
