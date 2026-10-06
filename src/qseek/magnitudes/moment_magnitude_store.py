@@ -454,7 +454,7 @@ $f$=[{self.frequency_range.start}, {self.frequency_range.end}] Hz""",
         ax.text(
             0.95,
             0.95,
-            f"Measure: {peak_amplitude}\nDynamic: {(dynamic.max - dynamic.min) / NM:g}",
+            f"Measure: {peak_amplitude}\nDynamic: {(dynamic.max - dynamic.min) / NM:g}",  # ty: ignore[unresolved-attribute]
             alpha=0.5,
             transform=ax.transAxes,
             ha="right",
@@ -495,7 +495,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
     _engine: ClassVar[gf.LocalEngine | None] = None
     _cache_dir: ClassVar[Path | None] = None
 
-    model_config: ConfigDict = {"extra": "ignore"}
+    model_config: ConfigDict = {"extra": "ignore"}  # ty: ignore[invalid-attribute-override]
 
     @classmethod
     def set_engine(cls, engine: gf.LocalEngine) -> None:
@@ -537,7 +537,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
         store_frequency_range = Range(0.0, 1.0 / config.deltat)
         if (
             selector.frequency_range
-            and selector.frequency_range.end > store_frequency_range.max
+            and selector.frequency_range.end > store_frequency_range.max  # ty: ignore[unresolved-attribute]
         ):
             raise ValueError(
                 f"Selector frequency range {selector.frequency_range} "
@@ -693,7 +693,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
                     codes=("PA", f"{i_receiver:05d}", "", component),
                 )
                 targets.append(target)
-        return targets  # type: ignore
+        return targets
 
     async def compute_site_amplitudes(
         self,
@@ -751,7 +751,7 @@ class PeakAmplitudesStore(PeakAmplitudesBase):
                     tr.transfer(
                         transfer_function=BruneResponse(duration=source.duration)
                     )
-                    if self.frequency_range:
+                    if self.frequency_range:  # ty: ignore[redundant-condition]
                         if self.frequency_range.start > 0.0:
                             tr.highpass(4, self.frequency_range.start, demean=False)
                         if self.frequency_range.end < 1.0 / tr.deltat:
@@ -1143,7 +1143,7 @@ class PeakAmplitudeStoreCache:
         self.clean_cache()
 
         self.engine = engine or gf.LocalEngine(store_superdirs=["."])
-        PeakAmplitudesStore.set_engine(engine)
+        PeakAmplitudesStore.set_engine(self.engine)
         PeakAmplitudesStore.set_cache_dir(cache_dir)
 
     def clear_cache(self):
@@ -1180,7 +1180,7 @@ class PeakAmplitudeStoreCache:
         for file in self.cache_dir.glob("*.json"):
             n_stores += 1
             nbytes += file.stat().st_size
-        return CacheStats(path=self.cache_dir, n_stores=n_stores, bytes=nbytes)
+        return CacheStats(path=self.cache_dir, n_stores=n_stores, bytes=nbytes)  # ty: ignore[invalid-argument-type]
 
     def get_cached_stores(
         self, store_id: str, quantity: MeasurementUnit

@@ -213,7 +213,7 @@ class Velest(Exporter):
                     ):
                         continue
                     if (
-                        detection.traveltime_delay.total_seconds()
+                        detection.traveltime_delay.total_seconds()  # ty: ignore[unresolved-attribute]
                         > self.max_traveltime_delay
                     ):
                         continue
@@ -275,7 +275,7 @@ class Velest(Exporter):
         for rec, dectection in observed_arrivals:
             quality_weight = (
                 np.digitize(
-                    dectection.observed.detection_value,
+                    dectection.observed.detection_value,  # ty: ignore[unresolved-attribute]
                     CONFIDENCE_QUALITY_BINS,
                 )
                 - 1
@@ -286,7 +286,7 @@ class Velest(Exporter):
             else:
                 phase = "S"
                 count_s += 1
-            traveltime = (dectection.observed.time - event.time).total_seconds()
+            traveltime = (dectection.observed.time - event.time).total_seconds()  # ty: ignore[unresolved-attribute]
             write_out += (
                 f"  {rec.station:6s}  {phase:1s}   "
                 f"{quality_weight:1d}  {traveltime:7.2f}\n"

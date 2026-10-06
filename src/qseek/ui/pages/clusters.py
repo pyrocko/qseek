@@ -165,7 +165,9 @@ async def clusters_page() -> None:
         card_clusters.bind_subtitle(
             stats,
             "n_clustered",
-            backward=lambda v: f"{v} events clustered ({v / catalog.n_events * 100:.1f}%)",
+            backward=lambda v: (
+                f"{v} events clustered ({v / catalog.n_events * 100:.1f}%)"
+            ),
         )
         card_noise = StatCard(
             "Noise Events",
@@ -177,7 +179,9 @@ async def clusters_page() -> None:
         card_noise.bind_subtitle(
             stats,
             "n_noise",
-            backward=lambda v: f"Not in any cluster ({v / catalog.n_events * 100:.1f}%)",
+            backward=lambda v: (
+                f"Not in any cluster ({v / catalog.n_events * 100:.1f}%)"
+            ),
         )
         StatCard(
             "Epsilon",

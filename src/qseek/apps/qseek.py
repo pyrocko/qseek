@@ -268,12 +268,12 @@ try:
     import argcomplete
     from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
-    search_config.completer = FilesCompleter(["*.json"])
-    continue_rundir.completer = DirectoriesCompleter()
-    summary_rundir.completer = DirectoriesCompleter()
-    snuffler_rundir.completer = DirectoriesCompleter()
-    features_rundir.completer = DirectoriesCompleter()
-    dump_dir.completer = DirectoriesCompleter()
+    search_config.completer = FilesCompleter(["*.json"])  # ty: ignore[unresolved-attribute]
+    continue_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
+    summary_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
+    snuffler_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
+    features_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
+    dump_dir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
 
     argcomplete.autocomplete(parser)
 except ImportError:
@@ -616,7 +616,7 @@ def run() -> None:
                 for module in module_classes:
                     for subclass in module.get_subclasses():
                         if subclass.__name__ == args.name:
-                            console.print_json(subclass().model_dump_json(indent=2))
+                            console.print_json(subclass().model_dump_json(indent=2))  # ty: ignore[missing-argument]
 
                             if subclass.__name__ == "LocalMagnitude":
                                 from qseek.magnitudes.local_magnitude import ModelName

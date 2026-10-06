@@ -664,7 +664,7 @@ if __name__ == "__main__":
         stations = StationInventory(
             station_xmls=[Path("/project/elise-info/sds/ELISE.xml")]
         )
-        sds.prepare(stations)
+        await sds.prepare(stations)
         # return
         p.enable()
         async for batch in sds.iter_batches(

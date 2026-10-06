@@ -2,7 +2,7 @@ from rich.console import Console
 
 console = Console()
 
-NON_INTERACTIVE = False
+NON_INTERACTIVE: bool = False
 """Set by `qseek --non-interactive`: no rich output, only `report` lines."""
 
 

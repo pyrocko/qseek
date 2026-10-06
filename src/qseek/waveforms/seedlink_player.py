@@ -39,7 +39,7 @@ class SeedLinkStation:
         station = {trace.station for trace in traces}
         if len(network) != 1 or len(station) != 1:
             raise ValueError("Traces must have the same network and station")
-        return cls(network.pop(), station.pop())
+        return cls(network.pop(), station.pop())  # ty: ignore[missing-argument]
 
     def add_traces(self, traces: list[Trace]) -> None:
         for trace in traces:
@@ -106,7 +106,7 @@ class SeedLinkStation:
 
 class SeedLinkPlayer(BaseModel):
     squirrel_environment: DirectoryPath = Field(
-        default=DirectoryPath("."),
+        default=DirectoryPath("."),  # ty: ignore[call-non-callable]
         description="Path to the squirrel environment directory",
     )
     squirrel_persistent: str = Field(
@@ -191,7 +191,7 @@ class SeedLinkPlayer(BaseModel):
             batch = await asyncio.to_thread(next, iterator, None)
             if batch is None:
                 break
-            self.add_batch(batch)
+            self.add_batch(batch)  # ty: ignore[invalid-argument-type]
             await asyncio.sleep(self.increment_seconds / self.speed)
 
         await self.drain_all()

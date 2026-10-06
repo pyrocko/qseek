@@ -420,8 +420,8 @@ class Search(Model):
         return v
 
     def init_rundir(self, force: bool = False, create_backup: bool = True) -> None:
-        rundir = (
-            self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
+        rundir = self.project_dir / (
+            self._config_stem or f"run-{time_to_path(self.created)}"
         )
         self._rundir = rundir
 
@@ -681,7 +681,7 @@ class Search(Model):
             detections, semblance_trace = await search_octree.search(
                 images=images,
                 octree=self.octree.reset(),
-                n_threads=self.n_threads,
+                n_threads=self.n_threads,  # ty: ignore[invalid-argument-type]
             )
 
             await self._catalog.save_semblance_trace(semblance_trace)

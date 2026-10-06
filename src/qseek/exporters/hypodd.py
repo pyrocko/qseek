@@ -706,7 +706,7 @@ class HypoDD(Exporter):
                         key = (receiver.nsl, phase_type)
                         if phase_type is None or key in arrivals:
                             continue
-                        arrivals[key] = arrival.model.time.timestamp()
+                        arrivals[key] = arrival.model.time.timestamp()  # ty: ignore[invalid-assignment]
                         stations.setdefault(
                             receiver.nsl,
                             (
@@ -716,7 +716,7 @@ class HypoDD(Exporter):
                             ),
                         )
             cc_events.append(
-                CorrelationEvent(event_id, event, origin.timestamp(), arrivals)
+                CorrelationEvent(event_id, event, origin.timestamp(), arrivals)  # ty: ignore[invalid-argument-type]
             )
 
         cc_times = await settings.correlate(cc_events, search.data_provider)

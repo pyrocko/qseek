@@ -567,7 +567,7 @@ class SeedLinkClient(BaseModel):
             while True:
                 try:
                     data = await asyncio.wait_for(
-                        proc.stdout.read(RECORD_LENGTH),
+                        proc.stdout.read(RECORD_LENGTH),  # ty: ignore[unresolved-attribute]
                         timeout=self.reconnect_timeout,
                     )
                 except asyncio.TimeoutError:
