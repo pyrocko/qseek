@@ -46,7 +46,7 @@ def titelify(name: str) -> str:
 
 class RuntimeStats(BaseModel):
     @classmethod
-    async def live_view(cls) -> NoReturn:
+    async def live_view(cls) -> NoReturn:  # ty: ignore[invalid-return-type]
         global _PROGRESS
         _PROGRESS = Progress()
 

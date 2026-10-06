@@ -146,7 +146,7 @@ class DistanceWeights(Model):
         return weights_gaussian(
             distances,
             required_stations=self.required_closest_stations,
-            distance_taper=self.distance_taper,
+            distance_taper=self.distance_taper,  # ty: ignore[invalid-argument-type]
             waterlevel=self.waterlevel,
         )
 
@@ -164,7 +164,7 @@ class DistanceWeights(Model):
             return weights_gaussian(
                 np.array(distances),
                 required_stations=self.required_closest_stations,
-                distance_taper=self.distance_taper,
+                distance_taper=self.distance_taper,  # ty: ignore[invalid-argument-type]
                 waterlevel=self.waterlevel,
             )
         except KeyError:

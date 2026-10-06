@@ -101,8 +101,9 @@ async def _load_files(
     for exc in (tr for tr in result if isinstance(tr, Exception)):
         logger.error("error loading file: %s", exc)
 
-    traces = [tr for tr in result if not isinstance(tr, Exception)]
-    traces = list(chain(*traces))
+    traces = list(
+        chain.from_iterable(tr for tr in result if not isinstance(tr, BaseException))
+    )
 
     if not traces:
         logger.warning("no traces loaded from files")
@@ -661,7 +662,7 @@ if __name__ == "__main__":
         stations = StationInventory(
             station_xmls=[Path("/project/elise-info/sds/ELISE.xml")]
         )
-        sds.prepare(stations)
+        await sds.prepare(stations)
         # return
         p.enable()
         async for batch in sds.iter_batches(

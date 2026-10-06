@@ -90,6 +90,7 @@ dev = [
     "pytest-benchmark>=5.0",
     "pytest-cov>=7.0",
     "ruff>=0.14",
+    "ty>=0.0.85",
 ]
 completion = ["argcomplete>=3.2"]
 
@@ -142,6 +143,34 @@ target-version = 'py312'
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+include = ["src"]
+exclude = ["src/qseek/ui_old"]
+
+[tool.ty.rules]
+# Discriminated unions are built from subclasses at import time.
+invalid-type-form = "ignore"
+# Pydantic models intentionally override __iter__, __getitem__, copy, ...
+invalid-method-override = "ignore"
+# Abstract interfaces are declared with `...` bodies.
+empty-body = "ignore"
+
+[[tool.ty.overrides]]
+# NiceGUI element handles are Optional until the page is built.
+include = ["src/qseek/ui/**"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "ignore"
+invalid-assignment = "ignore"
+invalid-argument-type = "ignore"
+invalid-context-manager = "ignore"
+unsupported-operator = "ignore"
+call-non-callable = "ignore"
+invalid-return-type = "ignore"
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]

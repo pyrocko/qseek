@@ -70,13 +70,13 @@ class GroundMotionExtractor(FeatureExtractor):
         receiver_motions: list[ReceiverGroundMotion] = []
         for receiver in event.receivers:
             try:
-                traces_acc = receiver.get_waveforms_restituted(
+                traces_acc = receiver.get_waveforms_restituted(  # ty: ignore[unresolved-attribute]
                     squirrel,
                     seconds_after=self.seconds_after,
                     seconds_before=self.seconds_before,
                     quantity="acceleration",
                 )
-                traces_vel = receiver.get_waveforms_restituted(
+                traces_vel = receiver.get_waveforms_restituted(  # ty: ignore[unresolved-attribute]
                     squirrel,
                     seconds_after=self.seconds_after,
                     seconds_before=self.seconds_before,

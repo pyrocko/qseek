@@ -6,6 +6,7 @@ from weakref import WeakSet
 
 import numpy as np
 from lru import LRU
+from numpy.typing import DTypeLike
 from pydantic import BaseModel, ByteSize
 
 logger = logging.getLogger(__name__)
@@ -56,14 +57,14 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         name: str,
         short_name: str = "",
         size_bytes: int = SIZE_MB,
-        dtype: np.dtype = np.float32,
+        dtype: DTypeLike = np.float32,
     ) -> None:
         super().__init__(size=1, callback=self._remove_callback)
         self.size_bytes = 0
         self._max_size_bytes = size_bytes
         self.name = name
         self.short_name = short_name or "".join(w[0] for w in name.split("-")).upper()
-        self.dtype = dtype
+        self.dtype = np.dtype(dtype)
 
         CACHES.add(self)
 

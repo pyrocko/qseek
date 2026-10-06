@@ -72,7 +72,7 @@ class SquirrelPrefetcher:
                 logger.debug("read waveform batch in %s", datetime_now() - start_load)
                 self._fetched_batches += 1
                 self.load_time = datetime_now() - start_load
-                await self.queue.put(batch)
+                await self.queue.put(batch)  # ty: ignore[invalid-argument-type]
 
         await asyncio.create_task(load_data())
         logger.debug("done loading waveforms")

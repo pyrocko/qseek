@@ -85,9 +85,9 @@ class Simple(Exporter):
                 )
 
                 for receiver, phase, arrival in observed_arrivals:
-                    traveltime = arrival.observed.time - ev.time
+                    traveltime = arrival.observed.time - ev.time  # ty: ignore[unresolved-attribute]
                     file.write(
-                        f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{arrival.observed.detection_value},{traveltime.total_seconds()}\n",
+                        f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{arrival.observed.detection_value},{traveltime.total_seconds()}\n",  # ty: ignore[unresolved-attribute]
                     )
 
         logger.info(

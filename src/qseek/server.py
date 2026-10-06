@@ -103,14 +103,14 @@ class WebServer(Model):
 
     async def get_detections(self, request: web.Request) -> web.Response:
         catalog = self._search._catalog
-        return web.FileResponse(
+        return web.FileResponse(  # ty: ignore[invalid-return-type]
             catalog.detections_file,
             headers={"Content-Type": "text/plain"},
         )
 
     async def get_receivers(self, request: web.Request) -> web.Response:
         catalog = self._search._catalog
-        return web.FileResponse(
+        return web.FileResponse(  # ty: ignore[invalid-return-type]
             catalog.receivers_file,
             headers={"Content-Type": "text/plain"},
         )

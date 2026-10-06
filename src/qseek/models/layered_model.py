@@ -64,8 +64,8 @@ class Layer(BaseModel):
         if isinstance(layer, PyrockoLayer):
             return cls(
                 top_depth=layer.ztop,
-                vp=layer.m.vp,
-                vs=layer.m.vs,
+                vp=layer.m.vp,  # ty: ignore[unresolved-attribute]
+                vs=layer.m.vs,  # ty: ignore[unresolved-attribute]
             )
         raise ValueError(
             f"Layer type {type(layer)} is not supported. "

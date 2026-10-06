@@ -189,7 +189,7 @@ class EventWaveformsSelection(WaveformSelection):
 
     async def export_mseed(self, squirrel: Squirrel, outdir: Path) -> None:
         outdir.mkdir(parents=True, exist_ok=True)
-        traces = await self._get_contatenated_traces(self._events, squirrel)
+        traces = await self._get_contatenated_traces(self._events)
         save(
             traces,
             str(outdir / "%(station)s.%(station)s.%(location)s-concatenated.mseed"),

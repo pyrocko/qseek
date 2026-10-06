@@ -150,14 +150,14 @@ class EventMomentMagnitude(EventMagnitude):
 
     @property
     def m0(self) -> float:
-        return 10.0 ** (1.5 * (self.average + 10.7)) * 1.0e-7
+        return 10.0 ** (1.5 * (self.average + 10.7)) * 1.0e-7  # ty: ignore[unsupported-operator]
 
     @property
     def n_stations(self) -> int:
         """Number of stations used for calculating the moment magnitude."""
         return len(self.station_magnitudes)
 
-    def csv_row(self) -> dict[str, float]:
+    def csv_row(self) -> dict[str, float | None]:
         return {
             "Mw": self.average,
             "Mw-error": self.error,
@@ -428,9 +428,9 @@ class MomentMagnitude(EventMagnitudeCalculator):
                 max_station_std=self.max_station_std,
             )
 
-        if not moment_magnitude.magnitude:
+        if not moment_magnitude.magnitude:  # ty: ignore[redundant-condition]
             raise ValueError(
                 "Could not calculate moment magnitude for event %s", event.time
             )
 
-        return moment_magnitude
+        return moment_magnitude  # ty: ignore[invalid-return-type]

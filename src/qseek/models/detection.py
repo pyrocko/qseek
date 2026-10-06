@@ -801,7 +801,7 @@ class EventDetection(Location):
 
         self._receivers = self._receiver_cache.get_receivers(
             self.uid,
-            self._detection_idx,
+            self._detection_idx,  # ty: ignore[invalid-argument-type]
         )
 
         return self._receivers
@@ -1003,7 +1003,7 @@ class EventDetection(Location):
         detection.east_shift += uniform(-half_meters, half_meters)
         detection.north_shift += uniform(-half_meters, half_meters)
         detection.depth += uniform(-half_meters, half_meters)
-        detection._cached_lat_lon = None
+        detection._cached_lat_lon = None  # ty: ignore[invalid-assignment]
         return detection
 
     def snuffle(
@@ -1030,7 +1030,9 @@ class EventDetection(Location):
             self.receivers.get_waveforms(waveform_provider, want_incomplete=False)
             if not restitute_unit
             else self.receivers.get_waveforms_restituted(
-                waveform_provider, stations, quantity=restitute_unit
+                waveform_provider,
+                stations,  # ty: ignore[invalid-argument-type]
+                quantity=restitute_unit,
             )
         )
         snuffle(
