@@ -13,7 +13,7 @@ You need Python 3.12 or newer, about 1 GB of disk space, and a few minutes.
 Install Qseek, as described in [Installation](installation.md), and [FDSN Rush](https://miili.github.io/FDSN-rush/), which downloads the waveforms:
 
 ```sh
-pip install qseek fdsn-rush
+pip install qseek "fdsn-rush>=0.2"
 ```
 
 Create a directory for the project:
@@ -32,27 +32,30 @@ Write the download configuration for FDSN Rush. It requests one day of waveforms
   "clients": [{"url": "https://webservices.ingv.it/"}],
   "metadata_path": "metadata",
   "time_range": ["2024-05-20", "2024-05-21"],
-  "station_selection": [
-    "IV.CAAM",
-    "IV.CAWE",
-    "IV.CBAC",
-    "IV.CBAG",
-    "IV.CCAP",
-    "IV.CFMN",
-    "IV.CMIS",
-    "IV.CMSN",
-    "IV.CMTS",
-    "IV.CNIS",
-    "IV.COLB",
-    "IV.CPIS",
-    "IV.CPOZ",
-    "IV.CQUE",
-    "IV.CSFT",
-    "IV.CSOB",
-    "IV.CSTH",
-    "IV.PTMR",
-    "IX.NAPI"
-  ],
+  "station_selection": {
+    "selection": "StationSelection",
+    "stations": [
+      "IV.CAAM",
+      "IV.CAWE",
+      "IV.CBAC",
+      "IV.CBAG",
+      "IV.CCAP",
+      "IV.CFMN",
+      "IV.CMIS",
+      "IV.CMSN",
+      "IV.CMTS",
+      "IV.CNIS",
+      "IV.COLB",
+      "IV.CPIS",
+      "IV.CPOZ",
+      "IV.CQUE",
+      "IV.CSFT",
+      "IV.CSOB",
+      "IV.CSTH",
+      "IV.PTMR",
+      "IX.NAPI"
+    ]
+  },
   "channel_priority": ["HH[ZNE12]", "EH[ZNE12]", "HN[ZNE12]"],
   "min_channels_per_station": 3,
   "max_sampling_rate": 200.0
@@ -65,7 +68,7 @@ Download the waveforms into an SDS archive in `sds/` and the station metadata in
 fdsn-rush download download.json
 ```
 
-The download takes a few minutes and ends with `All downloads completed successfully.` FDSN Rush prefers the broadband `HH` channels, falls back to the short-period `EH` and the strong-motion `HN` channels, and takes a station only with all three components.
+The download takes a few minutes and ends with `All downloads completed successfully.` The `StationSelection` lists the stations by their network and station codes; FDSN Rush can also [select the stations in a bounding box or a radius](https://miili.github.io/FDSN-rush/guides/selecting-data/). FDSN Rush prefers the broadband `HH` channels, falls back to the short-period `EH` and the strong-motion `HN` channels, and takes a station only with all three components.
 
 Of the 19 stations, 18 recorded on that day: `IV.CAWE` had no channels in May 2024, so FDSN Rush skips it. The archive holds about 1 GB of waveforms.
 

@@ -9,6 +9,7 @@ The [Qseek playground](https://github.com/pyrocko/qseek-playground) holds worked
 | Example | Data | Result |
 | --- | --- | --- |
 | Campi Flegrei | 1 day, 18 stations of the INGV network, 20 May 2024 | 732 detections; all 45 events of the INGV catalog detected |
+| Campi Flegrei, February 2025 | 10 days, 19 stations of the INGV network, 12–22 February 2025 | 6379 detections; 209 of the 211 events of the INGV catalog detected |
 
 ## Set up the playground
 
@@ -21,7 +22,7 @@ cd qseek-playground
 just setup
 ```
 
-`just setup` installs the checkout into `../qseek/.venv` and compiles its C extensions. Set `QSEEK_DIR` to use a checkout in another place.
+`just setup` installs the checkout and [FDSN Rush](https://miili.github.io/FDSN-rush/) 0.2 or newer into `../qseek/.venv` and compiles the C extensions of the checkout. Set `QSEEK_DIR` to use a checkout in another place.
 
 ## Run an example
 
@@ -35,16 +36,16 @@ just explore campi-flegrei dev   # open the run in the web UI
 
 ## Change the configuration and compare
 
-Override a field of the configuration for one run with `--set`, then compare the run with the baseline of the example:
+Override a field of the configuration for one run with `--set`, then compare the run with the run `dev`:
 
 ```sh title="Try other PhaseNet weights"
 just search campi-flegrei original --set image_function.pretrained=original
-just compare campi-flegrei original
+just compare campi-flegrei original dev
 ```
 
 The comparison pairs the detections of both runs by origin time. It reports the detections lost and added, how far the paired detections moved, and how their picks, residuals and semblance changed. `just compare` prints only the rows that changed; add `--full` for all rows. `just dashboard` shows the same comparison with maps and histograms in the browser.
 
-A run of the same Qseek version on the same machine reproduces the baseline exactly. The playground runs `qseek --non-interactive search`, which prints only errors and a few status lines; the full log stays in `runs/<run>/qseek.log`.
+A run of the same Qseek version on the same machine reproduces an earlier run exactly. The playground runs `qseek --non-interactive search`, which prints only errors and a few status lines; the full log stays in `runs/<run>/qseek.log`.
 
 To try several values of a parameter, run `just sweep campi-flegrei levels --vary octree.n_levels=3,4`. It runs one search per value and lists the runs in one table with their `--set` overrides.
 
