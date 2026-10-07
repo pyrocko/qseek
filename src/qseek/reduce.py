@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -23,6 +25,10 @@ class DelaySumReduceStats(Stats): ...
 
 
 STATS = DelaySumReduceStats()
+
+# The stacking runs on one thread: libgomp keeps a team of OpenMP threads for each
+# calling thread, and the idle teams of many calling threads spin and add up
+STACK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qseek-stack")
 
 
 class DelaySumReduce:
@@ -188,17 +194,20 @@ class DelaySumReduce:
             self._stack_max,
             self._stack_max_idx,
             self._stack_offset,
-        ) = await asyncio.to_thread(
-            delay_sum_reduce,
-            traces=self._trace_data,
-            offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
-            node_mask=self._stacked_nodes,
-            shift_range=(0, self._result_nsamples),
-            node_stack_max=self._stack_max,
-            node_stack_max_idx=self._stack_max_idx,
-            n_threads=n_threads,
+        ) = await asyncio.get_running_loop().run_in_executor(
+            STACK_EXECUTOR,
+            partial(
+                delay_sum_reduce,
+                traces=self._trace_data,
+                offsets=self._trace_offsets,
+                shifts=self._node_shifts,
+                weights=self._trace_weights,
+                node_mask=self._stacked_nodes,
+                shift_range=(0, self._result_nsamples),
+                node_stack_max=self._stack_max,
+                node_stack_max_idx=self._stack_max_idx,
+                n_threads=n_threads,
+            ),
         )
         self._stacked_nodes[:] = True
         self._dirty = False
