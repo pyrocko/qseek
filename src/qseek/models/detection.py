@@ -507,29 +507,31 @@ class EventReceivers(BaseModel):
                     return response
             raise AttributeError(f"cannot find response for {tr.nslc_id}")
 
-        restituted_traces = []
-        for tr in traces:
-            try:
-                response = get_response(tr)
-                effective_response = response.get_effective(input_quantity=quantity)
-            except (AttributeError, ConversionError):
-                logger.warning(
-                    "cannot get effective response for %s", ".".join(tr.nslc_id)
+        def restitute() -> list[Trace]:
+            restituted_traces = []
+            for tr in traces:
+                try:
+                    response = get_response(tr)
+                    effective_response = response.get_effective(input_quantity=quantity)
+                except (AttributeError, ConversionError):
+                    logger.warning(
+                        "cannot get effective response for %s", ".".join(tr.nslc_id)
+                    )
+                    continue
+                tr_restituded = tr.transfer(
+                    transfer_function=effective_response,
+                    freqlimits=freq_limits
+                    or (0.05, 0.1, 0.40 / tr.deltat, 0.45 / tr.deltat),
+                    tfade=seconds_taper,
+                    cut_off_fading=cut_off_taper,
+                    demean=demean,
+                    invert=True,
                 )
-                continue
-            tr_restituded = await asyncio.to_thread(
-                tr.transfer,
-                transfer_function=effective_response,
-                freqlimits=freq_limits
-                or (0.05, 0.1, 0.40 / tr.deltat, 0.45 / tr.deltat),
-                tfade=seconds_taper,
-                cut_off_fading=cut_off_taper,
-                demean=demean,
-                invert=True,
-            )
-            restituted_traces.append(tr_restituded)
+                restituted_traces.append(tr_restituded)
+            return restituted_traces
 
-        return restituted_traces
+        # One thread for all traces, many small hops cost more than the transfers
+        return await asyncio.to_thread(restitute)
 
     def get_receiver(self, nsl: NSL) -> Receiver:
         """Get the receiver object based on given NSL tuple.
