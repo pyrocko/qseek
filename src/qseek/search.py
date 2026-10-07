@@ -1088,10 +1088,7 @@ class OctreeSearch:
                 snapshot = await stack.get_snapshot(time_idx, leaf_only=True)
                 octree.map_semblance(snapshot, leaf_only=True)
 
-                densest_node = max(
-                    octree.leaf_nodes,
-                    key=lambda n: n.semblance_density(),
-                )
+                densest_node = octree.get_densest_leaf_node(snapshot)
                 if densest_node != source_node:
                     node_candidates.add(densest_node)
                     if self.neighbor_search:
