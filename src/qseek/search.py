@@ -50,7 +50,6 @@ from qseek.utils import (
     CpuCount,
     PhaseDescription,
     datetime_now,
-    get_cpu_count,
     get_total_memory,
     human_readable_bytes,
     time_to_path,
@@ -71,6 +70,9 @@ logger = logging.getLogger(__name__)
 IgnoreBoundary = Literal[False, "with_surface", "without_surface"]
 
 KM = 1e3
+# Detections whose magnitudes and features are computed at the same time
+MAX_CONCURRENT_EVENTS = 2
+
 n = sdnotify.SystemdNotifier()
 
 
@@ -401,8 +403,10 @@ class Search(Model):
     _config_stem: str = PrivateAttr("")
     _rundir: Path = PrivateAttr()
 
+    # Magnitudes and features are mostly Python and contend for the GIL with the
+    # search, more than two events at a time are slower in total
     _compute_semaphore: asyncio.Semaphore = PrivateAttr(
-        asyncio.Semaphore(max(1, get_cpu_count() - 4))
+        default_factory=lambda: asyncio.Semaphore(MAX_CONCURRENT_EVENTS)
     )
 
     @field_validator("station_corrections", mode="before")
