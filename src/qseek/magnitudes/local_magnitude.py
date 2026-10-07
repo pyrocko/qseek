@@ -243,6 +243,15 @@ class LocalMagnitude(EventMagnitudeCalculator):
         if not traces:
             raise ValueError("No traces found for event")
 
+        # The processing of the traces runs in one thread, off the event loop
+        return await asyncio.to_thread(self._get_event_magnitude, event, traces)
+
+    def _get_event_magnitude(
+        self,
+        event: EventDetection,
+        traces: list[Trace],
+    ) -> EventLocalMagnitude:
+        model = self._model
         if model.max_amplitude.startswith("wood-anderson"):
             # This is a circus: Different versions of the wood-anderson
             # transfer function are used
@@ -255,62 +264,30 @@ class LocalMagnitude(EventMagnitudeCalculator):
             else:
                 raise ValueError(f"Unknown wood-anderson model: {model.max_amplitude}")
 
-            traces = await asyncio.gather(
-                *[
-                    asyncio.to_thread(
-                        tr.transfer,
-                        transfer_function=transfer_function,
-                        freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
-                        tfade=self.taper_seconds,
-                        cut_off_fading=False,
-                        demean=True,
-                        invert=False,
-                    )
-                    for tr in traces
-                ]
-            )
-
-        if model.highpass_freq is not None:
-            await asyncio.gather(
-                *[
-                    asyncio.to_thread(
-                        tr.highpass,
-                        order=4,
-                        corner=model.highpass_freq,
-                    )
-                    for tr in traces
-                ]
-            )
-        if model.lowpass_freq is not None:
-            await asyncio.gather(
-                *[
-                    asyncio.to_thread(
-                        tr.lowpass,
-                        order=4,
-                        corner=model.lowpass_freq,
-                    )
-                    for tr in traces
-                ]
-            )
-
-        await asyncio.gather(
-            *[
-                asyncio.to_thread(
-                    tr.chop,
-                    tr.tmin + self.taper_seconds,
-                    tr.tmax - self.taper_seconds,
+            traces = [
+                tr.transfer(
+                    transfer_function=transfer_function,
+                    freqlimits=(0.1, 1.0, 0.40 / tr.deltat, 0.45 / tr.deltat),
+                    tfade=self.taper_seconds,
+                    cut_off_fading=False,
+                    demean=True,
+                    invert=False,
                 )
                 for tr in traces
             ]
-        )
 
         for tr in traces:
+            if model.highpass_freq is not None:
+                tr.highpass(order=4, corner=model.highpass_freq)
+            if model.lowpass_freq is not None:
+                tr.lowpass(order=4, corner=model.lowpass_freq)
+            tr.chop(tr.tmin + self.taper_seconds, tr.tmax - self.taper_seconds)
             tr.ydata -= np.mean(tr.ydata)
 
         if self.export_mseed is not None:
             file_name = self.export_mseed / f"{time_to_path(event.time)}.mseed"
             logger.debug("saving restituted mseed traces to %s", file_name)
-            await asyncio.to_thread(io.save, traces, str(file_name))
+            io.save(traces, str(file_name))
 
         sorted_traces = sorted(traces, key=lambda tr: tr.nslc_id[:3])
         station_magnitudes = []
