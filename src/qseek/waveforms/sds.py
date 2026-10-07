@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
+import os
 from collections.abc import AsyncGenerator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NamedTuple, Self
+from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import (
     Field,
@@ -19,7 +20,6 @@ from pydantic import (
     model_validator,
 )
 from pyrocko import obspy_compat
-from pyrocko.io.mseed import iload
 from pyrocko.trace import degapper
 
 from qseek.stats import Stats, get_progress
@@ -33,6 +33,7 @@ from qseek.utils import (
     setup_rich_logging,
 )
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
+from qseek.waveforms.mseed import load_time_window
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -51,29 +52,8 @@ JDAY = "[0-9]*"
 EXCLUDE_BANDS = "LVURPTQ"
 
 
-async def _load_file(
-    file: Path,
-    start_time: datetime,
-    end_time: datetime,
-    executor: ThreadPoolExecutor | None = None,
-) -> list[Trace]:
-    loop = asyncio.get_running_loop()
-    ctx = contextvars.copy_context()
-
-    def load_traces() -> list[Trace]:
-        return list(
-            iload(
-                str(file),
-                tmin=start_time.timestamp(),
-                tmax=end_time.timestamp(),
-            )
-        )
-
-    func_call = partial(
-        ctx.run,
-        load_traces,
-    )
-    traces = await loop.run_in_executor(executor, func_call)
+def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Trace]:
+    traces = load_time_window(file, start_time.timestamp(), end_time.timestamp())
     if not traces:
         logger.warning("no waveforms loaded from file %s at %s", file, start_time)
     return traces
@@ -86,23 +66,29 @@ async def _load_files(
     want_incomplete: bool = False,
     executor: ThreadPoolExecutor | None = None,
 ) -> list[Trace]:
-    try:
-        result = await asyncio.gather(
-            *[
-                _load_file(file, start_time, end_time, executor=executor)
-                for file in files
-            ],
-            return_exceptions=True,
-        )
-    except Exception as e:
-        logger.error("error loading files: %s", e)
-        return []
+    files = list(files)
+    contexts = [contextvars.copy_context() for _ in files]
+
+    def load_file(ctx: contextvars.Context, file: Path) -> list[Trace] | Exception:
+        try:
+            return ctx.run(_load_file, file, start_time, end_time)
+        except Exception as exc:
+            return exc
+
+    def load_all() -> list[list[Trace] | Exception]:
+        if executor is None:
+            return list(map(load_file, contexts, files))
+        return list(executor.map(load_file, contexts, files))
+
+    # One hop to a thread per batch, the files are loaded in the executor
+    result = await asyncio.to_thread(load_all)
 
     for exc in (tr for tr in result if isinstance(tr, Exception)):
         logger.error("error loading file: %s", exc)
 
-    traces = [tr for tr in result if not isinstance(tr, Exception)]
-    traces = list(chain(*traces))
+    traces = list(
+        chain.from_iterable(tr for tr in result if not isinstance(tr, BaseException))
+    )
 
     if not traces:
         logger.warning("no traces loaded from files")
@@ -130,10 +116,11 @@ def _get_date_from_filename(path: Path) -> date:
     return date(int(year), 1, 1) + timedelta(days=int(julian_day) - 1)
 
 
-class StationCovarage(NamedTuple):
+@dataclass
+class StationCovarage:
     nsl: NSL
-    channels: set[str] = set()
-    file_dates: list[date] = []
+    channels: set[str] = field(default_factory=set)
+    file_dates: list[date] = field(default_factory=list)
 
     def add_file(self, file: Path):
         *_, channel, _ = file.parts
@@ -142,7 +129,7 @@ class StationCovarage(NamedTuple):
             return
         file_date = _get_date_from_filename(file)
         self.file_dates.append(file_date)
-        self.channels.add(channel.rstrip(".D"))
+        self.channels.add(channel.removesuffix(".D"))
 
     @property
     def start_date(self) -> date:
@@ -358,15 +345,19 @@ class SDSArchive(WaveformProvider):
         channel_orientations: str = "ENZ0123",
     ) -> set[Path]:
         julian_day = date.timetuple().tm_yday
-        base_path = self.archive / str(date.year) / nsl.network / nsl.station
-        if not base_path.exists():
+        base_path = os.path.join(self.archive, str(date.year), nsl.network, nsl.station)
+        try:
+            with os.scandir(base_path) as entries:
+                folders = sorted(
+                    (entry for entry in entries if entry.is_dir()),
+                    key=lambda entry: entry.name,
+                )
+        except (FileNotFoundError, NotADirectoryError):
             return set()
 
         available_files: dict[str, Path] = {}
-        for folder in sorted(base_path.iterdir()):
-            if not folder.is_dir():
-                continue
-            channel = folder.name.rstrip(".D")
+        for folder in folders:
+            channel = folder.name.removesuffix(".D")
             band = channel[0]
             channel_type = channel[:2]
             channel_orientation = channel[-1]
@@ -378,13 +369,14 @@ class SDSArchive(WaveformProvider):
             if channel_orientation not in channel_orientations:
                 continue
 
-            file = folder / f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day:03d}"
-            if not file.exists():
+            prefix = f"{nsl.pretty}.{channel}.D.{date.year}"
+            file = os.path.join(folder.path, f"{prefix}.{julian_day:03d}")
+            if not os.path.exists(file):
                 # This is a fallback for non-zero padded julian days
-                file = folder / f"{nsl.pretty}.{channel}.D.{date.year}.{julian_day}"
-                if not file.exists():
+                file = os.path.join(folder.path, f"{prefix}.{julian_day}")
+                if not os.path.exists(file):
                     continue
-            available_files[channel] = file
+            available_files[channel] = Path(file)
 
         if channel_selector:
             sorting = sorted(
