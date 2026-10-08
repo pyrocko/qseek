@@ -19,6 +19,7 @@ from typing import (
     Literal,
     Self,
     Sequence,
+    overload,
 )
 
 import numpy as np
@@ -522,7 +523,8 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         """
         return [node for node in self if node.is_leaf()]
 
-    def __iter__(self) -> Iterator[Node]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[Node]:  # ty: ignore[invalid-method-override]
         yield from self.nodes
 
     def __next__(self) -> Node:
@@ -531,7 +533,13 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
     def __len__(self) -> int:
         return len(self.nodes)
 
-    def __getitem__(self, idx: int) -> Node:
+    @overload
+    def __getitem__(self, idx: int) -> Node: ...
+
+    @overload
+    def __getitem__(self, idx: slice) -> list[Node]: ...
+
+    def __getitem__(self, idx: int | slice) -> Node | list[Node]:
         try:
             return self.nodes[idx]
         except IndexError:
@@ -877,7 +885,8 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
             raise EnvironmentError("octree has never been split.")
         return tree
 
-    def copy(self, deep=False) -> Self:
+    # Replaces the deprecated BaseModel.copy
+    def copy(self, deep=False) -> Self:  # ty: ignore[invalid-method-override]
         tree = super().model_copy(deep=deep)
         tree._clear_cache()
         for node in tree._root_nodes:

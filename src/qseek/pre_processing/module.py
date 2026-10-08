@@ -84,7 +84,8 @@ class PreProcessing(RootModel):
     )
     _stats: ClassVar[PreProcessingStats] = PreProcessingStats()
 
-    def __iter__(self) -> Iterator[BatchPreProcessing]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[BatchPreProcessing]:  # ty: ignore[invalid-method-override]
         return iter(self.root)
 
     async def prepare(self) -> None:

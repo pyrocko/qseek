@@ -68,7 +68,7 @@ class ConstantVelocityTracer(RayTracer):
         event_time: datetime,
         source: Location,
         receivers: Sequence[Location],
-    ) -> list[ModelledArrival]:
+    ) -> list[ModelledArrival | None]:
         self._check_phase(phase)
 
         traveltimes = self.get_travel_times_locations(

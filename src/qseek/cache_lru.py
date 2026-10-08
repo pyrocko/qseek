@@ -122,7 +122,7 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         total_hits = hits + misses
         return hits / (total_hits or 1)
 
-    def get_stats(self) -> CacheStats:
+    def get_cache_stats(self) -> CacheStats:
         hits, misses = super().get_stats()
         total_hits = hits + misses
         cache_hit_rate = hits / (total_hits or 1)
@@ -146,7 +146,7 @@ class CachesStats(BaseModel):
 
     @classmethod
     def get_stats(cls):
-        caches = {cache.name: cache.get_stats() for cache in CACHES}
+        caches = {cache.name: cache.get_cache_stats() for cache in CACHES}
         total_size = sum(cache.size_bytes for cache in CACHES)
         return cls(caches=caches, total_size=ByteSize(total_size))
 

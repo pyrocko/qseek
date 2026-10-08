@@ -4,7 +4,7 @@ from hashlib import sha1
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Annotated, Any, Literal, Self, Sequence
+from typing import Annotated, Any, Literal, Sequence
 
 import numpy as np
 from pydantic import (
@@ -81,7 +81,7 @@ class LayeredEarthModel1D(Model):
 
     model_config = ConfigDict(ignored_types=(cached_property,))
 
-    def model_post_init(self, context: Any) -> Self:
+    def model_post_init(self, context: Any) -> None:
         if self.filename is not None and self.raw_file_data is None:
             if self.filename == DEFAULT_VELOCITY_MODEL_FILE:
                 logger.warning(
@@ -113,7 +113,6 @@ class LayeredEarthModel1D(Model):
             self._layered_model = load_model(crust2_profile=self.crust2_profile)
         else:
             raise AttributeError("No velocity model or crust2 profile defined.")
-        return self
 
     @property
     def layered_model(self) -> LayeredModel:

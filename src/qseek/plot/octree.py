@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -68,8 +68,8 @@ class OctreeRefinement(BasePlot):
     normalize: bool = False
     plot_detections: bool = False
 
-    def get_figure(self) -> Iterator[LassieFigure]:
-        yield self.create_figure()
+    def get_figure(self) -> LassieFigure:
+        return self.create_figure()
 
     def create_figure(self) -> LassieFigure:
         figure = self.new_figure("octree-refinement.png")

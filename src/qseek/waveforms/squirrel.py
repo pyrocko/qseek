@@ -254,9 +254,9 @@ class PyrockoSquirrel(WaveformProvider):
         window_increment: timedelta,
         window_padding: timedelta,
         start_time: datetime | None = None,
-        end_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
+        end_time: datetime | None = None,
     ) -> AsyncIterator[WaveformBatch]:
         if not self._stations:
             raise ValueError("no stations provided. has prepare() been called?")

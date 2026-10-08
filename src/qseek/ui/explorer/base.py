@@ -29,7 +29,7 @@ class RunExplorer(Protocol):
 
     source: Literal["local", "ssh", "qseek-http"]
 
-    async def discover(self) -> AsyncIterator[RunSource]: ...
+    def discover(self) -> AsyncIterator[RunSource]: ...
 
 
 class RunSource(Protocol):

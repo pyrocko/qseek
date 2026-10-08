@@ -610,7 +610,8 @@ class EventCatalog(BaseModel):
             pyrocko_markers.extend(detection.get_pyrocko_markers())
         marker.save_markers(pyrocko_markers, str(filename))
 
-    def __iter__(self) -> Iterator[EventDetection]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[EventDetection]:  # ty: ignore[invalid-method-override]
         return iter(sorted(self.events, key=lambda d: d.time))
 
     async def export_gpkg(self, filename: Path) -> None:

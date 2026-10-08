@@ -256,7 +256,7 @@ class FastMarchingTracer(RayTracer):
         default=("fm:P", "fm:S"),
         description="Phases to calculate.",
     )
-    _travel_time_tables: dict[tuple[str, Phase], StationTravelTimeTable] = PrivateAttr(
+    _travel_time_tables: dict[tuple[str, str], StationTravelTimeTable] = PrivateAttr(
         default_factory=dict
     )
 
@@ -268,7 +268,7 @@ class FastMarchingTracer(RayTracer):
     def get_travel_time_table(
         self,
         location: Location,
-        phase: Phase,
+        phase: str,
     ) -> StationTravelTimeTable:
         """Get the travel time table for a given station and phase."""
         key = (location.location_hash(), phase)
@@ -425,10 +425,10 @@ class FastMarchingTracer(RayTracer):
 
     def get_travel_time_location(
         self,
-        phase: Phase,
+        phase: str,
         source: Location,
         receiver: Location,
-    ):
+    ) -> float:
         travel_time_table = self.get_travel_time_table(receiver, phase)
         source_distance = receiver.surface_distance_to(source)
         source_depth = source.effective_depth - receiver.effective_depth

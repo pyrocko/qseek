@@ -610,7 +610,8 @@ class EventReceivers(BaseModel):
             )
         )
 
-    def __iter__(self) -> Iterator[Receiver]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[Receiver]:  # ty: ignore[invalid-method-override]
         return iter(self.receivers)
 
 

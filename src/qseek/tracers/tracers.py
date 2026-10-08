@@ -111,5 +111,6 @@ class RayTracers(RootModel):
             timedelta(seconds=float(max_traveltime)),
         )
 
-    def __iter__(self) -> Iterator[RayTracer]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[RayTracer]:  # ty: ignore[invalid-method-override]
         yield from self.root
