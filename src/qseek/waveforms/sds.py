@@ -20,6 +20,7 @@ from pydantic import (
     model_validator,
 )
 from pyrocko import obspy_compat
+from pyrocko.io.mseed import iload
 from pyrocko.trace import degapper
 
 from qseek.stats import Stats, get_progress
@@ -51,9 +52,24 @@ JDAY = "[0-9]*"
 
 EXCLUDE_BANDS = "LVURPTQ"
 
+MSeedLoader = Literal["qseek", "pyrocko"]
+
+# How time windows are read from the MiniSEED files of the archive:
+# "qseek": qseek.waveforms.mseed.load_time_window, reads only the records of the
+#   window when the file has records of a fixed length in time order.
+# "pyrocko": pyrocko.io.mseed.iload, scans the headers of all records of the file.
+MSEED_LOADER: MSeedLoader = "qseek"
+
 
 def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Trace]:
-    traces = load_time_window(file, start_time.timestamp(), end_time.timestamp())
+    tmin, tmax = start_time.timestamp(), end_time.timestamp()
+    match MSEED_LOADER:
+        case "qseek":
+            traces = load_time_window(file, tmin, tmax)
+        case "pyrocko":
+            traces = list(iload(str(file), tmin=tmin, tmax=tmax))
+        case _:
+            raise ValueError(f"unknown MiniSEED loader {MSEED_LOADER!r}")
     if not traces:
         logger.warning("no waveforms loaded from file %s at %s", file, start_time)
     return traces
@@ -296,6 +312,7 @@ class SDSArchive(WaveformProvider):
     async def prepare(self, stations: StationInventory):
         obspy_compat.plant()
 
+        logger.info("reading MiniSEED time windows with the %s loader", MSEED_LOADER)
         self.scan_sds_archive()
 
         archive_start, archive_end = self.available_time_span()
