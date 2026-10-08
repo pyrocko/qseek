@@ -59,11 +59,11 @@ class Simple(Exporter):
                 continue
 
             observed_arrivals = [
-                (receiver, phase, arrival)
+                (receiver, phase, observed)
                 for receiver in ev.receivers
                 for phase, arrival in receiver.phase_arrivals.items()
-                if arrival.observed is not None
-                and arrival.observed.detection_value > self.min_pick_confidence
+                if (observed := arrival.observed) is not None
+                and observed.detection_value > self.min_pick_confidence
             ]
 
             if not observed_arrivals:
@@ -84,10 +84,10 @@ class Simple(Exporter):
                     "lat,lon,elevation,network,station,location,phase,confidence,traveltime\n"
                 )
 
-                for receiver, phase, arrival in observed_arrivals:
-                    traveltime = arrival.observed.time - ev.time  # ty: ignore[unresolved-attribute]
+                for receiver, phase, observed in observed_arrivals:
+                    traveltime = observed.time - ev.time
                     file.write(
-                        f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{arrival.observed.detection_value},{traveltime.total_seconds()}\n",  # ty: ignore[unresolved-attribute]
+                        f"{receiver.lat},{receiver.lon},{receiver.effective_elevation},{receiver.network},{receiver.station},{receiver.location},{phase},{observed.detection_value},{traveltime.total_seconds()}\n",
                     )
 
         logger.info(

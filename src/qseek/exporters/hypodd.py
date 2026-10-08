@@ -23,7 +23,11 @@ from pydantic import (
 from pyrocko.cake import GradientLayer
 
 from qseek.exporters.base import Exporter
-from qseek.exporters.cross_correlation import CorrelationEvent, CrossCorrelation
+from qseek.exporters.cross_correlation import (
+    CorrelationEvent,
+    CrossCorrelation,
+    PhaseType,
+)
 from qseek.search import Search
 from qseek.tracers.cake import CakeTracer
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
@@ -463,7 +467,7 @@ class HypoDD(Exporter):
             ) from exc
 
         events: list[tuple[int, EventDetection, datetime]] = []
-        event_picks: list[list[tuple[NSL, float, float, str]]] = []
+        event_picks: list[list[tuple[NSL, float, float, PhaseType]]] = []
         stations: dict[NSL, tuple[float, float, float]] = {}
 
         for event in search.catalog:
@@ -477,7 +481,7 @@ class HypoDD(Exporter):
             # HypoDD keeps the origin time with 10 ms resolution, the travel times
             # refer to the rounded origin time
             origin = round_time(event.time)
-            picks: list[tuple[NSL, float, float, str]] = []
+            picks: list[tuple[NSL, float, float, PhaseType]] = []
             for receiver in event.receivers:
                 for phase, arrival in receiver.phase_arrivals.items():
                     observed = arrival.observed
@@ -673,7 +677,7 @@ class HypoDD(Exporter):
         self,
         search: Search,
         events: list[tuple[int, EventDetection, datetime]],
-        event_picks: list[list[tuple[NSL, float, float, str]]],
+        event_picks: list[list[tuple[NSL, float, float, PhaseType]]],
         max_distance: float,
         stations: dict[NSL, tuple[float, float, float]],
     ) -> dict[tuple[int, int], list[DifferentialTime]]:
@@ -691,7 +695,7 @@ class HypoDD(Exporter):
         cc_events = []
         for (event_id, event, origin), picks in zip(events, event_picks, strict=True):
             # the first pick of a phase type, e.g. of P if there are P and Pn
-            arrivals: dict[tuple[NSL, str], float] = {}
+            arrivals: dict[tuple[NSL, PhaseType], float] = {}
             for nsl, traveltime, _, phase_type in picks:
                 arrivals.setdefault(
                     (nsl, phase_type),
@@ -703,10 +707,12 @@ class HypoDD(Exporter):
                         continue
                     for phase, arrival in receiver.phase_arrivals.items():
                         phase_type = phase_hint(phase)
-                        key = (receiver.nsl, phase_type)
-                        if phase_type is None or key in arrivals:
+                        if phase_type is None:
                             continue
-                        arrivals[key] = arrival.model.time.timestamp()  # ty: ignore[invalid-assignment]
+                        key = (receiver.nsl, phase_type)
+                        if key in arrivals:
+                            continue
+                        arrivals[key] = arrival.model.time.timestamp()
                         stations.setdefault(
                             receiver.nsl,
                             (
@@ -716,7 +722,7 @@ class HypoDD(Exporter):
                             ),
                         )
             cc_events.append(
-                CorrelationEvent(event_id, event, origin.timestamp(), arrivals)  # ty: ignore[invalid-argument-type]
+                CorrelationEvent(event_id, event, origin.timestamp(), arrivals)
             )
 
         cc_times = await settings.correlate(cc_events, search.data_provider)
@@ -732,7 +738,7 @@ class HypoDD(Exporter):
         self,
         file: Path,
         events: list[tuple[int, EventDetection, datetime]],
-        event_picks: list[list[tuple[NSL, float, float, str]]],
+        event_picks: list[list[tuple[NSL, float, float, PhaseType]]],
         labels: dict[NSL, str],
     ) -> dict[str, int]:
         """Write the phase file for ph2dt.
