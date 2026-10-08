@@ -668,7 +668,8 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
                 (n-leaf-nodes,).
 
         Returns:
-            Node: The first leaf node with the maximum of semblance / size**3.
+            Node: The first leaf node with the maximum of semblance / size**3. A
+                NaN semblance counts as the maximum, the first NaN wins.
         """
         *_, size_cubed = self.get_node_geometry(leafs_only=True)
         density = semblance.astype(float) / size_cubed
