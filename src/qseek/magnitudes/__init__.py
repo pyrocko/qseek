@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Union
+from typing import TYPE_CHECKING, Annotated, Union
 
 from pydantic import Field
 
@@ -11,12 +11,19 @@ from qseek.magnitudes import (
 )
 from qseek.magnitudes.base import EventMagnitude, EventMagnitudeCalculator
 
-type EventMagnitudeType = Annotated[
-    Union[EventMagnitude.get_subclasses()],
-    Field(discriminator="magnitude"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type EventMagnitudeType = EventMagnitude
+else:
+    type EventMagnitudeType = Annotated[
+        Union[EventMagnitude.get_subclasses()],
+        Field(discriminator="magnitude"),
+    ]
 
-type EventMagnitudeCalculatorType = Annotated[
-    Union[EventMagnitudeCalculator.get_subclasses()],
-    Field(discriminator="magnitude"),
-]
+if TYPE_CHECKING:
+    type EventMagnitudeCalculatorType = EventMagnitudeCalculator
+else:
+    type EventMagnitudeCalculatorType = Annotated[
+        Union[EventMagnitudeCalculator.get_subclasses()],
+        Field(discriminator="magnitude"),
+    ]

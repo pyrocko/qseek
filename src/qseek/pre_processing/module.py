@@ -25,10 +25,14 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-type BatchPreProcessingType = Annotated[
-    Union[BatchPreProcessing.get_subclasses()],
-    Field(discriminator="process"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type BatchPreProcessingType = BatchPreProcessing
+else:
+    type BatchPreProcessingType = Annotated[
+        Union[BatchPreProcessing.get_subclasses()],
+        Field(discriminator="process"),
+    ]
 
 
 class PreProcessingStats(Stats):

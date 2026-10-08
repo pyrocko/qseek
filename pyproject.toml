@@ -156,8 +156,6 @@ exclude = ["src/qseek/ui_old"]
 allowed-unresolved-imports = ["qseek.ext._build"]
 
 [tool.ty.rules]
-# Discriminated unions are built from subclasses at import time.
-invalid-type-form = "ignore"
 # Pydantic models intentionally override __iter__, __getitem__, copy, ...
 invalid-method-override = "ignore"
 # Abstract interfaces are declared with `...` bodies.

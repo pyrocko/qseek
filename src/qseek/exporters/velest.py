@@ -12,6 +12,7 @@ from qseek.exporters.base import Exporter
 from qseek.models.detection import EventDetection, PhaseDetection, Receiver
 from qseek.models.station import Location, Station
 from qseek.search import Search
+from qseek.tracers.cake import CakeTracer
 
 if TYPE_CHECKING:
     from qseek.images.base import ObservedArrival
@@ -239,9 +240,13 @@ class Velest(Exporter):
         )
         control_file_parameters.write_config_file(control_file)
         # export velocity model file
-        dep = search.ray_tracers.root[0].earthmodel.layered_model.profile("z")
-        vp = search.ray_tracers.root[0].earthmodel.layered_model.profile("vp")
-        vs = search.ray_tracers.root[0].earthmodel.layered_model.profile("vs")
+        ray_tracer = search.ray_tracers.root[0]
+        if not isinstance(ray_tracer, CakeTracer):
+            raise TypeError("the VELEST export needs a CakeTracer as first ray tracer")
+        layered_model = ray_tracer.earthmodel.layered_model
+        dep = layered_model.profile("z")
+        vp = layered_model.profile("vp")
+        vs = layered_model.profile("vs")
         dep_velest = []
         vp_velest = []
         vs_velest = []

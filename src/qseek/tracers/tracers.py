@@ -22,10 +22,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-type RayTracerType = Annotated[
-    Union[RayTracer.get_subclasses()],
-    Field(discriminator="tracer"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type RayTracerType = RayTracer
+else:
+    type RayTracerType = Annotated[
+        Union[RayTracer.get_subclasses()],
+        Field(discriminator="tracer"),
+    ]
 
 
 class RayTracers(RootModel):

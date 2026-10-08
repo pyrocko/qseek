@@ -62,20 +62,20 @@ class InversionLayered1D(BaseModel):
     async def prepare(self) -> None:
         search = Search.from_config(self.import_rundir)
 
-        await self.event_selection.prepare(rundir=self.import_rundir)  # ty: ignore[unresolved-attribute]
+        await self.event_selection.prepare(rundir=self.import_rundir)
         # await search.prepare()
         self._search = search
         if search.distance_weights:
             search.distance_weights.prepare(
-                self.event_selection.stations,  # ty: ignore[unresolved-attribute]
+                self.event_selection.stations,
                 search.octree,
             )
 
-        await search.ray_tracers.prepare(search.octree, self.event_selection.stations)  # ty: ignore[unresolved-attribute]
+        await search.ray_tracers.prepare(search.octree, self.event_selection.stations)
 
         # window_padding = await search.get_window_padding()
 
-        self._images = await self.event_selection.get_images(timedelta(seconds=30))  # ty: ignore[unresolved-attribute]
+        self._images = await self.event_selection.get_images(timedelta(seconds=30))
 
         self._octree_search = OctreeSearch(
             ray_tracers=search.ray_tracers,
@@ -93,7 +93,9 @@ class InversionLayered1D(BaseModel):
         )
 
     def get_start_model(self) -> LayeredModelInversion:
-        ray_tracer: FastMarchingTracer = self._search.ray_tracers.root[0]
+        ray_tracer = self._search.ray_tracers.root[0]
+        if not isinstance(ray_tracer, FastMarchingTracer):
+            raise TypeError("the inversion needs a FastMarchingTracer as ray tracer")
         return LayeredModelInversion.from_layered_model(ray_tracer.get_layered_model())
 
     async def test_velocity_model(
@@ -110,7 +112,7 @@ class InversionLayered1D(BaseModel):
             implementation="pyrocko",
         )
         ray_tracer.set_layered_model(model)
-        await ray_tracer.prepare(search.octree.reset(), self.event_selection.stations)  # ty: ignore[unresolved-attribute]
+        await ray_tracer.prepare(search.octree.reset(), self.event_selection.stations)
 
         octree_search.set_ray_tracers(RayTracers([ray_tracer]))
 

@@ -581,7 +581,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         self,
         surface: Literal["NE", "ED", "ND"] = "NE",
         max_level: int = -1,
-        accumulator: Callable[np.ndarray] = np.max,
+        accumulator: Callable[..., np.ndarray] = np.max,
     ) -> np.ndarray:
         """Reduce the octree's nodes to the surface.
 
