@@ -328,8 +328,16 @@ class Node:
             raise AttributeError("parent octree not set")
 
         nodes = self.tree.leaf_nodes if leafs_only else self.tree.nodes
+        east, north, depth, size, _ = self.tree.get_node_geometry(leafs_only)
 
-        neighbor_nodes = list(filter(self.is_colliding, nodes))
+        # The comparisons of is_colliding, for all nodes at once
+        half_size = (self.size + size) / 2
+        colliding = np.ones(len(nodes), dtype=bool)
+        for own, other in ((self.east, east), (self.north, north), (self.depth, depth)):
+            offset = own - other
+            colliding &= (-half_size <= offset) & (offset <= half_size)
+
+        neighbor_nodes = [nodes[idx] for idx in np.flatnonzero(colliding)]
         neighbor_nodes.remove(self)
         return neighbor_nodes
 
@@ -410,6 +418,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
     _cached_coordinates: dict[CoordSystem, np.ndarray] = PrivateAttr(
         default_factory=dict
     )
+    _cached_geometry: dict[bool, np.ndarray] = PrivateAttr(default_factory=dict)
     _nodes: list[Node] = PrivateAttr([])
 
     model_config = ConfigDict(ignored_types=(cached_property,))
@@ -536,6 +545,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         with contextlib.suppress(AttributeError):
             del self.leaf_nodes
         self._cached_coordinates.clear()
+        self._cached_geometry.clear()
         self._semblance = None
 
     def reset(self) -> Self:
@@ -626,6 +636,44 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
 
         for node, node_semblance in zip(nodes, semblance, strict=True):
             node.semblance = node_semblance
+
+    def get_node_geometry(self, leafs_only: bool = True) -> np.ndarray:
+        """East, north, depth, size and cubed size of the nodes, cached.
+
+        Args:
+            leafs_only (bool, optional): Only the leaf nodes. Defaults to True.
+
+        Returns:
+            np.ndarray: Of shape (5, n-nodes).
+        """
+        if leafs_only not in self._cached_geometry:
+            nodes = self.leaf_nodes if leafs_only else self.nodes
+            geometry = np.array(
+                [
+                    (node.east, node.north, node.depth, node.size, node.size**3)
+                    for node in nodes
+                ],
+                dtype=float,
+            ).reshape(-1, 5)
+            geometry = geometry.T.copy()
+            geometry.setflags(write=False)
+            self._cached_geometry[leafs_only] = geometry
+        return self._cached_geometry[leafs_only]
+
+    def get_densest_leaf_node(self, semblance: np.ndarray) -> Node:
+        """Leaf node with the highest semblance density.
+
+        Args:
+            semblance (np.ndarray): Semblance of the leaf nodes, of shape
+                (n-leaf-nodes,).
+
+        Returns:
+            Node: The first leaf node with the maximum of semblance / size**3. A
+                NaN semblance counts as the maximum, the first NaN wins.
+        """
+        *_, size_cubed = self.get_node_geometry(leafs_only=True)
+        density = semblance.astype(float) / size_cubed
+        return self.leaf_nodes[int(np.argmax(density))]
 
     def get_coordinates(self, system: CoordSystem = "geographic") -> np.ndarray:
         if system not in self._cached_coordinates:
