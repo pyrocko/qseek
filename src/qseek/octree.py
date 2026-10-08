@@ -17,6 +17,7 @@ from typing import (
     Iterable,
     Iterator,
     Literal,
+    Mapping,
     Self,
     Sequence,
     overload,
@@ -876,7 +877,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         Returns:
             Self: Copy of the octree with cached bottom nodes.
         """
-        tree = self.copy(deep=True)
+        tree = self.model_copy(deep=True)
         split_nodes = []
         for node in tree:
             if node._children_cached:
@@ -885,9 +886,11 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
             raise EnvironmentError("octree has never been split.")
         return tree
 
-    # Replaces the deprecated BaseModel.copy
-    def copy(self, deep=False) -> Self:  # ty: ignore[invalid-method-override]
-        tree = super().model_copy(deep=deep)
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        """Copy the octree, its nodes refer to the copy."""
+        tree = super().model_copy(update=update, deep=deep)
         tree._clear_cache()
         for node in tree._root_nodes:
             node.set_tree(tree)
