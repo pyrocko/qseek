@@ -783,7 +783,9 @@ class Search(Model):
 
             for feature_calculator in self.features:
                 logger.debug("adding features from %s", feature_calculator.feature)
-                await feature_calculator.add_features(self.data_provider, event)
+                await feature_calculator.add_features(
+                    self.data_provider, self.stations, event
+                )
         return event
 
     @classmethod

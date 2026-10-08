@@ -9,10 +9,11 @@ from qseek.features.base import EventFeature, FeatureExtractor, ReceiverFeature
 from qseek.utils import ChannelSelectors
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Squirrel
     from pyrocko.trace import Trace
 
     from qseek.models.detection import EventDetection
+    from qseek.models.station import StationInventory
+    from qseek.waveforms.base import WaveformProvider
 
 
 class ReceiverGroundMotion(ReceiverFeature):
@@ -64,20 +65,25 @@ class GroundMotionExtractor(FeatureExtractor):
 
     async def add_features(
         self,
-        squirrel: Squirrel,
+        waveform_provider: WaveformProvider,
+        stations: StationInventory,
         event: EventDetection,
     ) -> None:
         receiver_motions: list[ReceiverGroundMotion] = []
         for receiver in event.receivers:
             try:
-                traces_acc = receiver.get_waveforms_restituted(  # ty: ignore[unresolved-attribute]
-                    squirrel,
+                traces_acc = await event.receivers.get_waveforms_restituted(
+                    waveform_provider,
+                    stations,
+                    receivers=[receiver],
                     seconds_after=self.seconds_after,
                     seconds_before=self.seconds_before,
                     quantity="acceleration",
                 )
-                traces_vel = receiver.get_waveforms_restituted(  # ty: ignore[unresolved-attribute]
-                    squirrel,
+                traces_vel = await event.receivers.get_waveforms_restituted(
+                    waveform_provider,
+                    stations,
+                    receivers=[receiver],
                     seconds_after=self.seconds_after,
                     seconds_before=self.seconds_before,
                     quantity="velocity",
@@ -97,6 +103,9 @@ class GroundMotionExtractor(FeatureExtractor):
                 continue
             receiver_motions.append(ground_motion)
 
+        if not receiver_motions:
+            return
+
         event_ground_motions = EventGroundMotion(
             seconds_before=self.seconds_before,
             seconds_after=self.seconds_after,
@@ -104,7 +113,7 @@ class GroundMotionExtractor(FeatureExtractor):
                 gm.peak_ground_acceleration for gm in receiver_motions
             ),
             peak_horizontal_acceleration=max(
-                gm.peak_ground_acceleration for gm in receiver_motions
+                gm.peak_horizontal_acceleration for gm in receiver_motions
             ),
             peak_ground_velocity=max(
                 gm.peak_ground_velocity for gm in receiver_motions
