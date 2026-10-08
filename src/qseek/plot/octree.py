@@ -5,9 +5,8 @@ from typing import TYPE_CHECKING, Callable, Iterator
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import cm
+from matplotlib import colormaps
 from matplotlib.animation import FFMpegFileWriter, FuncAnimation
-from matplotlib.cm import get_cmap  # ty: ignore[unresolved-import]
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 
@@ -29,9 +28,9 @@ def octree_to_rectangles(
     normalize: bool = False,
 ) -> PatchCollection:
     if isinstance(cmap, str):
-        cmap = cm.get_cmap(cmap)  # ty: ignore[unresolved-attribute]
+        cmap = colormaps[cmap]
 
-    coords = octree.reduce_surface()  # ty: ignore[unresolved-attribute]
+    coords = octree.reduce_axis()
     coords = coords[np.argsort(coords[:, 2])[::-1]]
     size_order = np.argsort(coords[:, 2])[::-1]
     coords = coords[size_order]
@@ -55,7 +54,7 @@ def octree_to_rectangles(
     if normalize:
         semblances /= semblances.max()
     colors = cmap(semblances)
-    edge_colors = cm.get_cmap("binary")(semblances**2, alpha=0.8)  # ty: ignore[unresolved-attribute]
+    edge_colors = colormaps["binary"](semblances**2, alpha=0.8)
 
     return PatchCollection(
         patches=rectangles,
@@ -75,7 +74,7 @@ class OctreeRefinement(BasePlot):
     def create_figure(self) -> LassieFigure:
         figure = self.new_figure("octree-refinement.png")
         ax = figure.get_axes()
-        octree = self.search.octree  # ty: ignore[unresolved-attribute]
+        octree = self.search.octree  # ty: ignore[unresolved-attribute]  # never set
 
         for spine in ax.spines.values():
             spine.set_visible(False)
@@ -92,7 +91,7 @@ class OctreeRefinement(BasePlot):
         ax.autoscale()
 
         if self.plot_detections:
-            detections = self.search.detections  # ty: ignore[unresolved-attribute]
+            detections = self.search.detections  # ty: ignore[unresolved-attribute]  # never set
             for detection in detections or []:
                 ax.scatter(
                     detection.east_shift,
@@ -106,7 +105,7 @@ class OctreeRefinement(BasePlot):
 
 def plot_octree_3d(octree: Octree, cmap: str = "Oranges") -> None:
     ax = plt.figure().add_subplot(projection="3d")
-    colormap = get_cmap(cmap)
+    colormap = colormaps[cmap]
 
     coords = octree.get_coordinates("cartesian").T
     colors = colormap(octree.semblance, alpha=octree.semblance)
@@ -123,9 +122,9 @@ def plot_octree_scatter(
     accumulator: Callable = np.max,
     cmap: str = "magma_r",
 ) -> None:
-    colormap = get_cmap(cmap)
+    colormap = colormaps[cmap]
 
-    surface = octree.reduce_surface(accumulator)  # ty: ignore[unresolved-attribute]
+    surface = octree.reduce_axis(accumulator=accumulator)
     normalized_semblance = octree.semblance / octree.semblance.max()
 
     colors = colormap(surface[:, 2], alpha=normalized_semblance)
@@ -144,7 +143,7 @@ def plot_octree_semblance_movie(
 ) -> None:
     fig = plt.figure()
     ax: plt.Axes = fig.add_subplot(projection="3d")
-    colormap = get_cmap(cmap)
+    colormap = colormaps[cmap]
 
     coords = octree.get_coordinates("cartesian").T
     nodes = ax.scatter(coords[0], coords[1], coords[2])

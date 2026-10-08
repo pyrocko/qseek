@@ -32,7 +32,7 @@ class DetectionsDistribution(BasePlot):
         figure = self.new_figure("event-distribution-{attribute}.png")
         axes = figure.get_axes()
 
-        detections = self.detections  # ty: ignore[unresolved-attribute]
+        detections = self.detections  # ty: ignore[unresolved-attribute]  # never set
 
         values = [getattr(detection, attribute) for detection in detections]
         times = [

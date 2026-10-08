@@ -22,15 +22,15 @@ def with_default_axes(func: Callable[P, None]) -> Callable[P, None]:
         if kwargs.get("axes") is None:
             fig = plt.figure()
             ax = fig.gca()
-            kwargs["axes"] = ax  # ty: ignore[invalid-assignment]
+            kwargs["axes"] = ax  # ty: ignore[invalid-assignment]  # func takes axes
         else:
-            ax: plt.Axes = kwargs["axes"]  # ty: ignore[invalid-assignment]
+            ax: plt.Axes = kwargs["axes"]  # ty: ignore[invalid-assignment]  # func takes axes
             fig = ax.figure
 
         ret = func(*args, **kwargs)
 
         if kwargs.get("filename") is not None:
-            fig.savefig(str(kwargs.get("filename")), bbox_inches="tight", dpi=300)  # ty: ignore[unresolved-attribute]
+            fig.savefig(str(kwargs.get("filename")), bbox_inches="tight", dpi=300)  # ty: ignore[unresolved-attribute]  # SubFigure has no savefig
             plt.close()
 
         if not axes_provided:
