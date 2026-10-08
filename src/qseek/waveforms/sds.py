@@ -34,7 +34,6 @@ from qseek.utils import (
     setup_rich_logging,
 )
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
-from qseek.waveforms.mseed import load_time_window
 
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
@@ -52,24 +51,11 @@ JDAY = "[0-9]*"
 
 EXCLUDE_BANDS = "LVURPTQ"
 
-MSeedLoader = Literal["qseek", "pyrocko"]
-
-# How time windows are read from the MiniSEED files of the archive:
-# "qseek": qseek.waveforms.mseed.load_time_window, reads only the records of the
-#   window when the file has records of a fixed length in time order.
-# "pyrocko": pyrocko.io.mseed.iload, scans the headers of all records of the file.
-MSEED_LOADER: MSeedLoader = "qseek"
-
 
 def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Trace]:
-    tmin, tmax = start_time.timestamp(), end_time.timestamp()
-    match MSEED_LOADER:
-        case "qseek":
-            traces = load_time_window(file, tmin, tmax)
-        case "pyrocko":
-            traces = list(iload(str(file), tmin=tmin, tmax=tmax))
-        case _:
-            raise ValueError(f"unknown MiniSEED loader {MSEED_LOADER!r}")
+    traces = list(
+        iload(str(file), tmin=start_time.timestamp(), tmax=end_time.timestamp())
+    )
     if not traces:
         logger.warning("no waveforms loaded from file %s at %s", file, start_time)
     return traces
@@ -132,7 +118,7 @@ def _get_date_from_filename(path: Path) -> date:
     return date(int(year), 1, 1) + timedelta(days=int(julian_day) - 1)
 
 
-@dataclass
+@dataclass(slots=True)
 class StationCovarage:
     nsl: NSL
     channels: set[str] = field(default_factory=set)
@@ -312,7 +298,6 @@ class SDSArchive(WaveformProvider):
     async def prepare(self, stations: StationInventory):
         obspy_compat.plant()
 
-        logger.info("reading MiniSEED time windows with the %s loader", MSEED_LOADER)
         self.scan_sds_archive()
 
         archive_start, archive_end = self.available_time_span()

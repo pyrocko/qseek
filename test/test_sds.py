@@ -7,11 +7,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from pyrocko.io.mseed import save
+from pyrocko.io.mseed import iload, save
 from pyrocko.trace import Trace
 
 from qseek.utils import NSL
-from qseek.waveforms import sds
 from qseek.waveforms.sds import SDSArchive, StationCovarage
 
 
@@ -77,46 +76,53 @@ def sds_archive(tmp_path: Path) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_mseed_loaders(sds_archive: Path, monkeypatch) -> None:
-    """Both MiniSEED loaders return the same traces."""
+async def test_get_traces(sds_archive: Path) -> None:
+    """The files of a window are read and complete traces are kept."""
     archive = SDSArchive(archive=sds_archive)
     archive.scan_sds_archive()
     nsls = sorted(archive.available_nsls())
+    n_samples = round(420.0 / 0.01)
 
-    windows = [
-        (DAY_START - timedelta(minutes=1), timedelta(minutes=7)),
-        (DAY_START + timedelta(minutes=55), timedelta(minutes=7)),
-        (DAY_START + timedelta(minutes=58, seconds=0.005), timedelta(minutes=10)),
-        (DAY_START + timedelta(hours=2, minutes=55), timedelta(minutes=7)),
-    ]
-    results = {}
-    for loader in ("qseek", "pyrocko"):
-        monkeypatch.setattr(sds, "MSEED_LOADER", loader)
-        results[loader] = []
-        for start, length in windows:
-            for want_incomplete in (True, False):
-                traces = await archive.get_traces(
-                    nsls, start, start + length, want_incomplete=want_incomplete
-                )
-                results[loader].append(
-                    sorted(
-                        (tr.nslc_id, tr.tmin, tr.tmax, tr.ydata.tobytes())
-                        for tr in traces
-                    )
-                )
-    assert results["qseek"] == results["pyrocko"]
-    assert any(results["qseek"])
-
-
-@pytest.mark.asyncio
-async def test_unknown_mseed_loader(sds_archive: Path, monkeypatch, caplog) -> None:
-    archive = SDSArchive(archive=sds_archive)
-    archive.scan_sds_archive()
-    monkeypatch.setattr(sds, "MSEED_LOADER", "obspy")
-    start = DAY_START + timedelta(hours=1)
-    with caplog.at_level("ERROR"):
-        traces = await archive.get_traces(
-            sorted(archive.available_nsls()), start, start + timedelta(minutes=5)
+    start = DAY_START + timedelta(minutes=10)
+    traces = await archive.get_traces(nsls, start, start + timedelta(minutes=7))
+    assert len(traces) == 6
+    for tr in traces:
+        assert tr.tmin == start.timestamp()
+        assert tr.ydata.size == n_samples
+        path = (
+            sds_archive
+            / "2024"
+            / "XX"
+            / tr.station
+            / f"{tr.channel}.D"
+            / f"XX.{tr.station}..{tr.channel}.D.2024.141"
         )
-    assert traces == []
-    assert "unknown MiniSEED loader 'obspy'" in caplog.text
+        (expected,) = iload(str(path), tmin=start.timestamp(), tmax=tr.tmax + 0.01)
+        np.testing.assert_array_equal(tr.ydata, expected.ydata)
+
+    # Across the gap of STB.HHZ: dropped, or two pieces with incomplete traces
+    start = DAY_START + timedelta(minutes=58)
+    end = start + timedelta(minutes=10)
+    traces = await archive.get_traces(nsls, start, end)
+    assert sorted(".".join(tr.nslc_id) for tr in traces) == [
+        "XX.STA..HHE",
+        "XX.STA..HHN",
+        "XX.STA..HHZ",
+        "XX.STB..HHE",
+        "XX.STB..HHN",
+    ]
+    traces = await archive.get_traces(nsls, start, end, want_incomplete=True)
+    assert len([tr for tr in traces if tr.nslc_id == ("XX", "STB", "", "HHZ")]) == 2
+
+
+def test_station_coverage() -> None:
+    """Each station keeps its own channels and file dates."""
+    sta = StationCovarage(nsl=NSL("XX", "STA", ""))
+    stb = StationCovarage(nsl=NSL("XX", "STB", ""))
+    sta.add_file(Path("2024/XX/STA/HHZ.D/XX.STA..HHZ.D.2024.141"))
+    stb.add_file(Path("2024/XX/STB/EHZ.D/XX.STB..EHZ.D.2024.142"))
+    assert sta.channels == {"HHZ"}
+    assert stb.channels == {"EHZ"}
+    assert sta.file_dates == [date(2024, 5, 20)]
+    assert stb.start_date == date(2024, 5, 21)
+    assert not hasattr(sta, "__dict__")
