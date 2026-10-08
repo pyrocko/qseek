@@ -342,7 +342,11 @@ class SeisBench(ImageFunction):
             return self.seisbench_model.default_args["blinding"]
         except KeyError:
             # SeisBench annotates the default arguments as (description, default)
-            return self.seisbench_model._annotate_args["blinding"][1]  # ty: ignore[invalid-return-type]
+            blinding = self.seisbench_model._annotate_args["blinding"][1]
+            if not isinstance(blinding, tuple | list):
+                raise TypeError(f"unexpected SeisBench blinding {blinding!r}") from None
+            before, after = blinding
+            return int(before), int(after)
 
     def get_blinding(self) -> timedelta:
         sampling_rate = (

@@ -232,9 +232,8 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
             )
             if recalculate_scott or self._scott_kde is None:
                 self._scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-            # SciPy's untyped factor is inferred from its assignments, it is a float
-            factor = self._scott_kde.factor
-            kde = gaussian_kde(time_numeric, bw_method=factor * 0.1)  # ty: ignore[unsupported-operator]
+            factor = float(self._scott_kde.scotts_factor())
+            kde = gaussian_kde(time_numeric, bw_method=factor * 0.1)
             return kde(time_numeric)
         except (ValueError, np.linalg.LinAlgError):
             ui.notify(

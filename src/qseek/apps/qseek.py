@@ -8,7 +8,7 @@ import logging
 import shutil
 from importlib.metadata import version
 from pathlib import Path
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, Any, Protocol, cast, get_args
 
 import nest_asyncio
 
@@ -277,12 +277,18 @@ try:
         dump_dir: DirectoriesCompleter(),
     }
     for action, completer in completers.items():
-        # argcomplete reads the completer attribute it adds to the actions
-        action.completer = completer  # ty: ignore[unresolved-attribute]
+        # argcomplete reads the completer attribute set on the actions
+        cast("CompletedAction", action).completer = completer
 
     argcomplete.autocomplete(parser)
 except ImportError:
     pass
+
+
+class CompletedAction(Protocol):
+    """An argparse action with an argcomplete completer."""
+
+    completer: Any
 
 
 class UsageError(Exception):

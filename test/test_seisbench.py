@@ -329,3 +329,19 @@ async def test_sampling_rate_input_warns_on_longer_blinding(monkeypatch, caplog)
     with caplog.at_level("WARNING"):
         await function.process_traces([trace])
     assert "longer than" in caplog.text
+
+
+def test_blinding_samples_from_annotate_args():
+    """Without a default, the blinding is the default of the annotate arguments."""
+    function = SeisBench()
+    function._seisbench_model = SimpleNamespace(
+        default_args={},
+        _annotate_args={"blinding": ("Samples to discard", (100, 300))},
+    )
+    assert function.get_blinding_samples() == (100, 300)
+
+    function._seisbench_model = SimpleNamespace(
+        default_args={}, _annotate_args={"blinding": ("Samples to discard", 100)}
+    )
+    with pytest.raises(TypeError, match="blinding"):
+        function.get_blinding_samples()
