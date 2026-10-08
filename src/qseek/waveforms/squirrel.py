@@ -61,18 +61,21 @@ class SquirrelPrefetcher:
     async def prefetch_worker(self) -> None:
         logger.info("start prefetching waveforms, queue size %d", self.queue.maxsize)
 
+        def next_batch() -> Batch | None:
+            return next(self.iterator, None)
+
         async def load_data() -> None | Batch:
             while True:
                 start_load = datetime_now()
                 logger.debug("loading waveform batch %d", self._fetched_batches)
-                batch = await asyncio.to_thread(next, self.iterator, None)
+                batch = await asyncio.to_thread(next_batch)
                 if batch is None:
                     await self.queue.put(None)
                     return
                 logger.debug("read waveform batch in %s", datetime_now() - start_load)
                 self._fetched_batches += 1
                 self.load_time = datetime_now() - start_load
-                await self.queue.put(batch)  # ty: ignore[invalid-argument-type]
+                await self.queue.put(batch)
 
         await asyncio.create_task(load_data())
         logger.debug("done loading waveforms")

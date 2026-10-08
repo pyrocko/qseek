@@ -562,12 +562,13 @@ class SeedLinkClient(BaseModel):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        assert proc.stdout is not None  # stdout is a pipe
         self._stats.connected_at = datetime_now()
         try:
             while True:
                 try:
                     data = await asyncio.wait_for(
-                        proc.stdout.read(RECORD_LENGTH),  # ty: ignore[unresolved-attribute]
+                        proc.stdout.read(RECORD_LENGTH),
                         timeout=self.reconnect_timeout,
                     )
                 except asyncio.TimeoutError:
