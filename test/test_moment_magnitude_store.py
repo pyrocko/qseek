@@ -9,6 +9,7 @@ from qseek.magnitudes.moment_magnitude_store import (
     PeakAmplitude,
     PeakAmplitudesBase,
     PeakAmplitudesStore,
+    PeakAmplitudeStoreCache,
 )
 
 KM = 1e3
@@ -210,3 +211,16 @@ async def test_peak_amplitude_surface(engine: gf.LocalEngine) -> None:
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: x / KM))
     plt.show()
     plt.close()
+
+
+def test_cached_stores_of_store_id(cache_dir) -> None:
+    """Only the cache files of the store ID and quantity are loaded."""
+    cache = PeakAmplitudeStoreCache(cache_dir, engine=gf.LocalEngine())
+    other_store = cache_dir / "other-store-velocity-0123.json"
+    other_store.write_text("{}")
+    invalid = cache_dir / "invalid.json"
+    invalid.write_text("{}")
+
+    assert cache.get_cached_stores("my-store", "displacement") == []
+    assert other_store.exists()
+    assert not invalid.exists()

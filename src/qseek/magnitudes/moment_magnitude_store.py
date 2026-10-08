@@ -1198,12 +1198,13 @@ class PeakAmplitudeStoreCache:
         stores = []
         for file in self.cache_dir.glob("*.json"):
             try:
-                store_id, quantity, _ = file.stem.split("-")  # type: ignore
+                file_store_id, file_quantity, _ = file.stem.rsplit("-", 2)
             except ValueError:
                 logger.warning("Invalid file name %s, deleting file", file)
                 file.unlink()
+                continue
 
-            if store_id == store_id and quantity == quantity:
+            if file_store_id == store_id and file_quantity == quantity:
                 try:
                     store = PeakAmplitudesStore.model_validate_json(file.read_text())
                 except ValidationError:
