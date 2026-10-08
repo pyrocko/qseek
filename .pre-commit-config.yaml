@@ -16,16 +16,12 @@ repos:
       - id: ruff-format
       - args: [--fix]
         id: ruff
-  - repo: local
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    # ty version.
+    rev: v0.0.85
     hooks:
-      # Runs in the project environment (`uv sync --extra ui --extra dev`), so
-      # that imports resolve.
       - id: ty
-        name: ty check
-        entry: uv run --no-sync ty check
-        language: system
         types: [python]
-        pass_filenames: false
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v21.1.8
     hooks:
