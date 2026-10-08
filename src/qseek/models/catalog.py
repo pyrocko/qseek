@@ -74,7 +74,7 @@ class ReceiverCache:
         receivers = EventReceivers.model_validate_json(line)
         if receivers.event_uid != event_uid:
             raise KeyError(f"UID {event_uid} not found in receiver cache.")
-        self._cache[receivers.event_uid] = receivers  # ty: ignore[invalid-assignment]
+        self._cache[event_uid] = receivers
         return receivers
 
     def _find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
@@ -131,7 +131,11 @@ class EventCatalogStats(Stats):
     def magnitudes(self) -> list[float]:
         if not self._catalog:
             return []
-        return [det.magnitude.average for det in self._catalog if det.magnitude]  # ty: ignore[invalid-return-type]
+        return [
+            det.magnitude.average
+            for det in self._catalog
+            if det.magnitude and det.magnitude.average is not None
+        ]
 
     @computed_field
     def mean_semblance(self) -> float:

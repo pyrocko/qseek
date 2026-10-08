@@ -52,7 +52,7 @@ class Location(BaseModel):
         description="Depth in meters, **positive is down**.",
     )
 
-    _cached_lat_lon: tuple[float, float] = PrivateAttr(())  # ty: ignore[invalid-assignment]
+    _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
     _cached_origin: Location | None = PrivateAttr(None)
 
     @property
@@ -66,7 +66,7 @@ class Location(BaseModel):
     @property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
-        if not self._cached_lat_lon:  # ty: ignore[redundant-condition]
+        if self._cached_lat_lon is None:
             if self.north_shift == 0.0 and self.east_shift == 0.0:
                 self._cached_lat_lon = self.lat, self.lon
             else:

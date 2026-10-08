@@ -1006,7 +1006,7 @@ class EventDetection(Location):
         detection.east_shift += uniform(-half_meters, half_meters)
         detection.north_shift += uniform(-half_meters, half_meters)
         detection.depth += uniform(-half_meters, half_meters)
-        detection._cached_lat_lon = None  # ty: ignore[invalid-assignment]
+        detection._cached_lat_lon = None
         return detection
 
     async def snuffle(
