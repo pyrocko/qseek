@@ -408,7 +408,7 @@ class StationInventory(Model):
     def export_vtk(self, reference: Location | None = None) -> None: ...
 
     def __hash__(self) -> int:
-        return hash(sta for sta in self)
+        return hash(tuple(self))
 
 
 class StationList(Sequence[Station]):
