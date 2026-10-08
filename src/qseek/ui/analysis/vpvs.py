@@ -24,14 +24,17 @@ class PSTravelTime(NamedTuple):
         event: EventDetection,
         receiver: Location,
     ) -> Self:
+        observed_p, observed_s = arrival_p.observed, arrival_s.observed
+        if observed_p is None or observed_s is None:
+            raise ValueError("P and S arrivals must be observed")
         origin_time = event.time.timestamp()
-        travel_time_p = arrival_p.observed.time.timestamp() - origin_time
-        travel_time_s = arrival_s.observed.time.timestamp() - origin_time
+        travel_time_p = observed_p.time.timestamp() - origin_time
+        travel_time_s = observed_s.time.timestamp() - origin_time
         return cls(
             travel_time_p=travel_time_p,
             travel_time_s=travel_time_s,
-            confidence_p=arrival_p.observed.detection_value,
-            confidence_s=arrival_s.observed.detection_value,
+            confidence_p=observed_p.detection_value,
+            confidence_s=observed_s.detection_value,
             event=event,
             receiver=receiver,
         )

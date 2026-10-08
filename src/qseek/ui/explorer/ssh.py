@@ -101,6 +101,10 @@ class SshSource(RunSource):
                 f'"',
                 check=True,
             )
+            if not isinstance(result.stdout, str):
+                raise RuntimeError(
+                    f"unexpected output from {self.name}: {result.stdout!r}"
+                )
             parts = result.stdout.strip().split()
             modified = datetime.fromtimestamp(int(parts[0]))  # noqa: DTZ006
             if modified > self.last_update:

@@ -50,6 +50,11 @@ class EventMinimal:
             self.magnitude,
         )
 
+    @property
+    def magnitude_average(self) -> float | None:
+        """Average magnitude of the event, None without a magnitude."""
+        return self.magnitude.average if self.magnitude is not None else None
+
     @classmethod
     def from_event(cls, event: EventDetection) -> Self:
         return cls(

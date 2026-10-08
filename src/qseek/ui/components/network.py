@@ -140,8 +140,8 @@ class StationTable(Panel):
 class StationCoverage(Panel):
     title = "Station Coverage"
     description = """Number of stations contributing to each detected event."""
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -217,8 +217,8 @@ Ranking of stations by cumulative detection confidence of associated P and S pic
 Stations are sorted by total confidence (P + S) to highlight the best-observed stations.
 This median metric also serves as a proxy for the Signal-to-Noise ratio.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -379,8 +379,8 @@ and S phases, pooled across all detected events. Narrow, zero-centred violins in
 well-constrained stations; a shifted centre reveals a station-specific delay.
 Stations are sorted by median absolute residual (best-performing left).
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()

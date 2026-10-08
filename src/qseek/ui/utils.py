@@ -1,5 +1,25 @@
-from nicegui import ui
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+from nicegui import binding, ui
 from nicegui.events import GenericEventArguments
+
+T = TypeVar("T")
+
+if TYPE_CHECKING:
+
+    class BindableProperty(Generic[T]):
+        """NiceGUI's BindableProperty, typed with the value of the property."""
+
+        def __init__(self, on_change: Callable[..., Any] | None = None) -> None: ...
+        def __set_name__(self, owner: type, name: str) -> None: ...
+        def __get__(self, owner: object, _: object = None) -> T: ...
+        def __set__(self, owner: object, value: T) -> None: ...
+
+else:
+    BindableProperty = binding.BindableProperty
 
 
 def on_click_plotly_event(event: GenericEventArguments) -> None:

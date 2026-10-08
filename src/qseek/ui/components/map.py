@@ -25,7 +25,7 @@ class OverviewMap(Panel):
     description = """
 Map of detected events. Color corresponds to depth and size corresponds to magnitude.
 """
-    _map: Leaflet | None = None
+    _map: Leaflet
     _initialized = False
     _events: list[EventMinimal]
 

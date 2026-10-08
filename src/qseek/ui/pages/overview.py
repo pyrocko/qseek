@@ -46,8 +46,8 @@ class CatalogStats:
 
         n_picks_values = [ev.n_picks for ev in catalog.events if ev.n_picks is not None]
         self.n_picks_median = np.nanmedian(n_picks_values) if n_picks_values else 0.0
-        self.n_picks_min = np.nanmin(n_picks_values) if n_picks_values else 0.0
-        self.n_picks_max = np.nanmax(n_picks_values) if n_picks_values else 0.0
+        self.n_picks_min = float(np.nanmin(n_picks_values)) if n_picks_values else 0.0
+        self.n_picks_max = float(np.nanmax(n_picks_values)) if n_picks_values else 0.0
 
         rms_values = np.array(
             [ev.event.rms for ev in catalog.events if ev.event.rms is not None],

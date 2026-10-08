@@ -7,11 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol
 
-from nicegui import binding
-
 from qseek.models.catalog import EventCatalog
 from qseek.search import Search
 from qseek.types import allow_non_existing_paths
+from qseek.ui.utils import BindableProperty
 
 if TYPE_CHECKING:
     from qseek.ui.state import CatalogStore
@@ -43,8 +42,8 @@ class RunSource(Protocol):
 
     name: str
 
-    n_events: int = binding.BindableProperty()
-    last_update: datetime = binding.BindableProperty()
+    n_events: BindableProperty[int] = BindableProperty()
+    last_update: BindableProperty[datetime] = BindableProperty()
 
     hash: str
     updated: asyncio.Condition
