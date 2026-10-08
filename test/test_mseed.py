@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pytest
 from pyrocko.io.mseed import iload, save
 from pyrocko.trace import Trace
 
+from qseek.waveforms import mseed
 from qseek.waveforms.mseed import get_layout, load_time_window
 
 TMIN = 1716163200.0  # 2024-05-20
@@ -146,3 +148,45 @@ def test_load_time_window_growing_file(tmp_path: Path) -> None:
 
     assert_same_traces(path, TMIN + 500.0, TMIN + 700.0)
     assert load_time_window(path, TMIN + 1100.0, TMIN + 1150.0)
+
+
+@pytest.fixture(scope="module")
+def day_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A day file of an SDS archive: 24 h at 100 Hz in records of 4096 bytes."""
+    path = tmp_path_factory.mktemp("sds") / "XX.STA..HHZ.D.2024.141"
+    return write(path, [make_trace(TMIN, int(86400 / DELTAT))])
+
+
+@pytest.mark.benchmark(group="mseed_time_window")
+@pytest.mark.parametrize("loader", ["pyrocko", "qseek", "qseek-uncached"])
+def test_load_time_window_benchmark(
+    benchmark,
+    day_file: Path,
+    loader: Literal["pyrocko", "qseek", "qseek-uncached"],
+) -> None:
+    # A batch of a search: 5 min and 1 min padding on both sides, at midday
+    tmin = TMIN + 43200.0
+    tmax = tmin + 420.0
+
+    def load_pyrocko() -> list[Trace]:
+        return list(iload(str(day_file), tmin=tmin, tmax=tmax))
+
+    def load_qseek() -> list[Trace]:
+        return load_time_window(day_file, tmin, tmax)
+
+    if loader == "pyrocko":
+        traces = benchmark(load_pyrocko)
+    elif loader == "qseek":
+        load_qseek()
+        traces = benchmark(load_qseek)
+    else:
+        # The first read of a file indexes its records
+        traces = benchmark.pedantic(
+            load_qseek,
+            setup=mseed._record_layout.cache_clear,
+            rounds=20,
+        )
+
+    (trace,) = traces
+    assert trace.tmin == tmin
+    assert trace.ydata.size == round((tmax - tmin) / DELTAT)
