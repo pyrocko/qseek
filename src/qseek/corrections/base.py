@@ -27,7 +27,8 @@ class TravelTimeCorrections(Model):
         return tuple(cls.__subclasses__())
 
     @property
-    def n_stations(self) -> int: ...
+    def n_stations(self) -> int:
+        raise NotImplementedError
 
     def get_delay(
         self,
@@ -48,7 +49,7 @@ class TravelTimeCorrections(Model):
         Returns:
             float: The traveltime delay in seconds.
         """
-        ...
+        raise NotImplementedError
 
     async def get_delays(
         self,
@@ -66,7 +67,7 @@ class TravelTimeCorrections(Model):
         Returns:
             np.ndarray: The traveltime delays for the given stations and phase.
         """
-        ...
+        raise NotImplementedError
 
     async def prepare(
         self,

@@ -158,8 +158,6 @@ allowed-unresolved-imports = ["qseek.ext._build"]
 [tool.ty.rules]
 # Pydantic models intentionally override __iter__, __getitem__, copy, ...
 invalid-method-override = "ignore"
-# Abstract interfaces are declared with `...` bodies.
-empty-body = "ignore"
 
 [[tool.ty.overrides]]
 # NiceGUI element handles are Optional until the page is built.

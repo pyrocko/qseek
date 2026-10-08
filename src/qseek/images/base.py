@@ -172,7 +172,7 @@ class ImageFunction(Model):
         Returns:
             list[WaveformImage]: List of image functions.
         """
-        ...
+        raise NotImplementedError
 
     def get_blinding(self) -> timedelta:
         """Blinding duration for the image function. Added to padded waveforms.
