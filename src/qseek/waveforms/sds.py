@@ -77,19 +77,28 @@ async def _load_files(
         except Exception as exc:
             return exc
 
-    def load_all() -> list[list[Trace] | Exception]:
+    try:
         if executor is None:
-            return list(map(load_file, contexts, files))
-        return list(executor.map(load_file, contexts, files))
-
-    # One hop to a thread per batch, the files are loaded in the executor
-    result = await asyncio.to_thread(load_all)
+            result = await asyncio.gather(
+                *(
+                    asyncio.to_thread(load_file, ctx, file)
+                    for ctx, file in zip(contexts, files, strict=True)
+                )
+            )
+        else:
+            # One hop to a thread per batch, the files are loaded in the executor
+            result = await asyncio.to_thread(
+                lambda: list(executor.map(load_file, contexts, files))
+            )
+    except Exception as exc:
+        logger.error("error loading files: %s", exc)
+        return []
 
     for exc in (tr for tr in result if isinstance(tr, Exception)):
         logger.error("error loading file: %s", exc)
 
     traces = list(
-        chain.from_iterable(tr for tr in result if not isinstance(tr, BaseException))
+        chain.from_iterable(tr for tr in result if not isinstance(tr, Exception))
     )
 
     if not traces:
