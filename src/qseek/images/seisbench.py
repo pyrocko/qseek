@@ -341,6 +341,7 @@ class SeisBench(ImageFunction):
         try:
             return self.seisbench_model.default_args["blinding"]
         except KeyError:
+            # SeisBench annotates the default arguments as (description, default)
             return self.seisbench_model._annotate_args["blinding"][1]  # ty: ignore[invalid-return-type]
 
     def get_blinding(self) -> timedelta:
@@ -349,7 +350,9 @@ class SeisBench(ImageFunction):
             if self.sampling_rate == "input"
             else self.sampling_rate
         )
-        blinding = timedelta(seconds=max(self.get_blinding_samples()) / sampling_rate)  # ty: ignore[unsupported-operator]
+        if sampling_rate is None:
+            raise ValueError("SeisBench model has no sampling rate")
+        blinding = timedelta(seconds=max(self.get_blinding_samples()) / sampling_rate)
         if self._padded_blinding is None:
             # The search pads the waveforms with the first value, before any data
             self._padded_blinding = blinding

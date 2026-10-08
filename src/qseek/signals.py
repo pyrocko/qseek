@@ -15,7 +15,7 @@ class Signal(Generic[_T]):
         self._listeners = WeakSet()
 
     def listen(self, listener: Callable[[_T], Any]) -> None:
-        logger.debug("adding listener %s", listener.__qualname__)  # ty: ignore[unresolved-attribute]
+        logger.debug("adding listener %s", getattr(listener, "__qualname__", listener))
         if ismethod(listener):
             self._listeners.add(WeakMethod(listener))
             return

@@ -5,7 +5,7 @@ import logging
 import random
 import string
 from contextlib import contextmanager
-from typing import Any, Generator, Iterator, NoReturn
+from typing import Any, Generator, Iterator
 from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, PrivateAttr
@@ -46,7 +46,7 @@ def titelify(name: str) -> str:
 
 class RuntimeStats(BaseModel):
     @classmethod
-    async def live_view(cls) -> NoReturn:  # ty: ignore[invalid-return-type]
+    async def live_view(cls) -> None:
         global _PROGRESS
         _PROGRESS = Progress()
 

@@ -204,7 +204,7 @@ class SyntheticEventCatalog(BaseModel):
         self,
         start_time: datetime,
         end_time: datetime,
-        phase: PhaseDescription | None = None,
+        phase: PhaseDescription,
         sampling_rate: float = 100.0,
         sigma_samples: int = 10,
     ) -> list[Trace]:
@@ -224,7 +224,7 @@ class SyntheticEventCatalog(BaseModel):
         for nsl in nsls:
             arrivals = filter(
                 filter_arrival_times,
-                [ev.get_travel_time(phase, nsl) for ev in events],  # ty: ignore[invalid-argument-type]
+                [ev.get_travel_time(phase, nsl) for ev in events],
             )
             arrival_times: list[datetime] = list(arrivals)  # type: ignore
             if not arrival_times:
@@ -242,7 +242,7 @@ class SyntheticEventCatalog(BaseModel):
                 network=nsl.network,
                 station=nsl.station,
                 location=nsl.location,
-                channel=phase[-1],  # ty: ignore[not-subscriptable]
+                channel=phase[-1],
                 tmin=start_time.timestamp(),
                 deltat=1.0 / sampling_rate,
                 ydata=data,

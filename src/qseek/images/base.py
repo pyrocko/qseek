@@ -266,8 +266,9 @@ class ImageFunction(Model):
                 await queue.put(exc)
                 return
             finally:
-                if hasattr(batch_iterator, "aclose"):
-                    await batch_iterator.aclose()  # ty: ignore[call-non-callable]
+                aclose = getattr(batch_iterator, "aclose", None)
+                if aclose is not None:
+                    await aclose()
 
             await queue.put(None)
 

@@ -168,10 +168,10 @@ class TelegramAlert(Callback):
 
     async def on_new_detection(self, detection: EventDetection) -> None:
         magnitude = detection.magnitude
-        if magnitude is None:
+        if magnitude is None or magnitude.average is None:
             return
 
-        if self.magnitude_alert is None or magnitude.average >= self.magnitude_alert:  # ty: ignore[unsupported-operator]
+        if self.magnitude_alert is None or magnitude.average >= self.magnitude_alert:
             # sendVenue's title is always plain text, so the raw (unescaped)
             # project name is used here, unlike the HTML sendMessage calls.
             magnitude_name = get_magnitude_name(magnitude)
@@ -186,7 +186,7 @@ class TelegramAlert(Callback):
                 longitude=detection.effective_lon,
             )
 
-        if magnitude.average >= self.rate_alert_magnitude:  # ty: ignore[unsupported-operator]
+        if magnitude.average >= self.rate_alert_magnitude:
             await self._check_rate_alert(detection)
 
     async def on_stop(self, search: Search) -> None:

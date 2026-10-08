@@ -268,12 +268,17 @@ try:
     import argcomplete
     from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
-    search_config.completer = FilesCompleter(["*.json"])  # ty: ignore[unresolved-attribute]
-    continue_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
-    summary_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
-    snuffler_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
-    features_rundir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
-    dump_dir.completer = DirectoriesCompleter()  # ty: ignore[unresolved-attribute]
+    completers = {
+        search_config: FilesCompleter(["*.json"]),
+        continue_rundir: DirectoriesCompleter(),
+        summary_rundir: DirectoriesCompleter(),
+        snuffler_rundir: DirectoriesCompleter(),
+        features_rundir: DirectoriesCompleter(),
+        dump_dir: DirectoriesCompleter(),
+    }
+    for action, completer in completers.items():
+        # argcomplete reads the completer attribute it adds to the actions
+        action.completer = completer  # ty: ignore[unresolved-attribute]
 
     argcomplete.autocomplete(parser)
 except ImportError:
@@ -616,7 +621,9 @@ def run() -> None:
                 for module in module_classes:
                     for subclass in module.get_subclasses():
                         if subclass.__name__ == args.name:
-                            console.print_json(subclass().model_dump_json(indent=2))  # ty: ignore[missing-argument]
+                            console.print_json(
+                                subclass.model_validate({}).model_dump_json(indent=2)
+                            )
 
                             if subclass.__name__ == "LocalMagnitude":
                                 from qseek.magnitudes.local_magnitude import ModelName
