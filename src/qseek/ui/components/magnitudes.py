@@ -163,7 +163,7 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
         self.show_density = show_density
         super().__init__()
         self._last_cumulative_mag = 0.0
-        self._scott_kde = 0.0
+        self._scott_kde: gaussian_kde | None = None
 
         fig = go.Figure()
         fig.update_layout(
@@ -217,9 +217,10 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 and np.isfinite(ev.magnitude.average)
             ]
         if not events:
-            return (), (), ()
+            return np.array([]), np.array([]), np.array([])
 
-        return map(np.asarray, zip(*events, strict=True))
+        times, uids, values = (np.asarray(col) for col in zip(*events, strict=True))
+        return times, uids, values
 
     def get_density(
         self, times: np.ndarray, recalculate_scott: bool = True
@@ -229,14 +230,16 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 [time.timestamp() for time in times],
                 dtype=float,
             )
-            if recalculate_scott or self._scott_kde == 0.0:
+            if recalculate_scott or self._scott_kde is None:
                 self._scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-            kde = gaussian_kde(time_numeric, bw_method=self._scott_kde.factor * 0.1)
+            # SciPy's untyped factor is inferred from its assignments, it is a float
+            factor = self._scott_kde.factor
+            kde = gaussian_kde(time_numeric, bw_method=factor * 0.1)  # ty: ignore[unsupported-operator]
             return kde(time_numeric)
         except (ValueError, np.linalg.LinAlgError):
             ui.notify(
                 "Could not compute point density for magnitude rate plot.",
-                type="warn",
+                type="warning",
             )
             return None
 

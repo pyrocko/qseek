@@ -116,8 +116,10 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
             mpl_cmap = get_cmap(cmap)
             depths = np.array([ev.depth for ev in events])
             norm = self._cmap_norm
-            norm.vmin = min(norm.vmin, depths.min())
-            norm.vmax = max(norm.vmax, depths.max())
+            vmin, vmax = norm.vmin, norm.vmax
+            assert vmin is not None and vmax is not None  # set in __init__
+            norm.vmin = min(vmin, depths.min())
+            norm.vmax = max(vmax, depths.max())
             marker_colors = (
                 [mcolors.to_hex(mpl_cmap(norm(d))) for d in depths]
                 if marker_colors is None
@@ -211,7 +213,7 @@ Map of detected events. Color corresponds to depth and size corresponds to magni
     async def add_catalog(
         self,
         catalog: CatalogStore,
-        stations: list[Station] | None = None,
+        stations: Iterable[Station] | None = None,
         show_latest: bool = True,
     ):
         await self.initialize()

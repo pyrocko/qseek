@@ -6,11 +6,15 @@ import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from watchfiles import awatch
 
 from qseek.models.detection import FILENAME_DETECTIONS, FILENAME_RECEIVERS
 from qseek.ui.explorer.base import RunExplorer, RunSource
+
+if TYPE_CHECKING:
+    from qseek.ui.state import CatalogStore
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,12 @@ class LocalSource(RunSource):
 
     async def get_search_json(self) -> Path:
         return self.run_dir / "search.json"
+
+    async def attach(self, proxy: CatalogStore) -> None:
+        """Local runs notify their updates with the `updated` condition."""
+
+    async def detach(self, proxy: CatalogStore) -> None:
+        """Local runs notify their updates with the `updated` condition."""
 
     async def get_catalog_path(self) -> Path:
         return self.run_dir

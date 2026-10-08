@@ -21,7 +21,7 @@ class EventMinimal:
     time: datetime
     semblance: float
     n_picks: int
-    rms: float
+    rms: float | None
     magnitude: EventMagnitude | None
     event: EventDetection
 

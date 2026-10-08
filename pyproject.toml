@@ -156,17 +156,15 @@ exclude = ["src/qseek/ui_old"]
 allowed-unresolved-imports = ["qseek.ext._build"]
 
 [[tool.ty.overrides]]
-# NiceGUI element handles are Optional until the page is built.
+# NiceGUI element and figure handles are Optional until the page is built
+# (unresolved-attribute, invalid-assignment, invalid-context-manager), and
+# BindableProperty class attributes are assigned their values.
 include = ["src/qseek/ui/**"]
 
 [tool.ty.overrides.rules]
 unresolved-attribute = "ignore"
 invalid-assignment = "ignore"
-invalid-argument-type = "ignore"
 invalid-context-manager = "ignore"
-unsupported-operator = "ignore"
-call-non-callable = "ignore"
-invalid-return-type = "ignore"
 
 [tool.pytest.ini_options]
 markers = ["plot: plot figures in tests"]
