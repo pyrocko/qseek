@@ -258,7 +258,8 @@ class PyrockoSquirrel(WaveformProvider):
         min_stations: int = 0,
         end_time: datetime | None = None,
     ) -> AsyncIterator[WaveformBatch]:
-        if not self._stations:
+        stations = self._stations
+        if not stations:
             raise ValueError("no stations provided. has prepare() been called?")
 
         squirrel = self.get_squirrel()
@@ -291,7 +292,7 @@ class PyrockoSquirrel(WaveformProvider):
                 tinc=window_increment.total_seconds(),
                 tpad=window_padding.total_seconds(),
                 want_incomplete=False,
-                codes=[(*nsl, "*") for nsl in self._stations.get_nsls()],  # type: ignore
+                codes=[(*nsl, "*") for nsl in stations.get_nsls()],
                 channel_priorities=self.channel_selector,
             )
             prefetcher = SquirrelPrefetcher(iterator, queue_size=self.queue_size)

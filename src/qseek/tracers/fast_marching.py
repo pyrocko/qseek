@@ -371,7 +371,7 @@ class FastMarchingTracer(RayTracer):
                     octree_depth_range[1] - station.effective_depth + depth_margin,
                 ),
                 grid_spacing=octree.smallest_node_size(),
-                earth_model=self._layered_model,  # type: ignore
+                earth_model=self.get_layered_model(),
             )
 
             await volume.calculate(
