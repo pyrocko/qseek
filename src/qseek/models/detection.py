@@ -797,13 +797,14 @@ class EventDetection(Location):
 
         if self._detection_idx is None:
             self._receivers = EventReceivers(event_uid=self.uid, receivers=[])
+            return self._receivers
 
         if self._receiver_cache is None:
             raise AttributeError("cannot fetch receivers without set rundir")
 
         self._receivers = self._receiver_cache.get_receivers(
             self.uid,
-            self._detection_idx,  # ty: ignore[invalid-argument-type]
+            self._detection_idx,
         )
 
         return self._receivers
@@ -1008,7 +1009,7 @@ class EventDetection(Location):
         detection._cached_lat_lon = None  # ty: ignore[invalid-assignment]
         return detection
 
-    def snuffle(
+    async def snuffle(
         self,
         waveform_provider: WaveformProvider,
         stations: StationInventory | None = None,
@@ -1024,19 +1025,18 @@ class EventDetection(Location):
         """
         from pyrocko.trace import snuffle
 
-        if restituted and not stations:
-            raise ValueError("stations must be provided when restituting data")
-
-        restitute_unit = "velocity" if restituted is True else restituted
-        traces = (
-            self.receivers.get_waveforms(waveform_provider, want_incomplete=False)
-            if not restitute_unit
-            else self.receivers.get_waveforms_restituted(
+        if restituted:
+            if not stations:
+                raise ValueError("stations must be provided when restituting data")
+            traces = await self.receivers.get_waveforms_restituted(
                 waveform_provider,
-                stations,  # ty: ignore[invalid-argument-type]
-                quantity=restitute_unit,
+                stations,
+                quantity="velocity" if restituted is True else restituted,
             )
-        )
+        else:
+            traces = await self.receivers.get_waveforms(
+                waveform_provider, want_incomplete=False
+            )
         snuffle(
             traces,
             markers=self.get_pyrocko_markers(),
