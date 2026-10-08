@@ -681,7 +681,7 @@ class Search(Model):
             detections, semblance_trace = await search_octree.search(
                 images=images,
                 octree=self.octree.reset(),
-                n_threads=self.n_threads,  # ty: ignore[invalid-argument-type]
+                n_threads=self.n_threads,
             )
 
             await self._catalog.save_semblance_trace(semblance_trace)
