@@ -329,3 +329,130 @@ async def test_sampling_rate_input_warns_on_longer_blinding(monkeypatch, caplog)
     with caplog.at_level("WARNING"):
         await function.process_traces([trace])
     assert "longer than" in caplog.text
+
+
+def fake_annotate(stream: Stream, **kwargs) -> Stream:
+    """Annotate as SeisBench does: a P, an S and a noise trace per channel."""
+    annotations = Stream()
+    for trace in stream:
+        for label in ("P", "S", "N"):
+            annotation = trace.copy()
+            annotation.stats.channel = f"PhaseNet_{label}"
+            annotations.append(annotation)
+    return annotations
+
+
+def input_traces(sampling_rate: float = 100.0) -> list[Trace]:
+    return [
+        Trace(
+            network="XX",
+            station=station,
+            channel="HHZ",
+            tmin=TMIN,
+            deltat=1 / sampling_rate,
+            ydata=np.arange(round(10 * sampling_rate), dtype=float),
+        )
+        for station in ("STA", "STB")
+    ]
+
+
+def test_annotate_in_worker(monkeypatch):
+    """The worker sets the sampling rate and returns the P and S annotations."""
+    import qseek.images.seisbench as module
+
+    calls = []
+
+    def annotate(stream: Stream, **kwargs) -> Stream:
+        calls.append(kwargs)
+        return fake_annotate(stream, **kwargs)
+
+    model = SimpleNamespace(annotate=annotate, sampling_rate=100.0)
+    monkeypatch.setattr(module, "_WORKER_MODEL", model)
+
+    traces = module._annotate_in_worker(
+        input_traces(200.0), 200.0, overlap=1500, batch_size=64, stacking="max"
+    )
+    assert model.sampling_rate == 200.0
+    assert calls == [
+        {"overlap": 1500, "batch_size": 64, "stacking": "max", "copy": False}
+    ]
+    assert sorted(tr.channel for tr in traces) == [
+        "PhaseNet_P",
+        "PhaseNet_P",
+        "PhaseNet_S",
+        "PhaseNet_S",
+    ]
+    assert all(tr.deltat == pytest.approx(1 / 200.0) for tr in traces)
+
+    monkeypatch.setattr(module, "_WORKER_MODEL", None)
+    with pytest.raises(RuntimeError, match="no model"):
+        module._annotate_in_worker(input_traces(), 100.0)
+
+
+@pytest.mark.asyncio
+async def test_process_traces_in_executor(monkeypatch):
+    """With an executor, the traces are annotated by the worker's model."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    import qseek.images.seisbench as module
+
+    worker_model = SimpleNamespace(annotate=fake_annotate, sampling_rate=100.0)
+    monkeypatch.setattr(module, "_WORKER_MODEL", worker_model)
+
+    def annotate_here(stream: Stream, **kwargs) -> Stream:
+        raise AssertionError("annotated in the main process")
+
+    function = SeisBench(sampling_rate="input")
+    function._seisbench_model = SimpleNamespace(
+        annotate=annotate_here,
+        sampling_rate=100.0,
+        default_args={"blinding": (100, 300)},
+    )
+    function._native_sampling_rate = 100.0
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        function._executor = executor
+        images = await function.process_traces(input_traces(200.0))
+
+    # The rate of the input reaches the worker's model
+    assert worker_model.sampling_rate == 200.0
+    assert function._rescale_input == 2.0
+    for image in images:
+        assert [tr.station for tr in image.traces] == ["STA", "STB"]
+        assert {tr.channel for tr in image.traces} == {image.phase[-1]}
+
+
+@pytest.mark.asyncio
+async def test_prepare_in_subprocess(monkeypatch):
+    """The main process loads the model on the CPU, the worker on CUDA."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    import qseek.images.seisbench as module
+
+    loads = []
+
+    def load_model(model_name, pretrained, torch_use_cuda=False, compile_model=False):
+        loads.append((torch_use_cuda, compile_model))
+        device = "cpu" if torch_use_cuda is False else "cuda:0"
+        return SimpleNamespace(
+            sampling_rate=100.0,
+            parameters=lambda: iter([SimpleNamespace(device=device)]),
+        )
+
+    def thread_pool(max_workers, mp_context, initializer, initargs):
+        assert mp_context.get_start_method() == "spawn"
+        return ThreadPoolExecutor(
+            max_workers, initializer=initializer, initargs=initargs
+        )
+
+    monkeypatch.setattr(module, "_load_model", load_model)
+    monkeypatch.setattr(module, "ProcessPoolExecutor", thread_pool)
+    monkeypatch.setattr(module, "_WORKER_MODEL", None)
+
+    function = SeisBench()
+    await function.prepare()
+    assert function._executor is not None
+    function._executor.shutdown()
+
+    assert loads == [(False, False), (True, True)]
+    assert module._worker_device() == "cuda:0"
+    assert function._native_sampling_rate == 100.0

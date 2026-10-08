@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
@@ -38,6 +41,132 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pyrocko.trace import Trace
     from seisbench.models import WaveformModel
+
+
+# The model of the worker process, loaded by _init_worker
+_WORKER_MODEL: WaveformModel | None = None
+
+
+def _original_model(model: WaveformModel) -> WaveformModel:
+    """The model behind a model wrapped by torch.compile."""
+    return getattr(model, "_orig_mod", model)
+
+
+def _load_model(
+    model_name: str,
+    pretrained: str | Path,
+    torch_use_cuda: bool | int = False,
+    compile_model: bool = False,
+) -> WaveformModel:
+    """Load a SeisBench model, optionally on CUDA and compiled."""
+    import seisbench.models as sbm
+    import torch
+
+    match model_name:
+        case "PhaseNet":
+            model = sbm.PhaseNet
+        case "EQTransformer":
+            model = sbm.EQTransformer
+        case "GPD":
+            model = sbm.GPD
+        case "OBSTransformer":
+            model = sbm.OBSTransformer
+        case "LFEDetect":
+            model = sbm.LFEDetect
+        case _:
+            raise ValueError(f"Model `{model_name}` not available.")
+
+    if isinstance(pretrained, Path):
+        # SeisBench uses an incomplete filename for loading from file
+        logger.info("loading local SeisBench model from %s", pretrained)
+        seisbench_model = model.load(pretrained.with_suffix(""))
+    else:
+        logger.info("loading pre-trained SeisBench model %s...", pretrained)
+        seisbench_model = model.from_pretrained(pretrained, update=False)
+
+    # 0 selects the first device, only False runs on the CPU
+    if torch_use_cuda is not False:
+        try:
+            if isinstance(torch_use_cuda, bool):
+                seisbench_model.cuda()
+            else:
+                seisbench_model.cuda(torch_use_cuda)
+            logger.info("using CUDA for SeisBench model")
+        except (RuntimeError, AssertionError) as exc:
+            logger.warning(
+                "failed to use CUDA for SeisBench model, using CPU",
+                exc_info=exc,
+            )
+
+    seisbench_model.eval()
+    if compile_model:
+        try:
+            logger.info("compiling SeisBench model...")
+            seisbench_model = torch.compile(seisbench_model, mode="max-autotune")
+        except RuntimeError as exc:
+            logger.warning(
+                "failed to compile SeisBench model, using uncompiled model.",
+                exc_info=exc,
+            )
+    return seisbench_model
+
+
+def _annotate(
+    model: WaveformModel,
+    traces: list[Trace],
+    overlap: int,
+    batch_size: int,
+    stacking: str,
+) -> list[Trace]:
+    """Annotate traces, returns the P and S annotations as Pyrocko traces."""
+    stream = Stream(tr.to_obspy_trace() for tr in traces)
+    annotations: Stream = model.annotate(
+        stream,
+        overlap=overlap,
+        batch_size=batch_size,
+        stacking=stacking,
+        copy=False,
+    )
+    return [
+        tr.to_pyrocko_trace()
+        for tr in annotations
+        if tr.stats.channel.endswith("P") or tr.stats.channel.endswith("S")
+    ]
+
+
+def _init_worker(
+    model_name: str,
+    pretrained: str | Path,
+    torch_use_cuda: bool | int,
+    torch_cpu_threads: int,
+) -> None:
+    """Load the model in the worker process."""
+    import torch
+
+    global _WORKER_MODEL
+    torch.set_num_threads(torch_cpu_threads)
+    _WORKER_MODEL = _load_model(
+        model_name, pretrained, torch_use_cuda=torch_use_cuda, compile_model=True
+    )
+
+
+def _worker_device() -> str:
+    """Device of the model in the worker process."""
+    if _WORKER_MODEL is None:
+        raise RuntimeError("SeisBench worker has no model")
+    return str(next(_original_model(_WORKER_MODEL).parameters()).device)
+
+
+def _annotate_in_worker(
+    traces: list[Trace],
+    sampling_rate: float,
+    **kwargs,
+) -> list[Trace]:
+    """Annotate traces with the model of the worker process."""
+    if _WORKER_MODEL is None:
+        raise RuntimeError("SeisBench worker has no model")
+    _original_model(_WORKER_MODEL).sampling_rate = sampling_rate
+    return _annotate(_WORKER_MODEL, traces, **kwargs)
 
 
 ModelName = Literal[
@@ -258,11 +387,19 @@ class SeisBench(ImageFunction):
         default_factory=AnnotationPicker,
         description="Picker to use for the image function.",
     )
+    annotate_in_subprocess: bool = Field(
+        default=True,
+        description=(
+            "Run the model in a separate process. The annotation is mostly Python "
+            "and then does not compete with the search for the GIL."
+        ),
+    )
 
     _seisbench_model: WaveformModel = PrivateAttr()
     _native_sampling_rate: PositiveFloat = PrivateAttr(100.0)
     _rescale_input: PositiveFloat = PrivateAttr(1.0)
     _padded_blinding: timedelta | None = PrivateAttr(None)
+    _executor: ProcessPoolExecutor | None = PrivateAttr(None)
 
     @property
     def seisbench_model(self) -> WaveformModel:
@@ -271,67 +408,46 @@ class SeisBench(ImageFunction):
     async def prepare(self) -> None:
         logger.info("preparing SeisBench image function...")
 
-        import seisbench.models as sbm
         import torch
 
         torch.set_num_threads(self.torch_cpu_threads)
 
-        match self.model:
-            case "PhaseNet":
-                model = sbm.PhaseNet
-            case "EQTransformer":
-                model = sbm.EQTransformer
-            case "GPD":
-                model = sbm.GPD
-            case "OBSTransformer":
-                model = sbm.OBSTransformer
-            case "LFEDetect":
-                model = sbm.LFEDetect
-            case _:
-                raise ValueError(f"Model `{self.model}` not available.")
-
-        if isinstance(self.pretrained, Path):
-            # SeisBench uses an incomplete filename for loading from file
-            logger.info("loading local SeisBench model from %s", self.pretrained)
-            self._seisbench_model = model.load(self.pretrained.with_suffix(""))
+        if not self.annotate_in_subprocess:
+            self._seisbench_model = _load_model(
+                self.model,
+                self.pretrained,
+                torch_use_cuda=self.torch_use_cuda,
+                compile_model=True,
+            )
         else:
-            logger.info("loading pre-trained SeisBench model %s...", self.pretrained)
-            self._seisbench_model = model.from_pretrained(self.pretrained, update=False)
+            # The model of this process only describes the model, on the CPU
+            self._seisbench_model = _load_model(self.model, self.pretrained)
+            if self._executor is None:
+                # CUDA cannot be used in a forked process
+                self._executor = ProcessPoolExecutor(
+                    max_workers=1,
+                    mp_context=multiprocessing.get_context("spawn"),
+                    initializer=_init_worker,
+                    initargs=(
+                        self.model,
+                        self.pretrained,
+                        self.torch_use_cuda,
+                        self.torch_cpu_threads,
+                    ),
+                )
+            device = await asyncio.get_running_loop().run_in_executor(
+                self._executor, _worker_device
+            )
+            logger.info("SeisBench model runs in a subprocess on %s", device)
+
         self._native_sampling_rate = self._seisbench_model.sampling_rate
         if self.sampling_rate != "input":
             self._set_model_sampling_rate(self.sampling_rate)
-        # 0 selects the first device, only False runs on the CPU
-        if self.torch_use_cuda is not False:
-            try:
-                if isinstance(self.torch_use_cuda, bool):
-                    self._seisbench_model.cuda()
-                else:
-                    self._seisbench_model.cuda(self.torch_use_cuda)
-                logger.info("using CUDA for SeisBench model")
-            except (RuntimeError, AssertionError) as exc:
-                logger.warning(
-                    "failed to use CUDA for SeisBench model, using CPU",
-                    exc_info=exc,
-                )
-
-        self._seisbench_model.eval()
-        try:
-            logger.info("compiling SeisBench model...")
-            self._seisbench_model = torch.compile(
-                self._seisbench_model,
-                mode="max-autotune",
-            )
-        except RuntimeError as exc:
-            logger.warning(
-                "failed to compile SeisBench model, using uncompiled model.",
-                exc_info=exc,
-            )
 
     def _set_model_sampling_rate(self, sampling_rate: float) -> None:
         """Set the sampling rate the model assumes and the input rescaling."""
         # torch.compile wraps the model, the attribute has to be set on the original
-        model = getattr(self._seisbench_model, "_orig_mod", self._seisbench_model)
-        model.sampling_rate = sampling_rate
+        _original_model(self._seisbench_model).sampling_rate = sampling_rate
         self._rescale_input = sampling_rate / self._native_sampling_rate
         logger.debug("rescaling SeisBench input by factor %.2f", self._rescale_input)
 
@@ -381,22 +497,21 @@ class SeisBench(ImageFunction):
                 )
                 self._padded_blinding = blinding
 
-        stream = Stream(tr.to_obspy_trace() for tr in traces)
-
-        annotations: Stream = await asyncio.to_thread(
-            self.seisbench_model.annotate,
-            stream,
-            overlap=self.window_overlap_samples,
-            batch_size=self.batch_size,
-            stacking=self.stack_method,
-            copy=False,
-        )
-
-        annotated_traces: list[Trace] = [
-            tr.to_pyrocko_trace()
-            for tr in annotations
-            if tr.stats.channel.endswith("P") or tr.stats.channel.endswith("S")
-        ]
+        annotate_args = {
+            "overlap": self.window_overlap_samples,
+            "batch_size": self.batch_size,
+            "stacking": self.stack_method,
+        }
+        if self._executor is None:
+            annotated_traces = await asyncio.to_thread(
+                _annotate, self.seisbench_model, traces, **annotate_args
+            )
+        else:
+            sampling_rate = _original_model(self.seisbench_model).sampling_rate
+            annotated_traces = await asyncio.get_running_loop().run_in_executor(
+                self._executor,
+                partial(_annotate_in_worker, traces, sampling_rate, **annotate_args),
+            )
 
         annotation_p = WaveformImage(
             image_function=self.name,
