@@ -19,7 +19,6 @@ from pydantic import (
     PrivateAttr,
     computed_field,
     field_validator,
-    model_validator,
 )
 
 from qseek.base import Model
@@ -398,37 +397,6 @@ class Search(Model):
     _compute_semaphore: asyncio.Semaphore = PrivateAttr(
         default_factory=lambda: asyncio.Semaphore(MAX_CONCURRENT_EVENTS)
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_detection_threshold(cls, data: Any) -> Any:
-        # detection_threshold and detection_blinding of old configurations
-        if not isinstance(data, dict):
-            return data
-        old_fields = {"detection_threshold", "detection_blinding"} & data.keys()
-        if not old_fields:
-            return data
-        if "trigger" in data:
-            raise ValueError(
-                f"{' and '.join(sorted(old_fields))} cannot be combined with trigger"
-            )
-
-        data = dict(data)
-        threshold = data.pop("detection_threshold", "MAD")
-        if threshold == "MAD":
-            trigger: dict[str, Any] = {"trigger": "MADTrigger"}
-        else:
-            trigger = {"trigger": "ThresholdTrigger", "threshold": threshold}
-        if "detection_blinding" in data:
-            trigger["blinding"] = data.pop("detection_blinding")
-        data["trigger"] = trigger
-
-        logger.warning(
-            "%s are deprecated, use trigger: %s",
-            " and ".join(sorted(old_fields)),
-            trigger,
-        )
-        return data
 
     @field_validator("station_corrections", mode="before")
     @classmethod

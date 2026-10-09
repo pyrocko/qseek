@@ -136,28 +136,7 @@ def test_search_trigger() -> None:
     assert search.trigger == ThresholdTrigger(threshold=0.5)
 
 
-def test_search_migrate_detection_threshold() -> None:
-    search = Search.model_validate({"detection_threshold": "MAD"})
-    assert search.trigger == MADTrigger()
-
-    search = Search.model_validate(
-        {"detection_threshold": 0.3, "detection_blinding": "PT2S"}
-    )
-    assert search.trigger == ThresholdTrigger(
-        threshold=0.3, blinding=timedelta(seconds=2)
-    )
-
-    search = Search.model_validate({"detection_blinding": "PT0.5S"})
-    assert search.trigger == MADTrigger(blinding=timedelta(seconds=0.5))
-
-    search = Search.model_validate_json(
-        '{"detection_threshold": 0.5, "detection_blinding": 2.0}'
-    )
-    assert search.trigger == ThresholdTrigger(
-        threshold=0.5, blinding=timedelta(seconds=2)
-    )
-
-    with pytest.raises(ValidationError, match="cannot be combined with trigger"):
-        Search.model_validate(
-            {"detection_threshold": 0.3, "trigger": {"trigger": "MADTrigger"}}
-        )
+@pytest.mark.parametrize("field", ["detection_threshold", "detection_blinding"])
+def test_search_detection_threshold_removed(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Search.model_validate({field: "MAD" if field == "detection_threshold" else 1})
