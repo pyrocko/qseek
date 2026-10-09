@@ -25,7 +25,7 @@ import pytest
 from pyrocko import parstack as pyrocko_parstack
 
 pytest.importorskip(
-    "mojo.importer", reason="Mojo toolchain (dependency 'modular') not installed"
+    "mojo.importer", reason="Mojo toolchain (dependency 'mojo') not installed"
 )
 
 from qseek.ext import array_tools
