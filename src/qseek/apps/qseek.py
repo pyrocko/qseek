@@ -605,6 +605,7 @@ def run() -> None:
             from qseek.plugins import Callback
             from qseek.pre_processing.base import BatchPreProcessing
             from qseek.tracers.tracers import RayTracer
+            from qseek.triggers import Trigger
             from qseek.waveforms.base import WaveformProvider
 
             table = Table(box=box.SIMPLE, header_style=None)
@@ -620,6 +621,7 @@ def run() -> None:
                 FeatureExtractor,
                 EventMagnitudeCalculator,
                 TravelTimeCorrections,
+                Trigger,
                 Callback,
             )
 

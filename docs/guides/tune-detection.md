@@ -19,14 +19,14 @@ A first search with the defaults tells you a lot about your data. This guide sho
 
 ## Too few detections
 
-- **Threshold:** the default [`detection_threshold`][qseek.search.Search.detection_threshold] `"MAD"` is 10 times the median absolute deviation of the detection function in each window. Set a fixed value, below the semblance of the weakest events you see, to detect more.
+- **Threshold:** the default [trigger](../configuration/triggers.md) sets the threshold to 10 times the median absolute deviation of the detection function in each window. Lower its `mad_factor` to detect more, e.g. to 8.
 - **Image function:** try pre-trained weights that fit your data, e.g. trained on a similar region or instrument type, or another model. See [image functions](../configuration/image-functions.md).
 - **Frequency band:** adjust the bandpass of the [pre-processing](../configuration/pre-processing.md) to the frequencies of your events, e.g. higher frequencies for microseismicity.
 - **Minimum stations:** lower [`min_stations`][qseek.search.Search.min_stations] for small networks.
 
 ## Too many false detections
 
-- **Threshold:** raise the `detection_threshold`, or set a fixed value above the semblance of the noise.
+- **Threshold:** raise the `mad_factor` of the trigger, or use a `ThresholdTrigger` with a fixed value above the semblance of the noise.
 - **Picks:** filter the detections by `n_picks`. Noise rarely produces consistent picks at many stations.
 - **Distance weighting:** with the default [distance weights](../configuration/distance-weighting.md), each node relies on its closest stations. Noise at a single close station can dominate small networks; increase [`required_closest_stations`][qseek.distance_weights.DistanceWeights.required_closest_stations].
 
@@ -39,4 +39,4 @@ A first search with the defaults tells you a lot about your data. This guide sho
 
 ## Repeated detections of one event
 
-[`detection_blinding`][qseek.search.Search.detection_blinding] sets the minimum time between two detections, 1 s by default. Raise it if a long or complex event is detected twice.
+The `blinding` of the [trigger](../configuration/triggers.md) sets the minimum time between two detections, 1 s by default. Raise it if a long or complex event is detected twice.

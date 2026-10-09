@@ -192,6 +192,7 @@ nav:
       - Search volume: configuration/search-volume.md
       - Distance weighting: configuration/distance-weighting.md
       - Station corrections: configuration/station-corrections.md
+      - Triggers: configuration/triggers.md
       - Magnitudes: configuration/magnitudes.md
       - Event features: configuration/features.md
       - Callbacks: configuration/callbacks.md

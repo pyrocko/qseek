@@ -80,8 +80,7 @@ class InversionLayered1D(BaseModel):
         self._octree_search = OctreeSearch(
             ray_tracers=search.ray_tracers,
             window_padding=timedelta(seconds=10),
-            detection_threshold=search.detection_threshold,
-            detection_blinding=search.detection_blinding,
+            trigger=search.trigger,
             station_corrections=search.station_corrections,
             distance_weights=search.distance_weights,
             ignore_boundary=search.ignore_boundary,

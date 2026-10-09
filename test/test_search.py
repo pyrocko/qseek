@@ -14,6 +14,7 @@ from qseek.octree import Octree
 from qseek.search import OctreeSearch
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.tracers.tracers import RayTracers
+from qseek.triggers import ThresholdTrigger
 from qseek.utils import Range
 
 KM = 1e3
@@ -108,7 +109,7 @@ async def test_search_and_pick(
             ]
         ),
         window_padding=PADDING,
-        detection_threshold=1.0,
+        trigger=ThresholdTrigger(threshold=1.0),
         ignore_boundary=False,
     )
     detections, semblance = await search.search(images, octree=small_octree)
@@ -153,7 +154,7 @@ async def test_search_no_event(
             ]
         ),
         window_padding=PADDING,
-        detection_threshold=1.0,
+        trigger=ThresholdTrigger(threshold=1.0),
         ignore_boundary=False,
     )
     detections, _ = await search.search(images, octree=small_octree)

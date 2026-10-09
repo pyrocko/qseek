@@ -14,6 +14,7 @@ Every module of a search, e.g. a ray tracer or an image function, subclasses one
 | `Picker` | `picker` of the image function | |
 | `RayTracer` | `ray_tracers` | `tracer` |
 | `TravelTimeCorrections` | `station_corrections` | `corrections` |
+| `Trigger` | `trigger` | `trigger` |
 | `EventMagnitudeCalculator` | `magnitudes` | `magnitude` |
 | `FeatureExtractor` | `features` | `feature` |
 | `Callback` | `callbacks` | `callback` |
@@ -49,6 +50,11 @@ Every module of a search, e.g. a ray tracer or an image function, subclasses one
       show_if_no_docstring: true
 
 ::: qseek.corrections.base.TravelTimeCorrections
+    options:
+      heading_level: 2
+      show_if_no_docstring: true
+
+::: qseek.triggers.Trigger
     options:
       heading_level: 2
       show_if_no_docstring: true
