@@ -8,19 +8,20 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import numpy as np
-from nicegui import Event, app, binding
+from nicegui import Event, app
 
 from qseek.models.catalog import EventCatalog
 from qseek.ui.explorer.base import RunSource
 from qseek.ui.models import EventMinimal
+from qseek.ui.utils import BindableProperty
 
 logger = logging.getLogger(__name__)
 
 
 class Filter:
-    range: dict = binding.BindableProperty()
-    data_min: float = binding.BindableProperty()
-    data_max: float = binding.BindableProperty()
+    range: BindableProperty[dict] = BindableProperty()
+    data_min: BindableProperty[float] = BindableProperty()
+    data_max: BindableProperty[float] = BindableProperty()
     user_defined: bool = False
 
     event_attribute: str = ""
@@ -127,7 +128,7 @@ class TimeFilter(Filter):
 class CatalogStore:
     MAX_VISIBLE_EVENTS: int = 10_000
 
-    events: list[EventMinimal] = binding.BindableProperty()
+    events: BindableProperty[list[EventMinimal]] = BindableProperty()
     uids: list[UUID] = []
     times: list[datetime] = []
     semblances: np.ndarray = np.array([])
@@ -225,7 +226,7 @@ class CatalogStore:
 
         while True:
             async with self._run.updated:
-                if len(self._catalog.events) == len(self._all_events):
+                if len(self.full_catalog.events) == len(self._all_events):
                     await self._run.updated.wait()
             time_since_update = time.time() - last_update
             if time_since_update < refresh_interval:
@@ -234,7 +235,7 @@ class CatalogStore:
 
             new_events = [
                 EventMinimal.from_event(ev)
-                for ev in self._catalog.events[len(self._all_events) :]
+                for ev in self.full_catalog.events[len(self._all_events) :]
             ]
             self._all_events += new_events
             self.reset_filters(reset_user_filters=False)
@@ -333,9 +334,9 @@ class CatalogStore:
 
 class TabState:
     run: RunSource
-    run_name: str = binding.BindableProperty()
-    run_id: str = binding.BindableProperty()
-    loading: str = binding.BindableProperty()
+    run_name: BindableProperty[str] = BindableProperty()
+    run_id: BindableProperty[str] = BindableProperty()
+    loading: BindableProperty[str] = BindableProperty()
 
     catalog_store: CatalogStore
 

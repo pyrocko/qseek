@@ -105,7 +105,7 @@ async def event_page(event_id: str) -> None:
         rms_phases = ev.receivers.get_rms()
         StatCard(
             "RMS",
-            f"{ev.rms:.3f} s",
+            f"{ev.rms:.3f} s" if ev.rms is not None else "n/a",
             icon="adjust",
             subtitle=f"{
                 ' / '.join(f'{p[-1]} {rms:.3f} s' for p, rms in rms_phases.items())

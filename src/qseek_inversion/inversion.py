@@ -93,7 +93,9 @@ class InversionLayered1D(BaseModel):
         )
 
     def get_start_model(self) -> LayeredModelInversion:
-        ray_tracer: FastMarchingTracer = self._search.ray_tracers.root[0]
+        ray_tracer = self._search.ray_tracers.root[0]
+        if not isinstance(ray_tracer, FastMarchingTracer):
+            raise TypeError("the inversion needs a FastMarchingTracer as ray tracer")
         return LayeredModelInversion.from_layered_model(ray_tracer.get_layered_model())
 
     async def test_velocity_model(
@@ -121,8 +123,7 @@ class InversionLayered1D(BaseModel):
             events, trace = await octree_search.search(
                 images=waveform_image,
                 octree=search.octree.reset(),
-                n_threads_parstack=0,
-                n_threads_argmax=0,
+                n_threads=0,
             )
             result.add_events(events)
             result.set_semblance_trace(trace)

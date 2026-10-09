@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from nicegui import ui
 from nicegui.element import Element
 
@@ -55,7 +57,7 @@ class EventComponent(Panel):
         super().__init__()
         self.event = event
 
-    async def plot(self) -> None:
+    async def plot(self, *args: Any, **kwargs: Any) -> None:
         raise NotImplementedError
 
 

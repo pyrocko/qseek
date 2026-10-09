@@ -49,7 +49,7 @@ class EventLocalMagnitude(EventMagnitude):
     def n_stations(self) -> int:
         return len(self.station_magnitudes)
 
-    def csv_row(self) -> dict[str, float]:
+    def csv_row(self) -> dict[str, float | None]:
         return {
             f"ML-{self.model}": self.average,
             f"ML-error-{self.model}": self.error,

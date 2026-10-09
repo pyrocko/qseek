@@ -92,6 +92,7 @@ class DistanceWeights(Model):
         ),
     )
 
+    _distance_taper: float = PrivateAttr()
     _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
     _stations: StationList = PrivateAttr()
     _station_coords_ecef: np.ndarray = PrivateAttr()
@@ -112,10 +113,11 @@ class DistanceWeights(Model):
                 "using 2x mean interstation distance as distance taper: %g m",
                 self.distance_taper,
             )
+        self._distance_taper = self.distance_taper
         logger.info(
             "distance weighting uses %d closest stations and a taper of %g m",
             self.required_closest_stations,
-            self.distance_taper,
+            self._distance_taper,
         )
 
         self._stations = StationList.from_inventory(stations)
@@ -146,7 +148,7 @@ class DistanceWeights(Model):
         return weights_gaussian(
             distances,
             required_stations=self.required_closest_stations,
-            distance_taper=self.distance_taper,
+            distance_taper=self._distance_taper,
             waterlevel=self.waterlevel,
         )
 
@@ -164,7 +166,7 @@ class DistanceWeights(Model):
             return weights_gaussian(
                 np.array(distances),
                 required_stations=self.required_closest_stations,
-                distance_taper=self.distance_taper,
+                distance_taper=self._distance_taper,
                 waterlevel=self.waterlevel,
             )
         except KeyError:

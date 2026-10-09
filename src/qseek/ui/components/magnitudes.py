@@ -24,8 +24,8 @@ class MagnitudeFrequency(Panel):
 Entire magnitude range (EMR) fit to the data using Ogata-Katsura (1993). Estimation of
 the magnitude of completeness using maximum curvature (MaxC) and EMR fit.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -151,8 +151,8 @@ class MagnitudeRate(Panel):
     description = """
 Magnitude of detected events over time. Size of markers corresponds to magnitude value.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(
         self,
@@ -163,7 +163,7 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
         self.show_density = show_density
         super().__init__()
         self._last_cumulative_mag = 0.0
-        self._scott_kde = 0.0
+        self._scott_kde: gaussian_kde | None = None
 
         fig = go.Figure()
         fig.update_layout(
@@ -207,19 +207,20 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
         self, events: list[EventMinimal]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if self.show_semblance:
-            events = [(ev.time, ev.uid, ev.semblance) for ev in events]
+            rows = [(ev.time, ev.uid, ev.semblance) for ev in events]
         else:
-            events = [
+            rows = [
                 (ev.time, ev.uid, ev.magnitude.average)
                 for ev in events
                 if ev.magnitude is not None
                 and ev.magnitude.average is not None
                 and np.isfinite(ev.magnitude.average)
             ]
-        if not events:
-            return (), (), ()
+        if not rows:
+            return np.array([]), np.array([]), np.array([])
 
-        return map(np.asarray, zip(*events, strict=True))
+        times, uids, values = (np.asarray(col) for col in zip(*rows, strict=True))
+        return times, uids, values
 
     def get_density(
         self, times: np.ndarray, recalculate_scott: bool = True
@@ -229,14 +230,15 @@ Magnitude of detected events over time. Size of markers corresponds to magnitude
                 [time.timestamp() for time in times],
                 dtype=float,
             )
-            if recalculate_scott or self._scott_kde == 0.0:
+            if recalculate_scott or self._scott_kde is None:
                 self._scott_kde = gaussian_kde(time_numeric, bw_method="scott")
-            kde = gaussian_kde(time_numeric, bw_method=self._scott_kde.factor * 0.1)
+            factor = float(self._scott_kde.scotts_factor())
+            kde = gaussian_kde(time_numeric, bw_method=factor * 0.1)
             return kde(time_numeric)
         except (ValueError, np.linalg.LinAlgError):
             ui.notify(
                 "Could not compute point density for magnitude rate plot.",
-                type="warn",
+                type="warning",
             )
             return None
 
@@ -330,8 +332,8 @@ class MagnitudeFrequencyBPositive(Panel):
 Frequency of positive magnitude differences between consecutive events, which can be
 used to estimate the b-value of the magnitude distribution.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -358,7 +360,7 @@ used to estimate the b-value of the magnitude distribution.
             and np.isfinite(ev.magnitude.average)
             and ev.magnitude.average >= 0
         ]
-        magnitudes = np.asarray([ev.magnitude.average for ev in filtered])
+        magnitudes = np.asarray([ev.magnitude_average for ev in filtered])
         times = np.asarray([ev.time.timestamp() for ev in filtered])
 
         if len(magnitudes) == 0:
@@ -424,8 +426,8 @@ class MagnitudeStatisticsOverTime(Panel):
 b-value (b-positive method) and magnitude of completeness (MaxC) computed in sliding
 windows of 500 events, advancing 250 events at a time.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -479,7 +481,7 @@ windows of 500 events, advancing 250 events at a time.
                 dtype=float,
             )
             win_mags = np.asarray(
-                [ev.magnitude.average for ev in win_events],
+                [ev.magnitude_average for ev in win_events],
                 dtype=float,
             )
 
@@ -574,8 +576,8 @@ windows of 500 events, advancing 250 events at a time.
 class StationsMagnitudesResiduals(Panel):
     title = "Station Magnitude Residuals"
     description = """Distance-corrected station magnitude residuals per station."""
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()

@@ -7,7 +7,7 @@ from typing import Any, Callable, Self
 import numpy as np
 from pydantic import BaseModel, Field
 from pyrocko.cake import GradientLayer as PyrockoGradientLayer
-from pyrocko.cake import Layer as PyrockoLayer
+from pyrocko.cake import HomogeneousLayer as PyrockoHomogeneousLayer
 
 from qseek.tracers.utils import LayeredEarthModel1D
 
@@ -48,7 +48,9 @@ class Layer(BaseModel):
         return self.vp / self.vs
 
     @classmethod
-    def from_pyrocko(cls, layer: PyrockoLayer | PyrockoGradientLayer) -> Layer:
+    def from_pyrocko(
+        cls, layer: PyrockoHomogeneousLayer | PyrockoGradientLayer
+    ) -> Layer:
         """Create a Layer from a pyrocko.cake.Layer."""
         if isinstance(layer, PyrockoGradientLayer):
             thickness = layer.zbot - layer.ztop
@@ -61,7 +63,7 @@ class Layer(BaseModel):
                 gradient_vp=gradient_vp,
                 gradient_vs=gradient_vs,
             )
-        if isinstance(layer, PyrockoLayer):
+        if isinstance(layer, PyrockoHomogeneousLayer):
             return cls(
                 top_depth=layer.ztop,
                 vp=layer.m.vp,

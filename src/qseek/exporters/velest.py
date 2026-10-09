@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import rich
@@ -12,6 +12,10 @@ from qseek.exporters.base import Exporter
 from qseek.models.detection import EventDetection, PhaseDetection, Receiver
 from qseek.models.station import Location, Station
 from qseek.search import Search
+from qseek.tracers.cake import CakeTracer
+
+if TYPE_CHECKING:
+    from qseek.images.base import ObservedArrival
 
 logger = logging.getLogger(__name__)
 KM = 1000.0
@@ -195,7 +199,9 @@ class Velest(Exporter):
             if event.distance_border < self.min_distance_to_border:
                 continue
 
-            observed_arrivals: list[tuple[Receiver, PhaseDetection]] = []
+            observed_arrivals: list[
+                tuple[Receiver, PhaseDetection, ObservedArrival]
+            ] = []
 
             for receiver in event.receivers:
                 for _phase, detection in receiver.phase_arrivals.items():
@@ -212,12 +218,10 @@ class Velest(Exporter):
                         and observed.detection_value <= self.min_s_phase_confidence
                     ):
                         continue
-                    if (
-                        detection.traveltime_delay.total_seconds()
-                        > self.max_traveltime_delay
-                    ):
+                    traveltime_delay = observed.time - detection.model.time
+                    if traveltime_delay.total_seconds() > self.max_traveltime_delay:
                         continue
-                    observed_arrivals.append((receiver, detection))
+                    observed_arrivals.append((receiver, detection, observed))
 
             count_p, count_s = self.export_phases_slim(
                 phase_file, event, observed_arrivals
@@ -236,9 +240,13 @@ class Velest(Exporter):
         )
         control_file_parameters.write_config_file(control_file)
         # export velocity model file
-        dep = search.ray_tracers.root[0].earthmodel.layered_model.profile("z")
-        vp = search.ray_tracers.root[0].earthmodel.layered_model.profile("vp")
-        vs = search.ray_tracers.root[0].earthmodel.layered_model.profile("vs")
+        ray_tracer = search.ray_tracers.root[0]
+        if not isinstance(ray_tracer, CakeTracer):
+            raise TypeError("the VELEST export needs a CakeTracer as first ray tracer")
+        layered_model = ray_tracer.earthmodel.layered_model
+        dep = layered_model.profile("z")
+        vp = layered_model.profile("vp")
+        vs = layered_model.profile("vs")
         dep_velest = []
         vp_velest = []
         vs_velest = []
@@ -262,7 +270,7 @@ class Velest(Exporter):
         self,
         outfile: Path,
         event: EventDetection,
-        observed_arrivals: list[tuple[Receiver, PhaseDetection]],
+        observed_arrivals: list[tuple[Receiver, PhaseDetection, ObservedArrival]],
     ):
         mag = event.magnitude.average if event.magnitude is not None else 0.0
         lat, lon = velest_location(event)
@@ -272,10 +280,10 @@ class Velest(Exporter):
         )
         count_p = 0
         count_s = 0
-        for rec, dectection in observed_arrivals:
+        for rec, dectection, observed in observed_arrivals:
             quality_weight = (
                 np.digitize(
-                    dectection.observed.detection_value,
+                    observed.detection_value,
                     CONFIDENCE_QUALITY_BINS,
                 )
                 - 1
@@ -286,7 +294,7 @@ class Velest(Exporter):
             else:
                 phase = "S"
                 count_s += 1
-            traveltime = (dectection.observed.time - event.time).total_seconds()
+            traveltime = (observed.time - event.time).total_seconds()
             write_out += (
                 f"  {rec.station:6s}  {phase:1s}   "
                 f"{quality_weight:1d}  {traveltime:7.2f}\n"

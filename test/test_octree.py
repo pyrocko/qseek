@@ -156,3 +156,23 @@ def test_get_densest_leaf_node_nan(refined_octree: Octree) -> None:
     semblance = np.ones(octree.n_leaf_nodes, dtype=np.float32)
     semblance[[3, 7]] = np.nan
     assert octree.get_densest_leaf_node(semblance) is octree.leaf_nodes[3]
+
+
+@pytest.mark.parametrize("deep", [False, True])
+def test_model_copy(refined_octree: Octree, deep: bool) -> None:
+    octree = refined_octree
+    copy = octree.model_copy(deep=deep)
+    assert copy.n_nodes == octree.n_nodes
+    assert all(node.tree is copy for node in copy._root_nodes)
+    if deep:
+        assert all(node.tree is copy for node in copy)
+        n_nodes = octree.n_nodes
+        copy.leaf_nodes[0].split()
+        assert octree.n_nodes == n_nodes
+        assert copy.n_nodes == n_nodes + 8
+
+
+def test_cached_bottom(refined_octree: Octree) -> None:
+    bottom = refined_octree.cached_bottom()
+    assert bottom is not refined_octree
+    assert bottom.n_nodes >= refined_octree.n_nodes

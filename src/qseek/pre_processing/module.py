@@ -25,10 +25,14 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-type BatchPreProcessingType = Annotated[
-    Union[BatchPreProcessing.get_subclasses()],
-    Field(discriminator="process"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type BatchPreProcessingType = BatchPreProcessing
+else:
+    type BatchPreProcessingType = Annotated[
+        Union[BatchPreProcessing.get_subclasses()],
+        Field(discriminator="process"),
+    ]
 
 
 class PreProcessingStats(Stats):
@@ -80,7 +84,8 @@ class PreProcessing(RootModel):
     )
     _stats: ClassVar[PreProcessingStats] = PreProcessingStats()
 
-    def __iter__(self) -> Iterator[BatchPreProcessing]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[BatchPreProcessing]:  # ty: ignore[invalid-method-override]
         return iter(self.root)
 
     async def prepare(self) -> None:

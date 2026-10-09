@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Squirrel
-
     from qseek.models.detection import EventDetection
+    from qseek.models.station import StationInventory
+    from qseek.waveforms.base import WaveformProvider
 
 
 class ReceiverFeature(BaseModel):
@@ -50,7 +50,8 @@ class FeatureExtractor(BaseModel):
 
     async def add_features(
         self,
-        squirrel: Squirrel,
+        waveform_provider: WaveformProvider,
+        stations: StationInventory,
         event: EventDetection,
     ) -> None:
         raise NotImplementedError

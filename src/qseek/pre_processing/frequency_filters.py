@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+from numpy.typing import DTypeLike
 from pydantic import Field, PositiveFloat, field_validator
 from scipy import signal
 
@@ -27,7 +28,7 @@ def butter_sos(
     Wn: float | tuple[float, float],  # noqa: N803
     btype: Literal["lowpass", "highpass", "bandpass"],
     fs: float,
-    dtype: np.dtype = np.float32,
+    dtype: DTypeLike = np.float32,
 ) -> np.ndarray:
     return signal.butter(
         N=N,

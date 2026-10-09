@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Union
+from typing import TYPE_CHECKING, Annotated, Union
 
 from pydantic import Field
 
@@ -12,17 +12,27 @@ from qseek.features.base import (
     ReceiverFeature,
 )
 
-type FeatureExtractorType = Annotated[
-    Union[FeatureExtractor.get_subclasses()],
-    Field(discriminator="feature"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type FeatureExtractorType = FeatureExtractor
+else:
+    type FeatureExtractorType = Annotated[
+        Union[FeatureExtractor.get_subclasses()],
+        Field(discriminator="feature"),
+    ]
 
-type ReceiverFeaturesType = Annotated[
-    Union[ReceiverFeature.get_subclasses()],
-    Field(discriminator="feature"),
-]
+if TYPE_CHECKING:
+    type ReceiverFeaturesType = ReceiverFeature
+else:
+    type ReceiverFeaturesType = Annotated[
+        Union[ReceiverFeature.get_subclasses()],
+        Field(discriminator="feature"),
+    ]
 
-type EventFeaturesType = Annotated[
-    Union[EventFeature.get_subclasses()],
-    Field(discriminator="feature"),
-]
+if TYPE_CHECKING:
+    type EventFeaturesType = EventFeature
+else:
+    type EventFeaturesType = Annotated[
+        Union[EventFeature.get_subclasses()],
+        Field(discriminator="feature"),
+    ]

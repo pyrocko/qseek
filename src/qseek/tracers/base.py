@@ -43,7 +43,8 @@ class RayTracer(Model):
         rundir: Path | None = None,
     ): ...
 
-    def get_available_phases(self) -> tuple[str, ...]: ...
+    def get_available_phases(self) -> tuple[str, ...]:
+        raise NotImplementedError
 
     def get_travel_time_location(
         self,

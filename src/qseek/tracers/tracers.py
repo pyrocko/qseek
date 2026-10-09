@@ -22,10 +22,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-type RayTracerType = Annotated[
-    Union[RayTracer.get_subclasses()],
-    Field(discriminator="tracer"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type RayTracerType = RayTracer
+else:
+    type RayTracerType = Annotated[
+        Union[RayTracer.get_subclasses()],
+        Field(discriminator="tracer"),
+    ]
 
 
 class RayTracers(RootModel):
@@ -107,5 +111,6 @@ class RayTracers(RootModel):
             timedelta(seconds=float(max_traveltime)),
         )
 
-    def __iter__(self) -> Iterator[RayTracer]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[RayTracer]:  # ty: ignore[invalid-method-override]
         yield from self.root

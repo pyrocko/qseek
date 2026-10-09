@@ -101,6 +101,10 @@ class SshSource(RunSource):
                 f'"',
                 check=True,
             )
+            if not isinstance(result.stdout, str):
+                raise RuntimeError(
+                    f"unexpected output from {self.name}: {result.stdout!r}"
+                )
             parts = result.stdout.strip().split()
             modified = datetime.fromtimestamp(int(parts[0]))  # noqa: DTZ006
             if modified > self.last_update:
@@ -171,7 +175,10 @@ class SshExplorer(RunExplorer):
             f'"',
             check=True,
         )
-        for line in result.stdout.splitlines():
+        stdout = result.stdout
+        if not isinstance(stdout, str):
+            raise TypeError("expected the decoded output of the SSH command")
+        for line in stdout.splitlines():
             try:
                 rundir, hash, mtime, n_events = line.split()
                 yield SshSource.from_metadata(

@@ -34,12 +34,12 @@ class SeedLinkStation:
         self._data = defaultdict(lambda: asyncio.Queue(maxsize=512))
 
     @classmethod
-    def from_traces(cls, traces: list[Trace]) -> Self:
+    def from_traces(cls, traces: list[Trace], speed: float, fifo: Path) -> Self:
         network = {trace.network for trace in traces}
         station = {trace.station for trace in traces}
         if len(network) != 1 or len(station) != 1:
             raise ValueError("Traces must have the same network and station")
-        return cls(network.pop(), station.pop())
+        return cls(network.pop(), station.pop(), speed=speed, fifo=fifo)
 
     def add_traces(self, traces: list[Trace]) -> None:
         for trace in traces:
@@ -106,7 +106,7 @@ class SeedLinkStation:
 
 class SeedLinkPlayer(BaseModel):
     squirrel_environment: DirectoryPath = Field(
-        default=DirectoryPath("."),
+        default=Path("."),
         description="Path to the squirrel environment directory",
     )
     squirrel_persistent: str = Field(
@@ -186,9 +186,12 @@ class SeedLinkPlayer(BaseModel):
             tinc=self.increment_seconds,
         )
 
+        def next_batch() -> Batch | None:
+            return next(iterator, None)
+
         for iiter in range(10):
             logging.info("Loading batch %d", iiter)
-            batch = await asyncio.to_thread(next, iterator, None)
+            batch = await asyncio.to_thread(next_batch)
             if batch is None:
                 break
             self.add_batch(batch)

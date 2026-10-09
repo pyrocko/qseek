@@ -9,7 +9,7 @@ from qseek.corrections.base import TravelTimeCorrections
 from qseek.utils import NSL, NSLType, PhaseDescription
 
 if TYPE_CHECKING:
-    from qseek.octree import Octree
+    from qseek.octree import Node
 
 
 class SimpleCorrections(TravelTimeCorrections):
@@ -32,7 +32,12 @@ class SimpleCorrections(TravelTimeCorrections):
     def n_stations(self) -> int:
         return len(self.stations)
 
-    def get_delay(self, station_nsl: NSL, phase: PhaseDescription) -> float:
+    def get_delay(
+        self,
+        station_nsl: NSL,
+        phase: PhaseDescription,
+        node: Node | None = None,
+    ) -> float:
         if station_nsl not in self.stations:
             return 0.0
         if phase not in self.stations[station_nsl]:
@@ -43,7 +48,7 @@ class SimpleCorrections(TravelTimeCorrections):
         self,
         station_nsls: Sequence[NSL],
         phase: PhaseDescription,
-        octree: Octree,
+        nodes: Sequence[Node],
     ) -> np.ndarray:
         return np.array(
             [self.get_delay(station_nsl, phase) for station_nsl in station_nsls]

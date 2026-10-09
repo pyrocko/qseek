@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Literal, NamedTuple
 
@@ -150,6 +151,8 @@ class EventMomentMagnitude(EventMagnitude):
 
     @property
     def m0(self) -> float:
+        if self.average is None:
+            return math.nan
         return 10.0 ** (1.5 * (self.average + 10.7)) * 1.0e-7
 
     @property
@@ -157,7 +160,7 @@ class EventMomentMagnitude(EventMagnitude):
         """Number of stations used for calculating the moment magnitude."""
         return len(self.station_magnitudes)
 
-    def csv_row(self) -> dict[str, float]:
+    def csv_row(self) -> dict[str, float | None]:
         return {
             "Mw": self.average,
             "Mw-error": self.error,
@@ -334,12 +337,12 @@ class MomentMagnitude(EventMagnitudeCalculator):
             return False
         return any(type(mag) is EventMomentMagnitude for mag in event.magnitudes)
 
-    async def add_magnitude(
+    async def get_magnitude(
         self,
         waveform_provider: WaveformProvider,
         stations: StationInventory,
         event: EventDetection,
-    ) -> None:
+    ) -> EventMomentMagnitude:
         moment_magnitude = EventMomentMagnitude()
         receivers = list(event.receivers)
 
@@ -428,9 +431,7 @@ class MomentMagnitude(EventMagnitudeCalculator):
                 max_station_std=self.max_station_std,
             )
 
-        if not moment_magnitude.magnitude:
-            raise ValueError(
-                "Could not calculate moment magnitude for event %s", event.time
-            )
+        if not moment_magnitude.station_magnitudes:
+            raise ValueError(f"Could not calculate moment magnitude for {event.time}")
 
         return moment_magnitude

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated, Union
+from typing import TYPE_CHECKING, Annotated, Union
 
 from pydantic import Field
 
@@ -12,10 +12,14 @@ from qseek.plugins.telegram import TelegramAlert  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-type CallbackType = Annotated[
-    Union[Callback.get_subclasses()],
-    Field(discriminator="callback"),
-]
+# Statically the base class, pydantic validates the registered subclasses
+if TYPE_CHECKING:
+    type CallbackType = Callback
+else:
+    type CallbackType = Annotated[
+        Union[Callback.get_subclasses()],
+        Field(discriminator="callback"),
+    ]
 
 
 def load_callback_plugin(path: Path) -> Callback:

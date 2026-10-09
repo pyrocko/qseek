@@ -24,6 +24,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # ty finds the project's .venv and resolves third-party imports from it.
+      # It only reads the dependencies' types, so the package itself is not
+      # built (src/qseek/ext/*.pyi stub the C extensions) and PyTorch is the
+      # small CPU wheel.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install dependencies for ty
+        run: |
+          uv venv
+          uv pip install --torch-backend cpu --extra ui --extra completion -r pyproject.toml
       - uses: j178/prek-action@v3.0.0
 
   test:

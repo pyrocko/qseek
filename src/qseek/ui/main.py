@@ -51,7 +51,7 @@ def start_ui(uris: list[str], reload: bool = True, port: int = 2251) -> None:
 
         catalog = await run.get_catalog()
         with NamedTemporaryFile() as tmp:
-            await catalog.export_csv(tmp.name)
+            await catalog.export_csv(Path(tmp.name))
             tmp.seek(0)
             return Response(
                 content=tmp.read(),

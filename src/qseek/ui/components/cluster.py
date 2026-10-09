@@ -22,8 +22,8 @@ b-positive value (left axis) and number of events (right axis) per cluster.
 Noise events (label -1) are excluded. Clusters with fewer than 10 positive
 magnitude differences are shown without a b-value.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -89,7 +89,7 @@ magnitude differences are shown without a b-value.
                 b_pos_errors.append(np.nan)
                 continue
 
-            magnitudes = np.asarray([ev.magnitude.average for ev in filtered])
+            magnitudes = np.asarray([ev.magnitude_average for ev in filtered])
             times = np.asarray([ev.time.timestamp() for ev in filtered])
             _, mag_diff = calculate_dmag_bpositive(times, magnitudes, d_mc=_DELTA_MC)
             if len(mag_diff) < _MIN_MAG_DIFF:
@@ -145,8 +145,8 @@ class MagnitudeRateCluster(Panel):
 Magnitude of detected events over time, coloured by cluster. Toggle individual
 clusters on and off via the legend. Noise events (label -1) are shown separately.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()

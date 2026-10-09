@@ -172,7 +172,7 @@ class ImageFunction(Model):
         Returns:
             list[WaveformImage]: List of image functions.
         """
-        ...
+        raise NotImplementedError
 
     def get_blinding(self) -> timedelta:
         """Blinding duration for the image function. Added to padded waveforms.
@@ -266,8 +266,9 @@ class ImageFunction(Model):
                 await queue.put(exc)
                 return
             finally:
-                if hasattr(batch_iterator, "aclose"):
-                    await batch_iterator.aclose()
+                aclose = getattr(batch_iterator, "aclose", None)
+                if aclose is not None:
+                    await aclose()
 
             await queue.put(None)
 

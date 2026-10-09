@@ -420,8 +420,8 @@ class Search(Model):
         return v
 
     def init_rundir(self, force: bool = False, create_backup: bool = True) -> None:
-        rundir = (
-            self.project_dir / self._config_stem or f"run-{time_to_path(self.created)}"
+        rundir = self.project_dir / (
+            self._config_stem or f"run-{time_to_path(self.created)}"
         )
         self._rundir = rundir
 
@@ -783,7 +783,9 @@ class Search(Model):
 
             for feature_calculator in self.features:
                 logger.debug("adding features from %s", feature_calculator.feature)
-                await feature_calculator.add_features(self.data_provider, event)
+                await feature_calculator.add_features(
+                    self.data_provider, self.stations, event
+                )
         return event
 
     @classmethod

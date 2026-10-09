@@ -6,6 +6,7 @@ from weakref import WeakSet
 
 import numpy as np
 from lru import LRU
+from numpy.typing import DTypeLike
 from pydantic import BaseModel, ByteSize
 
 logger = logging.getLogger(__name__)
@@ -56,14 +57,14 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         name: str,
         short_name: str = "",
         size_bytes: int = SIZE_MB,
-        dtype: np.dtype = np.float32,
+        dtype: DTypeLike = np.float32,
     ) -> None:
         super().__init__(size=1, callback=self._remove_callback)
         self.size_bytes = 0
         self._max_size_bytes = size_bytes
         self.name = name
         self.short_name = short_name or "".join(w[0] for w in name.split("-")).upper()
-        self.dtype = dtype
+        self.dtype = np.dtype(dtype)
 
         CACHES.add(self)
 
@@ -121,7 +122,7 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         total_hits = hits + misses
         return hits / (total_hits or 1)
 
-    def get_stats(self) -> CacheStats:
+    def get_cache_stats(self) -> CacheStats:
         hits, misses = super().get_stats()
         total_hits = hits + misses
         cache_hit_rate = hits / (total_hits or 1)
@@ -145,7 +146,7 @@ class CachesStats(BaseModel):
 
     @classmethod
     def get_stats(cls):
-        caches = {cache.name: cache.get_stats() for cache in CACHES}
+        caches = {cache.name: cache.get_cache_stats() for cache in CACHES}
         total_size = sum(cache.size_bytes for cache in CACHES)
         return cls(caches=caches, total_size=ByteSize(total_size))
 

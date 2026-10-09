@@ -21,7 +21,7 @@ class EventMinimal:
     time: datetime
     semblance: float
     n_picks: int
-    rms: float
+    rms: float | None
     magnitude: EventMagnitude | None
     event: EventDetection
 
@@ -49,6 +49,11 @@ class EventMinimal:
             self.n_picks,
             self.magnitude,
         )
+
+    @property
+    def magnitude_average(self) -> float | None:
+        """Average magnitude of the event, None without a magnitude."""
+        return self.magnitude.average if self.magnitude is not None else None
 
     @classmethod
     def from_event(cls, event: EventDetection) -> Self:

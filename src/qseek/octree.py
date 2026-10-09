@@ -17,8 +17,10 @@ from typing import (
     Iterable,
     Iterator,
     Literal,
+    Mapping,
     Self,
     Sequence,
+    overload,
 )
 
 import numpy as np
@@ -522,7 +524,8 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         """
         return [node for node in self if node.is_leaf()]
 
-    def __iter__(self) -> Iterator[Node]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[Node]:  # ty: ignore[invalid-method-override]
         yield from self.nodes
 
     def __next__(self) -> Node:
@@ -531,7 +534,13 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
     def __len__(self) -> int:
         return len(self.nodes)
 
-    def __getitem__(self, idx: int) -> Node:
+    @overload
+    def __getitem__(self, idx: int) -> Node: ...
+
+    @overload
+    def __getitem__(self, idx: slice) -> list[Node]: ...
+
+    def __getitem__(self, idx: int | slice) -> Node | list[Node]:
         try:
             return self.nodes[idx]
         except IndexError:
@@ -581,7 +590,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         self,
         surface: Literal["NE", "ED", "ND"] = "NE",
         max_level: int = -1,
-        accumulator: Callable[np.ndarray] = np.max,
+        accumulator: Callable[..., np.ndarray] = np.max,
     ) -> np.ndarray:
         """Reduce the octree's nodes to the surface.
 
@@ -868,7 +877,7 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         Returns:
             Self: Copy of the octree with cached bottom nodes.
         """
-        tree = self.copy(deep=True)
+        tree = self.model_copy(deep=True)
         split_nodes = []
         for node in tree:
             if node._children_cached:
@@ -877,8 +886,11 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
             raise EnvironmentError("octree has never been split.")
         return tree
 
-    def copy(self, deep=False) -> Self:
-        tree = super().model_copy(deep=deep)
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        """Copy the octree, its nodes refer to the copy."""
+        tree = super().model_copy(update=update, deep=deep)
         tree._clear_cache()
         for node in tree._root_nodes:
             node.set_tree(tree)

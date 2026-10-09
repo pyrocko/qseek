@@ -562,6 +562,7 @@ class SeedLinkClient(BaseModel):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        assert proc.stdout is not None  # stdout is a pipe
         self._stats.connected_at = datetime_now()
         try:
             while True:

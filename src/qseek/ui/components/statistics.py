@@ -22,8 +22,8 @@ class EventRate(Panel):
     description = """
 Number of detected events over time.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -119,8 +119,8 @@ Number of detected events over time.
 class NPicksDistribution(Panel):
     title = "Number of Picks Distribution"
     description = """Distribution of the number of phase picks per detected event."""
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -180,8 +180,8 @@ class NPicksDistribution(Panel):
 class SemblanceDistribution(Panel):
     title = "Semblance Distribution"
     description = """Distribution of semblance values across all detected events."""
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()
@@ -238,8 +238,8 @@ class WadatiDiagram(Panel):
 P travel time vs. S-P travel time across all events. The slope gives
 <i>V<sub>P</sub>/V<sub>S</sub></i>.
 """
-    plot: Plotly | None = None
-    figure: go.Figure | None = None
+    plot: Plotly
+    figure: go.Figure
 
     def __init__(self) -> None:
         super().__init__()

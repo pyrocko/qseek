@@ -204,7 +204,7 @@ class SyntheticEventCatalog(BaseModel):
         self,
         start_time: datetime,
         end_time: datetime,
-        phase: PhaseDescription | None = None,
+        phase: PhaseDescription,
         sampling_rate: float = 100.0,
         sigma_samples: int = 10,
     ) -> list[Trace]:
@@ -215,17 +215,14 @@ class SyntheticEventCatalog(BaseModel):
         nsls = {rcv.nsl for ev in events for rcv in ev.get_receivers()}
         n_samples = int((end_time - start_time).total_seconds() * sampling_rate)
 
-        def filter_arrival_times(travel_time: datetime | None) -> bool:
-            if travel_time is None:
-                return False
-            return start_time <= travel_time < end_time
-
         traces = []
         for nsl in nsls:
-            arrivals = filter(
-                filter_arrival_times, [ev.get_travel_time(phase, nsl) for ev in events]
-            )
-            arrival_times: list[datetime] = list(arrivals)  # type: ignore
+            arrival_times = [
+                arrival
+                for ev in events
+                if (arrival := ev.get_travel_time(phase, nsl)) is not None
+                and start_time <= arrival < end_time
+            ]
             if not arrival_times:
                 continue
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import ClassVar, Literal, NamedTuple, Self, Type
+from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Self, Type
 
 import numpy as np
 from pydantic import Field, PrivateAttr, model_validator
@@ -453,7 +453,10 @@ class CampiFlegrei(WoodAnderson, LocalMagnitudeModel):
         return 0.95 * np.log10(dist_hypo_km) + 0.09 * dist_hypo_km - 0.1
 
 
-ModelName = Literal[LocalMagnitudeModel.model_names()]
+if TYPE_CHECKING:
+    ModelName = str  # the names of the registered models
+else:
+    ModelName = Literal[LocalMagnitudeModel.model_names()]
 
 
 class AttenuationModel(Model):
@@ -467,8 +470,8 @@ class AttenuationModel(Model):
         dist_epi_km: float,
         distance: Literal["epicentral", "hypocentral"] = "epicentral",
     ) -> float:
-        distance = dist_hypo_km if distance == "hypocentral" else dist_epi_km
-        return self.a * np.log10(distance) + self.b * distance + self.c
+        dist_km = dist_hypo_km if distance == "hypocentral" else dist_epi_km
+        return self.a * np.log10(dist_km) + self.b * dist_km + self.c
 
 
 class CustomLocalMagnitudeModel(Model):

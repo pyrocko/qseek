@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence, overload
 
 import numpy as np
 from pydantic import (
@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 
 
 class NSLRejectList(set[NSL]):
-    def __contains__(self, other: NSL) -> bool:
+    def __contains__(self, other: object) -> bool:
+        if not isinstance(other, NSL):
+            return False
         return any(nsl.match(other) for nsl in self)
 
     @classmethod
@@ -144,7 +146,8 @@ class StationInventory(Model):
     def model_post_init(self, __context: Any) -> None:
         self._squirrel = Squirrel()
 
-    def __iter__(self) -> Iterator[Station]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[Station]:  # ty: ignore[invalid-method-override]
         return (sta for sta in self.stations if sta.nsl not in self.exclude_stations)
 
     def __contains__(self, other: NSL) -> bool:
@@ -405,7 +408,7 @@ class StationInventory(Model):
     def export_vtk(self, reference: Location | None = None) -> None: ...
 
     def __hash__(self) -> int:
-        return hash(sta for sta in self)
+        return hash(tuple(self))
 
 
 class StationList(Sequence[Station]):
@@ -422,7 +425,13 @@ class StationList(Sequence[Station]):
     def __iter__(self) -> Iterator[Station]:
         yield from self._stations
 
-    def __getitem__(self, index: int) -> Station:
+    @overload
+    def __getitem__(self, index: int) -> Station: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[Station]: ...
+
+    def __getitem__(self, index: int | slice) -> Station | list[Station]:
         return self._stations[index]
 
     def __len__(self) -> int:

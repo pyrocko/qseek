@@ -168,7 +168,7 @@ class TelegramAlert(Callback):
 
     async def on_new_detection(self, detection: EventDetection) -> None:
         magnitude = detection.magnitude
-        if magnitude is None:
+        if magnitude is None or magnitude.average is None:
             return
 
         if self.magnitude_alert is None or magnitude.average >= self.magnitude_alert:

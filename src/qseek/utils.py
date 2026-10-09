@@ -35,6 +35,7 @@ from typing import (
 
 import numpy as np
 import psutil
+from numpy.typing import DTypeLike
 from pydantic import (
     AfterValidator,
     AwareDatetime,
@@ -368,7 +369,7 @@ def datetime_pretty(dt: datetime) -> str:
 
 
 def as_array(
-    iterable: Iterable[float | Iterable[float]], dtype: np.dtype = float
+    iterable: Iterable[float | Iterable[float]], dtype: DTypeLike = float
 ) -> np.ndarray:
     """Convert an iterable of floats into a NumPy array.
 
@@ -511,7 +512,7 @@ def log_call(func: Callable[P, T]) -> Callable[P, T]:
         ret = func(*args, **kwargs)
         logger.debug(
             "executed %s in %s",
-            func.__qualname__,
+            wrapper.__qualname__,
             timedelta(seconds=time.time() - start),
         )
         return ret
@@ -526,7 +527,7 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         ret = await func(*args, **kwargs)
         logger.debug(
             "executed %s in %s",
-            func.__qualname__,
+            wrapper.__qualname__,
             timedelta(seconds=time.time() - start),
         )
         return ret
@@ -702,10 +703,13 @@ def _validate_cpu_count(
     return wrapper
 
 
-CpuCount = Annotated[
-    int | Literal["auto"],
-    WrapValidator(_validate_cpu_count(reserved_cores=4)),
-]
+if TYPE_CHECKING:
+    CpuCount = int  # the validator resolves "auto" to the number of threads
+else:
+    CpuCount = Annotated[
+        int | Literal["auto"],
+        WrapValidator(_validate_cpu_count(reserved_cores=4)),
+    ]
 
 
 @dataclass

@@ -8,7 +8,9 @@ from scipy.stats import norm
 LOG_10 = np.log(10)
 
 
-def log_likelihood_func(magnitude: float, beta: float, mu: float, sigma: float):
+def log_likelihood_func(
+    magnitude: float | np.ndarray, beta: float, mu: float, sigma: float
+):
     log_gr = np.log(beta) - beta * (magnitude - mu) - 0.5 * beta**2 * sigma**2
     log_qm = norm.logcdf((magnitude - mu) / sigma)
     return log_gr + log_qm

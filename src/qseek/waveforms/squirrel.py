@@ -61,11 +61,14 @@ class SquirrelPrefetcher:
     async def prefetch_worker(self) -> None:
         logger.info("start prefetching waveforms, queue size %d", self.queue.maxsize)
 
+        def next_batch() -> Batch | None:
+            return next(self.iterator, None)
+
         async def load_data() -> None | Batch:
             while True:
                 start_load = datetime_now()
                 logger.debug("loading waveform batch %d", self._fetched_batches)
-                batch = await asyncio.to_thread(next, self.iterator, None)
+                batch = await asyncio.to_thread(next_batch)
                 if batch is None:
                     await self.queue.put(None)
                     return
@@ -251,11 +254,12 @@ class PyrockoSquirrel(WaveformProvider):
         window_increment: timedelta,
         window_padding: timedelta,
         start_time: datetime | None = None,
-        end_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
+        end_time: datetime | None = None,
     ) -> AsyncIterator[WaveformBatch]:
-        if not self._stations:
+        stations = self._stations
+        if not stations:
             raise ValueError("no stations provided. has prepare() been called?")
 
         squirrel = self.get_squirrel()
@@ -288,7 +292,7 @@ class PyrockoSquirrel(WaveformProvider):
                 tinc=window_increment.total_seconds(),
                 tpad=window_padding.total_seconds(),
                 want_incomplete=False,
-                codes=[(*nsl, "*") for nsl in self._stations.get_nsls()],  # type: ignore
+                codes=[(*nsl, "*") for nsl in stations.get_nsls()],
                 channel_priorities=self.channel_selector,
             )
             prefetcher = SquirrelPrefetcher(iterator, queue_size=self.queue_size)

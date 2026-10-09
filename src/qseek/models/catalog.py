@@ -74,7 +74,7 @@ class ReceiverCache:
         receivers = EventReceivers.model_validate_json(line)
         if receivers.event_uid != event_uid:
             raise KeyError(f"UID {event_uid} not found in receiver cache.")
-        self._cache[receivers.event_uid] = receivers
+        self._cache[event_uid] = receivers
         return receivers
 
     def _find_uid(self, uid: UUID, start_idx: int = 0) -> tuple[int, str]:
@@ -131,7 +131,11 @@ class EventCatalogStats(Stats):
     def magnitudes(self) -> list[float]:
         if not self._catalog:
             return []
-        return [det.magnitude.average for det in self._catalog if det.magnitude]
+        return [
+            det.magnitude.average
+            for det in self._catalog
+            if det.magnitude and det.magnitude.average is not None
+        ]
 
     @computed_field
     def mean_semblance(self) -> float:
@@ -606,7 +610,8 @@ class EventCatalog(BaseModel):
             pyrocko_markers.extend(detection.get_pyrocko_markers())
         marker.save_markers(pyrocko_markers, str(filename))
 
-    def __iter__(self) -> Iterator[EventDetection]:
+    # BaseModel.__iter__ yields the fields, this yields the items
+    def __iter__(self) -> Iterator[EventDetection]:  # ty: ignore[invalid-method-override]
         return iter(sorted(self.events, key=lambda d: d.time))
 
     async def export_gpkg(self, filename: Path) -> None:

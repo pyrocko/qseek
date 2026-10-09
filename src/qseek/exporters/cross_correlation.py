@@ -107,8 +107,7 @@ class WaveformCache:
         self._sizes[key] = size
         self.n_bytes += size
         while self.n_bytes > self.max_bytes and len(self._cache) > 1:
-            old_key, _ = self._cache.peek_last_item()
-            del self._cache[old_key]
+            old_key, _ = self._cache.popitem()  # least recently used
             self.n_bytes -= self._sizes.pop(old_key)
 
     def hit_rate(self) -> float:

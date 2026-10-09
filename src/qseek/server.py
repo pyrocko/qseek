@@ -101,14 +101,14 @@ class WebServer(Model):
             content_type="application/json",
         )
 
-    async def get_detections(self, request: web.Request) -> web.Response:
+    async def get_detections(self, request: web.Request) -> web.FileResponse:
         catalog = self._search._catalog
         return web.FileResponse(
             catalog.detections_file,
             headers={"Content-Type": "text/plain"},
         )
 
-    async def get_receivers(self, request: web.Request) -> web.Response:
+    async def get_receivers(self, request: web.Request) -> web.FileResponse:
         catalog = self._search._catalog
         return web.FileResponse(
             catalog.receivers_file,

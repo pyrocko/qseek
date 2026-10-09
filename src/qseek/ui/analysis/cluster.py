@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterable
 
 import numpy as np
 from nicegui import Event
@@ -27,7 +28,7 @@ _NOISE_COLOR = "#000000"
 logger = logging.getLogger(__name__)
 
 
-def labels_to_colors(labels: np.ndarray) -> list[str]:
+def labels_to_colors(labels: Iterable[int]) -> list[str]:
     """Map DBSCAN labels to hex color strings; -1 (noise) gets black at low opacity."""
     return [
         _NOISE_COLOR if label == -1 else _CLUSTER_COLORS[label % len(_CLUSTER_COLORS)]

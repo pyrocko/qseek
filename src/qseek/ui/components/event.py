@@ -659,19 +659,20 @@ for the event.
             annotation_position="top right",
         )
         # Median line with ±std_mag shadow
-        fig.add_hrect(
-            y0=median_mag - mag_error,
-            y1=median_mag + mag_error,
-            fillcolor="seagreen",
-            opacity=0.08,
-            line_width=0,
-        )
-        fig.add_hline(
-            y=median_mag,
-            line={"color": "seagreen", "width": 2},
-            annotation_text=f"Median: {median_mag:.2f} ± {mag_error:.2f}",
-            annotation_position="top left",
-        )
+        if median_mag is not None and mag_error is not None:
+            fig.add_hrect(
+                y0=median_mag - mag_error,
+                y1=median_mag + mag_error,
+                fillcolor="seagreen",
+                opacity=0.08,
+                line_width=0,
+            )
+            fig.add_hline(
+                y=median_mag,
+                line={"color": "seagreen", "width": 2},
+                annotation_text=f"Median: {median_mag:.2f} ± {mag_error:.2f}",
+                annotation_position="top left",
+            )
         fig.update_layout(
             xaxis_title="Hypocentral Distance (km)",
             yaxis_title="Station Magnitude",

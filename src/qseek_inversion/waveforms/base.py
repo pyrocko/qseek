@@ -33,4 +33,5 @@ class WaveformSelection(BaseModel):
     async def get_images(
         self,
         window_padding: timedelta,
-    ) -> list[WaveformImages]: ...
+    ) -> list[WaveformImages]:
+        raise NotImplementedError

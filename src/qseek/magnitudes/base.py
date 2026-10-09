@@ -67,7 +67,7 @@ class EventMagnitude(BaseModel):
     def n_observations(self) -> int:
         return len(self.station_magnitudes)
 
-    def csv_row(self) -> dict[str, float]:
+    def csv_row(self) -> dict[str, float | None]:
         return {
             "magnitude": self.average,
             "error": self.error,

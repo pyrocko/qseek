@@ -124,7 +124,7 @@ class WaveformProvider(Model):
 
     async def prepare(self, stations: StationInventory) -> None: ...
 
-    async def iter_batches(
+    def iter_batches(
         self,
         window_increment: timedelta,
         window_padding: timedelta,

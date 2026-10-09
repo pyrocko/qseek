@@ -8,7 +8,7 @@ import logging
 import shutil
 from importlib.metadata import version
 from pathlib import Path
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, Any, Protocol, cast, get_args
 
 import nest_asyncio
 
@@ -268,16 +268,27 @@ try:
     import argcomplete
     from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
-    search_config.completer = FilesCompleter(["*.json"])
-    continue_rundir.completer = DirectoriesCompleter()
-    summary_rundir.completer = DirectoriesCompleter()
-    snuffler_rundir.completer = DirectoriesCompleter()
-    features_rundir.completer = DirectoriesCompleter()
-    dump_dir.completer = DirectoriesCompleter()
+    completers = {
+        search_config: FilesCompleter(["*.json"]),
+        continue_rundir: DirectoriesCompleter(),
+        summary_rundir: DirectoriesCompleter(),
+        snuffler_rundir: DirectoriesCompleter(),
+        features_rundir: DirectoriesCompleter(),
+        dump_dir: DirectoriesCompleter(),
+    }
+    for action, completer in completers.items():
+        # argcomplete reads the completer attribute set on the actions
+        cast("CompletedAction", action).completer = completer
 
     argcomplete.autocomplete(parser)
 except ImportError:
     pass
+
+
+class CompletedAction(Protocol):
+    """An argparse action with an argcomplete completer."""
+
+    completer: Any
 
 
 class UsageError(Exception):
@@ -616,7 +627,9 @@ def run() -> None:
                 for module in module_classes:
                     for subclass in module.get_subclasses():
                         if subclass.__name__ == args.name:
-                            console.print_json(subclass().model_dump_json(indent=2))
+                            console.print_json(
+                                subclass.model_validate({}).model_dump_json(indent=2)
+                            )
 
                             if subclass.__name__ == "LocalMagnitude":
                                 from qseek.magnitudes.local_magnitude import ModelName

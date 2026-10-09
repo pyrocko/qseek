@@ -16,6 +16,12 @@ repos:
       - id: ruff-format
       - args: [--fix]
         id: ruff
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    # ty version.
+    rev: v0.0.85
+    hooks:
+      - id: ty
+        types: [python]
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v21.1.8
     hooks:
