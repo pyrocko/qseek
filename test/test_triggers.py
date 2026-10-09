@@ -126,7 +126,7 @@ def test_trigger_blinding_not_negative() -> None:
 
 
 def test_search_trigger() -> None:
-    assert isinstance(Search().trigger, MADTrigger)
+    assert Search().trigger == ThresholdTrigger(threshold=0.3)
 
     search = Search.model_validate(
         {"trigger": {"trigger": "ThresholdTrigger", "threshold": 0.5}}

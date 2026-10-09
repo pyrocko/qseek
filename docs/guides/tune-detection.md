@@ -19,14 +19,14 @@ A first search with the defaults tells you a lot about your data. This guide sho
 
 ## Too few detections
 
-- **Threshold:** the default [trigger](../configuration/triggers.md) sets the threshold to 10 times the median absolute deviation of the detection function in each window. Lower its `mad_factor` to detect more, e.g. to 8.
+- **Threshold:** the default [trigger](../configuration/triggers.md) detects peaks of the detection function above a semblance of 0.3. Lower the `threshold` below the semblance of the weakest events you see, or use an adaptive trigger, which lowers the threshold in quiet windows.
 - **Image function:** try pre-trained weights that fit your data, e.g. trained on a similar region or instrument type, or another model. See [image functions](../configuration/image-functions.md).
 - **Frequency band:** adjust the bandpass of the [pre-processing](../configuration/pre-processing.md) to the frequencies of your events, e.g. higher frequencies for microseismicity.
 - **Minimum stations:** lower [`min_stations`][qseek.search.Search.min_stations] for small networks.
 
 ## Too many false detections
 
-- **Threshold:** raise the `mad_factor` of the trigger, or use a `ThresholdTrigger` with a fixed value above the semblance of the noise.
+- **Threshold:** raise the `threshold` of the trigger above the semblance of the noise.
 - **Picks:** filter the detections by `n_picks`. Noise rarely produces consistent picks at many stations.
 - **Distance weighting:** with the default [distance weights](../configuration/distance-weighting.md), each node relies on its closest stations. Noise at a single close station can dominate small networks; increase [`required_closest_stations`][qseek.distance_weights.DistanceWeights.required_closest_stations].
 

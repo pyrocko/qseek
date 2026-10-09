@@ -43,7 +43,7 @@ from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
-from qseek.triggers import MADTrigger, TriggerType
+from qseek.triggers import ThresholdTrigger, TriggerType
 from qseek.utils import (
     LOG_COUNTER,
     BackgroundTasks,
@@ -300,7 +300,7 @@ class Search(Model):
         description="Spatial weights for distance weighting.",
     )
     trigger: TriggerType = Field(
-        default_factory=MADTrigger,
+        default_factory=ThresholdTrigger,
         description="Trigger that detects events in the detection function, the"
         " maximum semblance over all nodes.",
     )
@@ -891,7 +891,7 @@ class OctreeSearch:
             distance_weights (DistanceWeights | None, optional): The distance
                 weights to apply. Defaults to None.
             trigger (TriggerType | None, optional): The trigger that detects events
-                in the detection function. Defaults to MADTrigger().
+                in the detection function. Defaults to ThresholdTrigger().
             ignore_boundary
                     (Literal[False, "with_surface", "without_surface"], optional):
                 Whether to ignore events at the boundary of the octree.
@@ -916,7 +916,7 @@ class OctreeSearch:
 
         self.window_padding = window_padding
 
-        self.trigger = trigger or MADTrigger()
+        self.trigger = trigger or ThresholdTrigger()
         self.node_interpolation = node_interpolation
         self.attach_arrivals = attach_arrivals
         self.neighbor_search = neighbor_search

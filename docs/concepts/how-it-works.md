@@ -41,7 +41,7 @@ Qseek calls the stack $S$ the *semblance*. The maximum semblance over all nodes,
 
 ## Detection
 
-A detection is a peak of the detection function whose height and prominence exceed the threshold of the [trigger](../configuration/triggers.md). The default `MADTrigger` sets the threshold to 10 times the median absolute deviation of the detection function in the processed window, so it adapts to each window. Peaks closer than the `blinding` of the trigger, 1 s by default, count as one detection.
+A detection is a peak of the detection function whose height and prominence exceed the threshold of the [trigger](../configuration/triggers.md). The default `ThresholdTrigger` applies a fixed semblance of 0.3 to all windows; the adaptive triggers set the threshold in each processed window from the median absolute deviation of the detection function. Peaks closer than the `blinding` of the trigger, 1 s by default, count as one detection.
 
 Detections at nodes within the absorbing boundary of the search volume are ignored, see [`ignore_boundary`][qseek.search.Search.ignore_boundary].
 

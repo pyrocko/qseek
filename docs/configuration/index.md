@@ -59,8 +59,8 @@ This configuration reads waveforms from an SDS archive, annotates phases with Ph
     }
   ],
   "trigger": {
-    "trigger": "MADTrigger",
-    "mad_factor": 10.0
+    "trigger": "ThresholdTrigger",
+    "threshold": 0.3
   },
   "window_length": "PT5M"
 }
