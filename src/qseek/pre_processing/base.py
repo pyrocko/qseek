@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
     from qseek.waveforms.base import WaveformBatch
 
+# Minimum samples per chunk of traces processed in one thread
+MIN_CHUNK_SAMPLES = 200_000
+
 
 class BatchPreProcessing(BaseModel):
     process: Literal["BasePreProcessing"] = "BasePreProcessing"
@@ -27,7 +30,8 @@ class BatchPreProcessing(BaseModel):
     )
     n_threads: PositiveInt = Field(
         default=8,
-        description="The number of threads processing the traces in parallel.",
+        description="The number of threads processing the traces in parallel. "
+        "Ignored by the DeepDenoiser.",
     )
 
     _thread_pool: ThreadPoolExecutor | None = PrivateAttr(None)
@@ -95,15 +99,21 @@ def group_traces(traces: list[Trace]) -> groupby[tuple[float, int], Trace]:
     return groupby(sorted(traces, key=_trace_group_key), key=_trace_group_key)
 
 
-def split_traces(traces: list[Trace], n_chunks: int) -> list[list[Trace]]:
+def split_traces(
+    traces: list[Trace],
+    n_chunks: int,
+    min_samples: int = MIN_CHUNK_SAMPLES,
+) -> list[list[Trace]]:
     """Split the traces into at most n_chunks chunks of about equal size.
 
     The pre-processing treats every trace on its own, the chunks of a group from
-    :func:`group_traces` can be processed in parallel threads.
+    :func:`group_traces` can be processed in parallel threads. A chunk holds at
+    least min_samples samples, smaller chunks cost more threading than they save.
     """
     if not traces:
         return []
-    size = math.ceil(len(traces) / n_chunks)
+    min_size = math.ceil(min_samples / max(traces[0].ydata.size, 1))
+    size = max(math.ceil(len(traces) / n_chunks), min_size)
     return [traces[i : i + size] for i in range(0, len(traces), size)]
 
 

@@ -141,7 +141,7 @@ class Downsample(BatchPreProcessing):
         chunks = [
             chunk
             for (delta_t, _), trace_group in group_traces(traces)
-            if desired_delta_t < delta_t
+            if desired_delta_t > delta_t
             for chunk in split_traces(list(trace_group), self.n_threads)
         ]
         await asyncio.gather(

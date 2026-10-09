@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pyrocko.trace import Trace
 
-from qseek.pre_processing.base import BatchPreProcessing, split_traces
+from qseek.pre_processing.base import BatchPreProcessing, group_traces, split_traces
 from qseek.pre_processing.frequency_filters import Bandpass, Highpass, Lowpass
 from qseek.pre_processing.resample import Downsample, Resample, downsample, resample
 from qseek.waveforms.base import WaveformBatch
@@ -92,7 +92,7 @@ def _mixed_batch() -> WaveformBatch:
     traces = []
     for ista in range(20):
         sampling_rate = 200.0 if ista < 15 else 250.0
-        n_samples = int(10 * sampling_rate) + ista % 2
+        n_samples = int(100 * sampling_rate) + ista % 2
         for channel in ("HHE", "HHN", "HHZ"):
             traces.append(
                 Trace(
@@ -109,11 +109,18 @@ def _mixed_batch() -> WaveformBatch:
 
 
 def test_split_traces():
-    traces = list(range(10))
+    traces = [Trace(deltat=0.01, ydata=np.zeros(1000)) for _ in range(10)]
+
+    def sizes(chunks: list[list[Trace]]) -> list[int]:
+        return [len(chunk) for chunk in chunks]
+
     assert split_traces([], 4) == []
-    assert split_traces(traces, 1) == [traces]
-    assert split_traces(traces, 4) == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
-    assert split_traces(traces, 20) == [[t] for t in traces]
+    assert sizes(split_traces(traces, 1, min_samples=0)) == [10]
+    assert sizes(split_traces(traces, 4, min_samples=0)) == [3, 3, 3, 1]
+    assert sizes(split_traces(traces, 20, min_samples=0)) == [1] * 10
+    assert sizes(split_traces(traces, 4, min_samples=5000)) == [5, 5]
+    assert sizes(split_traces(traces, 4)) == [10]
+    assert [tr for chunk in split_traces(traces, 4, 0) for tr in chunk] == traces
 
 
 def test_filter_traces():
@@ -139,12 +146,23 @@ def test_filter_traces():
 )
 async def test_chunks_identical(module: BatchPreProcessing):
     single = module.model_copy(update={"n_threads": 1})
-    reference, chunked = _mixed_batch(), _mixed_batch()
+    original, reference, chunked = _mixed_batch(), _mixed_batch(), _mixed_batch()
 
     await single.process_batch(reference)
     await module.process_batch(chunked)
 
-    assert module.n_threads > 1
+    assert any(
+        len(split_traces(list(group), module.n_threads)) > 1
+        for _, group in group_traces(original.traces)
+    )
+    sampling_frequency = getattr(module, "sampling_frequency", None)
+    for tr_orig, tr_ref in zip(original.traces, reference.traces, strict=True):
+        # Every trace is processed, the comparison below is not trivial
+        if sampling_frequency is not None:
+            assert tr_ref.deltat == pytest.approx(1.0 / sampling_frequency)
+        else:
+            assert not np.array_equal(tr_ref.ydata, tr_orig.ydata)
+
     for tr_ref, tr in zip(reference.traces, chunked.traces, strict=True):
         assert tr.deltat == tr_ref.deltat
         assert tr.tmin == tr_ref.tmin
