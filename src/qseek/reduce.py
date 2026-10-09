@@ -59,7 +59,7 @@ class DelaySumReduceStats(Stats): ...
 STATS = DelaySumReduceStats()
 
 # The stacking runs on one thread: the stacks follow one after another, and each
-# parallelizes over the nodes with n_threads
+# parallelizes over n_threads
 STACK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qseek-stack")
 
 

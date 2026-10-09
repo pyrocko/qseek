@@ -13,8 +13,8 @@ the C extension directly. This file:
   an equivalent direct call into the C extension, to confirm the node-list
   integration doesn't cost anything at the reduce.py level.
 
-Requires the `modular` (Mojo 1.0) toolchain, a required dependency; skipped
-if it isn't importable (e.g. an unsupported platform).
+Requires the Mojo toolchain, a required dependency; skipped if it isn't
+importable (e.g. an unsupported platform).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import pytest
 from pyrocko.trace import Trace
 
 pytest.importorskip(
-    "mojo.importer", reason="Mojo toolchain (dependency 'modular') not installed"
+    "mojo.importer", reason="Mojo toolchain (dependency 'mojo') not installed"
 )
 
 from qseek.ext import delay_sum as qseek_delay_sum
