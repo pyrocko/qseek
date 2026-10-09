@@ -12,7 +12,6 @@ import numpy as np
 import psutil
 import sdnotify
 from pydantic import (
-    AliasChoices,
     BaseModel,
     ByteSize,
     Field,
@@ -27,7 +26,6 @@ from qseek.base import Model
 from qseek.cache_lru import CACHES
 from qseek.console import console, report
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
-from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images import ImageFunctionType, SeisBench
 from qseek.magnitudes import EventMagnitudeCalculatorType
@@ -42,6 +40,7 @@ from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import PreProcessing, Resample
 from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
+from qseek.station_weights import StationWeights
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.utils import (
@@ -294,10 +293,10 @@ class Search(Model):
         ),
         description="List of ray tracers for travel time calculation.",
     )
-    distance_weights: DistanceWeights | None = Field(
-        default_factory=DistanceWeights,
-        validation_alias=AliasChoices("spatial_weights", "distance_weights"),
-        description="Spatial weights for distance weighting.",
+    station_weights: StationWeights | None = Field(
+        default_factory=StationWeights,
+        description="Station weighting based on station density and "
+        "source-station distance.",
     )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
@@ -554,8 +553,8 @@ class Search(Model):
         await self.pre_processing.prepare()
         await self.image_function.prepare()
 
-        if self.distance_weights:
-            self.distance_weights.prepare(self.stations, self.octree)
+        if self.station_weights:
+            self.station_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -661,7 +660,7 @@ class Search(Model):
             ray_tracers=self.ray_tracers,
             window_padding=window_padding,
             station_corrections=self.station_corrections,
-            distance_weights=self.distance_weights,
+            distance_weights=self.station_weights,
             detection_threshold=self.detection_threshold,
             node_interpolation=self.node_interpolation,
             ignore_boundary=self.ignore_boundary,
@@ -852,7 +851,7 @@ class OctreeSearch:
         ray_tracers: RayTracers,
         window_padding: timedelta,
         station_corrections: StationCorrectionType | None = None,
-        distance_weights: DistanceWeights | None = None,
+        distance_weights: StationWeights | None = None,
         detection_threshold: float | Literal["MAD"] = "MAD",
         detection_blinding: timedelta = timedelta(seconds=1.0),
         ignore_boundary: IgnoreBoundary = "with_surface",

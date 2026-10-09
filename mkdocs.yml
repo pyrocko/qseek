@@ -190,7 +190,7 @@ nav:
       - Image functions: configuration/image-functions.md
       - Ray tracers: configuration/ray-tracers.md
       - Search volume: configuration/search-volume.md
-      - Distance weighting: configuration/distance-weighting.md
+      - Station weighting: configuration/distance-weighting.md
       - Station corrections: configuration/station-corrections.md
       - Magnitudes: configuration/magnitudes.md
       - Event features: configuration/features.md
