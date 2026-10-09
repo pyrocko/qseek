@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pydantic import Field, PositiveFloat
@@ -12,7 +11,12 @@ from pyrocko.trace import _configure_downsampling
 from pyrocko.util import UnavailableDecimation, decimate_coeffs
 from scipy import signal
 
-from qseek.pre_processing.base import BatchPreProcessing, group_traces, traces_data
+from qseek.pre_processing.base import (
+    BatchPreProcessing,
+    group_traces,
+    split_traces,
+    traces_data,
+)
 from qseek.utils import to_threadpool
 
 if TYPE_CHECKING:
@@ -130,28 +134,20 @@ class Downsample(BatchPreProcessing):
         default=100.0,
         description="The new sampling frequency in Hz.",
     )
-    n_threads: int = Field(
-        default=8,
-        description="The number of threads to use for downsampling.",
-    )
-
-    _thread_pool: ThreadPoolExecutor
-
-    def model_post_init(self, context: Any):
-        self._thread_pool = ThreadPoolExecutor(max_workers=self.n_threads)
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         desired_delta_t = 1.0 / self.sampling_frequency
         traces = self.filter_traces(batch)
-        groups = [
-            list(trace_group)
+        chunks = [
+            chunk
             for (delta_t, _), trace_group in group_traces(traces)
             if desired_delta_t < delta_t
+            for chunk in split_traces(list(trace_group), self.n_threads)
         ]
         await asyncio.gather(
             *(
-                to_threadpool(self._thread_pool, downsample, group, desired_delta_t)
-                for group in groups
+                to_threadpool(self.thread_pool, downsample, chunk, desired_delta_t)
+                for chunk in chunks
             )
         )
         return batch
@@ -166,28 +162,20 @@ class Resample(BatchPreProcessing):
         default=100.0,
         description="The new sampling frequency in Hz.",
     )
-    n_threads: int = Field(
-        default=8,
-        description="The number of threads to use for resampling.",
-    )
-
-    _thread_pool: ThreadPoolExecutor
-
-    def model_post_init(self, context: Any):
-        self._thread_pool = ThreadPoolExecutor(max_workers=self.n_threads)
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
         new_delta_t = 1.0 / self.sampling_frequency
         traces = self.filter_traces(batch)
-        groups = [
-            list(trace_group)
+        chunks = [
+            chunk
             for (delta_t, _), trace_group in group_traces(traces)
             if delta_t != new_delta_t
+            for chunk in split_traces(list(trace_group), self.n_threads)
         ]
         await asyncio.gather(
             *(
-                to_threadpool(self._thread_pool, resample, group, new_delta_t)
-                for group in groups
+                to_threadpool(self.thread_pool, resample, chunk, new_delta_t)
+                for chunk in chunks
             )
         )
         return batch

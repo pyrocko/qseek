@@ -10,10 +10,18 @@ from numpy.typing import DTypeLike
 from pydantic import Field, PositiveFloat, field_validator
 from scipy import signal
 
-from qseek.pre_processing.base import BatchPreProcessing, group_traces, traces_data
-from qseek.utils import Range, RangeType
+from qseek.pre_processing.base import (
+    BatchPreProcessing,
+    group_traces,
+    split_traces,
+    traces_data,
+)
+from qseek.utils import Range, RangeType, to_threadpool
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from concurrent.futures import ThreadPoolExecutor
+
     from pyrocko.trace import Trace
 
     from qseek.waveforms.base import WaveformBatch
@@ -59,6 +67,23 @@ def _sos_filter(
     return traces
 
 
+async def _sos_filter_groups(
+    pool: ThreadPoolExecutor,
+    groups: Iterable[tuple[list[Trace], np.ndarray]],
+    n_chunks: int,
+    demean: bool,
+    zero_phase: bool,
+) -> None:
+    """Filter groups of traces with their SOS, in chunks on the thread pool."""
+    await asyncio.gather(
+        *(
+            to_threadpool(pool, _sos_filter, chunk, sos, demean, zero_phase)
+            for traces, sos in groups
+            for chunk in split_traces(traces, n_chunks)
+        )
+    )
+
+
 class Bandpass(BatchPreProcessing):
     """Bandpass filter waveform data."""
 
@@ -92,38 +117,38 @@ class Bandpass(BatchPreProcessing):
         return value
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
-        def worker() -> None:
-            traces = self.filter_traces(batch)
-            for (deltat, _), trace_group in group_traces(traces):
-                sampling_rate = 1.0 / deltat
-                if self.bandpass.end >= sampling_rate / 2:
-                    logger.debug(
-                        "Highpass frequency is higher than Nyquist frequency %s. "
-                        "No filtering is applied.",
-                        sampling_rate / 2,
-                    )
-                    continue
-                if self.bandpass.start >= sampling_rate / 2:
-                    logger.debug(
-                        "Lowpass frequency is higher than Nyquist frequency %s. "
-                        "No filtering is applied.",
-                        sampling_rate / 2,
-                    )
-                    continue
-                sos = butter_sos(
-                    N=self.corners,
-                    Wn=self.bandpass,
-                    btype="bandpass",
-                    fs=1.0 / deltat,
+        groups = []
+        for (deltat, _), trace_group in group_traces(self.filter_traces(batch)):
+            sampling_rate = 1.0 / deltat
+            if self.bandpass.end >= sampling_rate / 2:
+                logger.debug(
+                    "Highpass frequency is higher than Nyquist frequency %s. "
+                    "No filtering is applied.",
+                    sampling_rate / 2,
                 )
-                _sos_filter(
-                    list(trace_group),
-                    sos,
-                    demean=self.demean,
-                    zero_phase=self.zero_phase,
+                continue
+            if self.bandpass.start >= sampling_rate / 2:
+                logger.debug(
+                    "Lowpass frequency is higher than Nyquist frequency %s. "
+                    "No filtering is applied.",
+                    sampling_rate / 2,
                 )
+                continue
+            sos = butter_sos(
+                N=self.corners,
+                Wn=self.bandpass,
+                btype="bandpass",
+                fs=1.0 / deltat,
+            )
+            groups.append((list(trace_group), sos))
 
-        await asyncio.to_thread(worker)
+        await _sos_filter_groups(
+            self.thread_pool,
+            groups,
+            self.n_threads,
+            demean=self.demean,
+            zero_phase=self.zero_phase,
+        )
         return batch
 
 
@@ -146,26 +171,31 @@ class Highpass(BatchPreProcessing):
     )
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
-        def worker() -> None:
-            traces = self.filter_traces(batch)
-            for (deltat, _), trace_group in group_traces(traces):
-                sampling_rate = 1.0 / deltat
-                if self.frequency >= sampling_rate / 2:
-                    logger.debug(
-                        "Highpass frequency is higher than Nyquist frequency %s. "
-                        "No filtering is applied.",
-                        sampling_rate / 2,
-                    )
-                    continue
-                sos = butter_sos(
-                    N=self.corners,
-                    Wn=self.frequency,
-                    btype="highpass",
-                    fs=sampling_rate,
+        groups = []
+        for (deltat, _), trace_group in group_traces(self.filter_traces(batch)):
+            sampling_rate = 1.0 / deltat
+            if self.frequency >= sampling_rate / 2:
+                logger.debug(
+                    "Highpass frequency is higher than Nyquist frequency %s. "
+                    "No filtering is applied.",
+                    sampling_rate / 2,
                 )
-                _sos_filter(list(trace_group), sos, demean=self.demean, zero_phase=True)
+                continue
+            sos = butter_sos(
+                N=self.corners,
+                Wn=self.frequency,
+                btype="highpass",
+                fs=sampling_rate,
+            )
+            groups.append((list(trace_group), sos))
 
-        await asyncio.to_thread(worker)
+        await _sos_filter_groups(
+            self.thread_pool,
+            groups,
+            self.n_threads,
+            demean=self.demean,
+            zero_phase=True,
+        )
         return batch
 
 
@@ -188,24 +218,29 @@ class Lowpass(BatchPreProcessing):
     )
 
     async def process_batch(self, batch: WaveformBatch) -> WaveformBatch:
-        def worker() -> None:
-            traces = self.filter_traces(batch)
-            for (deltat, _), trace_group in group_traces(traces):
-                sampling_rate = 1.0 / deltat
-                if self.frequency >= sampling_rate / 2:
-                    logger.debug(
-                        "Lowpass frequency is higher than Nyquist frequency %s. "
-                        "No filtering is applied.",
-                        sampling_rate / 2,
-                    )
-                    continue
-                sos = butter_sos(
-                    N=self.corners,
-                    Wn=self.frequency,
-                    btype="lowpass",
-                    fs=sampling_rate,
+        groups = []
+        for (deltat, _), trace_group in group_traces(self.filter_traces(batch)):
+            sampling_rate = 1.0 / deltat
+            if self.frequency >= sampling_rate / 2:
+                logger.debug(
+                    "Lowpass frequency is higher than Nyquist frequency %s. "
+                    "No filtering is applied.",
+                    sampling_rate / 2,
                 )
-                _sos_filter(list(trace_group), sos, demean=self.demean, zero_phase=True)
+                continue
+            sos = butter_sos(
+                N=self.corners,
+                Wn=self.frequency,
+                btype="lowpass",
+                fs=sampling_rate,
+            )
+            groups.append((list(trace_group), sos))
 
-        await asyncio.to_thread(worker)
+        await _sos_filter_groups(
+            self.thread_pool,
+            groups,
+            self.n_threads,
+            demean=self.demean,
+            zero_phase=True,
+        )
         return batch
