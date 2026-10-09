@@ -12,6 +12,7 @@ import numpy as np
 from pyrocko.trace import Trace
 from scipy import signal
 
+from qseek.delay_sum import NodeStack
 from qseek.ext.delay_sum import delay_sum_reduce, delay_sum_snapshot
 from qseek.stats import Stats
 
@@ -33,16 +34,12 @@ STACK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qseek-sta
 
 class DelaySumReduce:
     traces: list[Trace]
-    nodes: list[Node]
+    nodes: dict[Node, NodeStack]
 
     _start_time: datetime
     _end_time: datetime
     _padding: timedelta
     _sampling_rate: float
-
-    _trace_offsets: np.ndarray
-    _trace_weights: np.ndarray
-    _node_shifts: np.ndarray
 
     _trace_data: list[np.ndarray]
     _padding_samples: int
@@ -53,7 +50,6 @@ class DelaySumReduce:
     _stack_max_idx: np.ndarray
 
     _node_idx: dict[bytes, int]
-    _stacked_nodes: np.ndarray
     _dirty: bool = True
 
     def __init__(
@@ -91,18 +87,13 @@ class DelaySumReduce:
         self._padding = padding
 
         self._sampling_rate = sr
-        self._node_shifts = np.empty((0, self.n_traces), dtype=np.int32)
-        self._trace_weights = np.empty((0, self.n_traces), dtype=np.float32)
-
         self._trace_data = [tr.ydata.astype(np.float32, copy=False) for tr in traces]
 
         self._stack_max = np.zeros(self._result_nsamples, dtype=np.float32)
         self._stack_max_idx = np.zeros(self._result_nsamples, dtype=np.int32)
 
         self._node_idx = {}
-        self._stacked_nodes = np.empty(0, dtype=bool)
-
-        self.nodes = []
+        self.nodes = {}
 
     @property
     def n_nodes(self) -> int:
@@ -119,10 +110,10 @@ class DelaySumReduce:
             )
 
     def remove_nodes(self, nodes: Sequence[Node]) -> None:
-        """Remove nodes from stack.
+        """Remove nodes from stacking.
 
         Args:
-            nodes (Sequence[Node]): Nodes to remove.
+            nodes (list[Node]): Nodes to remove.
 
         Raises:
             ValueError: If one or more nodes are not found.
@@ -136,18 +127,27 @@ class DelaySumReduce:
 
     def add_nodes(
         self,
-        nodes: list[Node],
+        nodes: Sequence[Node],
         traveltimes: np.ndarray,
         weights: np.ndarray,
     ) -> None:
-        n_new_nodes = len(nodes)
+        """Add nodes to the stack.
 
-        required_shape = (n_new_nodes, self.n_traces)
+        Args:
+            nodes (Sequence[Node]): Nodes to add.
+            traveltimes (np.ndarray): Travel times in seconds of shape
+                `(n_nodes, n_traces)`. NaNs are set to zero and their weights to zero.
+            weights (np.ndarray): Weights of shape `(n_nodes, n_traces)`, dtype
+                `np.float32`.
+
+        Raises:
+            ValueError: If the shapes or the dtype do not fit.
+        """
+        required_shape = (len(nodes), self.n_traces)
         if traveltimes.shape != required_shape:
             raise ValueError(f"Shifts shape must be {required_shape}.")
         if weights.shape != required_shape:
             raise ValueError(f"Weights shape must be {required_shape}.")
-
         if weights.dtype != np.float32:
             raise ValueError("Weights must be of dtype np.float32.")
 
@@ -157,18 +157,21 @@ class DelaySumReduce:
         weights[traveltime_mask] = 0.0
 
         shifts = np.round(-traveltimes * self._sampling_rate).astype(np.int32)
-        self._node_shifts = np.vstack((self._node_shifts, shifts))
-        self._trace_weights = np.vstack((self._trace_weights, weights))
-
-        self._stacked_nodes = np.concatenate(
-            (self._stacked_nodes, np.zeros(n_new_nodes, dtype=bool))
-        )
+        weights = np.ascontiguousarray(weights)
 
         n_nodes_old = len(self.nodes)
-        new_indices = {node.hash: n_nodes_old + i for i, node in enumerate(nodes)}
-        self._node_idx.update(new_indices)
-
-        self.nodes.extend(nodes)
+        self._node_idx.update(
+            {node.hash: n_nodes_old + i for i, node in enumerate(nodes)}
+        )
+        # The rows are contiguous views of the arrays
+        self.nodes.update(
+            {
+                node: NodeStack(shifts=node_shifts, weights=node_weights)
+                for node, node_shifts, node_weights in zip(
+                    nodes, shifts, weights, strict=True
+                )
+            }
+        )
         self._invalidate_state()
 
     async def stack(
@@ -179,17 +182,11 @@ class DelaySumReduce:
 
         Args:
             n_threads (int, optional): Number of threads to use. Defaults to 0.
-            nodes (list[Node] | None, optional): Nodes to include in stacking.
-                If None, all nodes are included. Defaults to None.
 
         Returns:
             tuple[np.ndarray, np.ndarray]: Unpadded stacked maximum values and
                 node indices.
         """
-        rq_shp = (self.n_nodes, self.n_traces)
-        if self._node_shifts.shape != rq_shp or self._trace_weights.shape != rq_shp:
-            raise ValueError(f"Shape of weights and shifts must be {rq_shp}.")
-
         (
             self._stack_max,
             self._stack_max_idx,
@@ -200,16 +197,15 @@ class DelaySumReduce:
                 delay_sum_reduce,
                 traces=self._trace_data,
                 offsets=self._trace_offsets,
-                shifts=self._node_shifts,
-                weights=self._trace_weights,
-                node_mask=self._stacked_nodes,
+                nodes=list(self.nodes.values()),
                 shift_range=(0, self._result_nsamples),
                 node_stack_max=self._stack_max,
                 node_stack_max_idx=self._stack_max_idx,
                 n_threads=n_threads,
             ),
         )
-        self._stacked_nodes[:] = True
+        # Stacked nodes are masked, only nodes added later are stacked next
+        self.nodes = {node: stack.mask() for node, stack in self.nodes.items()}
         self._dirty = False
 
         return self._stack_max, self._stack_max_idx
@@ -267,18 +263,23 @@ class DelaySumReduce:
         Returns:
             np.ndarray: Snapshot of the delay-sum at the given sample index.
         """
-        mask_nodes = None
         if leaf_only:
+            # The stacked nodes are masked, the snapshot masks the nodes with children
             mask_nodes = np.array([bool(n.children) for n in self.nodes], dtype=bool)
+            nodes = [
+                stack.mask(bool(masked))
+                for stack, masked in zip(self.nodes.values(), mask_nodes, strict=True)
+            ]
+        else:
+            mask_nodes = None
+            nodes = [stack.mask(False) for stack in self.nodes.values()]
 
         snapshot = delay_sum_snapshot(
             traces=self._trace_data,
             offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
+            nodes=nodes,
             index=sample + self._padding_samples,
             shift_range=(0, self._result_nsamples),
-            node_mask=mask_nodes,
         )
         return snapshot[~mask_nodes] if mask_nodes is not None else snapshot
 

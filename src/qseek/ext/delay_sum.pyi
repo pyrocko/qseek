@@ -1,11 +1,11 @@
 import numpy as np
 
+from qseek.delay_sum import NodeStack
+
 def delay_sum(
     traces: list[np.ndarray],
     offsets: np.ndarray,
-    shifts: np.ndarray,
-    weights: np.ndarray,
-    node_mask: np.ndarray | None = None,
+    nodes: list[NodeStack],
     stack: np.ndarray | None = None,
     shift_range: tuple[int, int] | None = None,
     n_threads: int = 1,
@@ -18,14 +18,10 @@ def delay_sum(
     Args:
         traces (list[np.ndarray]): List of seismic traces as numpy arrays
             of type `np.float32`.
-        offsets (np.ndarray): Static offsets of seismic traces in samples for each node.
-            Shape is `(n_nodes, n_traces)`, dtype is `int`.
-        shifts (np.ndarray): Shifts of seismic traces in samples for each node. Shape is
-            `(n_nodes, n_traces)`, dtype is `int`.
-        weights (np.ndarray): Weights of seismic traces for each node. Shape is
-            `(n_nodes, n_traces)`, dtype is `float32`.
-        node_mask (np.ndarray | None, optional): Node mask to disable nodes of
-            size `n_nodes`, dtype is bool. Defaults to `None`.
+        offsets (np.ndarray): Static offsets of the seismic traces in samples.
+            Shape is `(n_traces,)`, dtype is `np.int32`.
+        nodes (list[NodeStack]): List of NodeStack namedtuples containing shifts,
+            weights and mask for each node.
         stack (np.ndarray | None, optional): The resulting stack array of size
         `n_nodes, n_samples`, dtype is `np.float32`. If `None` a new array will
             be created of size `(n_nodes, n_samples)`. Defaults to `None`.
@@ -42,9 +38,7 @@ def delay_sum(
 def delay_sum_reduce(
     traces: list[np.ndarray],
     offsets: np.ndarray,
-    shifts: np.ndarray,
-    weights: np.ndarray,
-    node_mask: np.ndarray | None = None,
+    nodes: list[NodeStack],
     shift_range: tuple[int, int] | None = None,
     node_stack_max: np.ndarray | None = None,
     node_stack_max_idx: np.ndarray | None = None,
@@ -60,14 +54,10 @@ def delay_sum_reduce(
     Args:
         traces (list[np.ndarray]): List of seismic traces as numpy arrays
             of type `np.float32`.
-        offsets (np.ndarray): Static offsets of seismic traces in samples for each node.
-            Shape is `(n_nodes, n_traces)`, dtype is `int`.
-        shifts (np.ndarray): Shifts of seismic traces in samples for each node. Shape is
-            `(n_nodes, n_traces)`, dtype is `int`.
-        weights (np.ndarray): Weights of seismic traces for each node. Shape is
-            `(n_nodes, n_traces)`, dtype is `float32`.
-        node_mask (np.ndarray | None, optional): Node mask to disable nodes of
-            size `n_nodes`, dtype is bool. Defaults to `None`.
+        offsets (np.ndarray): Static offsets of the seismic traces in samples.
+            Shape is `(n_traces,)`, dtype is `np.int32`.
+        nodes (list[NodeStack]): List of NodeStack namedtuples containing shifts,
+            weights and mask for each node.
         shift_range (tuple[int, int] | None, optional): Stack range of shifts in
             samples. If `None`, the full range of shifts will be used.
             Defaults to `None`.
@@ -88,11 +78,9 @@ def delay_sum_reduce(
 def delay_sum_snapshot(
     traces: list[np.ndarray],
     offsets: np.ndarray,
-    shifts: np.ndarray,
-    weights: np.ndarray,
+    nodes: list[NodeStack],
     index: int,
     shift_range: tuple[int, int] | None = None,
-    node_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Snapshot of delay and sum in time at a specified sample index.
 
@@ -102,18 +90,14 @@ def delay_sum_snapshot(
     Args:
         traces (list[np.ndarray]): List of seismic traces as numpy arrays
             of type `np.float32`.
-        offsets (np.ndarray): Static offsets of seismic traces in samples for each node.
-            Shape is `(n_nodes, n_traces)`, dtype is `int`.
-        shifts (np.ndarray): Shifts of seismic traces in samples for each node. Shape is
-            `(n_nodes, n_traces)`, dtype is `int`.
-        weights (np.ndarray): Weights of seismic traces for each node. Shape is
-            `(n_nodes, n_traces)`, dtype is `float32`.
+        offsets (np.ndarray): Static offsets of the seismic traces in samples.
+            Shape is `(n_traces,)`, dtype is `np.int32`.
+        nodes (list[NodeStack]): List of NodeStack namedtuples containing shifts,
+            weights and mask for each node.
         index (int): Sample index to make the snapshot at.
         shift_range (tuple[int, int] | None, optional): Stack range of shifts in
             samples. If `None`, the full range of shifts will be used.
             Defaults to `None`.
-        node_mask (np.ndarray | None, optional): Node mask to disable nodes of
-            size `n_nodes`, dtype is bool. Defaults to `None`.
 
     Returns:
         np.ndarray: Snapshot of the delay-sum at the given sample index of size
