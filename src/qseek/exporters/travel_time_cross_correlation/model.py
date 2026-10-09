@@ -8,7 +8,7 @@ from pyrocko.trace import Trace
 
 from qseek.models.detection import EventDetection
 from qseek.pre_processing.resample import resample
-from qseek.utils import _NSL, NSL
+from qseek.utils import NSL, NSLType
 
 
 def _correlation_matrix(
@@ -92,7 +92,7 @@ class EventCorrelationPair(BaseModel):
     event_a: EventDetection
     event_b: EventDetection
 
-    stations: list[NSL]
+    stations: list[NSLType]
     phase: str
 
     _cc_values: np.ndarray = PrivateAttr()
@@ -126,8 +126,8 @@ class EventCorrelationPair(BaseModel):
         Returns:
             EventCorrelationPair: The cross-correlation results for the two events.
         """
-        traces_a_by_nsl = {_NSL.parse(tr.nslc_id[:3]): tr for tr in traces_a}
-        traces_b_by_nsl = {_NSL.parse(tr.nslc_id[:3]): tr for tr in traces_b}
+        traces_a_by_nsl = {NSL.parse(tr.nslc_id[:3]): tr for tr in traces_a}
+        traces_b_by_nsl = {NSL.parse(tr.nslc_id[:3]): tr for tr in traces_b}
         common_stations = sorted(set(traces_a_by_nsl) & set(traces_b_by_nsl))
         n_stations = len(common_stations)
 
