@@ -49,6 +49,9 @@ dependencies = [
     "sdnotify>=0.3.0",
     "fudgeo>=1.5",
     "scikit-learn>=1.9",
+    "mojo>=1.1,<1.2",
+    # The Mojo runtime behind `max.algorithm.parallelize`
+    "max-core>=26.6,<26.7",
 ]
 
 classifiers = [
@@ -101,6 +104,11 @@ qseek-inversion = "qseek_inversion.app.qseek_inversion:main"
 [tool.setuptools.packages.find]
 where = ["src/"]
 include = ["qseek*"]
+
+[tool.setuptools.package-data]
+# Mojo sources are compiled on demand by the `mojo.importer` hook, so they
+# must ship as source rather than as a prebuilt extension.
+"qseek.ext_mojo" = ["*.mojo", "*.pyi"]
 
 [project.urls]
 Documentation = "https://pyrocko.github.io/qseek/"
@@ -162,8 +170,12 @@ addopts = "--cov=qseek --cov-report html --benchmark-disable"
 
 [tool.cibuildwheel]
 build = ["cp312-*", "cp313-*", "cp314-*"]
-# PyTorch, required by SeisBench, has no Intel macOS wheels for Python 3.13+
-skip = ["*-musllinux_*", "cp313-macosx_x86_64", "cp314-macosx_x86_64"]
+# Mojo has no Intel macOS wheels, and PyTorch, required by SeisBench, none for
+# Python 3.13+ on Intel macOS
+skip = ["*-musllinux_*", "*-macosx_x86_64"]
+# The Mojo wheels for Linux are tagged manylinux_2_34
+manylinux-x86_64-image = "manylinux_2_34"
+manylinux-aarch64-image = "manylinux_2_34"
 build-frontend = "build[uv]"
 test-requires = ["pytest", "pytest-asyncio", "pytest-benchmark"]
 # Test the C extensions of the installed wheel
