@@ -48,7 +48,6 @@ from qseek.utils import (
     BackgroundTasks,
     CpuCount,
     PhaseDescription,
-    _get_cpu_count,
     datetime_now,
     get_total_memory,
     human_readable_bytes,

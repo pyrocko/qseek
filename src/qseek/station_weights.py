@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 KM = 1e3
 
 
-def _get_interstation_distances(locations: Sequence[Location]) -> np.array:
+def _get_interstation_distances(locations: Sequence[Location]) -> np.ndarray:
     """Calculate interstation distances.
 
     Args:
