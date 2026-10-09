@@ -8,8 +8,8 @@ import pytest
 from pyrocko import parstack as pyrocko_parstack
 from pytest import fixture
 
-from qseek import delay_sum
-from qseek.ext import array_tools
+from qseek.delay_sum import NodeStack
+from qseek.ext import array_tools, delay_sum
 
 N_THREADS_TEST = [1, 2, 4]  # GHA Runners have 4 cores
 ROUNDS = 4
@@ -39,9 +39,9 @@ def data():
     return get_data(n_traces=100)
 
 
-def get_nodes(shifts, weights) -> list[delay_sum.NodeStack]:
+def get_nodes(shifts, weights) -> list[NodeStack]:
     return [
-        delay_sum.NodeStack(
+        NodeStack(
             shifts=shift,
             weights=weight,
         )
