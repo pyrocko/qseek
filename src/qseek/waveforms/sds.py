@@ -10,13 +10,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from itertools import chain
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import (
     Field,
     PositiveInt,
     PrivateAttr,
     computed_field,
+    field_validator,
     model_validator,
 )
 from pyrocko import obspy_compat
@@ -193,9 +194,10 @@ class SDSArchive(WaveformProvider):
 
     provider: Literal["SDSArchive"] = "SDSArchive"
 
-    archive: DirectoryPath = Field(
-        default=Path.cwd() / "sds-archive",
-        description="Path to the root of the SDS archive.",
+    archives: list[DirectoryPath] = Field(
+        default=[Path.cwd() / "sds-archive"],
+        min_length=1,
+        description="Paths to the roots of the SDS archives.",
     )
 
     start_time: DateTime | None = Field(
@@ -243,26 +245,37 @@ class SDSArchive(WaveformProvider):
             raise ValueError("start_time must be before end_time")
         return self
 
-    def scan_sds_archive(self) -> None:
-        logger.info("scanning SDS archive at %s", self.archive)
+    @field_validator("archives", mode="before")
+    @classmethod
+    def _validate_archives(cls, v: Any) -> Any:
+        if isinstance(v, (str, Path)):
+            return [v]
+        return v
+
+    def scan_sds_archive(self, archive: Path) -> int:
+        """Add the station coverage of one SDS archive.
+
+        Returns:
+            int: Number of files found in the time span.
+        """
+        logger.info("scanning SDS archive at %s", archive)
 
         if self.start_time:
             end_year = self.end_time.year if self.end_time else datetime_now().year
             years = range(self.start_time.year, end_year + 1)
             sds_iter = chain(
                 *(
-                    self.archive.glob(f"{year}/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
+                    archive.glob(f"{year}/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
                     for year in years
                 )
             )
         else:
-            sds_iter = self.archive.glob(f"**/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
+            sds_iter = archive.glob(f"**/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
 
         n_files = 0
-        start = datetime_now()
         with get_progress() as progress:
             status = progress.add_task(
-                f"Scanning SDS archive at [bold]{self.archive}[/bold]",
+                f"Scanning SDS archive at [bold]{archive}[/bold]",
                 total=None,
             )
             for file in sds_iter:
@@ -291,14 +304,24 @@ class SDSArchive(WaveformProvider):
 
             progress.remove_task(status)
 
+        if n_files == 0:
+            logger.warning("no files found in SDS archive at %s", archive)
+        return n_files
+
+    def scan_sds_archives(self) -> None:
+        """Scan all SDS archives, at least one has to hold files."""
+        start = datetime_now()
+        n_files = sum(self.scan_sds_archive(archive) for archive in self.archives)
+        if n_files == 0:
+            archives = ", ".join(str(archive) for archive in self.archives)
+            raise EnvironmentError(f"No files found in SDS archives at {archives}")
+
         self._archive_stations = {
             nsl: self._archive_stations[nsl] for nsl in sorted(self._archive_stations)
         }
-
-        if n_files == 0:
-            raise EnvironmentError(f"No files found in SDS archive at {self.archive}")
         logger.info(
-            "scanned SDS archive in %s, found %s in %d files",
+            "scanned %d SDS archives in %s, found %s in %d files",
+            len(self.archives),
             datetime_now() - start,
             human_readable_bytes(self._stats.n_bytes_scanned),
             n_files,
@@ -307,7 +330,7 @@ class SDSArchive(WaveformProvider):
     async def prepare(self, stations: StationInventory):
         obspy_compat.plant()
 
-        self.scan_sds_archive()
+        self.scan_sds_archives()
 
         archive_start, archive_end = self.available_time_span()
         logger.info(
@@ -356,17 +379,21 @@ class SDSArchive(WaveformProvider):
         channel_orientations: str = "ENZ0123",
     ) -> set[Path]:
         julian_day = date.timetuple().tm_yday
-        base_path = os.path.join(self.archive, str(date.year), nsl.network, nsl.station)
-        try:
-            with os.scandir(base_path) as entries:
-                folders = sorted(
-                    (entry for entry in entries if entry.is_dir()),
-                    key=lambda entry: entry.name,
-                )
-        except (FileNotFoundError, NotADirectoryError):
+        folders: list[os.DirEntry[str]] = []
+        for archive in self.archives:
+            base_path = os.path.join(archive, str(date.year), nsl.network, nsl.station)
+            try:
+                with os.scandir(base_path) as entries:
+                    folders.extend(entry for entry in entries if entry.is_dir())
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+        if not folders:
             return set()
 
-        available_files: dict[str, Path] = {}
+        folders = sorted(folders, key=lambda entry: entry.name)
+
+        # A channel of a day can be split over several archives
+        available_files: dict[str, list[Path]] = {}
         for folder in folders:
             channel = folder.name.removesuffix(".D")
             band = channel[0]
@@ -387,7 +414,7 @@ class SDSArchive(WaveformProvider):
                 file = os.path.join(folder.path, f"{prefix}.{julian_day}")
                 if not os.path.exists(file):
                     continue
-            available_files[channel] = Path(file)
+            available_files.setdefault(channel, []).append(Path(file))
 
         if channel_selector:
             sorting = sorted(
@@ -404,7 +431,7 @@ class SDSArchive(WaveformProvider):
                     available_files.pop(channel)
                 seen_orientations.add(cha_orientation)
 
-        return set(available_files.values())
+        return set(chain.from_iterable(available_files.values()))
 
     def _get_file_paths(
         self,
@@ -629,21 +656,22 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Test SDSArchive waveform provider.")
     parser.add_argument(
-        "path",
+        "paths",
         type=Path,
-        help="Path to the root of the SDS archive.",
+        nargs="+",
+        help="Paths to the roots of the SDS archives.",
     )
     args = parser.parse_args()
 
     setup_rich_logging(logging.DEBUG)
 
     sds = SDSArchive(
-        archive=args.path,
+        archives=args.paths,
         n_threads=16,
     )
 
     async def print_archive_stats():
-        sds.scan_sds_archive()
+        sds.scan_sds_archives()
         archive_start, archive_end = sds.available_time_span()
         logger.info(
             "SDS archive time span: %s to %s",

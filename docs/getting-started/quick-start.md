@@ -93,7 +93,7 @@ Write the search configuration:
   },
   "data_provider": {
     "provider": "SDSArchive",
-    "archive": "sds/"
+    "archives": ["sds/"]
   },
   "octree": {
     "location": {"lat": 40.827, "lon": 14.139},

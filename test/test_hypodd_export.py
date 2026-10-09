@@ -296,7 +296,7 @@ def synthetic_rundir(
     archive.mkdir()
     search = Search(
         project_dir=rundir.parent,
-        data_provider=SDSArchive(archive=archive),
+        data_provider=SDSArchive(archives=[archive]),
         stations=StationInventory(stations=stations),
         octree=Octree(
             location=reference,

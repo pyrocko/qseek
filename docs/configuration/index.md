@@ -24,7 +24,7 @@ This configuration reads waveforms from an SDS archive, annotates phases with Ph
   },
   "data_provider": {
     "provider": "SDSArchive",
-    "archive": "data/sds"
+    "archives": ["data/sds"]
   },
   "octree": {
     "location": {
