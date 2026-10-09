@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -81,8 +82,8 @@ def sds_archive(tmp_path: Path) -> Path:
 @pytest.mark.parametrize("n_threads", [0, 2])
 async def test_get_traces(sds_archive: Path, n_threads: int) -> None:
     """The files of a window are read and complete traces are kept."""
-    archive = SDSArchive(archive=sds_archive)
-    archive.scan_sds_archive()
+    archive = SDSArchive(archives=[sds_archive])
+    archive.scan_sds_archives()
     # As prepare() does, without an executor the default one of asyncio is used
     if n_threads:
         archive._executor = ThreadPoolExecutor(max_workers=n_threads)
@@ -122,8 +123,8 @@ async def test_get_traces(sds_archive: Path, n_threads: int) -> None:
 
 
 def archive_with_executor(path: Path) -> SDSArchive:
-    archive = SDSArchive(archive=path)
-    archive.scan_sds_archive()
+    archive = SDSArchive(archives=[path])
+    archive.scan_sds_archives()
     archive._executor = ThreadPoolExecutor(max_workers=2)
     return archive
 
@@ -203,3 +204,82 @@ def test_station_coverage() -> None:
     assert sta.file_dates == [date(2024, 5, 20)]
     assert stb.start_date == date(2024, 5, 21)
     assert not hasattr(sta, "__dict__")
+
+
+@pytest.mark.asyncio
+async def test_multiple_archives(sds_archive: Path, tmp_path_factory) -> None:
+    """Stations, days and parts of a day are combined from all archives."""
+    other = tmp_path_factory.mktemp("other")
+    (other / "2024" / "XX").mkdir(parents=True)
+    shutil.move(sds_archive / "2024" / "XX" / "STB", other / "2024" / "XX" / "STB")
+
+    # The day before, and the following day split over both archives
+    day_before = DAY_START - timedelta(days=1)
+    day_after = DAY_START + timedelta(days=1)
+    for archive, tmin in (
+        (other, day_before),
+        (sds_archive, day_after),
+        (other, day_after + timedelta(minutes=10)),
+    ):
+        trace = Trace(
+            "XX",
+            "STA",
+            "",
+            "HHZ",
+            tmin=tmin.timestamp(),
+            deltat=0.01,
+            ydata=np.arange(60000, dtype=np.int32),
+        )
+        folder = archive / "2024" / "XX" / "STA" / "HHZ.D"
+        folder.mkdir(parents=True, exist_ok=True)
+        jday = tmin.timetuple().tm_yday
+        save([trace], str(folder / f"XX.STA..HHZ.D.2024.{jday:03d}"))
+
+    archive = SDSArchive(archives=[sds_archive, other])
+    archive.scan_sds_archives()
+    archive._executor = ThreadPoolExecutor(max_workers=2)
+    nsls = sorted(archive.available_nsls())
+    assert nsls == [NSL("XX", "STA", ""), NSL("XX", "STB", "")]
+    assert archive.available_time_span() == (
+        day_before,
+        day_after + timedelta(days=1),
+    )
+
+    start = DAY_START + timedelta(minutes=10)
+    traces = await archive.get_traces(nsls, start, start + timedelta(minutes=7))
+    assert len(traces) == 6
+
+    start = day_before + timedelta(minutes=1)
+    traces = await archive.get_traces(nsls, start, start + timedelta(minutes=2))
+    assert [tr.nslc_id for tr in traces] == [("XX", "STA", "", "HHZ")]
+
+    traces = await archive.get_traces(
+        nsls, day_after, day_after + timedelta(minutes=20), want_incomplete=True
+    )
+    assert [(tr.tmin, tr.tmax) for tr in traces] == [
+        (day_after.timestamp(), (day_after + timedelta(minutes=20)).timestamp() - 0.01)
+    ]
+
+
+def test_empty_archive(sds_archive: Path, tmp_path_factory) -> None:
+    """An empty archive is skipped, scanning fails when all are empty."""
+    empty = tmp_path_factory.mktemp("empty")
+    archive = SDSArchive(archives=[sds_archive, empty])
+    archive.scan_sds_archives()
+    assert archive.n_stations == 2
+
+    archive = SDSArchive(archives=[empty])
+    with pytest.raises(EnvironmentError, match="No files found"):
+        archive.scan_sds_archives()
+
+
+def test_archives_config(sds_archive: Path) -> None:
+    """A single path and the `archive` of older configurations are accepted."""
+    for config in (
+        {"archives": [str(sds_archive)]},
+        {"archives": str(sds_archive)},
+        {"archive": str(sds_archive)},
+    ):
+        archive = SDSArchive.model_validate(config)
+        assert archive.archives == [sds_archive]
+        assert archive.model_dump()["archives"] == [sds_archive]
