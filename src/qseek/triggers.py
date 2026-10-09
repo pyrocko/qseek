@@ -29,6 +29,7 @@ class Trigger(Model):
 
     blinding: timedelta = Field(
         default=timedelta(seconds=1.0),
+        ge=timedelta(0),
         description="Minimum time between two detections. Peaks of the detection"
         " function closer than this count as one detection. Prevents detecting the"
         " same event twice.",

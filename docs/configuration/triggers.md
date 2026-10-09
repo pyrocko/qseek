@@ -24,7 +24,7 @@ We recommend an adaptive trigger. On one day of the 2024 Campi Flegrei swarm (18
 | `MADTrigger`, `mad_factor` 10 | 732 | 521 | 12 | 45 / 45 |
 | `ModZScoreTrigger`, `z_score` 6 | 732 | 524 | 12 | 45 / 45 |
 
-Both adaptive triggers find all detections of the fixed threshold, at the same locations, and about 200 more with at least 8 picks. The fixed threshold of 0.3 misses weak events in quiet windows, where the adaptive thresholds are six to ten times lower. On this data set, `z_score` 6 gives nearly the same detections as `mad_factor` 10: the noise floor of the detection function is low, about 0.01.
+Both adaptive triggers find all detections of the fixed threshold, at the same locations, and about 200 more with at least 8 picks. The fixed threshold of 0.3 misses weak events in quiet windows, where the adaptive thresholds are six to ten times lower. On this data set, `z_score` 6 gives nearly the same detections as `mad_factor` 10: the noise floor of the detection function is low, about 0.01. The default `z_score` 7 is slightly stricter, with 642 detections.
 
 !!! tip
     The median absolute deviation rises with the seismicity rate: during a swarm, the events themselves raise the threshold of their window. Lower `mad_factor` or `z_score` to detect more events in busy windows. On Campi Flegrei, `mad_factor` 8 to 12 does not change the number of detections in windows with a threshold below 0.05.
@@ -58,6 +58,9 @@ $$
 
 A detection needs a height of at least the median plus `z_score` scaled MADs, and a prominence of at least `z_score` scaled MADs, 7 by default. Unlike the `MADTrigger`, the threshold rises with the noise floor of the detection function.
 
+!!! abstract "Citation"
+    Iglewicz, B., and Hoaglin, D. C. (1993). *How to Detect and Handle Outliers*. ASQC Quality Press, Milwaukee.
+
 ```python exec='on'
 from qseek.utils import json_example
 from qseek.triggers import ModZScoreTrigger
@@ -75,7 +78,7 @@ print(json_example(ModZScoreTrigger()))
 
 ## Fixed threshold
 
-The same minimum semblance in all windows, for height and prominence. Set it from the semblance of the events you want to detect: the `semblance` column of `csv/detections.csv` of a first run shows it.
+`ThresholdTrigger` applies the same minimum semblance to all windows, for height and prominence. Set it from the semblance of the events you want to detect: the `semblance` column of `csv/detections.csv` of a first run shows it.
 
 ```python exec='on'
 from qseek.utils import json_example

@@ -61,6 +61,11 @@ async def test_trigger_padding() -> None:
     np.testing.assert_array_equal(idx, [50, 1500])
     np.testing.assert_allclose(values, [0.5, 0.6])
 
+    # A peak at the last sample of the window keeps its prominence from the padding
+    data = detection_function({1799: 0.5}) + 0.25
+    idx, _ = await trigger.detect(data, sampling_rate=SAMPLING_RATE, padding=padding)
+    np.testing.assert_array_equal(idx, [1599])
+
     with pytest.raises(ValueError, match="padding"):
         await trigger.detect(data, sampling_rate=SAMPLING_RATE, padding=-1)
 
@@ -68,22 +73,26 @@ async def test_trigger_padding() -> None:
 @pytest.mark.asyncio
 async def test_mad_trigger() -> None:
     rng = np.random.default_rng(42)
-    padding = 200
+    padding = 1000
     data = rng.uniform(0.0, 0.05, size=3000).astype(np.float32)
-    # High noise in the padding does not raise the threshold
-    data[:padding] += 1.0
-    data[1000] = 2.0
+    # Noise in the padding does not raise the threshold
+    data[:padding] += rng.uniform(0.0, 1.0, size=padding).astype(np.float32)
+    data[-padding:] += rng.uniform(0.0, 1.0, size=padding).astype(np.float32)
+    data[1500] = 3.0
+    data[1800] = 0.4
 
     trigger = MADTrigger(mad_factor=10.0)
     window = data[padding:-padding]
     threshold = stats.median_abs_deviation(window) * 10.0
     assert trigger.get_threshold(window) == pytest.approx((threshold, threshold))
+    threshold_padded, _ = trigger.get_threshold(data)
+    assert threshold < 0.4 < threshold_padded
 
     idx, values = await trigger.detect(
         data, sampling_rate=SAMPLING_RATE, padding=padding
     )
-    np.testing.assert_array_equal(idx, [1000 - padding])
-    np.testing.assert_allclose(values, [2.0])
+    np.testing.assert_array_equal(idx, [500, 800])
+    np.testing.assert_allclose(values, [3.0, 0.4])
 
 
 @pytest.mark.asyncio
@@ -111,6 +120,11 @@ async def test_mod_z_score_trigger() -> None:
     assert mad_height < np.median(window)
 
 
+def test_trigger_blinding_not_negative() -> None:
+    with pytest.raises(ValidationError):
+        MADTrigger(blinding=timedelta(seconds=-1))
+
+
 def test_search_trigger() -> None:
     assert isinstance(Search().trigger, MADTrigger)
 
@@ -135,6 +149,13 @@ def test_search_migrate_detection_threshold() -> None:
 
     search = Search.model_validate({"detection_blinding": "PT0.5S"})
     assert search.trigger == MADTrigger(blinding=timedelta(seconds=0.5))
+
+    search = Search.model_validate_json(
+        '{"detection_threshold": 0.5, "detection_blinding": 2.0}'
+    )
+    assert search.trigger == ThresholdTrigger(
+        threshold=0.5, blinding=timedelta(seconds=2)
+    )
 
     with pytest.raises(ValidationError, match="cannot be combined with trigger"):
         Search.model_validate(
