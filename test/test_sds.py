@@ -274,11 +274,10 @@ def test_empty_archive(sds_archive: Path, tmp_path_factory) -> None:
 
 
 def test_archives_config(sds_archive: Path) -> None:
-    """A single path and the `archive` of older configurations are accepted."""
+    """A list of paths and a single path are accepted."""
     for config in (
         {"archives": [str(sds_archive)]},
         {"archives": str(sds_archive)},
-        {"archive": str(sds_archive)},
     ):
         archive = SDSArchive.model_validate(config)
         assert archive.archives == [sds_archive]

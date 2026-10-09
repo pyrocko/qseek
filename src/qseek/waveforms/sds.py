@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import (
-    AliasChoices,
     Field,
     PositiveInt,
     PrivateAttr,
@@ -198,8 +197,6 @@ class SDSArchive(WaveformProvider):
     archives: list[DirectoryPath] = Field(
         default=[Path.cwd() / "sds-archive"],
         min_length=1,
-        # `archive` is the single path of older configurations
-        validation_alias=AliasChoices("archives", "archive"),
         description="Paths to the roots of the SDS archives.",
     )
 
@@ -276,7 +273,6 @@ class SDSArchive(WaveformProvider):
             sds_iter = archive.glob(f"**/{NETWORK}/{STATION}/{CHANNEL}/*.{JDAY}")
 
         n_files = 0
-        start = datetime_now()
         with get_progress() as progress:
             status = progress.add_task(
                 f"Scanning SDS archive at [bold]{archive}[/bold]",
@@ -308,29 +304,25 @@ class SDSArchive(WaveformProvider):
 
             progress.remove_task(status)
 
-        self._archive_stations = {
-            nsl: self._archive_stations[nsl] for nsl in sorted(self._archive_stations)
-        }
-
         if n_files == 0:
             logger.warning("no files found in SDS archive at %s", archive)
-        else:
-            logger.info(
-                "scanned SDS archive at %s in %s, found %d files",
-                archive,
-                datetime_now() - start,
-                n_files,
-            )
         return n_files
 
     def scan_sds_archives(self) -> None:
         """Scan all SDS archives, at least one has to hold files."""
+        start = datetime_now()
         n_files = sum(self.scan_sds_archive(archive) for archive in self.archives)
         if n_files == 0:
             archives = ", ".join(str(archive) for archive in self.archives)
             raise EnvironmentError(f"No files found in SDS archives at {archives}")
+
+        self._archive_stations = {
+            nsl: self._archive_stations[nsl] for nsl in sorted(self._archive_stations)
+        }
         logger.info(
-            "found %s in %d files in SDS archives",
+            "scanned %d SDS archives in %s, found %s in %d files",
+            len(self.archives),
+            datetime_now() - start,
             human_readable_bytes(self._stats.n_bytes_scanned),
             n_files,
         )
