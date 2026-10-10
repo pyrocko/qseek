@@ -94,3 +94,27 @@ print(json_example(ModZScoreTrigger()))
       heading_level: 3
 
 </div>
+
+## Limit the adaptive threshold
+
+`threshold_range` clips the thresholds of the adaptive triggers to `[min, max]` semblance in every window. The minimum keeps noise peaks out of quiet windows, and windows where the detection function is flat: there the MAD is close to zero, and so is the threshold. The maximum keeps a busy window from raising its own threshold during a swarm.
+
+```json title="MAD trigger with a threshold between 0.05 and 0.12"
+"trigger": {
+  "trigger": "MADTrigger",
+  "mad_factor": 10.0,
+  "threshold_range": [0.05, 0.12]
+}
+```
+
+On the Campi Flegrei day, with `mad_factor` 10:
+
+| `threshold_range` | Detections | With ≥ 8 picks | Lost | New |
+| --- | --- | --- | --- | --- |
+| none | 732 | 521 | | |
+| `[0, 0.08]` | 876 | 595 | 0 | 74 |
+| `[0, 0.12]` | 786 | 556 | 0 | 35 |
+| `[0.05, 10]` | 705 | 521 | 0 | 0 |
+| `[0.05, 0.12]` | 759 | 556 | 0 | 35 |
+
+Lost and new count the detections with at least 8 picks, against no range. The maximum adds well-constrained detections in busy windows without losing any. The minimum of 0.05 removes 27 detections, all with fewer than 8 picks.

@@ -120,6 +120,43 @@ async def test_mod_z_score_trigger() -> None:
     assert mad_height < np.median(window)
 
 
+@pytest.mark.asyncio
+async def test_threshold_range() -> None:
+    # Flat window with small wiggles: the MAD is 0, every local maximum triggers
+    data = detection_function({500: 0.2})
+    data[100::50] += 0.001
+    idx, _ = await MADTrigger().detect(data, sampling_rate=SAMPLING_RATE)
+    assert idx.size > 1
+
+    for trigger in (
+        MADTrigger(threshold_range=(0.05, 1.0)),
+        ModZScoreTrigger(threshold_range=(0.05, 1.0)),
+    ):
+        assert trigger.get_threshold(data) == pytest.approx((0.05, 0.05))
+        idx, _ = await trigger.detect(data, sampling_rate=SAMPLING_RATE)
+        np.testing.assert_array_equal(idx, [500])
+
+    # Busy window: the events raise the MAD above the weaker event
+    rng = np.random.default_rng(42)
+    data = rng.uniform(0.0, 0.5, size=2000).astype(np.float32)
+    data[1000] = 1.0
+    threshold, _ = MADTrigger().get_threshold(data)
+    assert threshold > 1.0
+
+    for trigger in (
+        MADTrigger(threshold_range=(0.0, 0.2)),
+        ModZScoreTrigger(threshold_range=(0.0, 0.2)),
+    ):
+        height, prominence = trigger.get_threshold(data)
+        assert height <= 0.2
+        assert prominence <= 0.2
+        idx, _ = await trigger.detect(data, sampling_rate=SAMPLING_RATE)
+        assert 1000 in idx
+
+    with pytest.raises(ValidationError):
+        MADTrigger.model_validate({"threshold_range": [0.2, 0.1]})
+
+
 def test_trigger_blinding_not_negative() -> None:
     with pytest.raises(ValidationError):
         MADTrigger(blinding=timedelta(seconds=-1))

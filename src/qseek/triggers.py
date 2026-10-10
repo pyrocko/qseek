@@ -12,8 +12,25 @@ from pydantic import Field, PositiveFloat
 from scipy import signal, stats
 
 from qseek.base import Model
+from qseek.utils import RangeType
 
 logger = logging.getLogger(__name__)
+
+THRESHOLD_RANGE_DESCRIPTION = (
+    "Range of the threshold as `[min, max]` semblance. The adaptive thresholds, height"
+    " and prominence, are clipped to it: the minimum keeps noise peaks out of quiet or"
+    " flat windows, the maximum keeps busy windows, e.g. during a swarm, from raising"
+    " their own threshold. If `null`, the thresholds are not clipped."
+)
+
+
+def _clip(
+    height: float, prominence: float, threshold_range: RangeType | None
+) -> tuple[float, float]:
+    if threshold_range is None:
+        return height, prominence
+    low, high = threshold_range
+    return min(max(height, low), high), min(max(prominence, low), high)
 
 
 class Trigger(Model):
@@ -109,6 +126,10 @@ class MADTrigger(Trigger):
         description="The threshold is this factor times the median absolute deviation"
         " (MAD) of the detection function in each processed window.",
     )
+    threshold_range: RangeType | None = Field(
+        default=None,
+        description=THRESHOLD_RANGE_DESCRIPTION,
+    )
 
     def get_threshold(self, detection_function: np.ndarray) -> tuple[float, float]:
         """Get the thresholds from the MAD of the detection function.
@@ -119,10 +140,11 @@ class MADTrigger(Trigger):
 
         Returns:
             tuple[float, float]: Minimum height and minimum prominence of a
-                detection, both the MAD times `mad_factor`.
+                detection, both the MAD times `mad_factor`, clipped to the
+                `threshold_range`.
         """
         threshold = stats.median_abs_deviation(detection_function) * self.mad_factor
-        return threshold, threshold
+        return _clip(threshold, threshold, self.threshold_range)
 
 
 class ModZScoreTrigger(Trigger):
@@ -136,6 +158,10 @@ class ModZScoreTrigger(Trigger):
         " the distance from the median of the detection function in each processed"
         " window, in units of the MAD scaled to a standard deviation (MAD / 0.6745).",
     )
+    threshold_range: RangeType | None = Field(
+        default=None,
+        description=THRESHOLD_RANGE_DESCRIPTION,
+    )
 
     def get_threshold(self, detection_function: np.ndarray) -> tuple[float, float]:
         """Get the thresholds from the median and the MAD of the detection function.
@@ -147,11 +173,13 @@ class ModZScoreTrigger(Trigger):
         Returns:
             tuple[float, float]: Minimum height and minimum prominence of a
                 detection. The height is the median plus `z_score` scaled MADs, the
-                prominence `z_score` scaled MADs.
+                prominence `z_score` scaled MADs, both clipped to the
+                `threshold_range`.
         """
         sigma = stats.median_abs_deviation(detection_function, scale="normal")
         prominence = self.z_score * sigma
-        return float(np.median(detection_function)) + prominence, prominence
+        height = float(np.median(detection_function)) + prominence
+        return _clip(height, prominence, self.threshold_range)
 
 
 class ThresholdTrigger(Trigger):
