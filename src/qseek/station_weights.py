@@ -30,13 +30,6 @@ COLOCATED_DISTANCE = 50.0
 # Taper width of the distance weights in units of the nearest neighbor distance
 NEAREST_NEIGHBOR_TAPER = 6.0
 
-PLATEAU_STATIONS_DESCRIPTION = (
-    "Number of independent stations of a node that get full weight. The closest"
-    " stations get full weight until they add up to this number of independent"
-    " stations. An isolated station counts as one independent station, a station in"
-    " a dense cluster as a fraction of one, co-located sensors as one together."
-)
-
 
 def weights_gaussian(
     distances: np.ndarray,
@@ -170,6 +163,38 @@ def station_independence(distances: np.ndarray) -> np.ndarray:
     return independence / colocated_sensors(distances)
 
 
+def independent_stations_distances(
+    distances: np.ndarray,
+    independence: np.ndarray,
+    n_stations: Sequence[float],
+) -> list[np.ndarray]:
+    """Distances at which the closest stations add up to independent stations.
+
+    Args:
+        distances: Array of shape (n_nodes, n_stations) with node-station distances
+            in meters.
+        independence: Array of shape (n_stations,) with the independent station
+            count of each station.
+        n_stations: Numbers of independent stations to reach.
+
+    Returns:
+        For each number, an array of shape (n_nodes, 1) with the distance of the
+            station at which the closest stations reach it, or of the most distant
+            station if the network has fewer independent stations.
+    """
+    order = np.argsort(distances, axis=1)
+    sorted_distances = np.take_along_axis(distances, order, axis=1)
+    cumulative = np.cumsum(independence[order], axis=1)
+    rows = np.arange(distances.shape[0])
+
+    result = []
+    for n in n_stations:
+        idx = np.argmax(cumulative >= n, axis=1)
+        idx[cumulative[:, -1] < n] = distances.shape[1] - 1
+        result.append(sorted_distances[rows, idx, np.newaxis])
+    return result
+
+
 def independent_stations_distance(
     distances: np.ndarray,
     independence: np.ndarray,
@@ -189,13 +214,7 @@ def independent_stations_distance(
             closest stations reach `n_stations`, or of the most distant station if
             the network has fewer independent stations.
     """
-    order = np.argsort(distances, axis=1)
-    sorted_distances = np.take_along_axis(distances, order, axis=1)
-    cumulative = np.cumsum(independence[order], axis=1)
-
-    idx = np.argmax(cumulative >= n_stations, axis=1)
-    idx[cumulative[:, -1] < n_stations] = distances.shape[1] - 1
-    return sorted_distances[np.arange(distances.shape[0]), idx, np.newaxis]
+    return independent_stations_distances(distances, independence, (n_stations,))[0]
 
 
 def weights_plateau_gaussian(
@@ -225,9 +244,10 @@ def weights_plateau_gaussian(
     Returns:
         Array of shape (n_nodes, n_stations) with weights between 0 and 1.
     """
-    plateau = independent_stations_distance(distances, independence, plateau_stations)
-    taper = independent_stations_distance(distances, independence, taper_stations)
-    sigma = taper / 2
+    plateau, taper = independent_stations_distances(
+        distances, independence, (plateau_stations, taper_stations)
+    )
+    sigma = np.maximum(taper / 2, 1.0)
     if max_taper_ratio is not None:
         sigma = np.minimum(sigma, max_taper_ratio * np.maximum(plateau, 1.0))
 
@@ -284,7 +304,7 @@ class StationWeights(Model):
     _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
     _stations: StationList = PrivateAttr()
     _station_coords_ecef: np.ndarray = PrivateAttr()
-    _interstation_distances: np.ndarray = PrivateAttr()
+    _interstation_distances: np.ndarray | None = PrivateAttr(None)
     _independence: dict[bytes, np.ndarray] = PrivateAttr(default_factory=dict)
 
     @classmethod
@@ -322,7 +342,7 @@ class StationWeights(Model):
         """
         self._stations = StationList.from_inventory(stations)
         self._node_lut = ArrayLRUCache(name="station_weights", short_name="SW")
-        self._interstation_distances = interstation_distances(list(self._stations))
+        self._interstation_distances = None
         self._independence = {}
 
         sta_coords = get_coordinates(self._stations)
@@ -354,7 +374,9 @@ class StationWeights(Model):
         Returns:
             Array of shape (n_stations, n_stations) in meters, NaN on the diagonal.
         """
-        return self._interstation_distances[station_indices][:, station_indices]
+        if self._interstation_distances is None:
+            self._interstation_distances = interstation_distances(list(self._stations))
+        return self._interstation_distances[np.ix_(station_indices, station_indices)]
 
     def get_independence(self, station_indices: np.ndarray) -> np.ndarray:
         """Get the independent station count of a set of stations.
@@ -456,8 +478,8 @@ class DistanceWeights(StationWeights):
             description=(
                 "Full width at half maximum of the Gaussian taper in meters."
                 ' `"mean_interstation"` uses twice the mean interstation distance of'
-                f' the network, `"nearest_neighbor"` {NEAREST_NEIGHBOR_TAPER:g} times'
-                " the median distance between neighboring station sites. Do not use"
+                ' the network, `"nearest_neighbor"` 6 times the median distance'
+                " between neighboring station sites. Do not use"
                 ' `"nearest_neighbor"` for networks with a dense array: its station'
                 " spacing sets the median."
             ),
@@ -477,12 +499,21 @@ class DistanceWeights(StationWeights):
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
         super().prepare(stations, octree)
         if self.distance_taper == "mean_interstation":
-            self.distance_taper = 2 * stations.mean_interstation_distance()
-        elif self.distance_taper == "nearest_neighbor":
-            self.distance_taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(
-                self._interstation_distances
+            self._distance_taper = (
+                2 * stations.mean_interstation_distance()
+                if stations.n_stations > 1
+                else np.inf
             )
-        self._distance_taper = self.distance_taper
+        elif self.distance_taper == "nearest_neighbor":
+            all_stations = np.arange(len(self._stations))
+            self._distance_taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(
+                self.get_interstation_distances(all_stations)
+            )
+        else:
+            self._distance_taper = float(self.distance_taper)
+        if not np.isfinite(self._distance_taper) or self._distance_taper <= 0.0:
+            # Fewer than two sites: all stations get full weight
+            self._distance_taper = np.inf
         logger.info(
             "distance weighting uses %d closest stations and a taper of %g m",
             self.required_closest_stations,
@@ -515,7 +546,11 @@ class StationDensityWeights(StationWeights):
 
     plateau_stations: PositiveFloat = Field(
         default=3.0,
-        description=PLATEAU_STATIONS_DESCRIPTION,
+        description="Number of independent stations of a node that get full weight."
+        " The closest stations get full weight until they add up to this number of"
+        " independent stations. An isolated station counts as one independent"
+        " station, a station in a dense cluster as a fraction of one, co-located"
+        " sensors as one together.",
     )
     taper_stations: PositiveFloat = Field(
         default=8.0,
@@ -565,7 +600,11 @@ class LogLogisticWeights(StationWeights):
 
     plateau_stations: PositiveFloat = Field(
         default=4.0,
-        description=PLATEAU_STATIONS_DESCRIPTION,
+        description="Number of independent stations of a node that get full weight."
+        " The closest stations get full weight until they add up to this number of"
+        " independent stations. An isolated station counts as one independent"
+        " station, a station in a dense cluster as a fraction of one, co-located"
+        " sensors as one together.",
     )
     taper_scale: PositiveFloat = Field(
         default=1.8,
