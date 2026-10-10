@@ -450,14 +450,16 @@ class DistanceWeights(StationWeights):
 
     weights: Literal["DistanceWeights"] = "DistanceWeights"
 
-    distance_taper: PositiveFloat | Literal["nearest_neighbor", "mean_interstation"] = (
+    distance_taper: PositiveFloat | Literal["mean_interstation", "nearest_neighbor"] = (
         Field(
-            default="nearest_neighbor",
+            default="mean_interstation",
             description=(
                 "Full width at half maximum of the Gaussian taper in meters."
-                f' `"nearest_neighbor"` uses {NEAREST_NEIGHBOR_TAPER:g} times the median'
-                ' distance between neighboring station sites, `"mean_interstation"`'
-                " twice the mean interstation distance of the network."
+                ' `"mean_interstation"` uses twice the mean interstation distance of'
+                f' the network, `"nearest_neighbor"` {NEAREST_NEIGHBOR_TAPER:g} times'
+                " the median distance between neighboring station sites. Do not use"
+                ' `"nearest_neighbor"` for networks with a dense array: its station'
+                " spacing sets the median."
             ),
         )
     )
