@@ -10,7 +10,6 @@ from qseek.octree import Octree
 from qseek.station_weights import (
     NEAREST_NEIGHBOR_TAPER,
     DistanceWeights,
-    LocationBalancedWeights,
     LogLogisticWeights,
     StationDensityWeights,
     colocated_sensors,
@@ -378,7 +377,6 @@ def clustered_stations() -> StationInventory:
         DistanceWeights(distance_taper=5 * KM, waterlevel=0.1),
         StationDensityWeights(),
         LogLogisticWeights(),
-        LocationBalancedWeights(),
     ],
 )
 async def test_station_weights_model(
@@ -457,39 +455,6 @@ async def test_station_density_weights_subset(
     assert independence[12:].max() < independence[:12].min()
 
 
-@pytest.mark.asyncio
-async def test_location_balanced_weights(
-    octree: Octree, clustered_stations: StationInventory
-):
-    stations = list(clustered_stations)
-    log_logistic = LogLogisticWeights(taper_scale=2.2)
-    log_logistic.prepare(clustered_stations, octree)
-    balanced = LocationBalancedWeights(
-        location_taper_scale=3.0, location_declustering=1.0
-    )
-    balanced.prepare(clustered_stations, octree)
-
-    # Root nodes detect with the log-logistic weights
-    roots = octree.nodes[:20]
-    np.testing.assert_allclose(
-        await balanced.get_weights(roots, stations),
-        await log_logistic.get_weights(roots, stations),
-    )
-
-    # Refined nodes locate with declustered weights and a wider taper
-    children = list(octree.nodes[0].split())
-    weights = await balanced.get_weights(children, stations)
-    distances = balanced.get_distances(children)
-    independence = balanced.get_independence(np.arange(len(stations)))
-    plateau = independent_stations_distance(distances, independence, 4.0)
-    expected = weights_log_logistic(distances, plateau, taper_scale=3.0) * independence
-    np.testing.assert_allclose(weights, expected, rtol=1e-5)
-
-    # The cluster stations lose weight against the sparse stations
-    ratio = weights / await log_logistic.get_weights(children, stations)
-    assert ratio[:, 12:].max() < ratio[:, :12].min()
-
-
 def test_station_weights_config():
     from pydantic import ValidationError
 
@@ -502,7 +467,6 @@ def test_station_weights_config():
         DistanceWeights(required_closest_stations=6),
         StationDensityWeights(plateau_stations=3.0),
         LogLogisticWeights(),
-        LocationBalancedWeights(location_declustering=0.5),
     ):
         config = {"station_weights": model.model_dump(mode="json")}
         assert Search.model_validate(config).station_weights == model
