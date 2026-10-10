@@ -203,12 +203,14 @@ def weights_plateau_gaussian(
     independence: np.ndarray,
     plateau_stations: float = 3.0,
     taper_stations: float = 8.0,
+    max_taper_ratio: float | None = 1.0,
 ) -> np.ndarray:
     """Gaussian taper beyond a plateau of the closest independent stations.
 
     The plateau ends where the closest stations add up to `plateau_stations`
     independent stations. The Gaussian taper starts there; its standard deviation
-    is half the distance at which they add up to `taper_stations`.
+    is half the distance at which they add up to `taper_stations`, at most
+    `max_taper_ratio` times the plateau distance.
 
     Args:
         distances: Array of shape (n_nodes, n_stations) with node-station distances
@@ -217,6 +219,8 @@ def weights_plateau_gaussian(
             count of each station.
         plateau_stations: Independent stations of the plateau.
         taper_stations: Independent stations that set the taper width.
+        max_taper_ratio: Maximum standard deviation of the taper in units of the
+            plateau distance. If None, the taper width is not limited.
 
     Returns:
         Array of shape (n_nodes, n_stations) with weights between 0 and 1.
@@ -224,6 +228,8 @@ def weights_plateau_gaussian(
     plateau = independent_stations_distance(distances, independence, plateau_stations)
     taper = independent_stations_distance(distances, independence, taper_stations)
     sigma = taper / 2
+    if max_taper_ratio is not None:
+        sigma = np.minimum(sigma, max_taper_ratio * np.maximum(plateau, 1.0))
 
     weights = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
     weights[distances <= plateau] = 1.0
@@ -516,6 +522,13 @@ class StationDensityWeights(StationWeights):
         " closest stations add up to this number. If the network has fewer"
         " independent stations, the most distant station sets the width.",
     )
+    max_taper_ratio: PositiveFloat | None = Field(
+        default=1.0,
+        description="Maximum standard deviation of the Gaussian taper, in units of"
+        " the plateau distance of the node. It keeps the taper short when a gap in"
+        " the network puts the `taper_stations` far away, e.g. between local and"
+        " regional stations. If `null`, the taper width is not limited.",
+    )
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
         super().prepare(stations, octree)
@@ -532,6 +545,7 @@ class StationDensityWeights(StationWeights):
             self.get_independence(station_indices),
             plateau_stations=self.plateau_stations,
             taper_stations=self.taper_stations,
+            max_taper_ratio=self.max_taper_ratio,
         )
 
 
