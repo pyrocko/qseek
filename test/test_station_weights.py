@@ -324,7 +324,11 @@ def test_independent_stations_distance():
 def test_weights_plateau_gaussian():
     distances = np.arange(1, 21, dtype=float)[np.newaxis, :] * KM
     weights = weights_plateau_gaussian(
-        distances, np.ones(20), plateau_stations=4.0, taper_stations=12.0
+        distances,
+        np.ones(20),
+        plateau_stations=4.0,
+        taper_stations=12.0,
+        max_taper_ratio=None,
     )
     # Gaussian centered at the plateau distance, sigma half the taper distance
     plateau, sigma = 4 * KM, 12 * KM / 2
@@ -342,6 +346,29 @@ def test_weights_plateau_gaussian():
     np.testing.assert_equal(sorted_weights[:, :4], 1.0)
     assert np.all(sorted_weights[:, 4] < 1.0)
     assert np.all(np.diff(sorted_weights[:, 4:], axis=1) <= 0.0)
+
+
+def test_weights_plateau_gaussian_max_taper_ratio():
+    # A gap: three close stations, then distant stations
+    distances = np.array([[1.0, 2.0, 3.0, 50.0, 60.0, 70.0, 80.0]]) * KM
+    plateau, taper = 3 * KM, 70 * KM
+    uncapped = weights_plateau_gaussian(
+        distances, np.ones(7), 3.0, 6.0, max_taper_ratio=None
+    )
+    capped = weights_plateau_gaussian(distances, np.ones(7), 3.0, 6.0)
+    # The cap limits sigma to the plateau distance
+    for weights, sigma in ((uncapped, taper / 2), (capped, plateau)):
+        expected = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
+        expected[distances <= plateau] = 1.0
+        np.testing.assert_allclose(weights, expected, rtol=1e-6)
+    assert np.all(capped[0, 3:] < uncapped[0, 3:])
+
+    # Without a gap the cap does not bind
+    distances = np.arange(1, 21, dtype=float)[np.newaxis, :] * KM
+    np.testing.assert_allclose(
+        weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0),
+        weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0, None),
+    )
 
 
 def test_weights_log_logistic():
@@ -465,7 +492,7 @@ def test_station_weights_config():
 
     for model in (
         DistanceWeights(required_closest_stations=6),
-        StationDensityWeights(plateau_stations=3.0),
+        StationDensityWeights(plateau_stations=3.0, max_taper_ratio=None),
         LogLogisticWeights(),
     ):
         config = {"station_weights": model.model_dump(mode="json")}

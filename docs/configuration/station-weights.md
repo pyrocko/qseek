@@ -11,7 +11,7 @@ Station weights decide how much each station contributes to the stack of a node.
 | Station weights | Full weight | Taper |
 | --- | --- | --- |
 | [`DistanceWeights`](#distance-weights) (default) | The 4 closest stations | Gaussian, 6 times the distance between neighboring stations |
-| [`StationDensityWeights`](#station-density-weights) | The closest 3 independent stations | Gaussian, from the distance of the closest 8 independent stations |
+| [`StationDensityWeights`](#station-density-weights) | The closest 3 independent stations | Gaussian, from the distance of the closest 8 independent stations, at most as wide as the plateau |
 | [`LogLogisticWeights`](#log-logistic-weights) | The closest 4 independent stations | Log-logistic, half weight at 1.8 times the distance of the plateau |
 
 `station_weights` takes one of them. With `null`, all stations get the same weight.
@@ -46,15 +46,15 @@ The three examples of the [playground](../getting-started/playground.md), search
 | --- | --- | --- | --- | --- | --- | --- |
 | Campi Flegrei, 1 day, 18 stations | `DistanceWeights`, `"mean_interstation"` | 732 | 521 | 0.284 s | 45 / 45 | 241 m |
 | | `DistanceWeights` | 750 | 525 | 0.286 s | 45 / 45 | 238 m |
-| | `StationDensityWeights` | 852 | 524 | 0.278 s | 45 / 45 | 216 m |
+| | `StationDensityWeights` | 954 | 524 | 0.282 s | 45 / 45 | 216 m |
 | | `LogLogisticWeights` | 800 | 520 | 0.286 s | 45 / 45 | 229 m |
 | Campi Flegrei, 10 days, 19 stations | `DistanceWeights`, `"mean_interstation"` | 6379 | 3750 | 0.278 s | 209 / 211 | 280 m |
 | | `DistanceWeights` | 6614 | 3772 | 0.280 s | 209 / 211 | 293 m |
-| | `StationDensityWeights` | 7198 | 3791 | 0.275 s | 209 / 211 | 294 m |
+| | `StationDensityWeights` | 8189 | 3799 | 0.278 s | 210 / 211 | 295 m |
 | | `LogLogisticWeights` | 7092 | 3800 | 0.284 s | 210 / 211 | 332 m |
 | Mount Spurr, 3 days, 10 local and 10 regional stations | `DistanceWeights`, `"mean_interstation"` | 1758 | 1046 | 0.349 s | 228 / 234 | 416 m |
 | | `DistanceWeights` | 2210 | 1070 | 0.318 s | 230 / 234 | 348 m |
-| | `StationDensityWeights` | 2046 | 1081 | 0.343 s | 228 / 234 | 400 m |
+| | `StationDensityWeights` | 2457 | 1140 | 0.338 s | 229 / 234 | 409 m |
 | | `LogLogisticWeights` | 2226 | 1127 | 0.364 s | 230 / 234 | 416 m |
 
 At Mount Spurr, the taper over twice the mean interstation distance, 166 km, keeps the regional stations 80 km to 130 km away at weights of 0.25 to 0.65. They rarely record the small events of the swarm. The default taper of 74 km, 6 times the 12.3 km between neighboring stations, finds 26% more detections and moves the epicenters 67 m closer to the catalog. On the dense Campi Flegrei network, the two tapers are 9.0 km and 11.1 km and give nearly the same detections.
@@ -65,7 +65,7 @@ A synthetic benchmark tests the station weights on 6 hours of phase confidences 
 | --- | --- | --- | --- | --- | --- |
 | `DistanceWeights`, `"mean_interstation"` | 0.65 | 0.23 | 1.00 | 0.76 | 0 m |
 | `DistanceWeights` | 0.60 | 0.38 | 1.00 | 0.78 | −1 m to 4 m |
-| `StationDensityWeights` | 0.74 | 0.32 | 1.00 | 0.79 | 0 m to 2 m |
+| `StationDensityWeights` | 0.86 | 0.38 | 1.00 | 0.86 | −1 m to 5 m |
 | `LogLogisticWeights` | 0.80 | 0.38 | 1.00 | 0.78 | −1 m to 4 m |
 
 The station weights hardly change the location of an event once it is detected. They change which events the stack detects.
@@ -92,6 +92,15 @@ print(json_example(DistanceWeights()))
 ## Station density weights
 
 The closest stations of a node get full weight until they add up to `plateau_stations` independent stations, 3 by default. Beyond this plateau distance, a Gaussian taper decays; its standard deviation is half the distance at which the closest stations add up to `taper_stations`, 8 by default. When the network has fewer independent stations than `taper_stations`, the most distant station sets the width.
+
+A gap in the network can put the `taper_stations` far away. At Mount Spurr, the ten local stations within 32 km count as 4.6 independent stations; the closest stations add up to 8 only among the regional stations beyond 79 km. The taper would then reach across the gap and keep the regional stations at weights of up to 0.43. `max_taper_ratio` caps the standard deviation of the taper at the plateau distance, 1.0 by default. Without a gap the cap rarely binds: on Campi Flegrei the standard deviation is 0.77 times the plateau distance (median over the nodes), and the cap binds at 12% of the nodes. With a standard deviation of one plateau distance, the weight is 0.5 at 2.2 times the plateau distance, where the mean phase confidence of small events halves on the playground examples.
+
+![Taper cap](../images/station-weights-taper-cap.webp)
+/// caption
+The cap of the taper on two nodes of the playground examples. Top: the closest stations add up to independent stations; $d_p$ marks 3 independent stations, the plateau, $d_8$ marks 8, which sets the taper width $\sigma = d_8 / 2$. Bottom: the station weights without the cap (orange) and with `max_taper_ratio` 1.0 (green). Left: on Campi Flegrei, without a gap, the cap does not bind. Right: at Mount Spurr, $d_8$ lies beyond the gap between the local and the regional stations; the cap halves the taper width, from 41.8 km to 24.8 km, and lowers the weights of the regional stations to 0.09 and less.
+///
+
+On the playground, the cap of 1.0 finds 12% and 14% more detections on Campi Flegrei (1 and 10 days) and 20% more at Mount Spurr than no cap, with 59 more detections with at least 8 picks at Mount Spurr. A cap of 0.75 raises the residuals on Campi Flegrei, caps of 1.25 and 1.5 move the epicenters at Mount Spurr farther from the catalog.
 
 The independent station counts depend on the available stations. When a station has no data in a window, Qseek counts the remaining stations.
 
