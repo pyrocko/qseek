@@ -16,7 +16,7 @@ The trigger turns the detection function, the maximum semblance over all nodes, 
 
 Qseek computes the thresholds of the adaptive triggers in every processed window of [`window_length`][qseek.search.Search.window_length], 5 minutes by default.
 
-The default `ThresholdTrigger` has a single parameter: the minimum semblance of a detection, 0.3 by default. The semblance of your events depends on the network, the phase weights and the [distance weighting](distance-weighting.md), so treat 0.3 as a starting point and set the `threshold` from the `semblance` column of `csv/detections.csv` of a first run. The adaptive triggers find more small events, at the cost of more parameters and more weak detections. On one day of the 2024 Campi Flegrei swarm (18 INGV stations, 287 windows), the adaptive thresholds range from 0.03 in quiet windows to 0.25 in the busiest windows:
+The default `ThresholdTrigger` has a single parameter: the minimum semblance of a detection, 0.3 by default. The semblance of your events depends on the network, the phase weights and the [station weights](station-weights.md), so treat 0.3 as a starting point and set the `threshold` from the `semblance` column of `csv/detections.csv` of a first run. The adaptive triggers find more small events, at the cost of more parameters and more weak detections. On one day of the 2024 Campi Flegrei swarm (18 INGV stations, 287 windows), the adaptive thresholds range from 0.03 in quiet windows to 0.25 in the busiest windows:
 
 | Trigger | Detections | With ≥ 8 picks | Median picks | INGV events matched |
 | --- | --- | --- | --- | --- |

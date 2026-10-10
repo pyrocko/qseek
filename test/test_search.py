@@ -12,6 +12,11 @@ from qseek.models.location import Location
 from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.search import OctreeSearch
+from qseek.station_weights import (
+    DistanceWeights,
+    LogLogisticWeights,
+    StationDensityWeights,
+)
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.tracers.tracers import RayTracers
 from qseek.triggers import ThresholdTrigger
@@ -159,3 +164,61 @@ async def test_search_no_event(
     )
     detections, _ = await search.search(images, octree=small_octree)
     assert detections == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "station_weights",
+    [DistanceWeights(), StationDensityWeights(), LogLogisticWeights()],
+)
+async def test_search_station_weights(
+    station_weights, small_octree: Octree, surface_stations: StationInventory
+) -> None:
+    # A dense cluster of stations next to the sparse network
+    rng = np.random.default_rng(7)
+    stations = StationInventory(
+        stations=[
+            *surface_stations,
+            *(
+                Station(
+                    network="XX",
+                    station=f"C{idx:02d}",
+                    lat=10.0,
+                    lon=10.0,
+                    north_shift=4 * KM + rng.normal(0, 200),
+                    east_shift=4 * KM + rng.normal(0, 200),
+                )
+                for idx in range(8)
+            ),
+        ]
+    )
+    stations.prepare(small_octree.location)
+    station_weights = station_weights.model_copy(deep=True)
+    station_weights.prepare(stations, small_octree)
+
+    source = Location(
+        lat=10.0,
+        lon=10.0,
+        north_shift=-2.1 * KM,
+        east_shift=1.6 * KM,
+        depth=2.8 * KM,
+    )
+    images = synthetic_images(stations, source, EVENT_TIME)
+    search = OctreeSearch(
+        ray_tracers=RayTracers(
+            root=[
+                ConstantVelocityTracer(phase=phase, velocity=velocity)
+                for phase, velocity in VELOCITIES.items()
+            ]
+        ),
+        station_weights=station_weights,
+        window_padding=PADDING,
+        trigger=ThresholdTrigger(threshold=0.5),
+        ignore_boundary=False,
+    )
+    detections, _ = await search.search(images, octree=small_octree)
+
+    assert len(detections) == 1
+    (detection,) = detections
+    assert abs((detection.time - EVENT_TIME).total_seconds()) < 0.05
+    assert detection.distance_to(source) < 0.5 * KM

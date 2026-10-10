@@ -12,7 +12,6 @@ import numpy as np
 import psutil
 import sdnotify
 from pydantic import (
-    AliasChoices,
     BaseModel,
     ByteSize,
     Field,
@@ -25,7 +24,6 @@ from qseek.base import Model
 from qseek.cache_lru import CACHES
 from qseek.console import console, report
 from qseek.corrections.corrections import StationCorrectionType, corrections_from_path
-from qseek.distance_weights import DistanceWeights
 from qseek.features import FeatureExtractorType
 from qseek.images import ImageFunctionType, SeisBench
 from qseek.magnitudes import EventMagnitudeCalculatorType
@@ -40,6 +38,7 @@ from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import PreProcessing, Resample
 from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
+from qseek.station_weights import DistanceWeights, StationWeightsType
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.triggers import ThresholdTrigger, TriggerType
@@ -293,10 +292,10 @@ class Search(Model):
         ),
         description="List of ray tracers for travel time calculation.",
     )
-    distance_weights: DistanceWeights | None = Field(
+    station_weights: StationWeightsType | None = Field(
         default_factory=DistanceWeights,
-        validation_alias=AliasChoices("spatial_weights", "distance_weights"),
-        description="Spatial weights for distance weighting.",
+        description="Weights of the stations for every node of the search volume."
+        " If `null`, all stations get the same weight.",
     )
     trigger: TriggerType = Field(
         default_factory=ThresholdTrigger,
@@ -541,8 +540,8 @@ class Search(Model):
         await self.pre_processing.prepare()
         await self.image_function.prepare()
 
-        if self.distance_weights:
-            self.distance_weights.prepare(self.stations, self.octree)
+        if self.station_weights:
+            self.station_weights.prepare(self.stations, self.octree)
 
         if self.station_corrections:
             await self.station_corrections.prepare(
@@ -648,7 +647,7 @@ class Search(Model):
             ray_tracers=self.ray_tracers,
             window_padding=window_padding,
             station_corrections=self.station_corrections,
-            distance_weights=self.distance_weights,
+            station_weights=self.station_weights,
             trigger=self.trigger,
             node_interpolation=self.node_interpolation,
             ignore_boundary=self.ignore_boundary,
@@ -839,7 +838,7 @@ class OctreeSearch:
         ray_tracers: RayTracers,
         window_padding: timedelta,
         station_corrections: StationCorrectionType | None = None,
-        distance_weights: DistanceWeights | None = None,
+        station_weights: StationWeightsType | None = None,
         trigger: TriggerType | None = None,
         ignore_boundary: IgnoreBoundary = "with_surface",
         ignore_boundary_width: float | Literal["root_node_size"] = "root_node_size",
@@ -856,8 +855,9 @@ class OctreeSearch:
             window_padding (timedelta): The padding time for the search window.
             station_corrections (StationCorrectionType | None, optional): The
                 station corrections to apply. Defaults to None.
-            distance_weights (DistanceWeights | None, optional): The distance
-                weights to apply. Defaults to None.
+            station_weights (StationWeightsType | None, optional): The station
+                weights to apply. If None, all stations get the same weight.
+                Defaults to None.
             trigger (TriggerType | None, optional): The trigger that detects events
                 in the detection function. Defaults to ThresholdTrigger().
             ignore_boundary
@@ -894,7 +894,7 @@ class OctreeSearch:
         self.ignore_boundary_width = ignore_boundary_width
 
         self.station_corrections = station_corrections
-        self.distance_weights = distance_weights
+        self.station_weights = station_weights
 
     def set_ray_tracers(self, ray_tracers: RayTracers) -> None:
         self.ray_tracers = ray_tracers
@@ -933,8 +933,8 @@ class OctreeSearch:
         n_nodes = len(nodes)
         n_stations = len(stations)
 
-        if self.distance_weights:
-            weights = await self.distance_weights.get_weights(
+        if self.station_weights:
+            weights = await self.station_weights.get_weights(
                 nodes=nodes,
                 stations=stations,
             )

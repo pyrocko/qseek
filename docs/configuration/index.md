@@ -80,7 +80,7 @@ Every top-level field of the configuration configures one module of the search. 
 | `image_function` | [Image functions](image-functions.md) | Phase annotation and picking |
 | `ray_tracers` | [Ray tracers](ray-tracers.md) | Travel times for every phase |
 | `octree` | [Search volume](search-volume.md) | Location, size and resolution of the search volume |
-| `distance_weights` | [Distance weighting](distance-weighting.md) | Weights of the stations for every node |
+| `station_weights` | [Station weights](station-weights.md) | Weights of the stations for every node |
 | `station_corrections` | [Station corrections](station-corrections.md) | Travel time delays per station |
 | `trigger` | [Triggers](triggers.md) | Threshold and blinding of the detections |
 | `magnitudes` | [Magnitudes](magnitudes.md) | Local and moment magnitudes |
