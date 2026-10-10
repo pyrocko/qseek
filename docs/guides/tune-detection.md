@@ -28,7 +28,7 @@ A first search with the defaults tells you a lot about your data. This guide sho
 
 - **Threshold:** raise the `threshold` of the trigger above the semblance of the noise.
 - **Picks:** filter the detections by `n_picks`. Noise rarely produces consistent picks at many stations.
-- **Distance weighting:** with the default [distance weights](../configuration/distance-weighting.md), each node relies on its closest stations. Noise at a single close station can dominate small networks; increase [`required_closest_stations`][qseek.distance_weights.DistanceWeights.required_closest_stations].
+- **Station weights:** with the default [station weights](../configuration/station-weights.md), each node relies on its closest stations. Noise at a single close station can dominate small networks; increase [`plateau_stations`][qseek.station_weights.StationDensityWeights.plateau_stations], the number of independent stations with full weight.
 
 ## Imprecise locations
 
