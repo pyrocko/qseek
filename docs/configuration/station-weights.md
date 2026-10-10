@@ -13,6 +13,7 @@ Station weights decide how much each station contributes to the stack of a node.
 | [`DistanceWeights`](#distance-weights) (default) | The 4 closest stations | Gaussian, 6 times the distance between neighboring stations |
 | [`StationDensityWeights`](#station-density-weights) | The closest 3 independent stations | Gaussian, from the distance of the closest 8 independent stations |
 | [`LogLogisticWeights`](#log-logistic-weights) | The closest 4 independent stations | Log-logistic, half weight at 1.8 times the distance of the plateau |
+| [`LocationBalancedWeights`](#location-balanced-weights) (experimental) | As `LogLogisticWeights` | Declustered weights for the refined nodes |
 
 `station_weights` takes one of them. With `null`, all stations get the same weight.
 
@@ -27,13 +28,14 @@ Stations a few hundred meters apart record nearly the same waveforms and share t
 
 On Campi Flegrei, the 18 INGV stations count as 11.1 independent stations: the six stations in the center of the caldera, 200 m to 500 m apart, count as 0.2 each. At Mount Spurr, the 20 stations count as 13.8 independent stations, the ten local stations as 4.6. Qseek logs the count when the search starts.
 
-`StationDensityWeights` and `LogLogisticWeights` give full weight to the closest stations until they add up to a number of independent stations. In a dense cluster, more stations get full weight than in a sparse network. The independent station counts only set these distances: within the plateau, every station gets full weight.
+`StationDensityWeights`, `LogLogisticWeights` and `LocationBalancedWeights` give full weight to the closest stations until they add up to a number of independent stations. In a dense cluster, more stations get full weight than in a sparse network. The independent station counts only set these distances: within the plateau, every station gets full weight.
 
 ## Choose the station weights
 
 - **`DistanceWeights`** give the 4 closest stations full weight and taper with an absolute width, the same for all nodes: 6 times the median distance between neighboring stations. Use them for networks of similar station spacing.
 - **`StationDensityWeights`** adapt the plateau and the taper to the station spacing around each node. Use them for networks with dense clusters. They have the lowest residuals of the station weights on both Campi Flegrei examples.
 - **`LogLogisticWeights`** taper with the distance in units of the plateau distance of each node. The taper follows the phase confidence of small events, which falls off with the distance relative to the closest stations in the same way on different networks. They find the most detections with at least 8 picks on the 10-day Campi Flegrei example and at Mount Spurr, at slightly larger residuals.
+- **`LocationBalancedWeights`** are experimental: they trade detections for locations, see below.
 
 !!! tip
     Start with the default `DistanceWeights`. If your network mixes dense clusters with sparse stations, compare `StationDensityWeights` and `LogLogisticWeights` on a first run.
@@ -48,14 +50,17 @@ The three examples of the [playground](../getting-started/playground.md), search
 | | `DistanceWeights` | 750 | 525 | 0.286 s | 45 / 45 | 238 m |
 | | `StationDensityWeights` | 852 | 524 | 0.278 s | 45 / 45 | 216 m |
 | | `LogLogisticWeights` | 800 | 520 | 0.286 s | 45 / 45 | 229 m |
+| | `LocationBalancedWeights` | 713 | 467 | 0.286 s | 45 / 45 | 201 m |
 | Campi Flegrei, 10 days, 19 stations | `DistanceWeights`, `"mean_interstation"` | 6379 | 3750 | 0.278 s | 209 / 211 | 280 m |
 | | `DistanceWeights` | 6614 | 3772 | 0.280 s | 209 / 211 | 293 m |
 | | `StationDensityWeights` | 7198 | 3791 | 0.275 s | 209 / 211 | 294 m |
 | | `LogLogisticWeights` | 7092 | 3800 | 0.284 s | 210 / 211 | 332 m |
+| | `LocationBalancedWeights` | 6211 | 3410 | 0.275 s | 209 / 211 | 269 m |
 | Mount Spurr, 3 days, 10 local and 10 regional stations | `DistanceWeights`, `"mean_interstation"` | 1758 | 1046 | 0.349 s | 228 / 234 | 416 m |
 | | `DistanceWeights` | 2210 | 1070 | 0.318 s | 230 / 234 | 348 m |
 | | `StationDensityWeights` | 2046 | 1081 | 0.343 s | 228 / 234 | 400 m |
 | | `LogLogisticWeights` | 2226 | 1127 | 0.364 s | 230 / 234 | 416 m |
+| | `LocationBalancedWeights` | 1554 | 1051 | 0.393 s | 228 / 234 | 441 m |
 
 At Mount Spurr, the taper over twice the mean interstation distance, 166 km, keeps the regional stations 80 km to 130 km away at weights of 0.25 to 0.65. They rarely record the small events of the swarm. The default taper of 74 km, 6 times the 12.3 km between neighboring stations, finds 26% more detections and moves the epicenters 67 m closer to the catalog. On the dense Campi Flegrei network, the two tapers are 9.0 km and 11.1 km and give nearly the same detections.
 
@@ -67,6 +72,7 @@ A synthetic benchmark tests the station weights on 6 hours of phase confidences 
 | `DistanceWeights` | 0.60 | 0.38 | 1.00 | 0.78 | −1 m to 4 m |
 | `StationDensityWeights` | 0.74 | 0.32 | 1.00 | 0.79 | 0 m to 2 m |
 | `LogLogisticWeights` | 0.80 | 0.38 | 1.00 | 0.78 | −1 m to 4 m |
+| `LocationBalancedWeights` | 0.60 | 0.27 | 0.99 | 0.79 | −7 m to 2 m |
 
 The station weights hardly change the location of an event once it is detected. They change which events the stack detects.
 
@@ -132,6 +138,30 @@ print(json_example(LogLogisticWeights()))
 <div class="qs-config" markdown>
 
 ::: qseek.station_weights.LogLogisticWeights
+    options:
+      heading_level: 3
+
+</div>
+
+## Location balanced weights
+
+!!! warning
+    Experimental. On both Campi Flegrei examples, `LocationBalancedWeights` detect 9% to 10% fewer events with at least 8 picks than `"mean_interstation"`, and their epicenters are closer to the INGV catalog, 201 m and 269 m against 241 m and 280 m. At Mount Spurr they detect as many, with larger residuals, and their epicenters are farther from the USGS catalog, 441 m against 416 m.
+
+Detection and localization ask for different weights. For detection, the closest stations with the strongest phase confidences count most; for the location, the stations should surround the event, without one cluster dominating. `LocationBalancedWeights` use log-logistic weights for the root nodes of the octree, which detect the events, and declustered weights for the refined nodes, which locate them: the weights of the refined nodes are multiplied by the independent station count to the power of `location_declustering`, 0.5 by default, with a taper of `location_taper_scale`.
+
+The refined nodes compete in the same stack with the root nodes, so their semblance is compared across two weightings. On the playground, a location declustering of 1.0 or a wider location taper lose up to half of the detections with at least 8 picks at Mount Spurr.
+
+```python exec='on'
+from qseek.utils import json_example
+from qseek.station_weights import LocationBalancedWeights
+
+print(json_example(LocationBalancedWeights()))
+```
+
+<div class="qs-config" markdown>
+
+::: qseek.station_weights.LocationBalancedWeights
     options:
       heading_level: 3
 

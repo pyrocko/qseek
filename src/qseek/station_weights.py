@@ -585,6 +585,79 @@ class LogLogisticWeights(StationWeights):
         )
 
 
+class LocationBalancedWeights(StationWeights):
+    """Log-logistic weights for detection, declustered weights for the location.
+
+    The root nodes of the octree detect events: they use the log-logistic weights,
+    which favor the closest stations with the strongest phase confidences. The
+    refined nodes locate the events: their weights are multiplied by the
+    independent station count to the power of `location_declustering`, so that
+    clusters of stations do not dominate the location, and their taper can be wider.
+    """
+
+    weights: Literal["LocationBalancedWeights"] = "LocationBalancedWeights"
+
+    plateau_stations: PositiveFloat = Field(
+        default=4.0,
+        description=PLATEAU_STATIONS_DESCRIPTION,
+    )
+    taper_scale: PositiveFloat = Field(
+        default=2.2,
+        description="Distance at which the weight of the root nodes is 0.5, in units"
+        " of the plateau distance of the node.",
+    )
+    taper_exponent: PositiveFloat = Field(
+        default=4.0,
+        description="Exponent of the log-logistic taper.",
+    )
+    location_taper_scale: PositiveFloat = Field(
+        default=2.2,
+        description="Distance at which the weight of the refined nodes is 0.5, in"
+        " units of the plateau distance of the node.",
+    )
+    location_declustering: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Exponent of the independent station count in the weights of the"
+        " refined nodes. With `0.0` all stations count fully, with `1.0` a station"
+        " counts as its number of independent stations.",
+    )
+
+    def prepare(self, stations: StationInventory, octree: Octree) -> None:
+        super().prepare(stations, octree)
+        self.log_independent_stations()
+
+    def calculate_weights(
+        self,
+        distances: np.ndarray,
+        station_indices: np.ndarray,
+        nodes: Sequence[Node],
+    ) -> np.ndarray:
+        independence = self.get_independence(station_indices)
+        plateau = independent_stations_distance(
+            distances, independence, self.plateau_stations
+        )
+        weights = weights_log_logistic(
+            distances,
+            plateau,
+            taper_scale=self.taper_scale,
+            taper_exponent=self.taper_exponent,
+        )
+        refined = np.array([node.level > 0 for node in nodes])
+        if refined.any():
+            weights[refined] = (
+                weights_log_logistic(
+                    distances[refined],
+                    plateau[refined],
+                    taper_scale=self.location_taper_scale,
+                    taper_exponent=self.taper_exponent,
+                )
+                * independence[np.newaxis, :] ** self.location_declustering
+            )
+        return weights
+
+
 # Statically the base class, pydantic validates the registered subclasses
 if TYPE_CHECKING:
     type StationWeightsType = StationWeights
