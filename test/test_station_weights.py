@@ -8,17 +8,19 @@ from qseek.models.location import Location
 from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.station_weights import (
+    NEAREST_NEIGHBOR_TAPER,
     DistanceWeights,
     LogLogisticWeights,
     StationDensityWeights,
-    cumulative_weight_distance,
+    colocated_sensors,
+    independent_stations_distance,
     interstation_distances,
     nearest_neighbor_distance,
     station_density,
-    station_density_weights,
-    weights_density_gaussian,
+    station_independence,
     weights_gaussian,
     weights_log_logistic,
+    weights_plateau_gaussian,
 )
 
 KM = 1e3
@@ -235,78 +237,94 @@ def test_station_density():
     np.testing.assert_allclose(station_density(distances, radius=1.0), 1.0)
 
 
-def test_station_density_weights_equidistant():
+def test_station_independence_equidistant():
     # Stations on a circle have the same density
     angles = np.linspace(0, 2 * np.pi, 6, endpoint=False)
-    weights = station_density_weights(
+    independence = station_independence(
         interstation_distances(
             local_locations([(np.cos(a), np.sin(a)) for a in angles])
         )
     )
-    np.testing.assert_allclose(weights, 1.0, rtol=2e-3)
+    np.testing.assert_allclose(independence, 1.0, rtol=2e-3)
 
 
-def test_station_density_weights_cluster():
-    # A tight pair and two isolated stations
-    weights = station_density_weights(
+def test_station_independence_cluster():
+    # A tight pair, 100 m apart, and two isolated stations
+    independence = station_independence(
         interstation_distances(
-            local_locations([(0.0, 0.0), (0.01, 0.0), (20.0, 0.0), (0.0, 20.0)])
+            local_locations([(0.0, 0.0), (0.1, 0.0), (20.0, 0.0), (0.0, 20.0)])
         )
     )
-    np.testing.assert_allclose(weights[2:], 1.0, atol=1e-2)
-    assert weights[0] == pytest.approx(weights[1], rel=1e-3)
-    assert np.all(weights[:2] < 0.6)
+    np.testing.assert_allclose(independence[2:], 1.0, atol=1e-2)
+    assert independence[0] == pytest.approx(independence[1], rel=1e-2)
+    assert np.all(independence[:2] < 0.6)
 
 
-def test_station_density_weights_colocated():
+def test_station_independence_colocated():
     # Co-located sensors of one site, e.g. location codes 00 and 10
     rng = np.random.default_rng(0)
     sites = [tuple(rng.uniform(-10, 10, size=2)) for _ in range(10)]
-    weights = station_density_weights(
-        interstation_distances(local_locations(sites + sites[:6]))
+    distances = interstation_distances(local_locations(sites + sites[:6]))
+    np.testing.assert_equal(colocated_sensors(distances), [2] * 6 + [1] * 4 + [2] * 6)
+
+    # The sensors of a site share the independent station count of the site
+    independence = station_independence(distances)
+    independence_sites = station_independence(
+        interstation_distances(local_locations(sites))
     )
-    assert weights.min() < 0.9
-    np.testing.assert_allclose(weights[:6], weights[10:], rtol=1e-5)
+    np.testing.assert_allclose(independence[:6], independence_sites[:6] / 2)
+    np.testing.assert_allclose(independence[:6], independence[10:])
+    np.testing.assert_allclose(independence[6:10], independence_sites[6:10])
+    assert independence.sum() == pytest.approx(independence_sites.sum())
+
+    # Two sensors of a site count as the site alone
+    three_sites = [(0.0, 0.0), (20.0, 0.0), (0.0, 20.0)]
+    pair = station_independence(
+        interstation_distances(local_locations(three_sites[:1] + three_sites))
+    )
+    single = station_independence(interstation_distances(local_locations(three_sites)))
+    np.testing.assert_allclose(pair[:2], single[0] / 2)
+    np.testing.assert_allclose(pair[2:], single[1:])
 
 
-def test_station_density_weights_range():
+def test_station_independence_range():
     rng = np.random.default_rng(0)
     for n_stations in (2, 5, 30):
-        weights = station_density_weights(
+        independence = station_independence(
             interstation_distances(
                 local_locations(
                     [tuple(rng.uniform(-10, 10, size=2)) for _ in range(n_stations)]
                 )
             )
         )
-        assert weights.shape == (n_stations,)
-        assert np.all((weights > 0.0) & (weights <= 1.0))
-        assert weights.max() == pytest.approx(1.0)
+        assert independence.shape == (n_stations,)
+        assert np.all((independence > 0.0) & (independence <= 1.0))
+        assert independence.max() == pytest.approx(1.0)
 
 
-def test_cumulative_weight_distance():
+def test_independent_stations_distance():
     distances = np.arange(1, 13, dtype=float)[np.newaxis, :] * KM
-    # Stations that count half: a cumulative weight of 4 needs 8 of them
-    station_weights = np.full(12, 0.5)
+    # Stations that count as half: 4 independent stations need 8 of them
+    independence = np.full(12, 0.5)
     np.testing.assert_equal(
-        cumulative_weight_distance(distances, station_weights, 4.0), [[8 * KM]]
+        independent_stations_distance(distances, independence, 4.0), [[8 * KM]]
     )
-    # The total weight is below the cumulative weight: the most distant station
+    # The network has fewer independent stations: the most distant station
     np.testing.assert_equal(
-        cumulative_weight_distance(distances, station_weights, 20.0), [[12 * KM]]
+        independent_stations_distance(distances, independence, 20.0), [[12 * KM]]
     )
     # The order of the stations does not matter
     perm = np.random.default_rng(2).permutation(12)
     np.testing.assert_equal(
-        cumulative_weight_distance(distances[:, perm], station_weights[perm], 4.0),
+        independent_stations_distance(distances[:, perm], independence[perm], 4.0),
         [[8 * KM]],
     )
 
 
-def test_weights_density_gaussian():
+def test_weights_plateau_gaussian():
     distances = np.arange(1, 21, dtype=float)[np.newaxis, :] * KM
-    weights = weights_density_gaussian(
-        distances, np.ones(20), plateau_weight=4.0, taper_weight=12.0
+    weights = weights_plateau_gaussian(
+        distances, np.ones(20), plateau_stations=4.0, taper_stations=12.0
     )
     # Gaussian centered at the plateau distance, sigma half the taper distance
     plateau, sigma = 4 * KM, 12 * KM / 2
@@ -314,10 +332,12 @@ def test_weights_density_gaussian():
     expected[distances <= plateau] = 1.0
     np.testing.assert_allclose(weights, expected, rtol=1e-6)
 
-    # With unit station weights the plateau holds the N closest stations
+    # Isolated stations: the plateau holds the N closest stations
     rng = np.random.default_rng(1)
     distances = rng.uniform(0, 50 * KM, size=(5, 20))
-    weights = weights_density_gaussian(distances, np.ones(20), plateau_weight=4.0)
+    weights = weights_plateau_gaussian(
+        distances, np.ones(20), plateau_stations=4.0, taper_stations=12.0
+    )
     sorted_weights = np.take_along_axis(weights, np.argsort(distances, axis=1), axis=1)
     np.testing.assert_equal(sorted_weights[:, :4], 1.0)
     assert np.all(sorted_weights[:, 4] < 1.0)
@@ -353,6 +373,7 @@ def clustered_stations() -> StationInventory:
     "weights_model",
     [
         DistanceWeights(),
+        DistanceWeights(distance_taper="mean_interstation"),
         DistanceWeights(distance_taper=5 * KM, waterlevel=0.1),
         StationDensityWeights(),
         LogLogisticWeights(),
@@ -388,22 +409,25 @@ async def test_station_weights_model(
 
 
 @pytest.mark.asyncio
-async def test_distance_weights_mean_interstation(
-    octree: Octree, clustered_stations: StationInventory
+@pytest.mark.parametrize("distance_taper", ["nearest_neighbor", "mean_interstation"])
+async def test_distance_weights_taper(
+    distance_taper, octree: Octree, clustered_stations: StationInventory
 ):
-    weights_model = DistanceWeights()
+    weights_model = DistanceWeights(distance_taper=distance_taper)
     weights_model.prepare(clustered_stations, octree)
-    assert weights_model.distance_taper == pytest.approx(
-        2 * clustered_stations.mean_interstation_distance()
-    )
+    distances = interstation_distances(list(clustered_stations))
+    if distance_taper == "nearest_neighbor":
+        expected_taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(distances)
+    else:
+        expected_taper = 2 * clustered_stations.mean_interstation_distance()
+    assert weights_model.distance_taper == pytest.approx(expected_taper)
+
     nodes = octree.nodes[:20]
     weights = await weights_model.get_weights(nodes, list(clustered_stations))
     expected = weights_gaussian(
-        weights_model.get_distances(nodes),
-        weights_model.distance_taper,
-        required_stations=4,
+        weights_model.get_distances(nodes), expected_taper, required_stations=4
     )
-    np.testing.assert_allclose(weights, expected)
+    np.testing.assert_allclose(weights, expected, rtol=1e-6)
 
 
 @pytest.mark.asyncio
@@ -415,20 +439,20 @@ async def test_station_density_weights_subset(
     stations = list(clustered_stations)
     nodes = octree.nodes[:20]
 
-    # The station density weights adapt to the available stations
+    # The independent station counts adapt to the available stations
     subset = stations[::2]
     weights = await weights_model.get_weights(nodes, subset)
-    expected = weights_density_gaussian(
+    expected = weights_plateau_gaussian(
         weights_model.get_distances(nodes)[:, ::2],
-        station_density_weights(interstation_distances(subset)),
-        plateau_weight=weights_model.plateau_weight,
-        taper_weight=weights_model.taper_weight,
+        station_independence(interstation_distances(subset)),
+        plateau_stations=weights_model.plateau_stations,
+        taper_stations=weights_model.taper_stations,
     )
     np.testing.assert_allclose(weights, expected, rtol=1e-5)
 
     # The cluster stations count less than the sparse stations
-    density_weights = weights_model.get_density_weights(np.arange(len(stations)))
-    assert density_weights[12:].max() < density_weights[:12].min()
+    independence = weights_model.get_independence(np.arange(len(stations)))
+    assert independence[12:].max() < independence[:12].min()
 
 
 def test_station_weights_config():
@@ -441,7 +465,7 @@ def test_station_weights_config():
 
     for model in (
         DistanceWeights(required_closest_stations=6),
-        StationDensityWeights(plateau_weight=3.0),
+        StationDensityWeights(plateau_stations=3.0),
         LogLogisticWeights(),
     ):
         config = {"station_weights": model.model_dump(mode="json")}
