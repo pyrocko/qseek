@@ -58,7 +58,10 @@ This configuration reads waveforms from an SDS archive, annotates phases with Ph
       "velocity": 2900.0
     }
   ],
-  "detection_threshold": "MAD",
+  "trigger": {
+    "trigger": "ThresholdTrigger",
+    "threshold": 0.3
+  },
   "window_length": "PT5M"
 }
 ```
@@ -79,6 +82,7 @@ Every top-level field of the configuration configures one module of the search. 
 | `octree` | [Search volume](search-volume.md) | Location, size and resolution of the search volume |
 | `distance_weights` | [Distance weighting](distance-weighting.md) | Weights of the stations for every node |
 | `station_corrections` | [Station corrections](station-corrections.md) | Travel time delays per station |
+| `trigger` | [Triggers](triggers.md) | Threshold and blinding of the detections |
 | `magnitudes` | [Magnitudes](magnitudes.md) | Local and moment magnitudes |
 | `features` | [Event features](features.md) | Ground motions |
 | `callbacks` | [Callbacks](callbacks.md) | Alerts and custom actions for new detections |

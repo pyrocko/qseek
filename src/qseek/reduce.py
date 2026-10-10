@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from pyrocko.trace import Trace
-from scipy import signal
 
 from qseek.ext.delay_sum import delay_sum_reduce, delay_sum_snapshot
 from qseek.stats import Stats
@@ -108,6 +107,16 @@ class DelaySumReduce:
     def n_nodes(self) -> int:
         """Number of nodes."""
         return len(self.nodes)
+
+    @property
+    def sampling_rate(self) -> float:
+        """Sampling rate of the stack in Hz."""
+        return self._sampling_rate
+
+    @property
+    def padding_samples(self) -> int:
+        """Number of padding samples at both ends of the stack."""
+        return self._padding_samples
 
     def _invalidate_state(self) -> None:
         self._dirty = True
@@ -281,49 +290,6 @@ class DelaySumReduce:
             node_mask=mask_nodes,
         )
         return snapshot[~mask_nodes] if mask_nodes is not None else snapshot
-
-    async def find_peaks(
-        self,
-        height: float,
-        prominence: float,
-        distance: float,
-        trim_padding: bool = True,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Find peaks in maximum semblance.
-
-        For details see scipy.signal.find_peaks.
-
-        Args:
-            height (float): Minimum height of the peak.
-            prominence (float): Prominence of the peak.
-            distance (float): Minium distance of a peak to other peaks.
-            trim_padding (bool, optional): Trim padded data in post-processing.
-                Defaults to True.
-
-        Returns:
-            tuple[np.ndarray, np.ndarray]: Indices of peaks and peak values.
-        """
-        self._check_state()
-        stack_max, _ = self.get_stack(trim_padding=False)
-
-        detection_idx, _ = await asyncio.to_thread(
-            signal.find_peaks,
-            stack_max,
-            height=height,
-            prominence=prominence,
-            distance=distance,
-        )
-        if trim_padding:
-            stack_max_trimmed, _ = self.get_stack(trim_padding=True)
-
-            detection_idx -= self._padding_samples
-            detection_idx = detection_idx[detection_idx >= 0]
-            detection_idx = detection_idx[detection_idx < stack_max_trimmed.size]
-            semblance = stack_max_trimmed[detection_idx]
-        else:
-            semblance = stack_max[detection_idx]
-
-        return detection_idx, semblance
 
     def get_time_from_sample(self, sample: int) -> datetime:
         """Get the time from a sample index.

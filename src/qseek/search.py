@@ -16,12 +16,10 @@ from pydantic import (
     BaseModel,
     ByteSize,
     Field,
-    PositiveFloat,
     PrivateAttr,
     computed_field,
     field_validator,
 )
-from scipy import stats
 
 from qseek.base import Model
 from qseek.cache_lru import CACHES
@@ -44,6 +42,7 @@ from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
+from qseek.triggers import ThresholdTrigger, TriggerType
 from qseek.utils import (
     LOG_COUNTER,
     BackgroundTasks,
@@ -299,6 +298,11 @@ class Search(Model):
         validation_alias=AliasChoices("spatial_weights", "distance_weights"),
         description="Spatial weights for distance weighting.",
     )
+    trigger: TriggerType = Field(
+        default_factory=ThresholdTrigger,
+        description="Trigger that detects events in the detection function, the"
+        " maximum semblance over all nodes.",
+    )
     station_corrections: StationCorrectionType | None = Field(
         default=None,
         description="Apply station corrections extracted from a previous run or a path"
@@ -328,14 +332,6 @@ class Search(Model):
         "`load()` function returning a `Callback` instance.",
     )
 
-    detection_threshold: Literal["MAD"] | PositiveFloat = Field(
-        default="MAD",
-        description=(
-            'Minimum semblance of a detection. `"MAD"` sets the threshold to 10 times '
-            "the median absolute deviation of the maximum semblance in each processed "
-            "window."
-        ),
-    )
     min_stations: int = Field(
         default=3,
         ge=0,
@@ -360,13 +356,6 @@ class Search(Model):
         description=(
             "Interpolate the location of a detection within its node using radial basis"
             " functions. If `false`, the node center is the hypocenter."
-        ),
-    )
-    detection_blinding: timedelta = Field(
-        default=timedelta(seconds=1.0),
-        description=(
-            "Blinding time before and after a detection in which no other detection is "
-            "made. Prevents detecting the same event twice."
         ),
     )
 
@@ -497,7 +486,7 @@ class Search(Model):
         """Get window padding length based on maximum travel time shifts.
 
         This is a calculation based on the maximum travel time shifts from the ray
-        tracers, the image function blinding, and the detection blinding.
+        tracers, the image function blinding, and the blinding of the trigger.
 
 
         Returns:
@@ -513,9 +502,7 @@ class Search(Model):
         shift_range = shift_max - shift_min
         logger.info("maximum travel time shift %s", shift_max)
 
-        return (
-            shift_range + self.image_function.get_blinding() + self.detection_blinding
-        )
+        return shift_range + self.image_function.get_blinding() + self.trigger.blinding
 
     async def prepare(self) -> None:
         """Prepares the search by initializing necessary components and data.
@@ -662,7 +649,7 @@ class Search(Model):
             window_padding=window_padding,
             station_corrections=self.station_corrections,
             distance_weights=self.distance_weights,
-            detection_threshold=self.detection_threshold,
+            trigger=self.trigger,
             node_interpolation=self.node_interpolation,
             ignore_boundary=self.ignore_boundary,
             ignore_boundary_width=self.ignore_boundary_width,
@@ -853,8 +840,7 @@ class OctreeSearch:
         window_padding: timedelta,
         station_corrections: StationCorrectionType | None = None,
         distance_weights: DistanceWeights | None = None,
-        detection_threshold: float | Literal["MAD"] = "MAD",
-        detection_blinding: timedelta = timedelta(seconds=1.0),
+        trigger: TriggerType | None = None,
         ignore_boundary: IgnoreBoundary = "with_surface",
         ignore_boundary_width: float | Literal["root_node_size"] = "root_node_size",
         node_interpolation: bool = True,
@@ -872,11 +858,8 @@ class OctreeSearch:
                 station corrections to apply. Defaults to None.
             distance_weights (DistanceWeights | None, optional): The distance
                 weights to apply. Defaults to None.
-            detection_threshold (float | Literal["MAD"], optional): The detection
-                threshold for the search. If "MAD", the threshold is set to 10 times
-                the median absolute deviation of the semblance. Defaults to "MAD".
-            detection_blinding (timedelta, optional): The blinding time for the
-                detection. Defaults to 1 second.
+            trigger (TriggerType | None, optional): The trigger that detects events
+                in the detection function. Defaults to ThresholdTrigger().
             ignore_boundary
                     (Literal[False, "with_surface", "without_surface"], optional):
                 Whether to ignore events at the boundary of the octree.
@@ -901,8 +884,7 @@ class OctreeSearch:
 
         self.window_padding = window_padding
 
-        self.detection_threshold = detection_threshold
-        self.blinding = detection_blinding
+        self.trigger = trigger or ThresholdTrigger()
         self.node_interpolation = node_interpolation
         self.attach_arrivals = attach_arrivals
         self.neighbor_search = neighbor_search
@@ -1045,17 +1027,11 @@ class OctreeSearch:
         )
         await stack.stack(n_threads=n_threads)
 
-        if self.detection_threshold == "MAD":
-            stack_max, _ = stack.get_stack(trim_padding=True)
-            threshold = stats.median_abs_deviation(stack_max) * 10
-            logger.debug("threshold MAD %g", self.detection_threshold)
-        else:
-            threshold = self.detection_threshold
-
-        detection_idx, detection_semblance = await stack.find_peaks(
-            height=float(threshold),
-            prominence=float(threshold),
-            distance=round(self.blinding.total_seconds() * images.sampling_rate),
+        detection_function, _ = stack.get_stack(trim_padding=False)
+        detection_idx, detection_semblance = await self.trigger.detect(
+            detection_function,
+            sampling_rate=stack.sampling_rate,
+            padding=stack.padding_samples,
         )
 
         if detection_idx.size == 0:
