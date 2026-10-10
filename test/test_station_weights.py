@@ -403,7 +403,9 @@ def clustered_stations() -> StationInventory:
         DistanceWeights(distance_taper="nearest_neighbor"),
         DistanceWeights(distance_taper=5 * KM, waterlevel=0.1),
         StationDensityWeights(),
+        StationDensityWeights(waterlevel=0.1),
         LogLogisticWeights(),
+        LogLogisticWeights(waterlevel=0.1),
     ],
 )
 async def test_station_weights_model(
@@ -416,8 +418,9 @@ async def test_station_weights_model(
     nodes = octree.nodes[:50]
     weights = await weights_model.get_weights(nodes, stations)
     assert weights.shape == (len(nodes), len(stations))
+    assert weights.dtype == np.float32
     assert np.all((weights > 0.0) & (weights <= 1.0))
-    assert weights.min() >= weights_model.waterlevel
+    assert weights.min() >= weights_model.waterlevel - 1e-6
 
     # Weights follow the order of the stations
     perm = np.random.default_rng(4).permutation(len(stations))
@@ -447,7 +450,9 @@ async def test_distance_weights_taper(
         expected_taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(distances)
     else:
         expected_taper = 2 * clustered_stations.mean_interstation_distance()
-    assert weights_model.distance_taper == pytest.approx(expected_taper)
+    # The configuration keeps the choice, the taper is calculated per network
+    assert weights_model.distance_taper == distance_taper
+    assert weights_model._distance_taper == pytest.approx(expected_taper)
 
     nodes = octree.nodes[:20]
     weights = await weights_model.get_weights(nodes, list(clustered_stations))
@@ -482,6 +487,43 @@ async def test_station_density_weights_subset(
     assert independence[12:].max() < independence[:12].min()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "weights_model",
+    [DistanceWeights(), StationDensityWeights(), LogLogisticWeights()],
+)
+@pytest.mark.parametrize(
+    "positions_km",
+    [[(0.0, 0.0)], [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]],
+    ids=["single", "colocated"],
+)
+async def test_station_weights_single_site(weights_model, positions_km, octree: Octree):
+    # One station, or all sensors at one site
+    stations = local_stations(positions_km)
+    weights_model = weights_model.model_copy(deep=True)
+    weights_model.prepare(stations, octree)
+    weights = await weights_model.get_weights(octree.nodes[:20], list(stations))
+    assert np.all(np.isfinite(weights))
+    # The same weight for all stations of a node
+    np.testing.assert_allclose(weights, np.broadcast_to(weights[:, :1], weights.shape))
+
+
+@pytest.mark.asyncio
+async def test_distance_weights_prepare_again(
+    octree: Octree, clustered_stations: StationInventory
+):
+    # The inversion prepares the weights again with other stations
+    weights_model = DistanceWeights()
+    weights_model.prepare(clustered_stations, octree)
+    taper_all = weights_model._distance_taper
+    subset = StationInventory(stations=list(clustered_stations)[12:])
+    weights_model.prepare(subset, octree)
+    assert weights_model._distance_taper == pytest.approx(
+        2 * subset.mean_interstation_distance()
+    )
+    assert weights_model._distance_taper < taper_all
+
+
 def test_station_weights_config():
     from pydantic import ValidationError
 
@@ -500,6 +542,9 @@ def test_station_weights_config():
 
     with pytest.raises(ValidationError):
         Search.model_validate({"station_weights": {"weights": "UnknownWeights"}})
+    # The key of earlier versions
+    with pytest.raises(ValidationError):
+        Search.model_validate({"distance_weights": {"required_closest_stations": 4}})
 
 
 if __name__ == "__main__":
