@@ -400,7 +400,7 @@ def clustered_stations() -> StationInventory:
     "weights_model",
     [
         DistanceWeights(),
-        DistanceWeights(distance_taper="mean_interstation"),
+        DistanceWeights(distance_taper="nearest_neighbor"),
         DistanceWeights(distance_taper=5 * KM, waterlevel=0.1),
         StationDensityWeights(),
         LogLogisticWeights(),
@@ -487,7 +487,7 @@ def test_station_weights_config():
 
     from qseek.search import Search
 
-    assert isinstance(Search().station_weights, DistanceWeights)
+    assert isinstance(Search().station_weights, StationDensityWeights)
     assert Search.model_validate({"station_weights": None}).station_weights is None
 
     for model in (
