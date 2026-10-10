@@ -11,6 +11,7 @@ The [Qseek playground](https://github.com/pyrocko/qseek-playground) holds worked
 | Campi Flegrei | 1 day, 18 stations of the INGV network, 20 May 2024 | 732 detections; all 45 events of the INGV catalog detected |
 | Campi Flegrei, February 2025 | 10 days, 19 stations of the INGV network, 12–22 February 2025 | 6379 detections; 209 of the 211 events of the INGV catalog detected |
 | Mount Spurr, December 2024 | 3 days, 10 local AVO stations and 10 regional stations out to 131 km, 27–29 December 2024 | 1758 detections; 228 of the 234 events of the USGS catalog detected |
+| Norcia, November 2016 | 3 days, 49 stations of four networks with a cluster of 12 stations at Amatrice, 15–17 November 2016 | 3732 detections; 1013 of the 1071 events of the INGV catalog detected |
 
 ## Set up the playground
 
