@@ -38,7 +38,7 @@ from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import PreProcessing, Resample
 from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
-from qseek.station_weights import DistanceWeights, StationWeightsType
+from qseek.station_weights import StationDensityWeights, StationWeightsType
 from qseek.stats import RuntimeStats, Stats
 from qseek.tracers.tracers import RayTracer, RayTracers
 from qseek.triggers import ThresholdTrigger, TriggerType
@@ -293,7 +293,7 @@ class Search(Model):
         description="List of ray tracers for travel time calculation.",
     )
     station_weights: StationWeightsType | None = Field(
-        default_factory=DistanceWeights,
+        default_factory=StationDensityWeights,
         description="Weights of the stations for every node of the search volume."
         " If `null`, all stations get the same weight.",
     )
