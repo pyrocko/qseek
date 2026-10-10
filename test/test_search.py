@@ -169,7 +169,11 @@ async def test_search_no_event(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "station_weights",
-    [DistanceWeights(), StationDensityWeights(), LogLogisticWeights()],
+    [
+        DistanceWeights(),
+        StationDensityWeights(),
+        LogLogisticWeights(),
+    ],
 )
 async def test_search_station_weights(
     station_weights, small_octree: Octree, surface_stations: StationInventory
