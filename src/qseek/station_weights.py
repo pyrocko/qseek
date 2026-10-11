@@ -151,14 +151,17 @@ def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
     if not np.isfinite(radius):
         return np.ones(distances.shape[0])
     n_sensors = colocated_sensors(distances).astype(distances.dtype)
-    # In place: one temporary of the size of the distances
-    kernel = np.array(distances, copy=True)
-    kernel[kernel <= COLOCATED_DISTANCE] = np.nan
-    np.square(kernel, out=kernel)
-    kernel *= -1.0 / (2 * radius**2)
-    np.exp(kernel, out=kernel)
-    kernel /= n_sensors[np.newaxis, :]
-    return np.nansum(kernel, axis=1) + 1.0
+    density = np.empty(distances.shape[0], dtype=distances.dtype)
+    # Row blocks keep the temporary kernel small for large networks
+    for start in range(0, distances.shape[0], INTERSTATION_BLOCK):
+        kernel = np.array(distances[start : start + INTERSTATION_BLOCK], copy=True)
+        kernel[kernel <= COLOCATED_DISTANCE] = np.nan
+        np.square(kernel, out=kernel)
+        kernel *= -1.0 / (2 * radius**2)
+        np.exp(kernel, out=kernel)
+        kernel /= n_sensors[np.newaxis, :]
+        density[start : start + kernel.shape[0]] = np.nansum(kernel, axis=1)
+    return density + 1.0
 
 
 def station_independence(distances: np.ndarray) -> np.ndarray:
@@ -393,6 +396,11 @@ class StationWeights(Model):
         """
         if self._interstation_distances is None:
             self._interstation_distances = interstation_distances(list(self._stations))
+        n_stations = self._interstation_distances.shape[0]
+        if station_indices.size == n_stations and np.array_equal(
+            station_indices, np.arange(n_stations)
+        ):
+            return self._interstation_distances
         return self._interstation_distances[np.ix_(station_indices, station_indices)]
 
     def get_independence(self, station_indices: np.ndarray) -> np.ndarray:

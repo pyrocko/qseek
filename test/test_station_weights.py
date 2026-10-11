@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from qseek.models.location import Location
+from qseek.models.location import Location, get_coordinates
 from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.station_weights import (
@@ -222,6 +222,36 @@ def test_nearest_neighbor_distance():
     single = interstation_distances(local_locations([(0.0, 0.0), (0.0, 0.0)]))
     assert np.isnan(nearest_neighbor_distance(single))
     np.testing.assert_equal(station_density(single), 1.0)
+
+
+def test_interstation_distances_blocks():
+    # More stations than one block of rows, with co-located sensors
+    from pyrocko import orthodrome as od
+
+    from qseek.station_weights import INTERSTATION_BLOCK
+
+    rng = np.random.default_rng(5)
+    sites = [
+        tuple(rng.uniform(-30, 30, size=2)) for _ in range(INTERSTATION_BLOCK + 50)
+    ]
+    locations = local_locations(sites + sites[:20])
+    distances = interstation_distances(locations)
+    assert distances.dtype == np.float32
+
+    coords = get_coordinates(locations)
+    ecef = np.array(od.geodetic_to_ecef(*coords.T)).T
+    expected = np.linalg.norm(ecef - ecef[:, np.newaxis], axis=2)
+    np.fill_diagonal(expected, np.nan)
+    np.testing.assert_allclose(distances, expected, rtol=1e-6, atol=1e-2)
+
+    # The density in row blocks equals a float64 calculation in one piece
+    radius = nearest_neighbor_distance(expected)
+    sites_expected = np.where(expected <= 50.0, np.nan, expected)
+    n_sensors = 1 + np.sum(expected <= 50.0, axis=1)
+    kernel = np.exp(-(sites_expected**2) / (2 * radius**2)) / n_sensors[np.newaxis]
+    np.testing.assert_allclose(
+        station_density(distances), np.nansum(kernel, axis=1) + 1.0, rtol=1e-5
+    )
 
 
 def test_station_density():
@@ -506,6 +536,47 @@ async def test_station_weights_single_site(weights_model, positions_km, octree: 
     assert np.all(np.isfinite(weights))
     # The same weight for all stations of a node
     np.testing.assert_allclose(weights, np.broadcast_to(weights[:, :1], weights.shape))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "weights_model",
+    [DistanceWeights(distance_taper="nearest_neighbor"), StationDensityWeights()],
+)
+async def test_station_weights_prepare_again_other_stations(
+    weights_model, octree: Octree, clustered_stations: StationInventory
+):
+    # A second prepare with other stations resets the distances and the counts
+    fresh = weights_model.model_copy(deep=True)
+    weights_model = weights_model.model_copy(deep=True)
+    weights_model.prepare(clustered_stations, octree)
+    await weights_model.get_weights(octree.nodes[:5], list(clustered_stations))
+
+    subset = StationInventory(stations=list(clustered_stations)[:12])
+    weights_model.prepare(subset, octree)
+    weights = await weights_model.get_weights(octree.nodes[:5], list(subset))
+
+    fresh.prepare(subset, octree)
+    np.testing.assert_allclose(
+        weights, await fresh.get_weights(octree.nodes[:5], list(subset))
+    )
+
+
+@pytest.mark.asyncio
+async def test_distance_weights_lazy_and_explicit(
+    octree: Octree, clustered_stations: StationInventory
+):
+    # The default taper needs no interstation distances
+    weights_model = DistanceWeights()
+    weights_model.prepare(clustered_stations, octree)
+    await weights_model.get_weights(octree.nodes[:5], list(clustered_stations))
+    assert weights_model._interstation_distances is None
+
+    # An explicit taper is kept as given
+    weights_model = DistanceWeights(distance_taper=5 * KM)
+    weights_model.prepare(clustered_stations, octree)
+    assert weights_model._distance_taper == 5 * KM
+    assert weights_model.distance_taper == 5 * KM
 
 
 @pytest.mark.asyncio
