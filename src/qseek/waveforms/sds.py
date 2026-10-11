@@ -52,6 +52,11 @@ JDAY = "[0-9]*"
 
 EXCLUDE_BANDS = "LVURPTQ"
 
+# Records are filed by their start time, so the last record of a day file can
+# reach into the next day. A 4096 byte Steim2 record holds at most about 6600
+# samples, 66 s at 100 Hz.
+DAY_FILE_OVERLAP = timedelta(minutes=10)
+
 
 def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Trace]:
     tmin = start_time.timestamp()
@@ -66,7 +71,7 @@ def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Tra
             continue
         traces.append(tr)
     if not traces:
-        logger.warning("no waveforms loaded from file %s at %s", file, start_time)
+        logger.debug("no waveforms loaded from file %s at %s", file, start_time)
     return traces
 
 
@@ -128,6 +133,13 @@ async def _load_files(
 def _nsl_from_filename(name: str) -> NSL:
     network, station, location, *_ = name.split(".")
     return NSL(network, station, location)
+
+
+def _get_dates(start_time: datetime, end_time: datetime) -> list[date]:
+    """Dates of the day files that can hold data of a time window."""
+    first_date = (start_time - DAY_FILE_OVERLAP).date()
+    n_days = (end_time.date() - first_date).days
+    return [first_date + timedelta(days=day) for day in range(n_days + 1)]
 
 
 def _get_date_from_filename(path: Path) -> date:
@@ -499,7 +511,7 @@ class SDSArchive(WaveformProvider):
             trace_start = batch_start - window_padding
             trace_end = batch_end + window_padding
 
-            dates = {trace_start.date(), trace_end.date()}
+            dates = _get_dates(trace_start, trace_end)
 
             begin_load = datetime_now()
             paths = self._get_file_paths(nsls, dates)
@@ -617,7 +629,7 @@ class SDSArchive(WaveformProvider):
         channel_priorities: Sequence[str] | None = None,
         want_incomplete: bool = False,
     ) -> list[Trace]:
-        dates = {start_time.date(), end_time.date()}
+        dates = _get_dates(start_time, end_time)
         paths = self._get_file_paths(
             nsls,
             dates,
