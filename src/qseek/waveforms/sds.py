@@ -22,7 +22,7 @@ from pydantic import (
 )
 from pyrocko import obspy_compat
 from pyrocko.io.mseed import iload
-from pyrocko.trace import degapper
+from pyrocko.trace import NoData, degapper
 
 from qseek.stats import Stats, get_progress
 from qseek.types import DirectoryPath
@@ -54,9 +54,17 @@ EXCLUDE_BANDS = "LVURPTQ"
 
 
 def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Trace]:
-    traces = list(
-        iload(str(file), tmin=start_time.timestamp(), tmax=end_time.timestamp())
-    )
+    tmin = start_time.timestamp()
+    tmax = end_time.timestamp()
+    traces = []
+    for tr in iload(str(file), tmin=tmin, tmax=tmax):
+        # iload yields a record unchopped when it holds no sample of the window,
+        # e.g. the first record of the next day file for a window ending at midnight
+        try:
+            tr.chop(tmin, tmax, include_last=False)
+        except NoData:
+            continue
+        traces.append(tr)
     if not traces:
         logger.warning("no waveforms loaded from file %s at %s", file, start_time)
     return traces

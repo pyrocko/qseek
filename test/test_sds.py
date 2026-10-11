@@ -193,6 +193,38 @@ async def test_get_traces_unpadded_day(tmp_path: Path) -> None:
     assert traces[0].ydata.size == 12000
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("want_incomplete", [False, True])
+async def test_get_traces_ending_at_midnight(
+    tmp_path: Path, want_incomplete: bool
+) -> None:
+    """A window ending at midnight does not take the first record of the next day."""
+    midnight = datetime(2024, 5, 21, tzinfo=timezone.utc)
+    deltat = 0.01
+    for julian_day, tmin in ((141, midnight - timedelta(hours=1)), (142, midnight)):
+        trace = Trace(
+            "XX",
+            "STA",
+            "",
+            "HHZ",
+            tmin=tmin.timestamp(),
+            deltat=deltat,
+            ydata=np.arange(360000, dtype=np.int32),
+        )
+        folder = tmp_path / "2024" / "XX" / "STA" / "HHZ.D"
+        folder.mkdir(parents=True, exist_ok=True)
+        save([trace], str(folder / f"XX.STA..HHZ.D.2024.{julian_day}"))
+
+    archive = archive_with_executor(tmp_path)
+    start = midnight - timedelta(minutes=5)
+    traces = await archive.get_traces(
+        [NSL("XX", "STA", "")], start, midnight, want_incomplete=want_incomplete
+    )
+    assert len(traces) == 1
+    assert traces[0].tmin == start.timestamp()
+    assert traces[0].tmax == midnight.timestamp() - deltat
+
+
 def test_station_coverage() -> None:
     """Each station keeps its own channels and file dates."""
     sta = StationCovarage(nsl=NSL("XX", "STA", ""))
