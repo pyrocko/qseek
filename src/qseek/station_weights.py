@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 # Sensors closer than this share a site, e.g. a broadband and a strong-motion sensor
 COLOCATED_DISTANCE = 50.0
+# Rows of the interstation distances calculated at once
+INTERSTATION_BLOCK = 256
 # Taper width of the distance weights in units of the nearest neighbor distance
 NEAREST_NEIGHBOR_TAPER = 6.0
 
@@ -76,11 +78,18 @@ def interstation_distances(locations: Sequence[Location]) -> np.ndarray:
 
     Returns:
         Array of shape (n_stations, n_stations) with the interstation distances in
-            meters. The diagonal is NaN.
+            meters, float32. The diagonal is NaN.
     """
     coords = get_coordinates(locations, system="geographic")
     coords_ecef = np.array(od.geodetic_to_ecef(*coords.T)).T
-    distances = np.linalg.norm(coords_ecef - coords_ecef[:, np.newaxis], axis=2)
+    n_stations = coords_ecef.shape[0]
+    distances = np.empty((n_stations, n_stations), dtype=np.float32)
+    # Row blocks keep the temporary differences small for large networks
+    for start in range(0, n_stations, INTERSTATION_BLOCK):
+        block = coords_ecef[start : start + INTERSTATION_BLOCK]
+        distances[start : start + block.shape[0]] = np.linalg.norm(
+            block[:, np.newaxis] - coords_ecef[np.newaxis], axis=2
+        )
     np.fill_diagonal(distances, np.nan)
     return distances
 
@@ -112,10 +121,13 @@ def nearest_neighbor_distance(distances: np.ndarray) -> float:
         Median nearest neighbor distance in meters, NaN with less than two sites.
     """
     distances = np.atleast_2d(distances)
-    distances = np.where(distances > COLOCATED_DISTANCE, distances, np.nan)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        return float(np.nanmedian(np.nanmin(distances, axis=1)))
+        nearest = np.nanmin(
+            distances, axis=1, where=distances > COLOCATED_DISTANCE, initial=np.inf
+        )
+        nearest[~np.isfinite(nearest)] = np.nan
+        return float(np.nanmedian(nearest))
 
 
 def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
@@ -138,9 +150,14 @@ def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
         radius = nearest_neighbor_distance(distances)
     if not np.isfinite(radius):
         return np.ones(distances.shape[0])
-    n_sensors = colocated_sensors(distances)
-    sites = np.where(distances <= COLOCATED_DISTANCE, np.nan, distances)
-    kernel = np.exp(-(sites**2) / (2 * radius**2)) / n_sensors[np.newaxis, :]
+    n_sensors = colocated_sensors(distances).astype(distances.dtype)
+    # In place: one temporary of the size of the distances
+    kernel = np.array(distances, copy=True)
+    kernel[kernel <= COLOCATED_DISTANCE] = np.nan
+    np.square(kernel, out=kernel)
+    kernel *= -1.0 / (2 * radius**2)
+    np.exp(kernel, out=kernel)
+    kernel /= n_sensors[np.newaxis, :]
     return np.nansum(kernel, axis=1) + 1.0
 
 

@@ -272,10 +272,10 @@ def test_station_independence_colocated():
     independence_sites = station_independence(
         interstation_distances(local_locations(sites))
     )
-    np.testing.assert_allclose(independence[:6], independence_sites[:6] / 2)
+    np.testing.assert_allclose(independence[:6], independence_sites[:6] / 2, rtol=1e-5)
     np.testing.assert_allclose(independence[:6], independence[10:])
-    np.testing.assert_allclose(independence[6:10], independence_sites[6:10])
-    assert independence.sum() == pytest.approx(independence_sites.sum())
+    np.testing.assert_allclose(independence[6:10], independence_sites[6:10], rtol=1e-5)
+    assert independence.sum() == pytest.approx(independence_sites.sum(), rel=1e-5)
 
     # Two sensors of a site count as the site alone
     three_sites = [(0.0, 0.0), (20.0, 0.0), (0.0, 20.0)]
@@ -283,8 +283,8 @@ def test_station_independence_colocated():
         interstation_distances(local_locations(three_sites[:1] + three_sites))
     )
     single = station_independence(interstation_distances(local_locations(three_sites)))
-    np.testing.assert_allclose(pair[:2], single[0] / 2)
-    np.testing.assert_allclose(pair[2:], single[1:])
+    np.testing.assert_allclose(pair[:2], single[0] / 2, rtol=1e-5)
+    np.testing.assert_allclose(pair[2:], single[1:], rtol=1e-5)
 
 
 def test_station_independence_range():
