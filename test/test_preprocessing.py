@@ -1,3 +1,6 @@
+import subprocess
+import sys
+import textwrap
 from datetime import datetime, timezone
 
 import numpy as np
@@ -169,12 +172,20 @@ async def test_chunks_identical(module: BatchPreProcessing):
         np.testing.assert_array_equal(tr.ydata, tr_ref.ydata)
 
 
-@pytest.mark.asyncio
-async def test_deep_denoiser() -> None:
-    """The denoised traces replace the traces of the selected stations."""
+# Runs in a fresh interpreter: on macOS, qseek's extensions and torch each bring
+# their own OpenMP runtime, and the second one to start aborts. Earlier tests
+# start qseek's, so torch has to be imported before them.
+DEEP_DENOISER = textwrap.dedent(
+    """
+    import asyncio
+    from datetime import datetime, timezone
+
+    import numpy as np
     import seisbench.models as sbm
+    from pyrocko.trace import Trace
 
     from qseek.pre_processing.deep_denoiser import DeepDenoiser
+    from qseek.waveforms.base import WaveformBatch
 
     rng = np.random.default_rng(0)
     traces = [
@@ -199,7 +210,7 @@ async def test_deep_denoiser() -> None:
 
     module = DeepDenoiser(stations=["XX.STA."])
     module._denoiser = sbm.DeepDenoiser().eval()  # random weights, no download
-    batch = await module.process_batch(batch)
+    batch = asyncio.run(module.process_batch(batch))
 
     assert sorted(tr.nslc_id for tr in batch.traces) == sorted(originals)
     for tr in batch.traces:
@@ -208,3 +219,19 @@ async def test_deep_denoiser() -> None:
             assert not np.allclose(tr.ydata, originals[tr.nslc_id])
         else:
             assert tr in traces  # not selected, untouched
+    print("ok")
+    """
+)
+
+
+def test_deep_denoiser() -> None:
+    """The denoised traces replace the traces of the selected stations."""
+    result = subprocess.run(
+        [sys.executable, "-c", DEEP_DENOISER],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith("ok")
