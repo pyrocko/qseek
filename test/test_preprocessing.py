@@ -167,3 +167,44 @@ async def test_chunks_identical(module: BatchPreProcessing):
         assert tr.deltat == tr_ref.deltat
         assert tr.tmin == tr_ref.tmin
         np.testing.assert_array_equal(tr.ydata, tr_ref.ydata)
+
+
+@pytest.mark.asyncio
+async def test_deep_denoiser() -> None:
+    """The denoised traces replace the traces of the selected stations."""
+    import seisbench.models as sbm
+
+    from qseek.pre_processing.deep_denoiser import DeepDenoiser
+
+    rng = np.random.default_rng(0)
+    traces = [
+        Trace(
+            network="XX",
+            station=station,
+            channel=f"HH{component}",
+            deltat=0.01,
+            tmin=0.0,
+            ydata=rng.standard_normal(6000),
+        )
+        for station in ("STA", "STB")
+        for component in "ZNE"
+    ]
+    originals = {tr.nslc_id: tr.ydata.copy() for tr in traces}
+    batch = WaveformBatch(
+        traces=list(traces),
+        start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        end_time=datetime(2024, 1, 1, 0, 1, tzinfo=timezone.utc),
+        i_batch=0,
+    )
+
+    module = DeepDenoiser(stations=["XX.STA."])
+    module._denoiser = sbm.DeepDenoiser().eval()  # random weights, no download
+    batch = await module.process_batch(batch)
+
+    assert sorted(tr.nslc_id for tr in batch.traces) == sorted(originals)
+    for tr in batch.traces:
+        if tr.station == "STA":
+            assert tr.ydata.size == 6000
+            assert not np.allclose(tr.ydata, originals[tr.nslc_id])
+        else:
+            assert tr in traces  # not selected, untouched

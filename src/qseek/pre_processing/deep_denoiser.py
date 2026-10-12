@@ -61,11 +61,21 @@ class DeepDenoiser(BatchPreProcessing):
         if self._denoiser is None:
             raise RuntimeError("DeepDenoiser model not initialized.")
 
-        stream = Stream(tr.to_obspy_trace() for tr in self.filter_traces(batch))
+        traces = self.filter_traces(batch)
+        if not traces:
+            return batch
+        stream = Stream(tr.to_obspy_trace() for tr in traces)
         stream = await self._denoiser.annotate_async(stream)
 
-        denoised_traces = [tr.to_pyrocko_trace() for tr in stream]
-        for tr in denoised_traces:
-            tr.channel = tr.channel.replace("DeepDenoiser_", "")
+        denoised_traces = []
+        for tr in stream:
+            trace = tr.to_pyrocko_trace()
+            trace.set_codes(channel=trace.channel.removeprefix("DeepDenoiser_"))
+            denoised_traces.append(trace)
 
+        # The denoised traces replace the traces they were computed from
+        replaced = {id(tr) for tr in traces}
+        batch.traces = [
+            tr for tr in batch.traces if id(tr) not in replaced
+        ] + denoised_traces
         return batch
