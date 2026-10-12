@@ -163,11 +163,12 @@ class BackgroundTasks(asyncio.TaskGroup):
             asyncio.Task[T | None]: The task.
         """
         name = name or getattr(coro, "__qualname__", repr(coro))
+        wrapper = _log_exceptions(coro, name)
         try:
-            task = super().create_task(
-                _log_exceptions(coro, name), name=name, context=context
-            )
+            task = super().create_task(wrapper, name=name, context=context)
         except RuntimeError:  # The group has finished or is shutting down
+            # Python 3.13+ closes the wrapper itself, 3.12 does not
+            wrapper.close()
             coro.close()
             raise
         # A task cancelled before its first step never awaits the coroutine
