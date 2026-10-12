@@ -193,6 +193,89 @@ async def test_get_traces_unpadded_day(tmp_path: Path) -> None:
     assert traces[0].ydata.size == 12000
 
 
+MIDNIGHT = datetime(2024, 5, 21, tzinfo=timezone.utc)
+
+
+def save_day_files(path: Path, spill: float = 0.0) -> None:
+    """One hour on both sides of MIDNIGHT in two day files.
+
+    The file of day 141 holds the first `spill` seconds of day 142.
+    """
+    split = MIDNIGHT.timestamp() + spill
+    deltat = 0.01
+    hour = 3600.0
+    folder = path / "2024" / "XX" / "STA" / "HHZ.D"
+    folder.mkdir(parents=True)
+    for julian_day, tmin, tmax in (
+        (141, MIDNIGHT.timestamp() - hour, split),
+        (142, split, MIDNIGHT.timestamp() + hour),
+    ):
+        trace = Trace(
+            "XX",
+            "STA",
+            "",
+            "HHZ",
+            tmin=tmin,
+            deltat=deltat,
+            ydata=np.arange(round((tmax - tmin) / deltat), dtype=np.int32),
+        )
+        save([trace], str(folder / f"XX.STA..HHZ.D.2024.{julian_day}"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("want_incomplete", [False, True])
+async def test_get_traces_ending_at_midnight(
+    tmp_path: Path, want_incomplete: bool
+) -> None:
+    """A window ending at midnight does not take the first record of the next day."""
+    save_day_files(tmp_path)
+
+    archive = archive_with_executor(tmp_path)
+    start = MIDNIGHT - timedelta(minutes=5)
+    traces = await archive.get_traces(
+        [NSL("XX", "STA", "")], start, MIDNIGHT, want_incomplete=want_incomplete
+    )
+    assert len(traces) == 1
+    assert traces[0].tmin == start.timestamp()
+    assert traces[0].tmax == MIDNIGHT.timestamp() - 0.01
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("offset", [0.0, 1.0, 3.0])
+async def test_get_traces_record_across_midnight(tmp_path: Path, offset: float) -> None:
+    """The start of a day is read from the previous day file as well."""
+    save_day_files(tmp_path, spill=5.0)
+
+    archive = archive_with_executor(tmp_path)
+    start = MIDNIGHT + timedelta(seconds=offset)
+    end = start + timedelta(minutes=5)
+    traces = await archive.get_traces([NSL("XX", "STA", "")], start, end)
+    assert len(traces) == 1
+    assert traces[0].tmin == start.timestamp()
+    assert traces[0].tmax == end.timestamp() - 0.01
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "dates"),
+    [
+        (MIDNIGHT + timedelta(hours=1), MIDNIGHT + timedelta(hours=2), [MIDNIGHT]),
+        (
+            MIDNIGHT + timedelta(minutes=5),
+            MIDNIGHT + timedelta(hours=1),
+            [MIDNIGHT - timedelta(days=1), MIDNIGHT],
+        ),
+        (
+            MIDNIGHT - timedelta(hours=1),
+            MIDNIGHT + timedelta(days=2, hours=1),
+            [MIDNIGHT + timedelta(days=day) for day in range(-1, 3)],
+        ),
+    ],
+)
+def test_get_dates(start: datetime, end: datetime, dates: list[datetime]) -> None:
+    """All days of a window, and the previous day close after midnight."""
+    assert sds._get_dates(start, end) == [d.date() for d in dates]
+
+
 def test_station_coverage() -> None:
     """Each station keeps its own channels and file dates."""
     sta = StationCovarage(nsl=NSL("XX", "STA", ""))
