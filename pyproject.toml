@@ -40,7 +40,6 @@ dependencies = [
     "aiohttp_cors>=0.7.0",
     "lru-dict>=1.4.1",
     "rich>=15.0",
-    "nest_asyncio>=1.5",
     "pyevtk>=1.6",
     "psutil>=7.0",
     "aiofiles>=23.0",

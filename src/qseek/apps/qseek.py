@@ -10,8 +10,6 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, get_args
 
-import nest_asyncio
-
 if TYPE_CHECKING:
     from qseek.models.detection import EventDetection
 
@@ -374,7 +372,6 @@ def run() -> None:
             console.print_json(config.model_dump_json(by_alias=False, indent=2))
 
         case "search":
-            nest_asyncio.apply()
             from qseek.search import Search
 
             if not args.config.exists():
@@ -396,7 +393,6 @@ def run() -> None:
             )
 
         case "continue":
-            nest_asyncio.apply()
             from qseek.search import Search
 
             if args.rundir.is_file() and args.rundir.suffix in {".json", ".JSON"}:
