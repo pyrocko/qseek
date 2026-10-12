@@ -51,6 +51,7 @@ from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
+    from contextvars import Context
     from types import TracebackType
 
     from pyrocko.trace import Trace
@@ -149,19 +150,23 @@ class BackgroundTasks(asyncio.TaskGroup):
         coro: Coroutine[Any, Any, T],
         *,
         name: str | None = None,
+        context: Context | None = None,
     ) -> asyncio.Task[T | None]:
         """Run a coroutine in the background, its exception is logged.
 
         Args:
             coro (Coroutine[Any, Any, T]): Coroutine to run.
             name (str | None, optional): Name of the task.
+            context (Context | None, optional): Context to run the task in.
 
         Returns:
             asyncio.Task[T | None]: The task.
         """
         name = name or getattr(coro, "__qualname__", repr(coro))
         try:
-            task = super().create_task(_log_exceptions(coro, name), name=name)
+            task = super().create_task(
+                _log_exceptions(coro, name), name=name, context=context
+            )
         except RuntimeError:  # The group has finished or is shutting down
             coro.close()
             raise

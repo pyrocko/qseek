@@ -5,8 +5,8 @@ import sys
 import textwrap
 
 # Runs the code path of the CLI in a fresh interpreter: `asyncio.run()` without
-# nest_asyncio, a task group and timeouts in the main task, and SeisBench, whose
-# synchronous `annotate()` calls `asyncio.run()` itself.
+# nest_asyncio, a task group and timeouts in the main task, and the SeisBench
+# image function.
 CLI_EVENT_LOOP = textwrap.dedent(
     """
     import asyncio
