@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-from asyncio import Queue
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal, Sequence
+from typing import TYPE_CHECKING, Annotated, AsyncGenerator, Literal, Sequence
 
 import numpy as np
 from pydantic import Field, PrivateAttr, StringConstraints
@@ -109,7 +108,6 @@ class WaveformProvider(Model):
         description="Channel selector for waveforms, e.g. `['HH', 'EN']`.",
     )
 
-    _queue: Queue[WaveformBatch | None] = PrivateAttr(default_factory=lambda: Queue())
     _stats: Stats = PrivateAttr(default_factory=Stats)
 
     @classmethod
@@ -131,7 +129,7 @@ class WaveformProvider(Model):
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> AsyncIterator[WaveformBatch]:
+    ) -> AsyncGenerator[WaveformBatch]:
         raise NotImplementedError
 
     async def get_traces(

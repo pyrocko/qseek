@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, Annotated, AsyncIterator, ClassVar, Iterator, Union
+from typing import TYPE_CHECKING, Annotated, AsyncGenerator, ClassVar, Iterator, Union
 
-from pydantic import Field, PositiveInt, PrivateAttr, RootModel, computed_field
+from pydantic import Field, RootModel
 
 from qseek.pre_processing.base import BatchPreProcessing
 from qseek.pre_processing.deep_denoiser import DeepDenoiser
@@ -15,8 +16,12 @@ from qseek.pre_processing.frequency_filters import (
     Lowpass,
 )
 from qseek.pre_processing.resample import Downsample, Resample
-from qseek.stats import Stats
-from qseek.utils import QUEUE_SIZE, datetime_now, human_readable_bytes
+from qseek.stats import QueueStats
+from qseek.utils import (
+    QUEUE_SIZE,
+    datetime_now,
+    prefetch,
+)
 
 if TYPE_CHECKING:
     from rich.table import Table
@@ -35,41 +40,17 @@ else:
     ]
 
 
-class PreProcessingStats(Stats):
+class PreProcessingStats(QueueStats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
-    _queue: asyncio.Queue[WaveformBatch | None] | None = PrivateAttr(None)
 
     _position = 30
     _show_header = False
 
-    def set_queue(self, queue: asyncio.Queue[WaveformBatch | None] | None) -> None:
-        self._queue = queue
-
-    @computed_field
-    @property
-    def queue_size(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.qsize()
-
-    @computed_field
-    @property
-    def queue_size_max(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.maxsize
-
     def _populate_table(self, table: Table) -> None:
-        if not self._queue:
+        if self._queue is None:
             return
-        alert = self.queue_size <= 2
-        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
-        table.add_row(
-            "[bold]Waveform PreProcessing[/bold]",
-            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
-            f" {human_readable_bytes(self.bytes_per_second) + '/s':>10}",
-        )
+        self._add_queue_row(table, "Waveform PreProcessing", self.bytes_per_second)
 
 
 class PreProcessing(RootModel):
@@ -79,9 +60,6 @@ class PreProcessing(RootModel):
         "The first module is the first to be applied.",
     )
 
-    _queue: asyncio.Queue[WaveformBatch | None] = PrivateAttr(
-        asyncio.Queue(maxsize=QUEUE_SIZE)
-    )
     _stats: ClassVar[PreProcessingStats] = PreProcessingStats()
 
     # BaseModel.__iter__ yields the fields, this yields the items
@@ -98,21 +76,41 @@ class PreProcessing(RootModel):
             batch = await process.process_batch(batch)
         return batch
 
-    async def iter_batches(
+    def iter_batches(
         self,
-        batch_iterator: AsyncIterator[WaveformBatch],
-    ) -> AsyncIterator[WaveformBatch]:
-        stats = self._stats
-        stats.set_queue(self._queue)
+        batch_iterator: AsyncGenerator[WaveformBatch],
+    ) -> AsyncGenerator[WaveformBatch]:
+        """Iterate over the pre-processed batches.
 
+        The batches are processed in a background task, ahead of the consumer.
+        Errors are raised to the consumer, and the background task is cancelled
+        when the consumer stops iterating.
+
+        Args:
+            batch_iterator (AsyncGenerator[WaveformBatch]): Async generator of
+                batches.
+
+        Returns:
+            AsyncGenerator[WaveformBatch]: The pre-processed batches.
+        """
         if not self.root:
             logger.debug("no pre-processing defined")
-            stats.set_queue(None)
-            async for batch in batch_iterator:
-                yield batch
-            return
+            self._stats.set_queue(None)
+            return batch_iterator
 
-        async def worker() -> None:
+        queue: asyncio.Queue[WaveformBatch] = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self._stats.set_queue(queue)
+        logger.info("start pre-processing waveforms")
+        return prefetch(
+            self._process_batches(batch_iterator), queue, name="pre-processing"
+        )
+
+    async def _process_batches(
+        self,
+        batch_iterator: AsyncGenerator[WaveformBatch],
+    ) -> AsyncGenerator[WaveformBatch]:
+        stats = self._stats
+        async with contextlib.aclosing(batch_iterator):
             async for batch in batch_iterator:
                 start_time = datetime_now()
                 for process in self:
@@ -122,28 +120,8 @@ class PreProcessing(RootModel):
                 stats.bytes_per_second = (
                     batch.nbytes / stats.time_per_batch.total_seconds()
                 )
-                await self._queue.put(batch)
-
-            await self._queue.put(None)
-
-        logger.info("start pre-processing images")
-        task = asyncio.create_task(worker())
-
-        def failed(task: asyncio.Task) -> None:
-            if task.exception():
-                logger.error("pre-processing failed: %s", task.exception())
-
-        task.add_done_callback(failed)
-
-        while True:
-            batch = await self._queue.get()
-            if batch is None:
-                logger.debug("pre-processing finished")
-                break
-            yield batch
-
-        logger.debug("waiting for pre-processing to finish")
-        await task
+                yield batch
+        logger.debug("pre-processing finished")
 
 
 __all__ = [

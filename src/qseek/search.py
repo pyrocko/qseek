@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import shutil
 from collections import deque
@@ -394,6 +395,7 @@ class Search(Model):
 
     # Magnitudes and features are mostly Python and contend for the GIL with the
     # search, more than two events at a time are slower in total
+    _background_tasks: BackgroundTasks = PrivateAttr(default_factory=BackgroundTasks)
     _compute_semaphore: asyncio.Semaphore = PrivateAttr(
         default_factory=lambda: asyncio.Semaphore(MAX_CONCURRENT_EVENTS)
     )
@@ -556,7 +558,7 @@ class Search(Model):
 
         if self.webserver:
             await self.webserver.prepare(search=self)
-            BackgroundTasks.create_task(self.webserver.start())
+            await self.webserver.start()
 
         for path in self.callback_scripts:
             self.callbacks.append(load_callback_plugin(path))
@@ -657,38 +659,39 @@ class Search(Model):
         n.notify("READY=1")
         n.notify("STATUS=Starting search...")
 
-        async for images, batch in self.image_function.iter_images(
-            pre_processed_batches
-        ):
-            batch_processing_start = datetime_now()
-            await self._run_callbacks("on_batch_start", batch)
+        images_batches = self.image_function.iter_images(pre_processed_batches)
+        # On exit, the pipeline is closed and the detections are processed. If the
+        # search fails, the tasks of the pipeline and the detections are cancelled.
+        async with self._background_tasks, contextlib.aclosing(images_batches):
+            async for images, batch in images_batches:
+                batch_processing_start = datetime_now()
+                await self._run_callbacks("on_batch_start", batch)
 
-            images.set_stations(self.stations)
+                images.set_stations(self.stations)
 
-            detections, semblance_trace = await search_octree.search(
-                images=images,
-                octree=self.octree.reset(),
-                n_threads=self.n_threads,
-            )
+                detections, semblance_trace = await search_octree.search(
+                    images=images,
+                    octree=self.octree.reset(),
+                    n_threads=self.n_threads,
+                )
 
-            await self._catalog.save_semblance_trace(semblance_trace)
-            if detections:
-                self.image_function.picker.add_picks(detections, images)
-                BackgroundTasks.create_task(self.new_detections(detections))
-            if self.save_images:
-                await images.save_mseed(self._rundir / "images")
+                await self._catalog.save_semblance_trace(semblance_trace)
+                if detections:
+                    self.image_function.picker.add_picks(detections, images)
+                    self._background_tasks.create_task(self.new_detections(detections))
+                if self.save_images:
+                    await images.save_mseed(self._rundir / "images")
 
-            stats.add_processed_batch(
-                batch,
-                duration=datetime_now() - batch_processing_start,
-                show_log=True,
-            )
-            self.set_progress(batch.end_time, stats)
-            await self._run_callbacks("on_batch_end", batch)
-            n.notify("WATCHDOG=1")
+                stats.add_processed_batch(
+                    batch,
+                    duration=datetime_now() - batch_processing_start,
+                    show_log=True,
+                )
+                self.set_progress(batch.end_time, stats)
+                await self._run_callbacks("on_batch_end", batch)
+                n.notify("WATCHDOG=1")
 
         n.notify("STOPPING=1")
-        await BackgroundTasks.wait_all()
         await self._catalog.save()
         await self._catalog.export_detections(
             jitter_location=self.octree.smallest_node_size()
@@ -727,12 +730,14 @@ class Search(Model):
                 detection,
                 jitter_location=self.octree.smallest_node_size(),
             )
-            BackgroundTasks.create_task(
+            self._background_tasks.create_task(
                 self._run_callbacks("on_new_detection", detection)
             )
 
         if self.webserver:
-            BackgroundTasks.create_task(self.webserver.new_detections(detections))
+            self._background_tasks.create_task(
+                self.webserver.new_detections(detections)
+            )
 
         n.notify(f"STATUS=Searching - detected {catalog.n_events} events")
         if not catalog.n_events:

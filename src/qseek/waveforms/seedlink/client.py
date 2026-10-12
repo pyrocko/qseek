@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 from collections import defaultdict
@@ -568,7 +569,7 @@ class SeedLinkClient(BaseModel):
             while True:
                 try:
                     data = await asyncio.wait_for(
-                        proc.stdout.read(RECORD_LENGTH),
+                        proc.stdout.readexactly(RECORD_LENGTH),
                         timeout=self.reconnect_timeout,
                     )
                 except asyncio.TimeoutError:
@@ -581,11 +582,15 @@ class SeedLinkClient(BaseModel):
                         lambda: self.restart_stream(None)
                     )
                     break
-                if len(data) != RECORD_LENGTH:
-                    logger.warning(
-                        "received incomplete record from %s", self._slink_host
-                    )
-                    continue
+                except asyncio.IncompleteReadError as exc:
+                    # slinktool exited, e.g. after rejecting its arguments
+                    stderr = b""
+                    if proc.stderr is not None:
+                        with contextlib.suppress(asyncio.TimeoutError):
+                            stderr = await asyncio.wait_for(proc.stderr.read(), 1.0)
+                    raise RuntimeError(
+                        f"slinktool exited: {stderr.decode(errors='replace').strip()}"
+                    ) from exc
                 try:
                     _ = int(data[:6])  # sequence number
                 except ValueError:
@@ -617,11 +622,25 @@ class SeedLinkClient(BaseModel):
                     max_length_seconds=self.buffer_length.total_seconds(),
                 )
         finally:
-            proc.terminate()
+            # slinktool may have exited already
+            with contextlib.suppress(ProcessLookupError):
+                proc.terminate()
             self._stats.connected_at = None
 
     def is_backfilling(self) -> bool:
         return any(sta.is_backfilling() for sta in self.streams)
+
+    def check_stream(self) -> None:
+        """Raise the error of a failed stream task.
+
+        Raises:
+            RuntimeError: If the stream task failed.
+        """
+        task = self._task
+        if task is None or not task.done() or task.cancelled():
+            return
+        if (exc := task.exception()) is not None:
+            raise RuntimeError(f"streaming from {self._slink_host} failed") from exc
 
     def start_streams(self, start_time: datetime | None = None) -> None:
         if self._task is not None:

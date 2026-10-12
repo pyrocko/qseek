@@ -22,14 +22,16 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Annotated,
+    Any,
+    AsyncGenerator,
     Awaitable,
     Callable,
-    ClassVar,
     Coroutine,
     Iterable,
     Literal,
     NamedTuple,
     ParamSpec,
+    Self,
     TypeVar,
 )
 
@@ -50,7 +52,7 @@ from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
-    from contextvars import Context
+    from types import TracebackType
 
     from pyrocko.trace import Trace
 
@@ -126,34 +128,119 @@ def setup_rich_logging(level: int, file_level: int | None = None) -> None:
 
 
 class BackgroundTasks:
-    tasks: ClassVar[set[asyncio.Task]] = set()
+    """Tasks that run in the background of a block, like `asyncio.TaskGroup`.
 
-    @classmethod
-    def create_task(
-        cls,
-        coro: Coroutine,
+    On exit, the block waits for all tasks, including tasks created while
+    waiting. A failed task is logged and cancels neither the other tasks nor the
+    block. When the block raises or is cancelled, the tasks are cancelled and
+    awaited, and the exception is raised as it is.
+
+    `asyncio.TaskGroup` needs `asyncio.current_task()`, which fails in the
+    nested event loops of `nest_asyncio` that the CLI applies.
+    """
+
+    def __init__(self) -> None:
+        self._tasks: set[asyncio.Task] = set()
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        cancelled: asyncio.CancelledError | None = None
+        while pending := {task for task in self._tasks if not task.done()}:
+            if exc is not None or cancelled is not None:
+                for task in pending:
+                    task.cancel()
+            try:
+                await asyncio.wait(pending)
+            except asyncio.CancelledError as error:
+                cancelled = error  # Cancel the tasks and wait for them, then raise
+        if exc is None and cancelled is not None:
+            raise cancelled
+
+    def create_task[T](
+        self,
+        coro: Coroutine[Any, Any, T],
         name: str | None = None,
-        context: Context | None = None,
-    ) -> asyncio.Task:
-        if PYTHON_VERSION >= (3, 11):
-            task = asyncio.create_task(coro, name=name, context=context)
-        else:
-            task = asyncio.create_task(coro, name=name)
-        cls.tasks.add(task)
-        task.add_done_callback(cls.tasks.remove)
+    ) -> asyncio.Task[T]:
+        """Run a coroutine in the background, its exception is logged.
+
+        Args:
+            coro (Coroutine[Any, Any, T]): Coroutine to run.
+            name (str | None, optional): Name of the task.
+
+        Returns:
+            asyncio.Task[T]: The task.
+        """
+        task = asyncio.create_task(coro, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._task_done)
         return task
 
-    @classmethod
-    def cancel_all(cls) -> None:
-        for task in cls.tasks:
-            task.cancel()
+    def _task_done(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        if not task.cancelled() and (exc := task.exception()) is not None:
+            logger.error("background task %s failed", task.get_name(), exc_info=exc)
 
-    @classmethod
-    async def wait_all(cls) -> None:
-        if not cls.tasks:
-            return
-        logger.debug("waiting for %d tasks to finish", len(cls.tasks))
-        await asyncio.gather(*cls.tasks)
+
+_QUEUE_DONE = object()
+
+
+async def prefetch[T](
+    iterator: AsyncGenerator[T],
+    queue: asyncio.Queue,
+    name: str,
+) -> AsyncGenerator[T]:
+    """Iterate ahead of the consumer in a background task.
+
+    The items of `iterator` are produced in a task and buffered in `queue`, so
+    that producer and consumer work concurrently. The size of the queue limits
+    how far the producer runs ahead.
+
+    An exception raised by `iterator` is raised in the consumer after the items
+    buffered before it. When the consumer stops early, raises or is cancelled,
+    the task is cancelled and awaited, and `iterator` is closed, so that the
+    stages before it are cleaned up when this generator closes.
+
+    Args:
+        iterator (AsyncGenerator[T]): Async generator to prefetch.
+        queue (asyncio.Queue): Empty queue to buffer the items in.
+        name (str): Name of the task.
+
+    Yields:
+        T: The items of `iterator`.
+    """
+
+    async def produce() -> None:
+        async with contextlib.aclosing(iterator):
+            async for item in iterator:
+                await queue.put(item)
+
+    def wake_consumer(_: asyncio.Task) -> None:
+        # The consumer waits on an empty queue only, a full one is drained first
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(_QUEUE_DONE)
+
+    task = asyncio.create_task(produce(), name=name)
+    task.add_done_callback(wake_consumer)
+    try:
+        while not (task.done() and queue.empty()):
+            item = await queue.get()
+            if item is _QUEUE_DONE:
+                continue
+            yield item
+        await task  # Raises the exception of the producer
+    finally:
+        task.cancel()  # No-op if the producer has finished
+        (result,) = await asyncio.gather(task, return_exceptions=True)
+        # The consumer failed or stopped first, the error would be lost
+        if isinstance(result, Exception) and result is not sys.exception():
+            logger.error("%s failed", name, exc_info=result)
 
 
 class NSL(NamedTuple):
