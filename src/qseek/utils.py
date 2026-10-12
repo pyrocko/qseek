@@ -22,16 +22,16 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Annotated,
+    Any,
     AsyncGenerator,
-    AsyncIterator,
     Awaitable,
     Callable,
-    ClassVar,
     Coroutine,
     Iterable,
     Literal,
     NamedTuple,
     ParamSpec,
+    Self,
     TypeVar,
 )
 
@@ -52,7 +52,7 @@ from pyrocko.util import UnavailableDecimation
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
-    from contextvars import Context
+    from types import TracebackType
 
     from pyrocko.trace import Trace
 
@@ -127,69 +127,90 @@ def setup_rich_logging(level: int, file_level: int | None = None) -> None:
     )
 
 
+async def log_exceptions[T](coro: Awaitable[T], name: str) -> T | None:
+    """Await a coroutine and log its exception instead of raising it.
+
+    Cancellation is not caught.
+
+    Args:
+        coro (Awaitable[T]): Coroutine to await.
+        name (str): Name of the work in the log message.
+
+    Returns:
+        T | None: The result of the coroutine, None if it failed.
+    """
+    try:
+        return await coro
+    except Exception:
+        logger.exception("%s failed", name)
+        return None
+
+
 class BackgroundTasks:
-    tasks: ClassVar[set[asyncio.Task]] = set()
+    """Tasks that run in the background of a block, like `asyncio.TaskGroup`.
 
-    @classmethod
-    def create_task(
-        cls,
-        coro: Coroutine,
+    On exit, the block waits for all tasks, including tasks created while
+    waiting. A failed task is logged and cancels neither the other tasks nor the
+    block. When the block raises or is cancelled, the tasks are cancelled and
+    awaited, and the exception is raised as it is.
+
+    `asyncio.TaskGroup` needs `asyncio.current_task()`, which fails in the
+    nested event loops of `nest_asyncio` that the CLI applies.
+    """
+
+    def __init__(self) -> None:
+        self._tasks: set[asyncio.Task] = set()
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        cancel = exc is not None
+        while pending := {task for task in self._tasks if not task.done()}:
+            if cancel:
+                for task in pending:
+                    task.cancel()
+            try:
+                await asyncio.wait(pending)
+            except asyncio.CancelledError:
+                cancel = True  # Cancel the tasks and wait for them, then raise
+                continue
+        if exc is None and cancel:
+            raise asyncio.CancelledError
+
+    def create_task[T](
+        self,
+        coro: Coroutine[Any, Any, T],
         name: str | None = None,
-        context: Context | None = None,
-    ) -> asyncio.Task:
-        task = asyncio.create_task(coro, name=name, context=context)
-        cls.tasks.add(task)
-        task.add_done_callback(cls._task_done)
-        return task
+    ) -> asyncio.Task[T | None]:
+        """Run a coroutine in the background, its exception is logged.
 
-    @classmethod
-    def _task_done(cls, task: asyncio.Task) -> None:
-        cls.tasks.discard(task)
-        if task.cancelled():
-            return
-        if (exc := task.exception()) is not None:
-            logger.error("background task %s failed", task.get_name(), exc_info=exc)
+        Args:
+            coro (Coroutine[Any, Any, T]): Coroutine to run.
+            name (str | None, optional): Name of the task.
 
-    @classmethod
-    def cancel_all(cls) -> None:
-        for task in cls.tasks:
-            task.cancel()
-
-    @classmethod
-    async def wait_all(cls) -> None:
-        """Wait for all tasks, including those created while waiting.
-
-        Failed tasks are logged when they finish and do not stop the others.
+        Returns:
+            asyncio.Task[T | None]: The task.
         """
-        while pending := {task for task in cls.tasks if not task.done()}:
-            logger.debug("waiting for %d tasks to finish", len(pending))
-            await asyncio.wait(pending)
+        name = name or getattr(coro, "__qualname__", repr(coro))
+        task = asyncio.create_task(
+            log_exceptions(coro, f"background task {name}"), name=name
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
 
 
 _QUEUE_DONE = object()
 
 
-async def aclose_iterator(iterator: AsyncIterator) -> None:
-    """Close an async iterator if it supports closing, like async generators."""
-    aclose = getattr(iterator, "aclose", None)
-    if aclose is not None:
-        await aclose()
-
-
-@contextlib.asynccontextmanager
-async def aclosing[T](iterator: AsyncIterator[T]) -> AsyncGenerator[AsyncIterator[T]]:
-    """Close an async iterator on exit, like `contextlib.aclosing`.
-
-    Unlike `contextlib.aclosing`, iterators without `aclose()` are accepted.
-    """
-    try:
-        yield iterator
-    finally:
-        await aclose_iterator(iterator)
-
-
 async def prefetch[T](
-    iterator: AsyncIterator[T],
+    iterator: AsyncGenerator[T],
     queue: asyncio.Queue | None = None,
     name: str | None = None,
 ) -> AsyncGenerator[T]:
@@ -205,7 +226,7 @@ async def prefetch[T](
     stages before it are cleaned up when this generator closes.
 
     Args:
-        iterator (AsyncIterator[T]): Async iterator to prefetch.
+        iterator (AsyncGenerator[T]): Async generator to prefetch.
         queue (asyncio.Queue | None, optional): Empty queue to buffer the items
             in, e.g. to report its size. Defaults to a new queue of size
             `QUEUE_SIZE`.
@@ -217,11 +238,9 @@ async def prefetch[T](
     queue = asyncio.Queue(maxsize=QUEUE_SIZE) if queue is None else queue
 
     async def produce() -> None:
-        try:
+        async with contextlib.aclosing(iterator):
             async for item in iterator:
                 await queue.put(item)
-        finally:
-            await aclose_iterator(iterator)
 
     def wake_consumer(_: asyncio.Task) -> None:
         # The consumer waits on an empty queue only, a full one is drained first

@@ -4,7 +4,7 @@ import asyncio
 import contextvars
 import logging
 import os
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncGenerator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -460,7 +460,7 @@ class SDSArchive(WaveformProvider):
         end_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> AsyncIterator[WaveformBatch]:
+    ) -> AsyncGenerator[WaveformBatch]:
         if not self._station_selection:
             raise RuntimeError("Station selection not prepared.")
 
@@ -568,7 +568,7 @@ class SDSArchive(WaveformProvider):
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> AsyncIterator[WaveformBatch]:
+    ) -> AsyncGenerator[WaveformBatch]:
         queue: asyncio.Queue[WaveformBatch] = asyncio.Queue(maxsize=self.queue_size)
         self._stats.set_queue(queue)
         batches = self._iter_waveform_data(

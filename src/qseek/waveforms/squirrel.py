@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import glob
 import logging
 import math
 from datetime import datetime, timedelta
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Iterator, Literal, Self, Sequence
+from typing import TYPE_CHECKING, AsyncGenerator, Iterator, Literal, Self, Sequence
 
 from pydantic import (
     Field,
@@ -25,7 +26,6 @@ from qseek.utils import (
     NSL,
     QUEUE_SIZE,
     DateTime,
-    aclosing,
     datetime_now,
     prefetch,
     to_datetime,
@@ -44,7 +44,7 @@ _SQUIRREL_SEM = asyncio.Semaphore(8)
 
 async def _load_batches(
     iterator: Iterator[Batch],
-) -> AsyncIterator[tuple[Batch, timedelta]]:
+) -> AsyncGenerator[tuple[Batch, timedelta]]:
     """Load the batches of a Squirrel chopper in a thread.
 
     Yields:
@@ -220,7 +220,7 @@ class PyrockoSquirrel(WaveformProvider):
         min_length: timedelta | None = None,
         min_stations: int = 0,
         end_time: datetime | None = None,
-    ) -> AsyncIterator[WaveformBatch]:
+    ) -> AsyncGenerator[WaveformBatch]:
         stations = self._stations
         if not stations:
             raise ValueError("no stations provided. has prepare() been called?")
@@ -235,7 +235,7 @@ class PyrockoSquirrel(WaveformProvider):
             chop_start_time: datetime | None = None,
             chop_end_time: datetime | None = None,
             trim_end: timedelta | None = None,
-        ) -> AsyncIterator[tuple[Batch, timedelta]]:
+        ) -> AsyncGenerator[tuple[Batch, timedelta]]:
             sq_tmin, sq_tmax = map(to_datetime, squirrel.get_time_span(["waveform"]))
             chop_start_time = chop_start_time or self.start_time or sq_tmin
             chop_end_time = chop_end_time or self.end_time or sq_tmax
@@ -272,7 +272,7 @@ class PyrockoSquirrel(WaveformProvider):
 
         while True:
             start = datetime_now()
-            async with aclosing(pyrocko_batches):
+            async with contextlib.aclosing(pyrocko_batches):
                 async for pyrocko_batch, load_time in pyrocko_batches:
                     batch = WaveformBatch(
                         traces=pyrocko_batch.traces,

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +22,7 @@ from qseek.images.base import ImageFunction, Picker, WaveformImage
 from qseek.models.station import Station, StationInventory
 from qseek.pre_processing.frequency_filters import Bandpass
 from qseek.pre_processing.module import PreProcessing
-from qseek.utils import BackgroundTasks, aclose_iterator, aclosing, prefetch
+from qseek.utils import BackgroundTasks, prefetch
 from qseek.waveforms import sds
 from qseek.waveforms.sds import SDSArchive
 from qseek.waveforms.squirrel import PyrockoSquirrel
@@ -78,24 +80,6 @@ async def test_prefetch(maxsize: int) -> None:
     assert items == list(range(20))
     assert source.closed
     assert not pending_tasks()
-
-
-@pytest.mark.asyncio
-async def test_prefetch_plain_iterator() -> None:
-    class Counter:
-        def __init__(self) -> None:
-            self.i = 0
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self) -> int:
-            if self.i == 3:
-                raise StopAsyncIteration
-            self.i += 1
-            return self.i
-
-    assert await collect(prefetch(Counter())) == [1, 2, 3]
 
 
 @pytest.mark.asyncio
@@ -186,30 +170,109 @@ async def test_prefetch_chain_fails() -> None:
 
 
 @pytest.mark.asyncio
-async def test_background_tasks_wait_all(caplog) -> None:
+async def test_background_tasks(caplog) -> None:
     done = []
 
     async def work(name: str, spawn: bool = False) -> None:
         await asyncio.sleep(0.01)
         if spawn:
-            BackgroundTasks.create_task(work("spawned"))
+            tasks.create_task(work("spawned"))
         done.append(name)
 
     async def fail() -> None:
         raise RuntimeError("task failed")
 
-    BackgroundTasks.create_task(work("first", spawn=True))
-    BackgroundTasks.create_task(fail(), name="failing")
     with caplog.at_level(logging.ERROR):
-        async with asyncio.timeout(TIMEOUT):
-            await BackgroundTasks.wait_all()
-        # Done callbacks run on the next loop iteration
-        await asyncio.sleep(0)
+        async with asyncio.timeout(TIMEOUT), BackgroundTasks() as tasks:
+            tasks.create_task(work("first", spawn=True))
+            tasks.create_task(fail(), name="failing")
+            done.append("block")
 
-    # Tasks created while waiting are waited for, a failure does not stop them
-    assert sorted(done) == ["first", "spawned"]
+    # Tasks created while exiting are waited for, a failure does not stop the
+    # other tasks or the block
+    assert sorted(done) == ["block", "first", "spawned"]
     assert "background task failing failed" in caplog.text
-    assert not BackgroundTasks.tasks
+    assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_background_tasks_block_raises() -> None:
+    """The tasks are cancelled, the error is raised as it is."""
+    with pytest.raises(ValueError, match="block failed"):
+        async with asyncio.timeout(TIMEOUT), BackgroundTasks() as tasks:
+            task = tasks.create_task(asyncio.sleep(10.0))
+            await asyncio.sleep(0)
+            raise ValueError("block failed")
+    assert task.cancelled()
+    assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_background_tasks_cancelled() -> None:
+    started = asyncio.Event()
+    inner = []
+
+    async def run() -> None:
+        async with BackgroundTasks() as tasks:
+            inner.append(tasks.create_task(asyncio.sleep(10.0)))
+            started.set()
+            await asyncio.sleep(10.0)
+
+    task = asyncio.create_task(run())
+    async with asyncio.timeout(TIMEOUT):
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert inner[0].cancelled()
+    assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_background_tasks_cancelled_while_waiting() -> None:
+    """Cancelled while waiting on exit, the tasks are cancelled too."""
+    inner = []
+
+    async def run() -> None:
+        async with BackgroundTasks() as tasks:
+            inner.append(tasks.create_task(asyncio.sleep(10.0)))
+
+    task = asyncio.create_task(run())
+    async with asyncio.timeout(TIMEOUT):
+        while not inner:
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert inner[0].cancelled()
+    assert not pending_tasks()
+
+
+NESTED_LOOP = """
+import asyncio
+import nest_asyncio
+from qseek.utils import BackgroundTasks, prefetch
+
+nest_asyncio.apply()
+
+async def numbers():
+    for i in range(10):
+        yield i
+
+async def main():
+    async with BackgroundTasks() as tasks:
+        task = tasks.create_task(asyncio.sleep(0, result=1))
+        items = [i async for i in prefetch(numbers())]
+    assert items == list(range(10)), items
+    assert task.result() == 1
+
+asyncio.run(main())
+"""
+
+
+def test_nested_event_loop() -> None:
+    """The CLI runs in nested event loops of nest_asyncio."""
+    subprocess.run([sys.executable, "-c", NESTED_LOOP], check=True, timeout=60)
 
 
 class DummyImageFunction(ImageFunction):
@@ -320,7 +383,7 @@ async def test_pipeline_consumer_fails(sds_archive: Path) -> None:
     """The search fails, the stages are cancelled when the pipeline closes."""
     images = await pipeline(sds_archive)
     with pytest.raises(RuntimeError, match="search failed"):
-        async with asyncio.timeout(TIMEOUT), aclosing(images):
+        async with asyncio.timeout(TIMEOUT), contextlib.aclosing(images):
             async for _ in images:
                 raise RuntimeError("search failed")
     assert not pending_tasks()
@@ -406,5 +469,5 @@ async def test_squirrel_consumer_stops_early() -> None:
     batches = provider.iter_batches(window_increment=WINDOW, window_padding=PADDING)
     async with asyncio.timeout(TIMEOUT):
         await anext(batches)
-        await aclose_iterator(batches)
+        await batches.aclose()
     assert not pending_tasks()

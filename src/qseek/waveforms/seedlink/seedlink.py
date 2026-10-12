@@ -7,7 +7,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Literal, Sequence
+from typing import TYPE_CHECKING, AsyncGenerator, Literal, Sequence
 
 from pydantic import Field, PrivateAttr, computed_field
 from pyrocko.io import save
@@ -198,7 +198,7 @@ class SeedLink(WaveformProvider):
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> AsyncIterator[WaveformBatch]:
+    ) -> AsyncGenerator[WaveformBatch]:
         loop = asyncio.get_event_loop()
 
         for client in self.clients:

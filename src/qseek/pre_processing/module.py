@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, Annotated, AsyncIterator, ClassVar, Iterator, Union
+from typing import TYPE_CHECKING, Annotated, AsyncGenerator, ClassVar, Iterator, Union
 
 from pydantic import Field, RootModel
 
@@ -18,7 +19,6 @@ from qseek.pre_processing.resample import Downsample, Resample
 from qseek.stats import QueueStats
 from qseek.utils import (
     QUEUE_SIZE,
-    aclosing,
     datetime_now,
     prefetch,
 )
@@ -78,8 +78,8 @@ class PreProcessing(RootModel):
 
     def iter_batches(
         self,
-        batch_iterator: AsyncIterator[WaveformBatch],
-    ) -> AsyncIterator[WaveformBatch]:
+        batch_iterator: AsyncGenerator[WaveformBatch],
+    ) -> AsyncGenerator[WaveformBatch]:
         """Iterate over the pre-processed batches.
 
         The batches are processed in a background task, ahead of the consumer.
@@ -87,11 +87,11 @@ class PreProcessing(RootModel):
         when the consumer stops iterating.
 
         Args:
-            batch_iterator (AsyncIterator[WaveformBatch]): Async iterator over
+            batch_iterator (AsyncGenerator[WaveformBatch]): Async generator of
                 batches.
 
         Returns:
-            AsyncIterator[WaveformBatch]: The pre-processed batches.
+            AsyncGenerator[WaveformBatch]: The pre-processed batches.
         """
         if not self.root:
             logger.debug("no pre-processing defined")
@@ -105,10 +105,10 @@ class PreProcessing(RootModel):
 
     async def _process_batches(
         self,
-        batch_iterator: AsyncIterator[WaveformBatch],
-    ) -> AsyncIterator[WaveformBatch]:
+        batch_iterator: AsyncGenerator[WaveformBatch],
+    ) -> AsyncGenerator[WaveformBatch]:
         stats = self._stats
-        async with aclosing(batch_iterator):
+        async with contextlib.aclosing(batch_iterator):
             async for batch in batch_iterator:
                 start_time = datetime_now()
                 for process in self:

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal, Sequence
+from typing import (
+    TYPE_CHECKING,
+    AsyncGenerator,
+    ClassVar,
+    Iterator,
+    Literal,
+    Sequence,
+)
 
 import numpy as np
 from pyrocko.io import save
@@ -19,7 +27,6 @@ from qseek.utils import (
     QUEUE_SIZE,
     SDS_PYROCKO_SCHEME,
     PhaseDescription,
-    aclosing,
     datetime_now,
     prefetch,
 )
@@ -193,8 +200,8 @@ class ImageFunction(Model):
 
     def iter_images(
         self,
-        batch_iterator: AsyncIterator[WaveformBatch],
-    ) -> AsyncIterator[tuple[WaveformImages, WaveformBatch]]:
+        batch_iterator: AsyncGenerator[WaveformBatch],
+    ) -> AsyncGenerator[tuple[WaveformImages, WaveformBatch]]:
         """Iterate over images from batches.
 
         The images are calculated in a background task, ahead of the consumer.
@@ -203,11 +210,11 @@ class ImageFunction(Model):
         cancelled when the consumer stops iterating.
 
         Args:
-            batch_iterator (AsyncIterator[WaveformBatch]): Async iterator over
+            batch_iterator (AsyncGenerator[WaveformBatch]): Async generator of
                 batches.
 
         Returns:
-            AsyncIterator[tuple[WaveformImages, WaveformBatch]]: Images and their
+            AsyncGenerator[tuple[WaveformImages, WaveformBatch]]: Images and their
                 batch.
         """
         queue: ImageQueue = asyncio.Queue(maxsize=QUEUE_SIZE)
@@ -219,10 +226,10 @@ class ImageFunction(Model):
 
     async def _calculate_images(
         self,
-        batch_iterator: AsyncIterator[WaveformBatch],
-    ) -> AsyncIterator[tuple[WaveformImages, WaveformBatch]]:
+        batch_iterator: AsyncGenerator[WaveformBatch],
+    ) -> AsyncGenerator[tuple[WaveformImages, WaveformBatch]]:
         stats = self._stats
-        async with aclosing(batch_iterator):
+        async with contextlib.aclosing(batch_iterator):
             async for batch in batch_iterator:
                 if not batch.is_healthy():
                     logger.debug("unhealthy batch, skipping")
