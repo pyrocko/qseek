@@ -13,21 +13,21 @@ from pydantic import (
     Field,
     PositiveInt,
     PrivateAttr,
-    computed_field,
     field_validator,
     model_validator,
 )
 from pyrocko.squirrel import Squirrel
 
 from qseek.models.station import StationInventory
-from qseek.stats import Stats
+from qseek.stats import QueueStats
 from qseek.types import DirectoryPath
 from qseek.utils import (
     NSL,
     QUEUE_SIZE,
     DateTime,
+    aclosing,
     datetime_now,
-    human_readable_bytes,
+    prefetch,
     to_datetime,
 )
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
@@ -42,80 +42,43 @@ logger = logging.getLogger(__name__)
 _SQUIRREL_SEM = asyncio.Semaphore(8)
 
 
-class SquirrelPrefetcher:
-    queue: asyncio.Queue[Batch | None]
-    load_time: timedelta = timedelta(seconds=0.0)
+async def _load_batches(
+    iterator: Iterator[Batch],
+) -> AsyncIterator[tuple[Batch, timedelta]]:
+    """Load the batches of a Squirrel chopper in a thread.
 
-    _load_queue: asyncio.Queue[Batch | None]
-    _fetched_batches: int
-    _task: asyncio.Task[None]
+    Yields:
+        tuple[Batch, timedelta]: The batch and the time it took to load it.
+    """
 
-    def __init__(self, iterator: Iterator[Batch], queue_size: int = QUEUE_SIZE) -> None:
-        self.iterator = iterator
-        self.queue = asyncio.Queue(maxsize=queue_size)
-        self._load_queue = asyncio.Queue(maxsize=queue_size)
-        self._fetched_batches = 0
+    def next_batch() -> Batch | None:
+        return next(iterator, None)
 
-        self._task = asyncio.create_task(self.prefetch_worker())
-
-    async def prefetch_worker(self) -> None:
-        logger.info("start prefetching waveforms, queue size %d", self.queue.maxsize)
-
-        def next_batch() -> Batch | None:
-            return next(self.iterator, None)
-
-        async def load_data() -> None | Batch:
-            while True:
-                start_load = datetime_now()
-                logger.debug("loading waveform batch %d", self._fetched_batches)
-                batch = await asyncio.to_thread(next_batch)
-                if batch is None:
-                    await self.queue.put(None)
-                    return
-                logger.debug("read waveform batch in %s", datetime_now() - start_load)
-                self._fetched_batches += 1
-                self.load_time = datetime_now() - start_load
-                await self.queue.put(batch)
-
-        await asyncio.create_task(load_data())
-        logger.debug("done loading waveforms")
+    n_batches = 0
+    while True:
+        start_load = datetime_now()
+        logger.debug("loading waveform batch %d", n_batches)
+        batch = await asyncio.to_thread(next_batch)
+        if batch is None:
+            logger.debug("done loading waveforms")
+            return
+        load_time = datetime_now() - start_load
+        logger.debug("read waveform batch in %s", load_time)
+        n_batches += 1
+        yield batch, load_time
 
 
-class SquirrelStats(Stats):
+class SquirrelStats(QueueStats):
     empty_batches: int = 0
     short_batches: int = 0
     time_per_batch: timedelta = timedelta(seconds=0.0)
     bytes_per_seconds: float = 0.0
 
-    _queue: asyncio.Queue[Batch | None] | None = PrivateAttr(None)
     _position = 20
     _show_header = False
 
-    def set_queue(self, queue: asyncio.Queue[Batch | None]) -> None:
-        self._queue = queue
-
-    @computed_field
-    @property
-    def queue_size(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.qsize()
-
-    @computed_field
-    @property
-    def queue_size_max(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.maxsize
-
     def _populate_table(self, table: Table) -> None:
-        alert = self.queue_size <= 2
-        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
-        table.add_row(
-            "[bold]Waveform loading[/bold]",
-            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
-            f" {human_readable_bytes(self.bytes_per_seconds) + '/s':>10}",
-        )
+        self._add_queue_row(table, "Waveform loading", self.bytes_per_seconds)
 
 
 class PyrockoSquirrel(WaveformProvider):
@@ -268,11 +231,11 @@ class PyrockoSquirrel(WaveformProvider):
         if self.watch_waveforms:
             logger.info("scanning for new waveforms every %s", self.watch_waveforms)
 
-        def init_prefetcher(
+        def prefetch_batches(
             chop_start_time: datetime | None = None,
             chop_end_time: datetime | None = None,
             trim_end: timedelta | None = None,
-        ) -> SquirrelPrefetcher:
+        ) -> AsyncIterator[tuple[Batch, timedelta]]:
             sq_tmin, sq_tmax = map(to_datetime, squirrel.get_time_span(["waveform"]))
             chop_start_time = chop_start_time or self.start_time or sq_tmin
             chop_end_time = chop_end_time or self.end_time or sq_tmax
@@ -295,72 +258,70 @@ class PyrockoSquirrel(WaveformProvider):
                 codes=[(*nsl, "*") for nsl in stations.get_nsls()],
                 channel_priorities=self.channel_selector,
             )
-            prefetcher = SquirrelPrefetcher(iterator, queue_size=self.queue_size)
-            stats.set_queue(prefetcher.queue)
-            return prefetcher
+            queue: asyncio.Queue[tuple[Batch, timedelta]] = asyncio.Queue(
+                maxsize=self.queue_size
+            )
+            stats.set_queue(queue)
+            logger.info("start prefetching waveforms, queue size %d", queue.maxsize)
+            return prefetch(_load_batches(iterator), queue, "Squirrel loading")
 
-        prefetcher = init_prefetcher(chop_start_time=start_time, chop_end_time=end_time)
+        pyrocko_batches = prefetch_batches(
+            chop_start_time=start_time, chop_end_time=end_time
+        )
         last_batch_end_time = None
 
         while True:
             start = datetime_now()
-            pyrocko_batch = await prefetcher.queue.get()
-
-            if pyrocko_batch is None:
-                if isinstance(self.watch_waveforms, timedelta):
-                    logger.info(
-                        "re-scanning waveform directories in %s", self.watch_waveforms
+            async with aclosing(pyrocko_batches):
+                async for pyrocko_batch, load_time in pyrocko_batches:
+                    batch = WaveformBatch(
+                        traces=pyrocko_batch.traces,
+                        start_time=to_datetime(pyrocko_batch.tmin),
+                        end_time=to_datetime(pyrocko_batch.tmax),
+                        i_batch=pyrocko_batch.i,
+                        n_batches=pyrocko_batch.n,
                     )
+                    batch.clean_traces()
 
-                    await asyncio.sleep(self.watch_waveforms.total_seconds())
-                    self.scan_waveform_dirs(squirrel)
-                    prefetcher = init_prefetcher(
-                        chop_start_time=last_batch_end_time,
-                        chop_end_time=None,
-                        trim_end=timedelta(seconds=30),  # Trim as SeedLink is slow!
-                    )
-                    continue
-                else:
-                    logger.debug("no more waveforms to load")
-                    prefetcher.queue.task_done()
-                    break
+                    stats.time_per_batch = datetime_now() - start
+                    stats.bytes_per_seconds = batch.nbytes / load_time.total_seconds()
 
-            batch = WaveformBatch(
-                traces=pyrocko_batch.traces,
-                start_time=to_datetime(pyrocko_batch.tmin),
-                end_time=to_datetime(pyrocko_batch.tmax),
-                i_batch=pyrocko_batch.i,
-                n_batches=pyrocko_batch.n,
+                    if not batch.is_healthy(min_stations=min_stations):
+                        logger.warning(
+                            "unhealthy batch %d - %s",
+                            batch.i_batch,
+                            batch.start_time,
+                        )
+                        stats.empty_batches += 1
+                        start = datetime_now()
+                        continue
+
+                    if min_length and batch.duration < min_length:
+                        logger.warning(
+                            "duration of batch %d too short %s",
+                            batch.i_batch,
+                            batch.duration,
+                        )
+                        stats.short_batches += 1
+                        start = datetime_now()
+                        continue
+
+                    last_batch_end_time = batch.end_time
+                    yield batch
+                    start = datetime_now()
+
+            if not isinstance(self.watch_waveforms, timedelta):
+                logger.debug("no more waveforms to load")
+                break
+
+            logger.info("re-scanning waveform directories in %s", self.watch_waveforms)
+            await asyncio.sleep(self.watch_waveforms.total_seconds())
+            self.scan_waveform_dirs(squirrel)
+            pyrocko_batches = prefetch_batches(
+                chop_start_time=last_batch_end_time,
+                chop_end_time=None,
+                trim_end=timedelta(seconds=30),  # Trim as SeedLink is slow!
             )
-            batch.clean_traces()
-
-            stats.time_per_batch = datetime_now() - start
-            stats.bytes_per_seconds = (
-                batch.nbytes / prefetcher.load_time.total_seconds()
-            )
-
-            if not batch.is_healthy(min_stations=min_stations):
-                logger.warning(
-                    "unhealthy batch %d - %s",
-                    batch.i_batch,
-                    batch.start_time,
-                )
-                stats.empty_batches += 1
-                continue
-
-            if min_length and batch.duration < min_length:
-                logger.warning(
-                    "duration of batch %d too short %s",
-                    batch.i_batch,
-                    batch.duration,
-                )
-                stats.short_batches += 1
-                continue
-
-            last_batch_end_time = batch.end_time
-            yield batch
-
-            prefetcher.queue.task_done()
 
     async def get_traces(
         self,

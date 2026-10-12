@@ -8,12 +8,14 @@ from contextlib import contextmanager
 from typing import Any, Generator, Iterator
 from weakref import WeakValueDictionary
 
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PrivateAttr, computed_field
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import Progress
 from rich.table import Table
+
+from qseek.utils import human_readable_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -112,3 +114,35 @@ class Stats(BaseModel):
         table = Table(box=None, row_styles=["", "dim"])
         self._populate_table(table)
         return Panel(table, title=self.__class__.__name__)
+
+
+class QueueStats(Stats):
+    """Statistics of a pipeline stage that buffers its output in a queue."""
+
+    _queue: asyncio.Queue | None = PrivateAttr(None)
+
+    def set_queue(self, queue: asyncio.Queue | None) -> None:
+        self._queue = queue
+
+    @computed_field
+    @property
+    def queue_size(self) -> int:
+        if self._queue is None:
+            return 0
+        return self._queue.qsize()
+
+    @computed_field
+    @property
+    def queue_size_max(self) -> int:
+        if self._queue is None:
+            return 0
+        return self._queue.maxsize
+
+    def _add_queue_row(self, table: Table, title: str, bytes_per_second: float) -> None:
+        alert = self.queue_size <= 2
+        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
+        table.add_row(
+            f"[bold]{title}[/bold]",
+            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
+            f" {human_readable_bytes(bytes_per_second) + '/s':>10}",
+        )

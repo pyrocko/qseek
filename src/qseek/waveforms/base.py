@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from asyncio import Queue
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, AsyncIterator, Literal, Sequence
@@ -109,7 +108,6 @@ class WaveformProvider(Model):
         description="Channel selector for waveforms, e.g. `['HH', 'EN']`.",
     )
 
-    _queue: Queue[WaveformBatch | None] = PrivateAttr(default_factory=lambda: Queue())
     _stats: Stats = PrivateAttr(default_factory=Stats)
 
     @classmethod

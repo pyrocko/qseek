@@ -4,7 +4,7 @@ import asyncio
 import contextvars
 import logging
 import os
-from collections.abc import AsyncGenerator, Iterable, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -16,7 +16,6 @@ from pydantic import (
     Field,
     PositiveInt,
     PrivateAttr,
-    computed_field,
     field_validator,
     model_validator,
 )
@@ -24,7 +23,7 @@ from pyrocko import obspy_compat
 from pyrocko.io.mseed import iload
 from pyrocko.trace import NoData, degapper
 
-from qseek.stats import Stats, get_progress
+from qseek.stats import QueueStats, get_progress
 from qseek.types import DirectoryPath
 from qseek.utils import (
     NSL,
@@ -32,6 +31,7 @@ from qseek.utils import (
     DateTime,
     datetime_now,
     human_readable_bytes,
+    prefetch,
     setup_rich_logging,
 )
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
@@ -172,41 +172,17 @@ class StationCovarage:
         return max(self.file_dates) + timedelta(days=1)
 
 
-class SDSArchiveStats(Stats):
+class SDSArchiveStats(QueueStats):
     n_files_scanned: int = 0
     n_bytes_scanned: int = 0
     time_per_batch: timedelta = timedelta(seconds=0.0)
     bytes_per_seconds: float = 0.0
 
-    _queue: asyncio.Queue[WaveformBatch | None] | None = PrivateAttr(None)
     _position = 20
     _show_header = False
 
-    def set_queue(self, queue: asyncio.Queue[WaveformBatch | None]) -> None:
-        self._queue = queue
-
-    @computed_field
-    @property
-    def queue_size(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.qsize()
-
-    @computed_field
-    @property
-    def queue_size_max(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.maxsize
-
     def _populate_table(self, table: Table) -> None:
-        alert = self.queue_size <= 2
-        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
-        table.add_row(
-            "[bold]Waveform loading[/bold]",
-            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
-            f" {human_readable_bytes(self.bytes_per_seconds) + '/s':>10}",
-        )
+        self._add_queue_row(table, "Waveform loading", self.bytes_per_seconds)
 
 
 class SDSArchive(WaveformProvider):
@@ -252,9 +228,6 @@ class SDSArchive(WaveformProvider):
     _archive_stations: dict[NSL, StationCovarage] = PrivateAttr(default_factory=dict)
     _station_selection: StationInventory | None = PrivateAttr(default=None)
 
-    _queue: asyncio.Queue[WaveformBatch | None] = PrivateAttr(
-        default_factory=lambda: asyncio.Queue(maxsize=QUEUE_SIZE)
-    )
     _executor: ThreadPoolExecutor | None = PrivateAttr(default=None)
 
     _stats: SDSArchiveStats = PrivateAttr(default_factory=SDSArchiveStats)
@@ -479,7 +452,7 @@ class SDSArchive(WaveformProvider):
         )
         return paths
 
-    async def _fetch_waveform_data(
+    async def _iter_waveform_data(
         self,
         window_increment: timedelta,
         window_padding: timedelta,
@@ -487,7 +460,7 @@ class SDSArchive(WaveformProvider):
         end_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> None:
+    ) -> AsyncIterator[WaveformBatch]:
         if not self._station_selection:
             raise RuntimeError("Station selection not prepared.")
 
@@ -584,42 +557,29 @@ class SDSArchive(WaveformProvider):
                 n_batches,
                 human_readable_bytes(stats.bytes_per_seconds) + "/s",
             )
-            await self._queue.put(batch)
+            yield batch
 
-        await self._queue.put(None)
         logger.info("waveform data fetcher task completed")
 
-    async def iter_batches(
+    def iter_batches(
         self,
         window_increment: timedelta,
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
         min_stations: int = 0,
-    ) -> AsyncGenerator[WaveformBatch]:
-        self._queue = asyncio.Queue(maxsize=self.queue_size)
-        self._stats.set_queue(self._queue)
-
-        worker = asyncio.create_task(
-            self._fetch_waveform_data(
-                window_increment=window_increment,
-                window_padding=window_padding,
-                start_time=start_time or self.start_time,
-                end_time=self.end_time,
-                min_length=min_length,
-                min_stations=min_stations,
-            )
+    ) -> AsyncIterator[WaveformBatch]:
+        queue: asyncio.Queue[WaveformBatch] = asyncio.Queue(maxsize=self.queue_size)
+        self._stats.set_queue(queue)
+        batches = self._iter_waveform_data(
+            window_increment=window_increment,
+            window_padding=window_padding,
+            start_time=start_time or self.start_time,
+            end_time=self.end_time,
+            min_length=min_length,
+            min_stations=min_stations,
         )
-
-        while True:
-            batch = await self._queue.get()
-            if batch is None:
-                self._queue.task_done()
-                break
-            yield batch
-            self._queue.task_done()
-
-        await worker
+        return prefetch(batches, queue, name="SDS waveform loading")
 
     async def get_traces(
         self,

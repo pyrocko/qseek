@@ -48,6 +48,7 @@ from qseek.utils import (
     BackgroundTasks,
     CpuCount,
     PhaseDescription,
+    aclosing,
     datetime_now,
     get_total_memory,
     human_readable_bytes,
@@ -657,35 +658,36 @@ class Search(Model):
         n.notify("READY=1")
         n.notify("STATUS=Starting search...")
 
-        async for images, batch in self.image_function.iter_images(
-            pre_processed_batches
-        ):
-            batch_processing_start = datetime_now()
-            await self._run_callbacks("on_batch_start", batch)
+        images_batches = self.image_function.iter_images(pre_processed_batches)
+        # Closing the pipeline stops its background tasks if the search fails
+        async with aclosing(images_batches):
+            async for images, batch in images_batches:
+                batch_processing_start = datetime_now()
+                await self._run_callbacks("on_batch_start", batch)
 
-            images.set_stations(self.stations)
+                images.set_stations(self.stations)
 
-            detections, semblance_trace = await search_octree.search(
-                images=images,
-                octree=self.octree.reset(),
-                n_threads=self.n_threads,
-            )
+                detections, semblance_trace = await search_octree.search(
+                    images=images,
+                    octree=self.octree.reset(),
+                    n_threads=self.n_threads,
+                )
 
-            await self._catalog.save_semblance_trace(semblance_trace)
-            if detections:
-                self.image_function.picker.add_picks(detections, images)
-                BackgroundTasks.create_task(self.new_detections(detections))
-            if self.save_images:
-                await images.save_mseed(self._rundir / "images")
+                await self._catalog.save_semblance_trace(semblance_trace)
+                if detections:
+                    self.image_function.picker.add_picks(detections, images)
+                    BackgroundTasks.create_task(self.new_detections(detections))
+                if self.save_images:
+                    await images.save_mseed(self._rundir / "images")
 
-            stats.add_processed_batch(
-                batch,
-                duration=datetime_now() - batch_processing_start,
-                show_log=True,
-            )
-            self.set_progress(batch.end_time, stats)
-            await self._run_callbacks("on_batch_end", batch)
-            n.notify("WATCHDOG=1")
+                stats.add_processed_batch(
+                    batch,
+                    duration=datetime_now() - batch_processing_start,
+                    show_log=True,
+                )
+                self.set_progress(batch.end_time, stats)
+                await self._run_callbacks("on_batch_end", batch)
+                n.notify("WATCHDOG=1")
 
         n.notify("STOPPING=1")
         await BackgroundTasks.wait_all()

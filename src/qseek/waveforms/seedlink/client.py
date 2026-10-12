@@ -623,6 +623,18 @@ class SeedLinkClient(BaseModel):
     def is_backfilling(self) -> bool:
         return any(sta.is_backfilling() for sta in self.streams)
 
+    def check_stream(self) -> None:
+        """Raise the error of a failed stream task.
+
+        Raises:
+            RuntimeError: If the stream task failed.
+        """
+        task = self._task
+        if task is None or not task.done() or task.cancelled():
+            return
+        if (exc := task.exception()) is not None:
+            raise RuntimeError(f"streaming from {self._slink_host} failed") from exc
+
     def start_streams(self, start_time: datetime | None = None) -> None:
         if self._task is not None:
             raise RuntimeError("Stream is already running")

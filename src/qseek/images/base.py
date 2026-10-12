@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -10,19 +9,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, ClassVar, Iterator, Literal, Sequence
 
 import numpy as np
-from pydantic import PositiveInt, PrivateAttr, computed_field
 from pyrocko.io import save
 
 from qseek.base import Model
 from qseek.models.station import StationInventory, StationList
-from qseek.stats import Stats
+from qseek.stats import QueueStats
 from qseek.utils import (
     NSL,
     QUEUE_SIZE,
     SDS_PYROCKO_SCHEME,
     PhaseDescription,
+    aclosing,
     datetime_now,
-    human_readable_bytes,
+    prefetch,
 )
 
 if TYPE_CHECKING:
@@ -36,9 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PhaseName = Literal["P", "S"]
-ImageQueue = asyncio.Queue[
-    "tuple[WaveformImages, WaveformBatch] | BaseException | None"
-]
+ImageQueue = asyncio.Queue["tuple[WaveformImages, WaveformBatch]"]
 
 
 @dataclass
@@ -107,42 +104,15 @@ class Picker(Model):
                             break
 
 
-class ImageFunctionStats(Stats):
+class ImageFunctionStats(QueueStats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
 
-    _queue: ImageQueue | None = PrivateAttr(None)
     _position = 40
     _show_header = False
 
-    def set_queue(
-        self,
-        queue: ImageQueue,
-    ) -> None:
-        self._queue = queue
-
-    @computed_field
-    @property
-    def queue_size(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.qsize()
-
-    @computed_field
-    @property
-    def queue_size_max(self) -> PositiveInt:
-        if self._queue is None:
-            return 0
-        return self._queue.maxsize
-
     def _populate_table(self, table: Table) -> None:
-        alert = self.queue_size <= 2
-        prefix, suffix = ("[bold red]", "[/bold red]") if alert else ("", "")
-        table.add_row(
-            "[bold]Phase annotation[/bold]",
-            f"Q:{prefix}{self.queue_size:>2}/{self.queue_size_max}{suffix}"
-            f" {human_readable_bytes(self.bytes_per_second) + '/s':>10}",
-        )
+        self._add_queue_row(table, "Phase annotation", self.bytes_per_second)
 
 
 class ImageFunction(Model):
@@ -221,7 +191,7 @@ class ImageFunction(Model):
             raise ValueError("no image has traces")
         return images
 
-    async def iter_images(
+    def iter_images(
         self,
         batch_iterator: AsyncIterator[WaveformBatch],
     ) -> AsyncIterator[tuple[WaveformImages, WaveformBatch]]:
@@ -236,58 +206,40 @@ class ImageFunction(Model):
             batch_iterator (AsyncIterator[WaveformBatch]): Async iterator over
                 batches.
 
-        Yields:
-            tuple[WaveformImages, WaveformBatch]: Images and their batch.
+        Returns:
+            AsyncIterator[tuple[WaveformImages, WaveformBatch]]: Images and their
+                batch.
         """
         queue: ImageQueue = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self._stats.set_queue(queue)
+        logger.info("start pre-processing images, queue size %d", queue.maxsize)
+        return prefetch(
+            self._calculate_images(batch_iterator), queue, name="image function"
+        )
+
+    async def _calculate_images(
+        self,
+        batch_iterator: AsyncIterator[WaveformBatch],
+    ) -> AsyncIterator[tuple[WaveformImages, WaveformBatch]]:
         stats = self._stats
-        stats.set_queue(queue)
+        async with aclosing(batch_iterator):
+            async for batch in batch_iterator:
+                if not batch.is_healthy():
+                    logger.debug("unhealthy batch, skipping")
+                    continue
 
-        async def worker() -> None:
-            logger.info("start pre-processing images, queue size %d", queue.maxsize)
-            try:
-                async for batch in batch_iterator:
-                    if not batch.is_healthy():
-                        logger.debug("unhealthy batch, skipping")
-                        continue
-
-                    start_time = datetime_now()
-                    try:
-                        images = await self.get_images(batch)
-                    except ValueError as e:
-                        logger.warning("error processing images: %s", e)
-                        continue
-                    stats.time_per_batch = datetime_now() - start_time
-                    stats.bytes_per_second = (
-                        batch.nbytes / stats.time_per_batch.total_seconds()
-                    )
-                    await queue.put((images, batch))
-            except Exception as exc:
-                await queue.put(exc)
-                return
-            finally:
-                aclose = getattr(batch_iterator, "aclose", None)
-                if aclose is not None:
-                    await aclose()
-
-            await queue.put(None)
-
-        task = asyncio.create_task(worker())
-        try:
-            while True:
-                ret = await queue.get()
-                if ret is None:
-                    logger.debug("image function finished")
-                    break
-                if isinstance(ret, BaseException):
-                    raise ret
-                yield ret
-        finally:
-            if not task.done():
-                logger.debug("cancelling image function")
-                task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+                start_time = datetime_now()
+                try:
+                    images = await self.get_images(batch)
+                except ValueError as e:
+                    logger.warning("error processing images: %s", e)
+                    continue
+                stats.time_per_batch = datetime_now() - start_time
+                stats.bytes_per_second = (
+                    batch.nbytes / stats.time_per_batch.total_seconds()
+                )
+                yield images, batch
+        logger.debug("image function finished")
 
 
 @dataclass

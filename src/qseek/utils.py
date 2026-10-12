@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Annotated,
+    AsyncGenerator,
+    AsyncIterator,
     Awaitable,
     Callable,
     ClassVar,
@@ -135,13 +137,18 @@ class BackgroundTasks:
         name: str | None = None,
         context: Context | None = None,
     ) -> asyncio.Task:
-        if PYTHON_VERSION >= (3, 11):
-            task = asyncio.create_task(coro, name=name, context=context)
-        else:
-            task = asyncio.create_task(coro, name=name)
+        task = asyncio.create_task(coro, name=name, context=context)
         cls.tasks.add(task)
-        task.add_done_callback(cls.tasks.remove)
+        task.add_done_callback(cls._task_done)
         return task
+
+    @classmethod
+    def _task_done(cls, task: asyncio.Task) -> None:
+        cls.tasks.discard(task)
+        if task.cancelled():
+            return
+        if (exc := task.exception()) is not None:
+            logger.error("background task %s failed", task.get_name(), exc_info=exc)
 
     @classmethod
     def cancel_all(cls) -> None:
@@ -150,10 +157,90 @@ class BackgroundTasks:
 
     @classmethod
     async def wait_all(cls) -> None:
-        if not cls.tasks:
-            return
-        logger.debug("waiting for %d tasks to finish", len(cls.tasks))
-        await asyncio.gather(*cls.tasks)
+        """Wait for all tasks, including those created while waiting.
+
+        Failed tasks are logged when they finish and do not stop the others.
+        """
+        while pending := {task for task in cls.tasks if not task.done()}:
+            logger.debug("waiting for %d tasks to finish", len(pending))
+            await asyncio.wait(pending)
+
+
+_QUEUE_DONE = object()
+
+
+async def aclose_iterator(iterator: AsyncIterator) -> None:
+    """Close an async iterator if it supports closing, like async generators."""
+    aclose = getattr(iterator, "aclose", None)
+    if aclose is not None:
+        await aclose()
+
+
+@contextlib.asynccontextmanager
+async def aclosing[T](iterator: AsyncIterator[T]) -> AsyncGenerator[AsyncIterator[T]]:
+    """Close an async iterator on exit, like `contextlib.aclosing`.
+
+    Unlike `contextlib.aclosing`, iterators without `aclose()` are accepted.
+    """
+    try:
+        yield iterator
+    finally:
+        await aclose_iterator(iterator)
+
+
+async def prefetch[T](
+    iterator: AsyncIterator[T],
+    queue: asyncio.Queue | None = None,
+    name: str | None = None,
+) -> AsyncGenerator[T]:
+    """Iterate ahead of the consumer in a background task.
+
+    The items of `iterator` are produced in a task and buffered in `queue`, so
+    that producer and consumer work concurrently. The size of the queue limits
+    how far the producer runs ahead.
+
+    An exception raised by `iterator` is raised in the consumer after the items
+    buffered before it. When the consumer stops early, raises or is cancelled,
+    the task is cancelled and awaited, and `iterator` is closed, so that the
+    stages before it are cleaned up when this generator closes.
+
+    Args:
+        iterator (AsyncIterator[T]): Async iterator to prefetch.
+        queue (asyncio.Queue | None, optional): Empty queue to buffer the items
+            in, e.g. to report its size. Defaults to a new queue of size
+            `QUEUE_SIZE`.
+        name (str | None, optional): Name of the task.
+
+    Yields:
+        T: The items of `iterator`.
+    """
+    queue = asyncio.Queue(maxsize=QUEUE_SIZE) if queue is None else queue
+
+    async def produce() -> None:
+        try:
+            async for item in iterator:
+                await queue.put(item)
+        finally:
+            await aclose_iterator(iterator)
+
+    def wake_consumer(_: asyncio.Task) -> None:
+        # The consumer waits on an empty queue only, a full one is drained first
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(_QUEUE_DONE)
+
+    task = asyncio.create_task(produce(), name=name)
+    task.add_done_callback(wake_consumer)
+    try:
+        while not (task.done() and queue.empty()):
+            item = await queue.get()
+            if item is _QUEUE_DONE:
+                continue
+            yield item
+        await task  # Raises the exception of the producer
+    finally:
+        task.cancel()  # No-op if the producer has finished
+        # Retrieves the exception of the producer if the consumer failed first
+        await asyncio.gather(task, return_exceptions=True)
 
 
 class NSL(NamedTuple):

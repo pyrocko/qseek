@@ -206,10 +206,15 @@ class SeedLink(WaveformProvider):
         logger.info("waiting for first SeedLink traces")
         while True:
             await asyncio.sleep(1.0)
+            # Waiting is futile if a stream has failed, e.g. without slinktool
+            for client in self.clients:
+                client.check_stream()
             if sum(len(client.streams) for client in self.clients) > 0:
                 break
 
         while True:
+            for client in self.clients:
+                client.check_stream()
             if not any(client.is_backfilling() for client in self.clients):
                 break
             logger.info("stations still backfilling, waiting...")
@@ -305,7 +310,6 @@ class SeedLink(WaveformProvider):
                     batch.i_batch,
                     batch.duration,
                 )
-                start_time += window_increment
                 continue
 
             yield batch
