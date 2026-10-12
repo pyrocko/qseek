@@ -43,6 +43,7 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ByteSize,
+    NonNegativeInt,
     PlainSerializer,
     StringConstraints,
     WrapValidator,
@@ -768,37 +769,35 @@ def camel_case_to_snake_case(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
-def _validate_cpu_count(
-    reserved_cores: int,
-) -> Callable[[int | Literal["auto"], Callable], int]:
-    # We limit the number of threads to the number of available cores and leave some
-    # cores for other processes.
+def resolve_cpu_count(n_threads: int | Literal["auto"], reserved_cores: int = 4) -> int:
+    """Resolve a thread count of the configuration to the number of threads.
 
-    def wrapper(n_threads: int | Literal["auto"], handler: Callable) -> int:
-        cpu_count = _get_cpu_count()
-        max_compute_threads = max(cpu_count - reserved_cores, 1)
-        n_threads = max_compute_threads if n_threads == "auto" else handler(n_threads)
+    `"auto"` uses the available cores and leaves `reserved_cores` for other
+    processes. Counts exceeding the available cores are reduced.
 
-        if n_threads < 0:
-            raise ValueError("Number of threads must be greater than 0")
-        if n_threads > cpu_count:
-            logger.warning(
-                "number of compute threads exceeds available cores, reducing to %d",
-                max_compute_threads,
-            )
-            n_threads = cpu_count
-        return n_threads
+    Args:
+        n_threads (int | Literal["auto"]): The configured thread count.
+        reserved_cores (int, optional): Cores left free with `"auto"`.
+            Defaults to 4.
 
-    return wrapper
+    Returns:
+        int: The number of threads.
+    """
+    cpu_count = _get_cpu_count()
+    max_compute_threads = max(cpu_count - reserved_cores, 1)
+    if n_threads == "auto":
+        return max_compute_threads
+    if n_threads > cpu_count:
+        logger.warning(
+            "number of compute threads exceeds available cores, reducing to %d",
+            cpu_count,
+        )
+        return cpu_count
+    return n_threads
 
 
-if TYPE_CHECKING:
-    CpuCount = int  # the validator resolves "auto" to the number of threads
-else:
-    CpuCount = Annotated[
-        int | Literal["auto"],
-        WrapValidator(_validate_cpu_count(reserved_cores=4)),
-    ]
+# Kept as configured, so "auto" round-trips; resolve with resolve_cpu_count.
+CpuCount = NonNegativeInt | Literal["auto"]
 
 
 @dataclass
