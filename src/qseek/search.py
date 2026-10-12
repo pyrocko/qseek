@@ -52,6 +52,7 @@ from qseek.utils import (
     datetime_now,
     get_total_memory,
     human_readable_bytes,
+    resolve_cpu_count,
     time_to_path,
 )
 from qseek.waveforms.base import WaveformBatch
@@ -370,7 +371,6 @@ class Search(Model):
 
     n_threads: CpuCount = Field(
         default="auto",
-        validate_default=True,
         description="Number of threads for stacking and migration. "
         "`'auto'` will use the maximum number of cores and leaves resources "
         "for I/O and other work. `0` uses all available cores.",
@@ -656,6 +656,7 @@ class Search(Model):
             ignore_boundary=self.ignore_boundary,
             ignore_boundary_width=self.ignore_boundary_width,
         )
+        n_threads = resolve_cpu_count(self.n_threads)
         n.notify("READY=1")
         n.notify("STATUS=Starting search...")
 
@@ -673,7 +674,7 @@ class Search(Model):
                 detections, semblance_trace = await search_octree.search(
                     images=images,
                     octree=self.octree.reset(),
-                    n_threads=self.n_threads,
+                    n_threads=n_threads,
                 )
 
                 await self._catalog.save_semblance_trace(semblance_trace)
