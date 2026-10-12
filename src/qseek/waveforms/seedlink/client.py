@@ -622,7 +622,9 @@ class SeedLinkClient(BaseModel):
                     max_length_seconds=self.buffer_length.total_seconds(),
                 )
         finally:
-            proc.terminate()
+            # slinktool may have exited already
+            with contextlib.suppress(ProcessLookupError):
+                proc.terminate()
             self._stats.connected_at = None
 
     def is_backfilling(self) -> bool:

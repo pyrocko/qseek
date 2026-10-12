@@ -641,7 +641,10 @@ async def test_seedlink_slinktool_exits(monkeypatch) -> None:
 
     async def failing_slinktool(*args, **kwargs):
         script = "import sys; sys.stderr.write('bad arguments'); sys.exit(1)"
-        return await create_subprocess_exec(sys.executable, "-c", script, **kwargs)
+        proc = await create_subprocess_exec(sys.executable, "-c", script, **kwargs)
+        # Exited and reaped before the stream reads, terminate() then raises
+        await proc.wait()
+        return proc
 
     monkeypatch.setattr(asyncio.subprocess, "create_subprocess_exec", failing_slinktool)
     client = seedlink_client()
