@@ -102,35 +102,3 @@ async def test_iter_images_skips_value_error():
     )
     # The batch raising ValueError and the batch without any traces are skipped
     assert [images.images[0].n_traces for images in results] == [2]
-
-
-@pytest.mark.asyncio
-async def test_iter_images_raises_worker_error():
-    function = DummyImageFunction()
-    with pytest.raises(RuntimeError, match="processing failed"):
-        await asyncio.wait_for(
-            collect(
-                function,
-                Batches([batch(), batch(error=RuntimeError("processing failed"))]),
-            ),
-            TIMEOUT,
-        )
-
-
-@pytest.mark.asyncio
-async def test_iter_images_consumer_stops_early():
-    function = DummyImageFunction()
-    batches = Batches([batch() for _ in range(100)])
-    iterator = function.iter_images(aiter(batches))
-
-    await asyncio.wait_for(anext(iterator), TIMEOUT)
-    await asyncio.wait_for(iterator.aclose(), TIMEOUT)
-
-    # The worker is cancelled and the batch iterator is closed
-    assert batches.closed
-    remaining = [
-        task
-        for task in asyncio.all_tasks()
-        if task is not asyncio.current_task() and not task.done()
-    ]
-    assert not remaining

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import subprocess
@@ -199,6 +200,30 @@ class SeedLink(WaveformProvider):
         min_length: timedelta | None = None,
         min_stations: int = 0,
     ) -> AsyncGenerator[WaveformBatch]:
+        batches = self._stream_batches(
+            window_increment=window_increment,
+            window_padding=window_padding,
+            start_time=start_time,
+            min_length=min_length,
+            min_stations=min_stations,
+        )
+        try:
+            async with contextlib.aclosing(batches):
+                async for batch in batches:
+                    yield batch
+        finally:
+            # Stops slinktool when the search ends or fails
+            for client in self.clients:
+                client.stop_stream()
+
+    async def _stream_batches(
+        self,
+        window_increment: timedelta,
+        window_padding: timedelta,
+        start_time: datetime | None = None,
+        min_length: timedelta | None = None,
+        min_stations: int = 0,
+    ) -> AsyncGenerator[WaveformBatch]:
         loop = asyncio.get_event_loop()
 
         for client in self.clients:
@@ -225,6 +250,13 @@ class SeedLink(WaveformProvider):
         logger.info("starting waveform streaming at %s", start_time)
 
         while True:
+            for client in self.clients:
+                try:
+                    client.check_stream()
+                except RuntimeError as exc:
+                    logger.error("%s: %s, restarting", exc, exc.__cause__)
+                    client.restart_stream()
+
             end_time = start_time + window_increment
 
             start_time_padded = start_time - window_padding

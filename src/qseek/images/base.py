@@ -7,14 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    AsyncGenerator,
-    ClassVar,
-    Iterator,
-    Literal,
-    Sequence,
-)
+from typing import TYPE_CHECKING, AsyncGenerator, ClassVar, Iterator, Literal, Sequence
 
 import numpy as np
 from pyrocko.io import save
@@ -42,7 +35,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PhaseName = Literal["P", "S"]
-ImageQueue = asyncio.Queue["tuple[WaveformImages, WaveformBatch]"]
 
 
 @dataclass
@@ -217,7 +209,9 @@ class ImageFunction(Model):
             AsyncGenerator[tuple[WaveformImages, WaveformBatch]]: Images and their
                 batch.
         """
-        queue: ImageQueue = asyncio.Queue(maxsize=QUEUE_SIZE)
+        queue: asyncio.Queue[tuple[WaveformImages, WaveformBatch]] = asyncio.Queue(
+            maxsize=QUEUE_SIZE
+        )
         self._stats.set_queue(queue)
         logger.info("start pre-processing images, queue size %d", queue.maxsize)
         return prefetch(

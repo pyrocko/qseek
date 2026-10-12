@@ -660,7 +660,6 @@ class Search(Model):
         n.notify("STATUS=Starting search...")
 
         images_batches = self.image_function.iter_images(pre_processed_batches)
-        self._background_tasks = BackgroundTasks()
         # On exit, the pipeline is closed and the detections are processed. If the
         # search fails, the tasks of the pipeline and the detections are cancelled.
         async with self._background_tasks, contextlib.aclosing(images_batches):

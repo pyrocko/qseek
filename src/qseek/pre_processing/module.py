@@ -101,7 +101,9 @@ class PreProcessing(RootModel):
         queue: asyncio.Queue[WaveformBatch] = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._stats.set_queue(queue)
         logger.info("start pre-processing waveforms")
-        return prefetch(self._process_batches(batch_iterator), queue, "pre-processing")
+        return prefetch(
+            self._process_batches(batch_iterator), queue, name="pre-processing"
+        )
 
     async def _process_batches(
         self,

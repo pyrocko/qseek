@@ -127,25 +127,6 @@ def setup_rich_logging(level: int, file_level: int | None = None) -> None:
     )
 
 
-async def log_exceptions[T](coro: Awaitable[T], name: str) -> T | None:
-    """Await a coroutine and log its exception instead of raising it.
-
-    Cancellation is not caught.
-
-    Args:
-        coro (Awaitable[T]): Coroutine to await.
-        name (str): Name of the work in the log message.
-
-    Returns:
-        T | None: The result of the coroutine, None if it failed.
-    """
-    try:
-        return await coro
-    except Exception:
-        logger.exception("%s failed", name)
-        return None
-
-
 class BackgroundTasks:
     """Tasks that run in the background of a block, like `asyncio.TaskGroup`.
 
@@ -170,24 +151,23 @@ class BackgroundTasks:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        cancel = exc is not None
+        cancelled: asyncio.CancelledError | None = None
         while pending := {task for task in self._tasks if not task.done()}:
-            if cancel:
+            if exc is not None or cancelled is not None:
                 for task in pending:
                     task.cancel()
             try:
                 await asyncio.wait(pending)
-            except asyncio.CancelledError:
-                cancel = True  # Cancel the tasks and wait for them, then raise
-                continue
-        if exc is None and cancel:
-            raise asyncio.CancelledError
+            except asyncio.CancelledError as error:
+                cancelled = error  # Cancel the tasks and wait for them, then raise
+        if exc is None and cancelled is not None:
+            raise cancelled
 
     def create_task[T](
         self,
         coro: Coroutine[Any, Any, T],
         name: str | None = None,
-    ) -> asyncio.Task[T | None]:
+    ) -> asyncio.Task[T]:
         """Run a coroutine in the background, its exception is logged.
 
         Args:
@@ -195,15 +175,17 @@ class BackgroundTasks:
             name (str | None, optional): Name of the task.
 
         Returns:
-            asyncio.Task[T | None]: The task.
+            asyncio.Task[T]: The task.
         """
-        name = name or getattr(coro, "__qualname__", repr(coro))
-        task = asyncio.create_task(
-            log_exceptions(coro, f"background task {name}"), name=name
-        )
+        task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._task_done)
         return task
+
+    def _task_done(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        if not task.cancelled() and (exc := task.exception()) is not None:
+            logger.error("background task %s failed", task.get_name(), exc_info=exc)
 
 
 _QUEUE_DONE = object()
@@ -211,8 +193,8 @@ _QUEUE_DONE = object()
 
 async def prefetch[T](
     iterator: AsyncGenerator[T],
-    queue: asyncio.Queue | None = None,
-    name: str | None = None,
+    queue: asyncio.Queue,
+    name: str,
 ) -> AsyncGenerator[T]:
     """Iterate ahead of the consumer in a background task.
 
@@ -227,15 +209,12 @@ async def prefetch[T](
 
     Args:
         iterator (AsyncGenerator[T]): Async generator to prefetch.
-        queue (asyncio.Queue | None, optional): Empty queue to buffer the items
-            in, e.g. to report its size. Defaults to a new queue of size
-            `QUEUE_SIZE`.
-        name (str | None, optional): Name of the task.
+        queue (asyncio.Queue): Empty queue to buffer the items in.
+        name (str): Name of the task.
 
     Yields:
         T: The items of `iterator`.
     """
-    queue = asyncio.Queue(maxsize=QUEUE_SIZE) if queue is None else queue
 
     async def produce() -> None:
         async with contextlib.aclosing(iterator):
@@ -258,8 +237,10 @@ async def prefetch[T](
         await task  # Raises the exception of the producer
     finally:
         task.cancel()  # No-op if the producer has finished
-        # Retrieves the exception of the producer if the consumer failed first
-        await asyncio.gather(task, return_exceptions=True)
+        (result,) = await asyncio.gather(task, return_exceptions=True)
+        # The consumer failed or stopped first, the error would be lost
+        if isinstance(result, Exception) and result is not sys.exception():
+            logger.error("%s failed", name, exc_info=result)
 
 
 class NSL(NamedTuple):

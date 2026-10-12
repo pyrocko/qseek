@@ -263,7 +263,7 @@ class PyrockoSquirrel(WaveformProvider):
             )
             stats.set_queue(queue)
             logger.info("start prefetching waveforms, queue size %d", queue.maxsize)
-            return prefetch(_load_batches(iterator), queue, "Squirrel loading")
+            return prefetch(_load_batches(iterator), queue, name="Squirrel loading")
 
         pyrocko_batches = prefetch_batches(
             chop_start_time=start_time, chop_end_time=end_time

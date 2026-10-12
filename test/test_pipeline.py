@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import gc
 import logging
 import subprocess
 import sys
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +27,7 @@ from qseek.pre_processing.module import PreProcessing
 from qseek.utils import BackgroundTasks, prefetch
 from qseek.waveforms import sds
 from qseek.waveforms.sds import SDSArchive
+from qseek.waveforms.seedlink.client import SeedLinkClient
 from qseek.waveforms.squirrel import PyrockoSquirrel
 
 TIMEOUT = 10.0
@@ -67,6 +70,10 @@ class Source:
             self.closed = True
 
 
+def prefetched(iterator, maxsize: int = 2):
+    return prefetch(iterator, asyncio.Queue(maxsize=maxsize), name="test")
+
+
 async def collect(iterator) -> list:
     async with asyncio.timeout(TIMEOUT):
         return [item async for item in iterator]
@@ -76,7 +83,7 @@ async def collect(iterator) -> list:
 @pytest.mark.parametrize("maxsize", [1, 2, 100])
 async def test_prefetch(maxsize: int) -> None:
     source = Source(20)
-    items = await collect(prefetch(aiter(source), asyncio.Queue(maxsize=maxsize)))
+    items = await collect(prefetched(aiter(source), maxsize))
     assert items == list(range(20))
     assert source.closed
     assert not pending_tasks()
@@ -90,7 +97,7 @@ async def test_prefetch_raises(maxsize: int) -> None:
     items = []
     with pytest.raises(RuntimeError, match="producer failed"):
         async with asyncio.timeout(TIMEOUT):
-            async for item in prefetch(aiter(source), asyncio.Queue(maxsize=maxsize)):
+            async for item in prefetched(aiter(source), maxsize):
                 items.append(item)
     assert items == list(range(5))
     assert source.closed
@@ -102,7 +109,7 @@ async def test_prefetch_raises_on_full_queue() -> None:
     """The producer fails while the queue is full and the consumer is busy."""
     # The producer fills the queue with 1 and 2 while the consumer holds 0
     source = Source(3, error=RuntimeError("producer failed"))
-    iterator = prefetch(aiter(source), asyncio.Queue(maxsize=2))
+    iterator = prefetched(aiter(source))
     async with asyncio.timeout(TIMEOUT):
         assert await anext(iterator) == 0
         while not source.closed:
@@ -116,7 +123,7 @@ async def test_prefetch_raises_on_full_queue() -> None:
 @pytest.mark.asyncio
 async def test_prefetch_consumer_stops_early() -> None:
     source = Source(100)
-    iterator = prefetch(aiter(source), asyncio.Queue(maxsize=2))
+    iterator = prefetched(aiter(source))
     async with asyncio.timeout(TIMEOUT):
         assert await anext(iterator) == 0
         await iterator.aclose()
@@ -132,7 +139,7 @@ async def test_prefetch_consumer_cancelled() -> None:
     started = asyncio.Event()
 
     async def consume() -> None:
-        iterator = prefetch(aiter(source), asyncio.Queue(maxsize=2))
+        iterator = prefetched(aiter(source))
         async with contextlib.aclosing(iterator):
             async for _ in iterator:
                 started.set()
@@ -161,12 +168,36 @@ async def test_prefetch_chain_fails() -> None:
                     raise RuntimeError("stage failed")
                 yield item
 
-    first = prefetch(aiter(source), asyncio.Queue(maxsize=2))
-    second = prefetch(fail_after(first, 3), asyncio.Queue(maxsize=2))
+    first = prefetched(aiter(source))
+    second = prefetched(fail_after(first, 3))
     with pytest.raises(RuntimeError, match="stage failed"):
-        await collect(prefetch(second))
+        await collect(prefetched(second))
     assert source.closed
     assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_logs_error_after_consumer_stopped(caplog) -> None:
+    """The producer's error is logged when the consumer stops first."""
+    source = Source(2, error=RuntimeError("producer failed"))
+    iterator = prefetched(aiter(source), maxsize=4)
+    with caplog.at_level(logging.ERROR):
+        async with asyncio.timeout(TIMEOUT):
+            assert await anext(iterator) == 0
+            while not source.closed:
+                await asyncio.sleep(0.01)
+            await iterator.aclose()
+    assert "test failed" in caplog.text
+    assert "producer failed" in caplog.text
+    assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_error_not_logged_twice(caplog) -> None:
+    source = Source(2, error=RuntimeError("producer failed"))
+    with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError):
+        await collect(prefetched(aiter(source)))
+    assert "test failed" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -193,6 +224,23 @@ async def test_background_tasks(caplog) -> None:
     assert sorted(done) == ["block", "first", "spawned"]
     assert "background task failing failed" in caplog.text
     assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_background_tasks_cancelled_before_start() -> None:
+    """A task cancelled before its first step leaves no unawaited coroutine."""
+
+    async def work() -> None:
+        await asyncio.sleep(0)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match="block failed"):
+            async with BackgroundTasks() as tasks:
+                tasks.create_task(work())
+                raise ValueError("block failed")
+        gc.collect()
+    assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
 
 
 @pytest.mark.asyncio
@@ -262,7 +310,8 @@ async def numbers():
 async def main():
     async with BackgroundTasks() as tasks:
         task = tasks.create_task(asyncio.sleep(0, result=1))
-        items = [i async for i in prefetch(numbers())]
+        queue = asyncio.Queue(maxsize=2)
+        items = [i async for i in prefetch(numbers(), queue, name='numbers')]
     assert items == list(range(10)), items
     assert task.result() == 1
 
@@ -319,7 +368,7 @@ def station_inventory() -> StationInventory:
     )
 
 
-async def pipeline(archive: Path):
+async def pipeline(archive: Path, pre_process: bool = True):
     """The pipeline of a search: waveforms, pre-processing and images."""
     provider = SDSArchive(
         archives=[archive],
@@ -327,7 +376,8 @@ async def pipeline(archive: Path):
         queue_size=2,
     )
     await provider.prepare(station_inventory())
-    pre_processing = PreProcessing([Bandpass(bandpass=(0.5, 4.0))])
+    modules = [Bandpass(bandpass=(0.5, 4.0))] if pre_process else []
+    pre_processing = PreProcessing(modules)
     batches = provider.iter_batches(window_increment=WINDOW, window_padding=PADDING)
     return DummyImageFunction().iter_images(pre_processing.iter_batches(batches))
 
@@ -337,6 +387,20 @@ async def test_pipeline(sds_archive: Path) -> None:
     results = await collect(await pipeline(sds_archive))
     assert len(results) == N_BATCHES
     assert all(len(batch.traces) == 2 for _, batch in results)
+    assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_without_pre_processing(sds_archive: Path) -> None:
+    results = await collect(await pipeline(sds_archive, pre_process=False))
+    assert len(results) == N_BATCHES
+    assert not pending_tasks()
+
+    # The waveform loading is closed through the image function
+    images = await pipeline(sds_archive, pre_process=False)
+    async with asyncio.timeout(TIMEOUT):
+        await anext(images)
+        await images.aclose()
     assert not pending_tasks()
 
 
@@ -411,11 +475,13 @@ class FakeSquirrel:
     def __init__(self, n_batches: int, error: Exception | None = None) -> None:
         self.n_batches = n_batches
         self.error = error
+        self.chop_tmins: list[float] = []
 
     def get_time_span(self, kinds: list[str]) -> tuple[float, float]:
         return DAY_START.timestamp(), DAY_START.timestamp() + 3600.0
 
     def chopper_waveforms(self, tmin: float, tinc: float, **kwargs):
+        self.chop_tmins.append(tmin)
         for i in range(self.n_batches):
             start = tmin + i * tinc
             yield SimpleNamespace(
@@ -439,8 +505,8 @@ class FakeSquirrel:
             raise self.error
 
 
-def squirrel_provider(squirrel: FakeSquirrel) -> PyrockoSquirrel:
-    provider = PyrockoSquirrel(persistent="test", queue_size=2)
+def squirrel_provider(squirrel: FakeSquirrel, **kwargs) -> PyrockoSquirrel:
+    provider = PyrockoSquirrel(persistent="test", queue_size=2, **kwargs)
     provider._squirrel = squirrel  # ty: ignore[invalid-assignment]
     provider._stations = station_inventory()
     return provider
@@ -471,3 +537,114 @@ async def test_squirrel_consumer_stops_early() -> None:
         await anext(batches)
         await batches.aclose()
     assert not pending_tasks()
+
+
+class RescanSleeps(list):
+    """The sleeps before the rescans, they never end if `block` is set."""
+
+    block = False
+
+
+@pytest.fixture
+def rescan_sleeps(monkeypatch) -> RescanSleeps:
+    sleeps = RescanSleeps()
+    sleep = asyncio.sleep
+
+    async def fake_sleep(delay: float, result=None):
+        if delay == 600.0:
+            sleeps.append(delay)
+            if sleeps.block:
+                await asyncio.Event().wait()
+        return await sleep(0, result)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(PyrockoSquirrel, "scan_waveform_dirs", lambda self, sq: None)
+    return sleeps
+
+
+def watching_provider(fake: FakeSquirrel, tmp_path: Path) -> PyrockoSquirrel:
+    return squirrel_provider(
+        fake, waveform_dirs=[tmp_path], watch_waveforms=timedelta(minutes=10)
+    )
+
+
+@pytest.mark.asyncio
+async def test_squirrel_watch_waveforms(tmp_path: Path, rescan_sleeps) -> None:
+    """After a pass, the rescan continues at the end of the last batch."""
+    fake = FakeSquirrel(3)
+    provider = watching_provider(fake, tmp_path)
+    batches = provider.iter_batches(window_increment=WINDOW, window_padding=PADDING)
+    async with asyncio.timeout(TIMEOUT):
+        first_pass = [await anext(batches) for _ in range(3)]
+        await anext(batches)
+        await batches.aclose()
+
+    assert rescan_sleeps == [600.0]
+    assert fake.chop_tmins[1] == (first_pass[-1].end_time + PADDING).timestamp()
+    assert not pending_tasks()
+
+
+@pytest.mark.asyncio
+async def test_squirrel_watch_cancelled(tmp_path: Path, rescan_sleeps) -> None:
+    """The consumer is cancelled while it waits for the rescan."""
+    rescan_sleeps.block = True
+    provider = watching_provider(FakeSquirrel(3), tmp_path)
+    batches = provider.iter_batches(window_increment=WINDOW, window_padding=PADDING)
+    async with asyncio.timeout(TIMEOUT):
+        for _ in range(3):
+            await anext(batches)
+        task = asyncio.create_task(anext(batches))
+        while not rescan_sleeps:
+            await asyncio.sleep(0)
+        # The loading of the first pass has finished
+        assert not [t for t in pending_tasks() if t is not task]
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert not pending_tasks()
+
+
+def seedlink_client() -> SeedLinkClient:
+    client = SeedLinkClient(host="localhost")
+    client._request_selection = set(client.station_selection)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_seedlink_check_stream() -> None:
+    client = seedlink_client()
+
+    async def fail() -> None:
+        raise FileNotFoundError("slinktool")
+
+    client._task = asyncio.create_task(fail())
+    await asyncio.sleep(0)
+    with pytest.raises(RuntimeError, match="streaming from localhost") as exc:
+        client.check_stream()
+    assert isinstance(exc.value.__cause__, FileNotFoundError)
+
+    # Running, finished and cancelled streams pass
+    client._task = asyncio.create_task(asyncio.sleep(10.0))
+    client.check_stream()
+    client._task.cancel()
+    await asyncio.sleep(0)
+    client.check_stream()
+    client._task = asyncio.create_task(asyncio.sleep(0))
+    await asyncio.sleep(0.01)
+    client.check_stream()
+
+
+@pytest.mark.asyncio
+async def test_seedlink_slinktool_exits(monkeypatch) -> None:
+    """A slinktool that exits fails the stream instead of spinning."""
+    create_subprocess_exec = asyncio.subprocess.create_subprocess_exec
+
+    async def failing_slinktool(*args, **kwargs):
+        script = "import sys; sys.stderr.write('bad arguments'); sys.exit(1)"
+        return await create_subprocess_exec(sys.executable, "-c", script, **kwargs)
+
+    monkeypatch.setattr(asyncio.subprocess, "create_subprocess_exec", failing_slinktool)
+    client = seedlink_client()
+    with pytest.raises(RuntimeError, match="slinktool exited: bad arguments"):
+        async with asyncio.timeout(TIMEOUT):
+            await client.stream()
