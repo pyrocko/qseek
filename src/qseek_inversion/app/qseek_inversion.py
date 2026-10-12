@@ -6,13 +6,9 @@ import argparse
 import logging
 from importlib.metadata import version
 
-import nest_asyncio
 import rich
 
 from qseek.utils import setup_rich_logging
-
-nest_asyncio.apply()
-
 
 logger = logging.getLogger(__name__)
 

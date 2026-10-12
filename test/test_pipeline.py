@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import gc
 import logging
-import subprocess
 import sys
 import warnings
 from datetime import datetime, timedelta, timezone
@@ -244,6 +243,23 @@ async def test_background_tasks_cancelled_before_start() -> None:
 
 
 @pytest.mark.asyncio
+async def test_background_tasks_create_after_exit() -> None:
+    """A finished group refuses new tasks and leaves no unawaited coroutine."""
+
+    async def work() -> None:
+        await asyncio.sleep(0)
+
+    async with BackgroundTasks() as tasks:
+        pass
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(RuntimeError):
+            tasks.create_task(work())
+        gc.collect()
+    assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+
+
+@pytest.mark.asyncio
 async def test_background_tasks_block_raises() -> None:
     """The tasks are cancelled, the error is raised as it is."""
     with pytest.raises(ValueError, match="block failed"):
@@ -294,34 +310,6 @@ async def test_background_tasks_cancelled_while_waiting() -> None:
             await task
     assert inner[0].cancelled()
     assert not pending_tasks()
-
-
-NESTED_LOOP = """
-import asyncio
-import nest_asyncio
-from qseek.utils import BackgroundTasks, prefetch
-
-nest_asyncio.apply()
-
-async def numbers():
-    for i in range(10):
-        yield i
-
-async def main():
-    async with BackgroundTasks() as tasks:
-        task = tasks.create_task(asyncio.sleep(0, result=1))
-        queue = asyncio.Queue(maxsize=2)
-        items = [i async for i in prefetch(numbers(), queue, name='numbers')]
-    assert items == list(range(10)), items
-    assert task.result() == 1
-
-asyncio.run(main())
-"""
-
-
-def test_nested_event_loop() -> None:
-    """The CLI runs in nested event loops of nest_asyncio."""
-    subprocess.run([sys.executable, "-c", NESTED_LOOP], check=True, timeout=60)
 
 
 class DummyImageFunction(ImageFunction):

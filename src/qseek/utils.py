@@ -31,7 +31,6 @@ from typing import (
     Literal,
     NamedTuple,
     ParamSpec,
-    Self,
     TypeVar,
 )
 
@@ -127,47 +126,30 @@ def setup_rich_logging(level: int, file_level: int | None = None) -> None:
     )
 
 
-class BackgroundTasks:
-    """Tasks that run in the background of a block, like `asyncio.TaskGroup`.
+async def _log_exceptions[T](coro: Coroutine[Any, Any, T], name: str) -> T | None:
+    try:
+        return await coro
+    except Exception:
+        logger.exception("background task %s failed", name)
+        return None
+
+
+class BackgroundTasks(asyncio.TaskGroup):
+    """Task group whose failed tasks are logged and do not fail the group.
 
     On exit, the block waits for all tasks, including tasks created while
-    waiting. A failed task is logged and cancels neither the other tasks nor the
-    block. When the block raises or is cancelled, the tasks are cancelled and
-    awaited, and the exception is raised as it is.
-
-    `asyncio.TaskGroup` needs `asyncio.current_task()`, which fails in the
-    nested event loops of `nest_asyncio` that the CLI applies.
+    waiting. A failed task is logged with its traceback and cancels neither the
+    other tasks nor the block. When the block raises or is cancelled, the tasks
+    are cancelled and awaited, and the exception is raised as it is, not wrapped
+    in an `ExceptionGroup`.
     """
-
-    def __init__(self) -> None:
-        self._tasks: set[asyncio.Task] = set()
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        cancelled: asyncio.CancelledError | None = None
-        while pending := {task for task in self._tasks if not task.done()}:
-            if exc is not None or cancelled is not None:
-                for task in pending:
-                    task.cancel()
-            try:
-                await asyncio.wait(pending)
-            except asyncio.CancelledError as error:
-                cancelled = error  # Cancel the tasks and wait for them, then raise
-        if exc is None and cancelled is not None:
-            raise cancelled
 
     def create_task[T](
         self,
         coro: Coroutine[Any, Any, T],
+        *,
         name: str | None = None,
-    ) -> asyncio.Task[T]:
+    ) -> asyncio.Task[T | None]:
         """Run a coroutine in the background, its exception is logged.
 
         Args:
@@ -175,17 +157,31 @@ class BackgroundTasks:
             name (str | None, optional): Name of the task.
 
         Returns:
-            asyncio.Task[T]: The task.
+            asyncio.Task[T | None]: The task.
         """
-        task = asyncio.create_task(coro, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._task_done)
+        name = name or getattr(coro, "__qualname__", repr(coro))
+        try:
+            task = super().create_task(_log_exceptions(coro, name), name=name)
+        except RuntimeError:  # The group has finished or is shutting down
+            coro.close()
+            raise
+        # A task cancelled before its first step never awaits the coroutine
+        task.add_done_callback(lambda _: coro.close())
         return task
 
-    def _task_done(self, task: asyncio.Task) -> None:
-        self._tasks.discard(task)
-        if not task.cancelled() and (exc := task.exception()) is not None:
-            logger.error("background task %s failed", task.get_name(), exc_info=exc)
+    async def __aexit__(
+        self,
+        et: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        try:
+            await super().__aexit__(et, exc, tb)
+        except BaseExceptionGroup as group:
+            # The tasks log their exceptions, so the group holds only the
+            # exception of the block. Returning lets it propagate unwrapped.
+            if exc is None or group.exceptions != (exc,):
+                raise
 
 
 _QUEUE_DONE = object()
