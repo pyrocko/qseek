@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -390,8 +389,10 @@ class SeisBench(ImageFunction):
 
         stream = Stream(tr.to_obspy_trace() for tr in traces)
 
-        annotations: Stream = await asyncio.to_thread(
-            self.seisbench_model.annotate,
+        # On the event loop: SeisBench runs the model in threads itself. Calling the
+        # synchronous `annotate` in a thread starts an event loop and a thread pool
+        # for every batch, which is slower and needs more memory.
+        annotations = await self.seisbench_model.annotate_async(
             stream,
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,

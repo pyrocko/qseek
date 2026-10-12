@@ -12,6 +12,10 @@ from qseek.images.seisbench import AnnotationPicker, SeisBench
 TMIN = 1700000000.123
 
 
+async def empty_annotations(stream: Stream, **kwargs) -> Stream:
+    return Stream()
+
+
 def time(seconds: float) -> datetime:
     return datetime.fromtimestamp(TMIN + seconds, tz=timezone.utc)
 
@@ -171,7 +175,7 @@ def test_picker_config():
     ],
 )
 async def test_annotation_sample_times(
-    monkeypatch, sampling_rate, model, leading_samples, trailing_samples, stride
+    sampling_rate, model, leading_samples, trailing_samples, stride
 ):
     """Restore annotation offsets without depending on downloaded model weights.
 
@@ -201,7 +205,7 @@ async def test_annotation_sample_times(
             )
         )
 
-    def annotate(stream, **kwargs):
+    async def annotate(stream, **kwargs):
         annotations = Stream()
         for original, trace in zip(traces, stream, strict=True):
             assert trace.stats.sampling_rate == sampling_rate
@@ -219,14 +223,9 @@ async def test_annotation_sample_times(
                 annotations.append(annotation)
         return annotations
 
-    # Keep this deterministic conversion test independent of thread scheduling.
-    async def inline_thread(function, *args, **kwargs):
-        return function(*args, **kwargs)
-
-    monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
     function = SeisBench(model=model, sampling_rate=sampling_rate)
     function._seisbench_model = SimpleNamespace(
-        annotate=annotate, sampling_rate=sampling_rate
+        annotate_async=annotate, sampling_rate=sampling_rate
     )
 
     images = await function.process_traces(traces)
@@ -268,7 +267,7 @@ def test_blinding_duration(sampling_rate):
 
 
 @pytest.mark.asyncio
-async def test_sampling_rate_input(monkeypatch):
+async def test_sampling_rate_input():
     """`sampling_rate="input"` follows the traces and rejects mixed rates."""
 
     def trace(sampling_rate: float) -> Trace:
@@ -281,13 +280,9 @@ async def test_sampling_rate_input(monkeypatch):
             ydata=np.zeros(int(10 * sampling_rate)),
         )
 
-    async def inline_thread(function, *args, **kwargs):
-        return function(*args, **kwargs)
-
-    monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
     function = SeisBench(sampling_rate="input")
     function._seisbench_model = SimpleNamespace(
-        annotate=lambda stream, **kwargs: Stream(),
+        annotate_async=empty_annotations,
         sampling_rate=100.0,
         default_args={"blinding": (100, 300)},
     )
@@ -302,16 +297,11 @@ async def test_sampling_rate_input(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sampling_rate_input_warns_on_longer_blinding(monkeypatch, caplog):
+async def test_sampling_rate_input_warns_on_longer_blinding(caplog):
     """A lower input rate than the padded one lengthens the blinding."""
-
-    async def inline_thread(function, *args, **kwargs):
-        return function(*args, **kwargs)
-
-    monkeypatch.setattr("qseek.images.seisbench.asyncio.to_thread", inline_thread)
     function = SeisBench(sampling_rate="input")
     function._seisbench_model = SimpleNamespace(
-        annotate=lambda stream, **kwargs: Stream(),
+        annotate_async=empty_annotations,
         sampling_rate=100.0,
         default_args={"blinding": (100, 300)},
     )

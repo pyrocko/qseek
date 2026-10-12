@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Literal
 
@@ -63,7 +62,7 @@ class DeepDenoiser(BatchPreProcessing):
             raise RuntimeError("DeepDenoiser model not initialized.")
 
         stream = Stream(tr.to_obspy_trace() for tr in self.filter_traces(batch))
-        stream = await asyncio.to_thread(self._denoiser.annotate, stream)
+        stream = await self._denoiser.annotate_async(stream)
 
         denoised_traces = [tr.to_pyrocko_trace() for tr in stream]
         for tr in denoised_traces:
