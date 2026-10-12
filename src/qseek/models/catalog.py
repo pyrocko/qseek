@@ -239,13 +239,13 @@ class EventCatalog(BaseModel):
         if not self.events:
             return
 
-        events = []
-        if start_time is not None and min(det.time for det in self.events) < start_time:
+        events = self.events.copy()
+        if start_time is not None and min(ev.time for ev in events) < start_time:
             logger.info("filtering detections after start time %s", start_time)
-            events = [det for det in self.events if det.time >= start_time]
-        if end_time is not None and max(det.time for det in self.events) > end_time:
+            events = [ev for ev in events if ev.time >= start_time]
+        if end_time is not None and max(ev.time for ev in events) > end_time:
             logger.info("filtering detections before end time %s", end_time)
-            events = [det for det in self.events if det.time <= end_time]
+            events = [ev for ev in events if ev.time <= end_time]
         if events:
             self.events = events
             self.get_stats().n_detections = len(self.events)
