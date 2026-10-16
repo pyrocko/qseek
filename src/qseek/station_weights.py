@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 COLOCATED_DISTANCE = 50.0
 # Rows of the interstation distances calculated at once
 INTERSTATION_BLOCK = 256
-# Taper width of the distance weights in units of the nearest neighbor distance
+# Taper width of DistanceWeights in units of the nearest neighbor distance; the
+# description of DistanceWeights.distance_taper repeats the value
 NEAREST_NEIGHBOR_TAPER = 6.0
 
 
@@ -37,7 +38,6 @@ def weights_gaussian(
     distances: np.ndarray,
     distance_taper: float,
     required_stations: int = 4,
-    waterlevel: float = 0.0,
 ) -> np.ndarray:
     """Gaussian distance weights with a plateau of the closest stations.
 
@@ -46,8 +46,6 @@ def weights_gaussian(
             in meters.
         distance_taper: Full width at half maximum of the Gaussian taper in meters.
         required_stations: Number of closest stations with full weight.
-        waterlevel: Minimum weight of distant stations, as a fraction of the full
-            weight.
 
     Returns:
         Array of shape (n_nodes, n_stations) with weights between 0 and 1.
@@ -65,8 +63,6 @@ def weights_gaussian(
         -(((distances - threshold_distance) ** 2) / (2 * (distance_taper / 2.355) ** 2))
     )
     weights[distances <= threshold_distance] = 1.0
-    if waterlevel > 0.0:
-        weights = (1 - waterlevel) * weights + waterlevel
     return weights
 
 
@@ -164,12 +160,17 @@ def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
     return density + 1.0
 
 
-def station_independence(distances: np.ndarray) -> np.ndarray:
+def independent_station_counts(distances: np.ndarray) -> np.ndarray:
     """Calculate how many independent stations each station counts as.
 
-    An isolated station counts as one independent station. Stations in dense
-    clusters count as a fraction of one: `1 - (k - k_min) / k_max` with the station
-    density `k`. Co-located sensors share the count of their site.
+    The count is `1 - (k - k_min) / k_max` with the station density `k` and its
+    lowest and highest value in the network, `k_min` and `k_max`. The station with
+    the lowest density counts as one independent station, an isolated station
+    (`k = 1`) as well. Dividing by `k_max` instead of `k_max - k_min` keeps the
+    densest station at `k_min / k_max` instead of zero, so that every station
+    counts. The counts are relative to the network: adding or removing a station
+    changes the counts of all stations. Co-located sensors share the count of their
+    site.
 
     Args:
         distances: Array of shape (n_stations, n_stations) with interstation
@@ -179,13 +180,13 @@ def station_independence(distances: np.ndarray) -> np.ndarray:
         Array of shape (n_stations,) with values between 0 and 1.
     """
     density = station_density(distances)
-    independence = 1.0 - (density - density.min()) / density.max()
-    return independence / colocated_sensors(distances)
+    counts = 1.0 - (density - density.min()) / density.max()
+    return counts / colocated_sensors(distances)
 
 
 def independent_stations_distances(
     distances: np.ndarray,
-    independence: np.ndarray,
+    counts: np.ndarray,
     n_stations: Sequence[float],
 ) -> list[np.ndarray]:
     """Distances at which the closest stations add up to independent stations.
@@ -193,8 +194,8 @@ def independent_stations_distances(
     Args:
         distances: Array of shape (n_nodes, n_stations) with node-station distances
             in meters.
-        independence: Array of shape (n_stations,) with the independent station
-            count of each station.
+        counts: Array of shape (n_stations,) with the independent station count of
+            each station.
         n_stations: Numbers of independent stations to reach.
 
     Returns:
@@ -204,7 +205,7 @@ def independent_stations_distances(
     """
     order = np.argsort(distances, axis=1)
     sorted_distances = np.take_along_axis(distances, order, axis=1)
-    cumulative = np.cumsum(independence[order], axis=1)
+    cumulative = np.cumsum(counts[order], axis=1)
     rows = np.arange(distances.shape[0])
 
     result = []
@@ -215,92 +216,43 @@ def independent_stations_distances(
     return result
 
 
-def independent_stations_distance(
-    distances: np.ndarray,
-    independence: np.ndarray,
-    n_stations: float,
-) -> np.ndarray:
-    """Distance at which the closest stations add up to independent stations.
-
-    Args:
-        distances: Array of shape (n_nodes, n_stations) with node-station distances
-            in meters.
-        independence: Array of shape (n_stations,) with the independent station
-            count of each station.
-        n_stations: Number of independent stations to reach.
-
-    Returns:
-        Array of shape (n_nodes, 1) with the distance of the station at which the
-            closest stations reach `n_stations`, or of the most distant station if
-            the network has fewer independent stations.
-    """
-    return independent_stations_distances(distances, independence, (n_stations,))[0]
-
-
 def weights_plateau_gaussian(
     distances: np.ndarray,
-    independence: np.ndarray,
+    counts: np.ndarray,
     plateau_stations: float = 3.0,
     taper_stations: float = 8.0,
-    max_taper_ratio: float | None = 1.0,
+    taper_cap: float | None = 1.0,
 ) -> np.ndarray:
     """Gaussian taper beyond a plateau of the closest independent stations.
 
-    The plateau ends where the closest stations add up to `plateau_stations`
-    independent stations. The Gaussian taper starts there; its standard deviation
-    is half the distance at which they add up to `taper_stations`, at most
-    `max_taper_ratio` times the plateau distance.
+    The plateau ends at the distance `d_p` where the closest stations add up to
+    `plateau_stations` independent stations. The Gaussian taper starts there; its
+    standard deviation is half the distance at which they add up to
+    `taper_stations`, at most `taper_cap` times `d_p`.
 
     Args:
         distances: Array of shape (n_nodes, n_stations) with node-station distances
             in meters.
-        independence: Array of shape (n_stations,) with the independent station
-            count of each station.
+        counts: Array of shape (n_stations,) with the independent station count of
+            each station.
         plateau_stations: Independent stations of the plateau.
         taper_stations: Independent stations that set the taper width.
-        max_taper_ratio: Maximum standard deviation of the taper in units of the
-            plateau distance. If None, the taper width is not limited.
+        taper_cap: Maximum standard deviation of the taper in units of the plateau
+            distance. If None, the taper width is not limited.
 
     Returns:
         Array of shape (n_nodes, n_stations) with weights between 0 and 1.
     """
     plateau, taper = independent_stations_distances(
-        distances, independence, (plateau_stations, taper_stations)
+        distances, counts, (plateau_stations, taper_stations)
     )
     sigma = np.maximum(taper / 2, 1.0)
-    if max_taper_ratio is not None:
-        sigma = np.minimum(sigma, max_taper_ratio * np.maximum(plateau, 1.0))
+    if taper_cap is not None:
+        sigma = np.minimum(sigma, taper_cap * np.maximum(plateau, 1.0))
 
     weights = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
     weights[distances <= plateau] = 1.0
     return weights
-
-
-def weights_log_logistic(
-    distances: np.ndarray,
-    plateau_distances: np.ndarray,
-    taper_scale: float = 1.8,
-    taper_exponent: float = 4.0,
-) -> np.ndarray:
-    """Log-logistic taper relative to the plateau distance of each node.
-
-    The weight is `1 / (1 + (d / (taper_scale * d_plateau)) ** taper_exponent)`:
-    0.5 at `taper_scale` times the plateau distance, independent of the scale of
-    the network.
-
-    Args:
-        distances: Array of shape (n_nodes, n_stations) with node-station distances
-            in meters.
-        plateau_distances: Array of shape (n_nodes, 1) with the plateau distance of
-            each node in meters.
-        taper_scale: Distance of half weight, in units of the plateau distance.
-        taper_exponent: Exponent of the taper, how fast the weights decay.
-
-    Returns:
-        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
-    """
-    half_weight = taper_scale * np.maximum(plateau_distances, 1.0)
-    return 1.0 / (1.0 + (distances / half_weight) ** taper_exponent)
 
 
 class StationWeights(Model):
@@ -325,7 +277,7 @@ class StationWeights(Model):
     _stations: StationList = PrivateAttr()
     _station_coords_ecef: np.ndarray = PrivateAttr()
     _interstation_distances: np.ndarray | None = PrivateAttr(None)
-    _independence: dict[bytes, np.ndarray] = PrivateAttr(default_factory=dict)
+    _station_counts: dict[bytes, np.ndarray] = PrivateAttr(default_factory=dict)
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[StationWeights], ...]:
@@ -363,7 +315,7 @@ class StationWeights(Model):
         self._stations = StationList.from_inventory(stations)
         self._node_lut = ArrayLRUCache(name="station_weights", short_name="SW")
         self._interstation_distances = None
-        self._independence = {}
+        self._station_counts = {}
 
         sta_coords = get_coordinates(self._stations)
         self._station_coords_ecef = np.array(
@@ -403,11 +355,11 @@ class StationWeights(Model):
             return self._interstation_distances
         return self._interstation_distances[np.ix_(station_indices, station_indices)]
 
-    def get_independence(self, station_indices: np.ndarray) -> np.ndarray:
-        """Get the independent station count of a set of stations.
+    def get_station_counts(self, station_indices: np.ndarray) -> np.ndarray:
+        """Get the independent station counts of a set of stations.
 
-        The count depends on the available stations, it is cached for each set of
-        stations.
+        The counts depend on the available stations, they are cached for each set
+        of stations.
 
         Args:
             station_indices: Indices of the available stations.
@@ -416,26 +368,16 @@ class StationWeights(Model):
             Array of shape (n_stations,) with values between 0 and 1.
         """
         key = station_indices.tobytes()
-        if key not in self._independence:
-            self._independence[key] = station_independence(
+        if key not in self._station_counts:
+            self._station_counts[key] = independent_station_counts(
                 self.get_interstation_distances(station_indices)
             )
-        return self._independence[key]
-
-    def log_independent_stations(self) -> None:
-        """Log how many independent stations the network counts as."""
-        independence = self.get_independence(np.arange(len(self._stations)))
-        logger.info(
-            "the %d stations count as %.1f independent stations",
-            independence.size,
-            independence.sum(),
-        )
+        return self._station_counts[key]
 
     def calculate_weights(
         self,
         distances: np.ndarray,
         station_indices: np.ndarray,
-        nodes: Sequence[Node],
     ) -> np.ndarray:
         """Calculate the weights from the node-station distances.
 
@@ -443,7 +385,6 @@ class StationWeights(Model):
             distances: Array of shape (n_nodes, n_stations) with node-station
                 distances in meters.
             station_indices: Indices of the stations in the station list.
-            nodes: The nodes of the distances.
 
         Returns:
             Array of shape (n_nodes, n_stations) with weights between 0 and 1,
@@ -482,17 +423,76 @@ class StationWeights(Model):
             )
             return await self.get_weights(nodes, stations)
 
-        weights = self.calculate_weights(np.array(distances), station_indices, nodes)
+        weights = self.calculate_weights(np.array(distances), station_indices)
         if self.waterlevel > 0.0:
             weights = (1 - self.waterlevel) * weights + self.waterlevel
         return weights
+
+
+class StationDensityWeights(StationWeights):
+    """The closest independent stations get full weight, then a Gaussian taper.
+
+    Every station counts as a number of independent stations: an isolated station
+    as one, a station in a dense cluster as a fraction of one. The plateau of full
+    weight and the taper are set in independent stations, so they adapt to the
+    station spacing around each node.
+    """
+
+    weights: Literal["StationDensityWeights"] = "StationDensityWeights"
+
+    plateau_stations: PositiveFloat = Field(
+        default=3.0,
+        description="Number of independent stations of a node that get full weight."
+        " The closest stations get full weight until they add up to this number of"
+        " independent stations. An isolated station counts as one independent"
+        " station, a station in a dense cluster as a fraction of one, co-located"
+        " sensors as one together. The counts are relative to the available"
+        " stations of the network.",
+    )
+    taper_stations: PositiveFloat = Field(
+        default=8.0,
+        description="Number of independent stations that sets the width of the"
+        " Gaussian taper: its standard deviation is half the distance at which the"
+        " closest stations add up to this number. If the network has fewer"
+        " independent stations, the most distant station sets the width.",
+    )
+    taper_cap: PositiveFloat | None = Field(
+        default=1.0,
+        description="Maximum standard deviation of the Gaussian taper, in units of"
+        " the plateau distance of the node. It keeps the taper short when a gap in"
+        " the network puts the `taper_stations` far away, e.g. between local and"
+        " regional stations. If `null`, the taper width is not limited.",
+    )
+
+    def prepare(self, stations: StationInventory, octree: Octree) -> None:
+        super().prepare(stations, octree)
+        counts = self.get_station_counts(np.arange(len(self._stations)))
+        logger.info(
+            "the %d stations count as %.1f independent stations",
+            counts.size,
+            counts.sum(),
+        )
+
+    def calculate_weights(
+        self,
+        distances: np.ndarray,
+        station_indices: np.ndarray,
+    ) -> np.ndarray:
+        return weights_plateau_gaussian(
+            distances,
+            self.get_station_counts(station_indices),
+            plateau_stations=self.plateau_stations,
+            taper_stations=self.taper_stations,
+            taper_cap=self.taper_cap,
+        )
 
 
 class DistanceWeights(StationWeights):
     """The closest stations get full weight, more distant stations a Gaussian taper.
 
     Close stations constrain the location of an event best. The taper width is
-    absolute, the same for all nodes.
+    absolute, the same for all nodes. With the defaults, these are the station
+    weights of earlier Qseek versions.
     """
 
     weights: Literal["DistanceWeights"] = "DistanceWeights"
@@ -540,7 +540,7 @@ class DistanceWeights(StationWeights):
             # Fewer than two sites: all stations get full weight
             self._distance_taper = np.inf
         logger.info(
-            "distance weighting uses %d closest stations and a taper of %g m",
+            "distance weights use %d closest stations and a taper of %g m",
             self.required_closest_stations,
             self._distance_taper,
         )
@@ -549,119 +549,11 @@ class DistanceWeights(StationWeights):
         self,
         distances: np.ndarray,
         station_indices: np.ndarray,
-        nodes: Sequence[Node],
     ) -> np.ndarray:
         return weights_gaussian(
             distances,
             distance_taper=self._distance_taper,
             required_stations=self.required_closest_stations,
-        )
-
-
-class StationDensityWeights(StationWeights):
-    """The closest independent stations get full weight, then a Gaussian taper.
-
-    Every station counts as a number of independent stations: an isolated station
-    as one, a station in a dense cluster as a fraction of one. The plateau of full
-    weight and the taper are set in independent stations, so they adapt to the
-    station spacing around each node.
-    """
-
-    weights: Literal["StationDensityWeights"] = "StationDensityWeights"
-
-    plateau_stations: PositiveFloat = Field(
-        default=3.0,
-        description="Number of independent stations of a node that get full weight."
-        " The closest stations get full weight until they add up to this number of"
-        " independent stations. An isolated station counts as one independent"
-        " station, a station in a dense cluster as a fraction of one, co-located"
-        " sensors as one together.",
-    )
-    taper_stations: PositiveFloat = Field(
-        default=8.0,
-        description="Number of independent stations that sets the width of the"
-        " Gaussian taper: its standard deviation is half the distance at which the"
-        " closest stations add up to this number. If the network has fewer"
-        " independent stations, the most distant station sets the width.",
-    )
-    max_taper_ratio: PositiveFloat | None = Field(
-        default=1.0,
-        description="Maximum standard deviation of the Gaussian taper, in units of"
-        " the plateau distance of the node. It keeps the taper short when a gap in"
-        " the network puts the `taper_stations` far away, e.g. between local and"
-        " regional stations. If `null`, the taper width is not limited.",
-    )
-
-    def prepare(self, stations: StationInventory, octree: Octree) -> None:
-        super().prepare(stations, octree)
-        self.log_independent_stations()
-
-    def calculate_weights(
-        self,
-        distances: np.ndarray,
-        station_indices: np.ndarray,
-        nodes: Sequence[Node],
-    ) -> np.ndarray:
-        return weights_plateau_gaussian(
-            distances,
-            self.get_independence(station_indices),
-            plateau_stations=self.plateau_stations,
-            taper_stations=self.taper_stations,
-            max_taper_ratio=self.max_taper_ratio,
-        )
-
-
-class LogLogisticWeights(StationWeights):
-    """The closest independent stations set the plateau, then a log-logistic taper.
-
-    The plateau distance of a node is the distance at which the closest stations add
-    up to `plateau_stations` independent stations, as for `StationDensityWeights`.
-    The weights decay with the distance in units of the plateau distance,
-    `1 / (1 + (d / (taper_scale * d_plateau)) ** taper_exponent)`, like the
-    confidence of the phase picks of small events.
-    """
-
-    weights: Literal["LogLogisticWeights"] = "LogLogisticWeights"
-
-    plateau_stations: PositiveFloat = Field(
-        default=4.0,
-        description="Number of independent stations of a node that get full weight."
-        " The closest stations get full weight until they add up to this number of"
-        " independent stations. An isolated station counts as one independent"
-        " station, a station in a dense cluster as a fraction of one, co-located"
-        " sensors as one together.",
-    )
-    taper_scale: PositiveFloat = Field(
-        default=1.8,
-        description="Distance at which the weight is 0.5, in units of the plateau"
-        " distance of the node.",
-    )
-    taper_exponent: PositiveFloat = Field(
-        default=4.0,
-        description="Exponent of the log-logistic taper. Higher values decay"
-        " faster beyond `taper_scale` times the plateau distance.",
-    )
-
-    def prepare(self, stations: StationInventory, octree: Octree) -> None:
-        super().prepare(stations, octree)
-        self.log_independent_stations()
-
-    def calculate_weights(
-        self,
-        distances: np.ndarray,
-        station_indices: np.ndarray,
-        nodes: Sequence[Node],
-    ) -> np.ndarray:
-        plateau = independent_stations_distance(
-            distances,
-            self.get_independence(station_indices),
-            self.plateau_stations,
-        )
-        return weights_log_logistic(
-            distances,
-            plateau,
-            taper_scale=self.taper_scale,
-            taper_exponent=self.taper_exponent,
         )
 
 
