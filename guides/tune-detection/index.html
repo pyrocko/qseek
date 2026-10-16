@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1340,6 +1342,8 @@
       
         
       
+        
+      
     
     
     
@@ -1644,6 +1648,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -2366,12 +2399,7 @@
 </ul>
 <h2 id="too-few-detections">Too few detections<a class="headerlink" href="#too-few-detections" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Threshold:</strong> the default <a class="autorefs autorefs-internal" title="            detection_threshold
-
-
-  
-      pydantic-field
-  " href="../../configuration/#qseek.search.Search.detection_threshold"><code>detection_threshold</code></a> <code>"MAD"</code> is 10 times the median absolute deviation of the detection function in each window. Set a fixed value, below the semblance of the weakest events you see, to detect more.</li>
+<li><strong>Threshold:</strong> the default <a href="../../configuration/triggers/">trigger</a> detects peaks of the detection function above a semblance of 0.3. Lower the <code>threshold</code> below the semblance of the weakest events you see, or use an adaptive trigger, which lowers the threshold in quiet windows.</li>
 <li><strong>Image function:</strong> try pre-trained weights that fit your data, e.g. trained on a similar region or instrument type, or another model. See <a href="../../configuration/image-functions/">image functions</a>.</li>
 <li><strong>Frequency band:</strong> adjust the bandpass of the <a href="../../configuration/pre-processing/">pre-processing</a> to the frequencies of your events, e.g. higher frequencies for microseismicity.</li>
 <li><strong>Minimum stations:</strong> lower <a class="autorefs autorefs-internal" title="            min_stations
@@ -2383,7 +2411,7 @@
 </ul>
 <h2 id="too-many-false-detections">Too many false detections<a class="headerlink" href="#too-many-false-detections" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Threshold:</strong> raise the <code>detection_threshold</code>, or set a fixed value above the semblance of the noise.</li>
+<li><strong>Threshold:</strong> raise the <code>threshold</code> of the trigger above the semblance of the noise.</li>
 <li><strong>Picks:</strong> filter the detections by <code>n_picks</code>. Noise rarely produces consistent picks at many stations.</li>
 <li><strong>Distance weighting:</strong> with the default <a href="../../configuration/distance-weighting/">distance weights</a>, each node relies on its closest stations. Noise at a single close station can dominate small networks; increase <a class="autorefs autorefs-internal" title="            required_closest_stations
 
@@ -2410,12 +2438,7 @@
 <li><strong>Boundary:</strong> detections at the border of the volume are ignored. If the seismicity reaches the border, enlarge the volume.</li>
 </ul>
 <h2 id="repeated-detections-of-one-event">Repeated detections of one event<a class="headerlink" href="#repeated-detections-of-one-event" title="Permanent link">&para;</a></h2>
-<p><a class="autorefs autorefs-internal" title="            detection_blinding
-
-
-  
-      pydantic-field
-  " href="../../configuration/#qseek.search.Search.detection_blinding"><code>detection_blinding</code></a> sets the minimum time between two detections, 1 s by default. Raise it if a long or complex event is detected twice.</p>
+<p>The <code>blinding</code> of the <a href="../../configuration/triggers/">trigger</a> sets the minimum time between two detections, 1 s by default. Raise it if a long or complex event is detected twice.</p>
 
 
 

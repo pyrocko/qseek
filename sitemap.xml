@@ -52,6 +52,9 @@
         <loc>https://pyrocko.github.io/qseek/configuration/stations/</loc>
       </url>
       <url>
+        <loc>https://pyrocko.github.io/qseek/configuration/triggers/</loc>
+      </url>
+      <url>
         <loc>https://pyrocko.github.io/qseek/configuration/waveforms/</loc>
       </url>
       <url>

@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1233,6 +1235,8 @@
       
         
       
+        
+      
     
     
     
@@ -1700,6 +1704,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -3086,12 +3119,8 @@ pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.</p>
 <code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">iter_images</span>
 
 
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-async"><code>async</code></small>
-  </span>
-
 <a href="#qseek.images.seisbench.SeisBench.iter_images" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span><span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span><span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3119,11 +3148,11 @@ cancelled when the consumer stops iterating.</p>
                 <code>batch_iterator</code>
             </td>
             <td>
-                  <code><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a>[<span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]</code>
+                  <code><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a>[<span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Async iterator over
+                <p>Async generator of
 batches.</p>
               </div>
             </td>
@@ -3135,7 +3164,7 @@ batches.</p>
     </table>
 
 
-    <p><span class="doc-section-title">Yields:</span></p>
+    <p><span class="doc-section-title">Returns:</span></p>
     <table>
       <thead>
         <tr>
@@ -3146,11 +3175,12 @@ batches.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a>[<a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a>[<span title="qseek.images.base.WaveformImages">WaveformImages</span>, <span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]]</code>
+                  <code><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a>[<a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a>[<span title="qseek.images.base.WaveformImages">WaveformImages</span>, <span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]]</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>tuple[WaveformImages, WaveformBatch]: Images and their batch.</p>
+                <p>AsyncGenerator[tuple[WaveformImages, WaveformBatch]]: Images and their
+batch.</p>
               </div>
             </td>
           </tr>
@@ -4357,12 +4387,8 @@ pick detection values are in log units, noise is at 0.</p>
 <code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">iter_images</span>
 
 
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-async"><code>async</code></small>
-  </span>
-
 <a href="#qseek.images.sta_lta.StaLta.iter_images" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span><span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span><span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4390,11 +4416,11 @@ cancelled when the consumer stops iterating.</p>
                 <code>batch_iterator</code>
             </td>
             <td>
-                  <code><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a>[<span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]</code>
+                  <code><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a>[<span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Async iterator over
+                <p>Async generator of
 batches.</p>
               </div>
             </td>
@@ -4406,7 +4432,7 @@ batches.</p>
     </table>
 
 
-    <p><span class="doc-section-title">Yields:</span></p>
+    <p><span class="doc-section-title">Returns:</span></p>
     <table>
       <thead>
         <tr>
@@ -4417,11 +4443,12 @@ batches.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><a class="autorefs autorefs-external" title="typing.AsyncIterator" href="https://docs.python.org/3/library/typing.html#typing.AsyncIterator">AsyncIterator</a>[<a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a>[<span title="qseek.images.base.WaveformImages">WaveformImages</span>, <span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]]</code>
+                  <code><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a>[<a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a>[<span title="qseek.images.base.WaveformImages">WaveformImages</span>, <span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span>]]</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>tuple[WaveformImages, WaveformBatch]: Images and their batch.</p>
+                <p>AsyncGenerator[tuple[WaveformImages, WaveformBatch]]: Images and their
+batch.</p>
               </div>
             </td>
           </tr>

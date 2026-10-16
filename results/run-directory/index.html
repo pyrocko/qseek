@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1174,6 +1176,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#scripts-and-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Scripts and agents
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#detections" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1292,6 +1305,8 @@
       
         
           
+        
+      
         
       
         
@@ -1622,6 +1637,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -2250,6 +2294,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#scripts-and-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Scripts and agents
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#detections" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2311,20 +2366,24 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>my-search/
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── search.json                     # the configuration of the run
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── progress.json                   # how far the search got, for `qseek continue`
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── qseek.log                       # the log of the search
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── detections.jsonl                # all detections, one JSON object per line
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── detections_receivers.jsonl      # modeled and picked arrivals of every detection
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── semblance.mseed                 # the detection function over time
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── csv/
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── detections.csv              # the detections as a table
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   ├── detections_jittered.csv     # the same, with jittered locations
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   └── stations.csv                # the stations of the search
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>├── pyrocko_detections.list         # the detections as Pyrocko events
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── pyrocko_detections_jittered.list
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>├── pyrocko_stations.yaml           # the stations as Pyrocko stations
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>└── pyrocko_markers/                # event and phase markers for Snuffler
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── results.json                    # statistics of the finished search
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── qseek.log                       # the log of the search
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── detections.jsonl                # all detections, one JSON object per line
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── detections_receivers.jsonl      # modeled and picked arrivals of every detection
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── semblance.mseed                 # the detection function over time
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>├── csv/
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   ├── detections.csv              # the detections as a table
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   ├── detections_jittered.csv     # the same, with jittered locations
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   └── stations.csv                # the stations of the search
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── pyrocko_detections.list         # the detections as Pyrocko events
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>├── pyrocko_detections_jittered.list
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>├── pyrocko_stations.yaml           # the stations as Pyrocko stations
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>└── pyrocko_markers/                # event and phase markers for Snuffler
 </span></code></pre></div>
 <p>With <code>save_images</code>, Qseek also writes the phase images into <code>images/</code>. Searches with 3D velocity models export the models to <code>3d-models/</code>, see <a href="../../configuration/ray-tracers/#visualize-3d-models">visualize 3D models</a>. <code>pyrocko_markers/</code> holds one file per detection with its event marker and the modeled and picked phase markers, which <code>qseek snuffler</code> shows with the waveforms.</p>
+<h2 id="scripts-and-agents">Scripts and agents<a class="headerlink" href="#scripts-and-agents" title="Permanent link">&para;</a></h2>
+<p><code>qseek --non-interactive search</code> prints only errors and <code>key: value</code> lines: <code>qseek</code>, <code>rundir</code>, <code>log</code>, <code>progress</code>, <code>config</code>, <code>results</code>, <code>catalog</code>, <code>duration</code>, <code>detections</code> and <code>status</code>. A failed run prints <code>status: failed</code> and <code>error:</code>, and exits with 2 for a configuration or rundir problem, 1 for any other error and 130 when interrupted. <code>progress.json</code> holds the processed percentage, the number of events and the remaining time, and is updated after every batch.</p>
+<p><code>qseek search --check config.json</code> validates the configuration and the available stations and waveform data without creating a run directory. <code>qseek --non-interactive summary my-search</code> prints the paths and the state of an existing run.</p>
 <h2 id="detections">Detections<a class="headerlink" href="#detections" title="Permanent link">&para;</a></h2>
 <p><code>detections.jsonl</code> holds all detections in the <a href="https://jsonlines.org/">JSON Lines</a> format, one detection per line. The modeled and picked arrivals at every station are in <code>detections_receivers.jsonl</code>, in the same order.</p>
 <p><code>csv/detections.csv</code> is a table of the detections, for spreadsheets, GIS software and plotting:</p>

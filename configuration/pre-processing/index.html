@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1233,6 +1235,8 @@
       
         
       
+        
+      
     
     
     
@@ -1706,6 +1710,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -2492,8 +2525,8 @@
 <div class="language-json highlight"><span class="filename">Resample</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"process"</span><span class="p">:</span><span class="w"> </span><span class="s2">"resample"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"sampling_frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">100.0</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"sampling_frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">100.0</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
@@ -2539,6 +2572,15 @@
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#set">set</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
             </li>
             <li>
+              <code><a class="autorefs autorefs-internal" title="            n_threads
+
+
+  
+      pydantic-field
+   (qseek.pre_processing.resample.Resample.n_threads)" href="./#qseek.pre_processing.resample.Resample.n_threads">n_threads</a></code>
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></code>)
+            </li>
+            <li>
               <code><span title="qseek.pre_processing.resample.Resample.process">process</span></code>
                 (<code><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a>[&#39;resample&#39;]</code>)
             </li>
@@ -2550,19 +2592,6 @@
       pydantic-field
    (qseek.pre_processing.resample.Resample.sampling_frequency)" href="./#qseek.pre_processing.resample.Resample.sampling_frequency">sampling_frequency</a></code>
                 (<code><a class="autorefs autorefs-external" title="pydantic.PositiveFloat" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveFloat">PositiveFloat</a></code>)
-            </li>
-            <li>
-              <code><a class="autorefs autorefs-internal" title="            n_threads
-
-
-  
-      pydantic-field
-   (qseek.pre_processing.resample.Resample.n_threads)" href="./#qseek.pre_processing.resample.Resample.n_threads">n_threads</a></code>
-                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></code>)
-            </li>
-            <li>
-              <code><span title="qseek.pre_processing.resample.Resample._thread_pool">_thread_pool</span></code>
-                (<code><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></code>)
             </li>
         </ul>
 
@@ -2622,30 +2651,6 @@
 
 
 
-<h4 id="qseek.pre_processing.resample.Resample.n_threads" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
-  </span>
-
-<a href="#qseek.pre_processing.resample.Resample.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></span> <span class="o">=</span> <span class="mi">8</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>The number of threads to use for resampling.</p>
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-attribute">
-
-
-
 <h4 id="qseek.pre_processing.resample.Resample.stations" class="doc doc-heading">
 <code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">stations</span>
 
@@ -2661,6 +2666,54 @@
     <div class="doc doc-contents ">
 
         <p>List of station codes to process. E.g. ['6E.BFO', '6E.BHZ']. If empty, all stations are processed.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.resample.Resample.n_threads" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.resample.Resample.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">=</span> <span class="mi">8</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The number of threads processing the traces in parallel. Ignored by the DeepDenoiser.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.resample.Resample.thread_pool" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thread_pool</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.resample.Resample.thread_pool" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">thread_pool</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The thread pool of the module, created on first use.</p>
 
     </div>
 
@@ -2806,8 +2859,8 @@
 <div class="language-json highlight"><span class="filename">Downsample</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"process"</span><span class="p">:</span><span class="w"> </span><span class="s2">"downsample"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"sampling_frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">100.0</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"sampling_frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">100.0</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
@@ -2853,6 +2906,15 @@
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#set">set</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
             </li>
             <li>
+              <code><a class="autorefs autorefs-internal" title="            n_threads
+
+
+  
+      pydantic-field
+   (qseek.pre_processing.resample.Downsample.n_threads)" href="./#qseek.pre_processing.resample.Downsample.n_threads">n_threads</a></code>
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></code>)
+            </li>
+            <li>
               <code><span title="qseek.pre_processing.resample.Downsample.process">process</span></code>
                 (<code><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a>[&#39;downsample&#39;]</code>)
             </li>
@@ -2864,19 +2926,6 @@
       pydantic-field
    (qseek.pre_processing.resample.Downsample.sampling_frequency)" href="./#qseek.pre_processing.resample.Downsample.sampling_frequency">sampling_frequency</a></code>
                 (<code><a class="autorefs autorefs-external" title="pydantic.PositiveFloat" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveFloat">PositiveFloat</a></code>)
-            </li>
-            <li>
-              <code><a class="autorefs autorefs-internal" title="            n_threads
-
-
-  
-      pydantic-field
-   (qseek.pre_processing.resample.Downsample.n_threads)" href="./#qseek.pre_processing.resample.Downsample.n_threads">n_threads</a></code>
-                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></code>)
-            </li>
-            <li>
-              <code><span title="qseek.pre_processing.resample.Downsample._thread_pool">_thread_pool</span></code>
-                (<code><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></code>)
             </li>
         </ul>
 
@@ -2936,30 +2985,6 @@
 
 
 
-<h4 id="qseek.pre_processing.resample.Downsample.n_threads" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
-  </span>
-
-<a href="#qseek.pre_processing.resample.Downsample.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></span> <span class="o">=</span> <span class="mi">8</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>The number of threads to use for downsampling.</p>
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-attribute">
-
-
-
 <h4 id="qseek.pre_processing.resample.Downsample.stations" class="doc doc-heading">
 <code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">stations</span>
 
@@ -2975,6 +3000,54 @@
     <div class="doc doc-contents ">
 
         <p>List of station codes to process. E.g. ['6E.BFO', '6E.BHZ']. If empty, all stations are processed.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.resample.Downsample.n_threads" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.resample.Downsample.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">=</span> <span class="mi">8</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The number of threads processing the traces in parallel. Ignored by the DeepDenoiser.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.resample.Downsample.thread_pool" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thread_pool</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.resample.Downsample.thread_pool" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">thread_pool</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The thread pool of the module, created on first use.</p>
 
     </div>
 
@@ -3122,14 +3195,15 @@
 <div class="language-json highlight"><span class="filename">Bandpass</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"process"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bandpass"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"corners"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"bandpass"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="mf">0.5</span><span class="p">,</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="mf">30.0</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="p">],</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">"demean"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">"zero_phase"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"corners"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"bandpass"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="mf">0.5</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="mf">30.0</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="p">],</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">"demean"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">"zero_phase"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
 
@@ -3172,6 +3246,15 @@
       pydantic-field
    (qseek.pre_processing.frequency_filters.Bandpass.stations)" href="./#qseek.pre_processing.frequency_filters.Bandpass.stations">stations</a></code>
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#set">set</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
+            </li>
+            <li>
+              <code><a class="autorefs autorefs-internal" title="            n_threads
+
+
+  
+      pydantic-field
+   (qseek.pre_processing.frequency_filters.Bandpass.n_threads)" href="./#qseek.pre_processing.frequency_filters.Bandpass.n_threads">n_threads</a></code>
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></code>)
             </li>
             <li>
               <code><span title="qseek.pre_processing.frequency_filters.Bandpass.process">process</span></code>
@@ -3372,6 +3455,54 @@
 
 </div>
 
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.frequency_filters.Bandpass.n_threads" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.frequency_filters.Bandpass.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">=</span> <span class="mi">8</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The number of threads processing the traces in parallel. Ignored by the DeepDenoiser.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.frequency_filters.Bandpass.thread_pool" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thread_pool</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.frequency_filters.Bandpass.thread_pool" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">thread_pool</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The thread pool of the module, created on first use.</p>
+
+    </div>
+
+</div>
+
 
 
 
@@ -3512,10 +3643,11 @@
 <div class="language-json highlight"><span class="filename">Highpass</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"process"</span><span class="p">:</span><span class="w"> </span><span class="s2">"highpass"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"corners"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"demean"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"corners"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">"demean"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
 
@@ -3558,6 +3690,15 @@
       pydantic-field
    (qseek.pre_processing.frequency_filters.Highpass.stations)" href="./#qseek.pre_processing.frequency_filters.Highpass.stations">stations</a></code>
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#set">set</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
+            </li>
+            <li>
+              <code><a class="autorefs autorefs-internal" title="            n_threads
+
+
+  
+      pydantic-field
+   (qseek.pre_processing.frequency_filters.Highpass.n_threads)" href="./#qseek.pre_processing.frequency_filters.Highpass.n_threads">n_threads</a></code>
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></code>)
             </li>
             <li>
               <code><span title="qseek.pre_processing.frequency_filters.Highpass.process">process</span></code>
@@ -3716,6 +3857,54 @@
 
 </div>
 
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.frequency_filters.Highpass.n_threads" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.frequency_filters.Highpass.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">=</span> <span class="mi">8</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The number of threads processing the traces in parallel. Ignored by the DeepDenoiser.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.frequency_filters.Highpass.thread_pool" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thread_pool</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.frequency_filters.Highpass.thread_pool" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">thread_pool</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The thread pool of the module, created on first use.</p>
+
+    </div>
+
+</div>
+
 
 
 
@@ -3856,10 +4045,11 @@
 <div class="language-json highlight"><span class="filename">Lowpass</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"process"</span><span class="p">:</span><span class="w"> </span><span class="s2">"lowpass"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"corners"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"demean"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"corners"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"frequency"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">"demean"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
 
@@ -3902,6 +4092,15 @@
       pydantic-field
    (qseek.pre_processing.frequency_filters.Lowpass.stations)" href="./#qseek.pre_processing.frequency_filters.Lowpass.stations">stations</a></code>
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#set">set</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
+            </li>
+            <li>
+              <code><a class="autorefs autorefs-internal" title="            n_threads
+
+
+  
+      pydantic-field
+   (qseek.pre_processing.frequency_filters.Lowpass.n_threads)" href="./#qseek.pre_processing.frequency_filters.Lowpass.n_threads">n_threads</a></code>
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></code>)
             </li>
             <li>
               <code><span title="qseek.pre_processing.frequency_filters.Lowpass.process">process</span></code>
@@ -4060,6 +4259,54 @@
 
 </div>
 
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.frequency_filters.Lowpass.n_threads" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.frequency_filters.Lowpass.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">=</span> <span class="mi">8</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The number of threads processing the traces in parallel. Ignored by the DeepDenoiser.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.frequency_filters.Lowpass.thread_pool" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thread_pool</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.frequency_filters.Lowpass.thread_pool" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">thread_pool</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The thread pool of the module, created on first use.</p>
+
+    </div>
+
+</div>
+
 
 
 
@@ -4202,9 +4449,10 @@
 <div class="language-json highlight"><span class="filename">DeepDenoiser</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"process"</span><span class="p">:</span><span class="w"> </span><span class="s2">"deep-denoiser"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"original"</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"torch_use_cuda"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">}</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"original"</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"torch_use_cuda"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
 
@@ -4247,6 +4495,15 @@
       pydantic-field
    (qseek.pre_processing.deep_denoiser.DeepDenoiser.stations)" href="./#qseek.pre_processing.deep_denoiser.DeepDenoiser.stations">stations</a></code>
                 (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#set">set</a>[<a class="autorefs autorefs-internal" title="Station codes (qseek.utils.NSLType)" href="../conventions/#station-codes">NSLType</a>]</code>)
+            </li>
+            <li>
+              <code><a class="autorefs autorefs-internal" title="            n_threads
+
+
+  
+      pydantic-field
+   (qseek.pre_processing.deep_denoiser.DeepDenoiser.n_threads)" href="./#qseek.pre_processing.deep_denoiser.DeepDenoiser.n_threads">n_threads</a></code>
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></code>)
             </li>
             <li>
               <code><span title="qseek.pre_processing.deep_denoiser.DeepDenoiser.process">process</span></code>
@@ -4367,6 +4624,54 @@
     <div class="doc doc-contents ">
 
         <p>List of station codes to process. E.g. ['6E.BFO', '6E.BHZ']. If empty, all stations are processed.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.deep_denoiser.DeepDenoiser.n_threads" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">n_threads</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.deep_denoiser.DeepDenoiser.n_threads" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">n_threads</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">=</span> <span class="mi">8</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The number of threads processing the traces in parallel. Ignored by the DeepDenoiser.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="qseek.pre_processing.deep_denoiser.DeepDenoiser.thread_pool" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thread_pool</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#qseek.pre_processing.deep_denoiser.DeepDenoiser.thread_pool" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">thread_pool</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="concurrent.futures.ThreadPoolExecutor" href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor">ThreadPoolExecutor</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The thread pool of the module, created on first use.</p>
 
     </div>
 

@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1373,6 +1375,8 @@
       
         
       
+        
+      
     
     
     
@@ -1677,6 +1681,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -2443,17 +2476,7 @@ S(x, t) = \sum_{p} w_p \sum_{s} w_s(x) \, I_{s,p}\big(t + \tau_{s,p}(x)\big)
 <p>The station weights <span class="arithmatex">\(w_s(x)\)</span> come from the <a href="../../configuration/distance-weighting/">distance weighting</a>: close stations of a node get full weight, distant stations less. For every node and phase the station weights are normalized to a sum of one, and multiplied by the phase weight <span class="arithmatex">\(w_p\)</span> of the image function.</p>
 <p>Qseek calls the stack <span class="arithmatex">\(S\)</span> the <em>semblance</em>. The maximum semblance over all nodes, <span class="arithmatex">\(\max_x S(x, t)\)</span>, is the detection function of the search.</p>
 <h2 id="detection">Detection<a class="headerlink" href="#detection" title="Permanent link">&para;</a></h2>
-<p>A detection is a peak of the detection function whose height and prominence exceed the <a class="autorefs autorefs-internal" title="            detection_threshold
-
-
-  
-      pydantic-field
-  " href="../../configuration/#qseek.search.Search.detection_threshold"><code>detection_threshold</code></a>. With the default <code>"MAD"</code>, the threshold is 10 times the median absolute deviation of the detection function in the processed window, so it adapts to the noise level. Peaks closer than the <a class="autorefs autorefs-internal" title="            detection_blinding
-
-
-  
-      pydantic-field
-  " href="../../configuration/#qseek.search.Search.detection_blinding"><code>detection_blinding</code></a> are counted as one detection.</p>
+<p>A detection is a peak of the detection function whose height and prominence exceed the threshold of the <a href="../../configuration/triggers/">trigger</a>. The default <code>ThresholdTrigger</code> applies a fixed semblance of 0.3 to all windows; the adaptive triggers set the threshold in each processed window from the median absolute deviation of the detection function. Peaks closer than the <code>blinding</code> of the trigger, 1 s by default, count as one detection.</p>
 <p>Detections at nodes within the absorbing boundary of the search volume are ignored, see <a class="autorefs autorefs-internal" title="            ignore_boundary
 
 

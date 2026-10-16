@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1233,6 +1235,8 @@
       
         
       
+        
+      
     
     
     
@@ -1673,6 +1677,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -2442,13 +2475,15 @@
 <div class="language-json highlight"><span class="filename">SDSArchive</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"SDSArchive"</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"channel_selector"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"archive"</span><span class="p">:</span><span class="w"> </span><span class="s2">"./sds-archive"</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"start_time"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"end_time"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">"channel_orientations"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ENZ0123"</span><span class="p">,</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">"queue_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"archives"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="s2">"./sds-archive"</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="p">],</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">"start_time"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">"end_time"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">"channel_orientations"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ENZ0123"</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">"n_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">"queue_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
 </span></code></pre></div>
 <div class="qs-config">
 
@@ -2497,13 +2532,13 @@
                 (<code><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a>[&#39;SDSArchive&#39;]</code>)
             </li>
             <li>
-              <code><a class="autorefs autorefs-internal" title="            archive
+              <code><a class="autorefs autorefs-internal" title="            archives
 
 
   
       pydantic-field
-   (qseek.waveforms.sds.SDSArchive.archive)" href="./#qseek.waveforms.sds.SDSArchive.archive">archive</a></code>
-                (<code><a class="autorefs autorefs-internal" title="Paths (qseek.types.DirectoryPath)" href="../conventions/#paths">DirectoryPath</a></code>)
+   (qseek.waveforms.sds.SDSArchive.archives)" href="./#qseek.waveforms.sds.SDSArchive.archives">archives</a></code>
+                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a>[<a class="autorefs autorefs-internal" title="Paths (qseek.types.DirectoryPath)" href="../conventions/#paths">DirectoryPath</a>]</code>)
             </li>
             <li>
               <code><a class="autorefs autorefs-internal" title="            start_time
@@ -2557,6 +2592,15 @@
             <li>
               <code><span title="qseek.waveforms.sds.SDSArchive._validate_model">_validate_model</span></code>
             </li>
+            <li>
+              <code><span title="qseek.waveforms.sds.SDSArchive._validate_archives">_validate_archives</span></code>
+                &rarr;
+                  <code><a class="autorefs autorefs-internal" title="            archives
+
+
+  
+      pydantic-field
+   (qseek.waveforms.sds.SDSArchive.archives)" href="./#qseek.waveforms.sds.SDSArchive.archives">archives</a></code>            </li>
         </ul>
 
 
@@ -2573,21 +2617,21 @@
 
 
 
-<h4 id="qseek.waveforms.sds.SDSArchive.archive" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">archive</span>
+<h4 id="qseek.waveforms.sds.SDSArchive.archives" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">archives</span>
 
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-pydantic-field"><code>pydantic-field</code></small>
   </span>
 
-<a href="#qseek.waveforms.sds.SDSArchive.archive" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">archive</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Paths (qseek.types.DirectoryPath)" href="../conventions/#paths">DirectoryPath</a></span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="o">.</span><span class="n"><a class="autorefs autorefs-external" title="pathlib.Path.cwd" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path.cwd">cwd</a></span><span class="p">()</span> <span class="o">/</span> <span class="s1">'sds-archive'</span>
+<a href="#qseek.waveforms.sds.SDSArchive.archives" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">archives</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Paths (qseek.types.DirectoryPath)" href="../conventions/#paths">DirectoryPath</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="o">.</span><span class="n"><a class="autorefs autorefs-external" title="pathlib.Path.cwd" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path.cwd">cwd</a></span><span class="p">()</span> <span class="o">/</span> <span class="s1">'sds-archive'</span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Path to the root of the SDS archive.</p>
+        <p>Paths to the roots of the SDS archives.</p>
 
     </div>
 
@@ -2739,6 +2783,69 @@
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="qseek.waveforms.sds.SDSArchive.scan_sds_archive" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">scan_sds_archive</span>
+
+
+<a href="#qseek.waveforms.sds.SDSArchive.scan_sds_archive" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">scan_sds_archive</span><span class="p">(</span><span class="n">archive</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Add the station coverage of one SDS archive.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>int</code></td>            <td>
+                  <code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of files found in the time span.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="qseek.waveforms.sds.SDSArchive.scan_sds_archives" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">scan_sds_archives</span>
+
+
+<a href="#qseek.waveforms.sds.SDSArchive.scan_sds_archives" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">scan_sds_archives</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Scan all SDS archives, at least one has to hold files.</p>
+
+
+    </div>
+
+</div>
 
 
 

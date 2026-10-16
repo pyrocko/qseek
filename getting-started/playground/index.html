@@ -400,6 +400,8 @@
       
         
       
+        
+      
     
     
     
@@ -1340,6 +1342,8 @@
       
         
       
+        
+      
     
     
     
@@ -1644,6 +1648,35 @@
     
   
   Station corrections
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/triggers/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Triggers
 
     
   </span>
@@ -2366,6 +2399,21 @@
 <td>1 day, 18 stations of the INGV network, 20 May 2024</td>
 <td>732 detections; all 45 events of the INGV catalog detected</td>
 </tr>
+<tr>
+<td>Campi Flegrei, February 2025</td>
+<td>10 days, 19 stations of the INGV network, 12–22 February 2025</td>
+<td>6379 detections; 209 of the 211 events of the INGV catalog detected</td>
+</tr>
+<tr>
+<td>Mount Spurr, December 2024</td>
+<td>3 days, 10 local AVO stations and 10 regional stations out to 131 km, 27–29 December 2024</td>
+<td>1758 detections; 228 of the 234 events of the USGS catalog detected</td>
+</tr>
+<tr>
+<td>Norcia, November 2016</td>
+<td>3 days, 49 stations of four networks with a cluster of 12 stations at Amatrice, 15–17 November 2016</td>
+<td>3732 detections; 1013 of the 1071 events of the INGV catalog detected</td>
+</tr>
 </tbody>
 </table>
 <h2 id="set-up-the-playground">Set up the playground<a class="headerlink" href="#set-up-the-playground" title="Permanent link">&para;</a></h2>
@@ -2375,7 +2423,7 @@
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>qseek-playground
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>just<span class="w"> </span>setup
 </span></code></pre></div>
-<p><code>just setup</code> installs the checkout into <code>../qseek/.venv</code> and compiles its C extensions. Set <code>QSEEK_DIR</code> to use a checkout in another place.</p>
+<p><code>just setup</code> installs the checkout and <a href="https://miili.github.io/FDSN-rush/">FDSN Rush</a> 0.2 or newer into <code>../qseek/.venv</code> and compiles the C extensions of the checkout. Set <code>QSEEK_DIR</code> to use a checkout in another place.</p>
 <h2 id="run-an-example">Run an example<a class="headerlink" href="#run-an-example" title="Permanent link">&para;</a></h2>
 <div class="language-sh highlight"><span class="filename">Run the Campi Flegrei example</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>just<span class="w"> </span>download<span class="w"> </span>campi-flegrei<span class="w">      </span><span class="c1"># waveforms and station metadata, about 1 GB</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>just<span class="w"> </span>search<span class="w"> </span>campi-flegrei<span class="w"> </span>dev<span class="w">    </span><span class="c1"># search into campi-flegrei/runs/dev/</span>
@@ -2383,12 +2431,12 @@
 </span></code></pre></div>
 <p><code>just search</code> writes the run directory <code>campi-flegrei/runs/dev/</code> and ends with one line of metrics: the number of detections, how many events of the reference catalog Qseek found and how far its locations are from the catalog. Add <code>--verbose</code> to print all metrics.</p>
 <h2 id="change-the-configuration-and-compare">Change the configuration and compare<a class="headerlink" href="#change-the-configuration-and-compare" title="Permanent link">&para;</a></h2>
-<p>Override a field of the configuration for one run with <code>--set</code>, then compare the run with the baseline of the example:</p>
+<p>Override a field of the configuration for one run with <code>--set</code>, then compare the run with the run <code>dev</code>:</p>
 <div class="language-sh highlight"><span class="filename">Try other PhaseNet weights</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>just<span class="w"> </span>search<span class="w"> </span>campi-flegrei<span class="w"> </span>original<span class="w"> </span>--set<span class="w"> </span>image_function.pretrained<span class="o">=</span>original
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>just<span class="w"> </span>compare<span class="w"> </span>campi-flegrei<span class="w"> </span>original
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>just<span class="w"> </span>compare<span class="w"> </span>campi-flegrei<span class="w"> </span>original<span class="w"> </span>dev
 </span></code></pre></div>
 <p>The comparison pairs the detections of both runs by origin time. It reports the detections lost and added, how far the paired detections moved, and how their picks, residuals and semblance changed. <code>just compare</code> prints only the rows that changed; add <code>--full</code> for all rows. <code>just dashboard</code> shows the same comparison with maps and histograms in the browser.</p>
-<p>A run of the same Qseek version on the same machine reproduces the baseline exactly. The playground runs <code>qseek --quiet search</code>, which prints only errors; the full log stays in <code>runs/&lt;run&gt;/qseek.log</code>.</p>
+<p>A run of the same Qseek version on the same machine reproduces an earlier run exactly. The playground runs <code>qseek --non-interactive search</code>, which prints only errors and a few status lines; the full log stays in <code>runs/&lt;run&gt;/qseek.log</code>.</p>
 <p>To try several values of a parameter, run <code>just sweep campi-flegrei levels --vary octree.n_levels=3,4</code>. It runs one search per value and lists the runs in one table with their <code>--set</code> overrides.</p>
 <h2 id="relocate-with-hypodd">Relocate with HypoDD<a class="headerlink" href="#relocate-with-hypodd" title="Permanent link">&para;</a></h2>
 <p><code>just hypodd</code> relocates the detections of a run with <a href="../../guides/relocate-hypodd/">HypoDD</a> and compares the locations with those of Qseek. The <a href="https://github.com/pyrocko/qseek-playground#relocate-with-hypodd">playground README</a> lists the steps.</p>
