@@ -227,7 +227,7 @@ async def test_process_traces():
     ]
     images = await StaLta().process_traces(traces)
 
-    assert [image.phase for image in images] == ["cake:S", "cake:P"]
+    assert [image.phase for image in images] == ["fm:S", "fm:P"]
     for image in images:
         assert image.image_function == "StaLta"
         assert image.n_traces == 1

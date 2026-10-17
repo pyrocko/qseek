@@ -42,7 +42,8 @@ from qseek.pre_processing.module import PreProcessing, Resample
 from qseek.reduce import DelaySumReduce
 from qseek.server import WebServer
 from qseek.stats import RuntimeStats, Stats
-from qseek.tracers.tracers import RayTracer, RayTracers
+from qseek.tracers.fast_marching import FastMarchingTracer
+from qseek.tracers.tracers import RayTracers
 from qseek.triggers import ThresholdTrigger, TriggerType
 from qseek.utils import (
     LOG_COUNTER,
@@ -290,9 +291,7 @@ class Search(Model):
         "phase on-set detection.",
     )
     ray_tracers: RayTracers = Field(
-        default_factory=lambda: RayTracers(
-            root=[tracer() for tracer in RayTracer.get_subclasses()]
-        ),
+        default_factory=lambda: RayTracers(root=[FastMarchingTracer()]),
         description="List of ray tracers for travel time calculation.",
     )
     distance_weights: DistanceWeights | None = Field(
