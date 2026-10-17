@@ -45,12 +45,9 @@ class CacheStats(NamedTuple):
 
 
 class ArrayLRUCache(LRU, Generic[_KT]):
-    size_bytes: int
     name: str
     short_name: str
     dtype: np.dtype
-
-    _all_caches_bytes: int = 0
 
     def __init__(
         self,
@@ -59,8 +56,8 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         size_bytes: int = SIZE_MB,
         dtype: DTypeLike = np.float32,
     ) -> None:
-        super().__init__(size=1, callback=self._remove_callback)
-        self.size_bytes = 0
+        super().__init__(size=1)
+        self._entry_bytes = 0
         self._max_size_bytes = size_bytes
         self.name = name
         self.short_name = short_name or "".join(w[0] for w in name.split("-")).upper()
@@ -80,13 +77,20 @@ class ArrayLRUCache(LRU, Generic[_KT]):
         """Set the size of the cache in bytes."""
         self._max_size_bytes = size_bytes
 
+    @property
+    def size_bytes(self) -> int:
+        """Size of the cached arrays in bytes.
+
+        Like the capacity, it assumes that all entries have the size of the first
+        entry added.
+        """
+        return len(self) * self._entry_bytes
+
     def get_size_bytes(self) -> int:
         """Get the size of the cache in bytes."""
         return self.size_bytes
 
     def __setitem__(self, key, value: np.ndarray) -> None:
-        self.size_bytes += value.nbytes
-        self._all_caches_bytes += value.nbytes
         value = value.astype(self.dtype)
         value.setflags(write=False)
 
@@ -95,21 +99,18 @@ class ArrayLRUCache(LRU, Generic[_KT]):
 
         super().__setitem__(key, value)
 
-    def _remove_callback(self, key, value) -> None:
-        self.size_bytes -= value.nbytes
-        self._all_caches_bytes -= value.nbytes
-
     def _init_size(self, value: np.ndarray) -> None:
         """Initialize the size of the cache based on the size in bytes.
 
         We assume that all entries have the same size as the first entry added.
         """
+        self._entry_bytes = value.nbytes
         n_entries = self._max_size_bytes // value.nbytes
         logger.debug(
             "%s cache: setting LUT size to %d entries and %d bytes",
             self.name,
             n_entries,
-            self.size_bytes,
+            self._max_size_bytes,
         )
         self.set_size(max(n_entries, 1))
 
