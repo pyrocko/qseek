@@ -16,7 +16,6 @@ from qseek.octree import Node, Octree
 from qseek.tracers.cake import CakeTracer, Timing
 from qseek.tracers.fast_marching import (
     FastMarchingTracer,
-    FMMImplementation,
     StationTravelTimeTable,
 )
 from qseek.tracers.utils import LayeredEarthModel1D
@@ -72,10 +71,8 @@ def stations() -> StationInventory:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko", "eikonalfm"])
 async def test_station_travel_time_table_constant(
     plot: bool,
-    implementation: FMMImplementation,
 ):
     model = LayeredModel(
         layers=[
@@ -98,7 +95,7 @@ async def test_station_travel_time_table_constant(
         grid_spacing=100.0,
         earth_model=model,
     )
-    await table.calculate(implementation=implementation)
+    await table.calculate()
 
     rng = np.random.default_rng(0)
     distances = rng.uniform(0.0, table.distance_max, 1000)
@@ -120,16 +117,12 @@ async def test_station_travel_time_table_constant(
     ).reshape(*grid[0].shape)
     analytical_vp_tt = dists / model.layers[0].vp
 
-    atol = {
-        "scikit-fmm": 1e-2,
-        "pyrocko": 1e-1,
-        "eikonalfm": 1e-4,
-    }
+    atol = 1e-4
 
     np.testing.assert_allclose(
         table._travel_times,
         analytical_vp_tt,
-        atol=atol[implementation],
+        atol=atol,
     )
 
     if plot:
@@ -175,17 +168,14 @@ def straight_ray_times(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko", "eikonalfm"])
 async def test_travel_time_module_constant(
     octree: Octree,
     stations: StationInventory,
     plot: bool,
-    implementation: FMMImplementation,
 ) -> None:
     station_list = StationList.from_inventory(stations)
     fmm_tracer = FastMarchingTracer(
         velocity_model=constant_earth_model(),
-        implementation=implementation,
     )
     await fmm_tracer.prepare(octree, stations)
 
@@ -193,11 +183,7 @@ async def test_travel_time_module_constant(
         node.split()
     nodes = list(octree)
 
-    atol = {
-        "scikit-fmm": 0.02,
-        "pyrocko": 0.1,
-        "eikonalfm": 0.005,
-    }[implementation]
+    atol = 0.005
 
     fmm_times = await fmm_tracer.get_travel_times("fm:P", nodes, station_list)
     analytical_times = straight_ray_times(nodes, list(station_list), 5.0 * KM)
@@ -265,7 +251,7 @@ async def test_travel_time_module_constant(
             fig.colorbar(cmap, label="Time difference (s)")
             ax.set_title(
                 f"Station {round(station.effective_depth)} m - "
-                f"[FMM ({implementation}) - analytical difference]"
+                "[FMM - analytical difference]"
             )
             ax.set_xlabel("East (km)")
             ax.set_ylabel("North (km)")
@@ -275,17 +261,14 @@ async def test_travel_time_module_constant(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko", "eikonalfm"])
 async def test_travel_time_module_layered(
     octree: Octree,
     stations: StationInventory,
-    implementation: FMMImplementation,
 ) -> None:
     station_list = StationList.from_inventory(stations)
     model = LayeredEarthModel1D()
     fmm_tracer = FastMarchingTracer(
         velocity_model=model,
-        implementation=implementation,
     )
     cake_tracer = CakeTracer(
         phases={"cake:P": Timing(definition="P,p")},
@@ -299,19 +282,12 @@ async def test_travel_time_module_layered(
     cake_times = await cake_tracer.get_travel_times("cake:P", nodes, station_list)
 
     # Cake has no head waves; within this octree they are rarely the first arrival
-    atol = {
-        "scikit-fmm": 0.04,
-        "pyrocko": 0.15,
-        "eikonalfm": 0.03,
-    }[implementation]
+    atol = 0.03
     np.testing.assert_allclose(fmm_times, cake_times, rtol=0.0, atol=atol)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("implementation", ["scikit-fmm", "pyrocko", "eikonalfm"])
-async def test_station_travel_time_table_zero_velocity(
-    implementation: FMMImplementation,
-) -> None:
+async def test_station_travel_time_table_zero_velocity() -> None:
     model = LayeredModel(
         layers=[
             Layer(top_depth=0.0, vp=1.5 * KM, vs=0.0),
@@ -328,4 +304,12 @@ async def test_station_travel_time_table_zero_velocity(
         earth_model=model,
     )
     with pytest.raises(ValueError, match="fm:S velocity is zero or negative"):
-        await table.calculate(implementation=implementation)
+        await table.calculate()
+
+
+def test_implementation_field_compatibility() -> None:
+    tracer = FastMarchingTracer.model_validate({"implementation": "eikonalfm"})
+    assert "implementation" not in tracer.model_dump()
+
+    with pytest.raises(ValueError, match="implementation"):
+        FastMarchingTracer.model_validate({"implementation": "pyrocko"})
