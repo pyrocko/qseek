@@ -220,8 +220,8 @@ def weights_plateau_gaussian(
     distances: np.ndarray,
     counts: np.ndarray,
     plateau_stations: float = 3.0,
-    taper_stations: float = 8.0,
-    taper_cap: float | None = 1.0,
+    taper_stations: float = 16.0,
+    taper_cap: float | None = None,
 ) -> np.ndarray:
     """Gaussian taper beyond a plateau of the closest independent stations.
 
@@ -450,18 +450,19 @@ class StationDensityWeights(StationWeights):
         " stations of the network.",
     )
     taper_stations: PositiveFloat = Field(
-        default=8.0,
+        default=16.0,
         description="Number of independent stations that sets the width of the"
         " Gaussian taper: its standard deviation is half the distance at which the"
         " closest stations add up to this number. If the network has fewer"
         " independent stations, the most distant station sets the width.",
     )
     taper_cap: PositiveFloat | None = Field(
-        default=1.0,
+        default=None,
         description="Maximum standard deviation of the Gaussian taper, in units of"
-        " the plateau distance of the node. It keeps the taper short when a gap in"
+        " the plateau distance of the node. It shortens the taper when a gap in"
         " the network puts the `taper_stations` far away, e.g. between local and"
-        " regional stations. If `null`, the taper width is not limited.",
+        " regional stations. A short taper changes the weights steeply between"
+        " nodes and moves the locations. If `null`, the taper width is not limited.",
     )
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
