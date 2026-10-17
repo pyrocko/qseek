@@ -108,7 +108,6 @@ class InversionLayered1D(BaseModel):
             velocity_model=None,
             nthreads=0,
             interpolation_method="linear",
-            implementation="pyrocko",
         )
         ray_tracer.set_layered_model(model)
         await ray_tracer.prepare(search.octree.reset(), self.event_selection.stations)

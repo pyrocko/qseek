@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,9 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence
 
 import eikonalfm
 import numpy as np
-import skfmm
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
-from pyrocko.modelling import eikonal
 from scipy.interpolate import RegularGridInterpolator
 
 from qseek.cache_lru import ArrayLRUCache
@@ -36,7 +33,6 @@ InterpolationMethod = Literal["nearest", "linear", "cubic"]
 
 # Batches of nodes from which the LUT fill shows a progress bar
 PROGRESS_MIN_NODES = 50_000
-FMMImplementation = Literal["pyrocko", "scikit-fmm", "eikonalfm"]
 
 
 class StationTravelTimeTable(BaseModel):
@@ -105,15 +101,6 @@ class StationTravelTimeTable(BaseModel):
             (self._distances.size, self._depths.size)
         )
 
-    def _get_source_arrival_grid(self) -> np.ndarray:
-        times = np.full(
-            shape=(self._distances.size, self._depths.size),
-            fill_value=-1.0,
-        )
-        src_idx = self._get_source_idx()
-        times[src_idx] = 0.0
-        return times
-
     def _get_source_idx(self) -> tuple[int, int]:
         depth_idx = np.where(self._depths == 0.0)
         if depth_idx[0].size != 1:
@@ -139,59 +126,29 @@ class StationTravelTimeTable(BaseModel):
             )
         return self._interpolator
 
-    async def calculate(
-        self,
-        implementation: FMMImplementation = "eikonalfm",
-        executor: ThreadPoolExecutor | None = None,
-    ) -> None:
+    async def calculate(self, executor: ThreadPoolExecutor | None = None) -> None:
         velocity_grid = self._get_velocity_grid()
-        arrival_times = self._get_source_arrival_grid()
 
-        def eikonal_wrapper(arrival_times: np.ndarray, delta: float) -> np.ndarray:
+        def eikonal_wrapper() -> None:
             logger.debug(
                 "calculating travel time table %s for %s, grid size %s,"
-                " spacing %s m using %s...",
+                " spacing %s m...",
                 self.phase,
                 self.station.nsl.pretty,
-                arrival_times.shape,
+                velocity_grid.shape,
                 self.grid_spacing,
-                implementation,
             )
-            if implementation == "pyrocko":
-                eikonal.eikonal_solver_fmm_cartesian(
-                    velocity_grid,
-                    arrival_times,
-                    delta=delta,
-                )
-            elif implementation == "scikit-fmm":
-                arrival_times = skfmm.travel_time(
-                    arrival_times,
-                    velocity_grid,
-                    dx=delta,
-                    order=2,
-                )
-            elif implementation == "eikonalfm":
-                eikonal_factors = eikonalfm.factored_fast_marching(
-                    velocity_grid,
-                    x_s=self._get_source_idx(),
-                    dx=(self.grid_spacing, self.grid_spacing),
-                    order=2,
-                )
-                distances = self._get_source_distance_grid()
-                arrival_times = eikonal_factors * distances
-            else:
-                raise ValueError(f"unknown eikonal solver {implementation}")
-            self._travel_times = arrival_times
-            return arrival_times
+            eikonal_factors = eikonalfm.factored_fast_marching(
+                velocity_grid,
+                x_s=self._get_source_idx(),
+                dx=(self.grid_spacing, self.grid_spacing),
+                order=2,
+            )
+            self._travel_times = eikonal_factors * self._get_source_distance_grid()
 
         loop = asyncio.get_running_loop()
-        work = functools.partial(
-            eikonal_wrapper,
-            arrival_times,
-            delta=self.grid_spacing,
-        )
         start_time = time.time()
-        await loop.run_in_executor(executor, work)
+        await loop.run_in_executor(executor, eikonal_wrapper)
         logger.debug(
             "calculated travel time table %s for %s in %f seconds",
             self.phase,
@@ -278,10 +235,11 @@ class FastMarchingTracer(RayTracer):
         ),
     )
 
-    implementation: FMMImplementation = Field(
+    implementation: Literal["eikonalfm"] = Field(
         default="eikonalfm",
-        description="Implementation of the Fast Marching Method. Pyrocko only supports"
-        " first-order FMM for now.",
+        exclude=True,
+        description="Implementation of the fast marching method. Only `eikonalfm` "
+        "remains; the field is kept so that older configurations load.",
     )
 
     phases: tuple[Phase, ...] = Field(
@@ -406,10 +364,7 @@ class FastMarchingTracer(RayTracer):
                 earth_model=self.get_layered_model(),
             )
 
-            await volume.calculate(
-                implementation=self.implementation,
-                executor=executor,
-            )
+            await volume.calculate(executor=executor)
             self.add_travel_time_table(volume)
 
         eikonal_work = [
