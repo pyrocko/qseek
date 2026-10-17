@@ -123,7 +123,8 @@ plugins:
         components/pre_processing.md: configuration/pre-processing.md
         components/ray_tracer.md: configuration/ray-tracers.md
         components/image_function.md: configuration/image-functions.md
-        components/distance_weighting.md: configuration/distance-weighting.md
+        components/distance_weighting.md: configuration/station-weights.md
+        configuration/distance-weighting.md: configuration/station-weights.md
         components/magnitudes.md: configuration/magnitudes.md
         components/feature_extraction.md: configuration/features.md
         components/station_corrections.md: configuration/station-corrections.md
@@ -190,7 +191,7 @@ nav:
       - Image functions: configuration/image-functions.md
       - Ray tracers: configuration/ray-tracers.md
       - Search volume: configuration/search-volume.md
-      - Distance weighting: configuration/distance-weighting.md
+      - Station weights: configuration/station-weights.md
       - Station corrections: configuration/station-corrections.md
       - Triggers: configuration/triggers.md
       - Magnitudes: configuration/magnitudes.md

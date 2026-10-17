@@ -35,7 +35,7 @@ $$
 S(x, t) = \sum_{p} w_p \sum_{s} w_s(x) \, I_{s,p}\big(t + \tau_{s,p}(x)\big)
 $$
 
-The station weights $w_s(x)$ come from the [distance weighting](../configuration/distance-weighting.md): close stations of a node get full weight, distant stations less. For every node and phase the station weights are normalized to a sum of one, and multiplied by the phase weight $w_p$ of the image function.
+The station weights $w_s(x)$ come from the [station weights](../configuration/station-weights.md): close stations of a node get full weight, distant stations less. For every node and phase the station weights are normalized to a sum of one, and multiplied by the phase weight $w_p$ of the image function.
 
 Qseek calls the stack $S$ the *semblance*. The maximum semblance over all nodes, $\max_x S(x, t)$, is the detection function of the search.
 
