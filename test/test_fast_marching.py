@@ -251,7 +251,7 @@ async def test_travel_time_module_constant(
             fig.colorbar(cmap, label="Time difference (s)")
             ax.set_title(
                 f"Station {round(station.effective_depth)} m - "
-                f"[FMM - analytical difference]"
+                "[FMM - analytical difference]"
             )
             ax.set_xlabel("East (km)")
             ax.set_ylabel("North (km)")
