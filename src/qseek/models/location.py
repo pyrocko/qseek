@@ -52,8 +52,12 @@ class Location(BaseModel):
         description="Depth in meters, **positive is down**.",
     )
 
+    # Keyed by the coordinates they derive from: a model_copy keeps the private
+    # attributes, also when the copy's coordinates change
     _cached_lat_lon: tuple[float, float] | None = PrivateAttr(None)
+    _cached_lat_lon_key: tuple[float, ...] | None = PrivateAttr(None)
     _cached_origin: Location | None = PrivateAttr(None)
+    _cached_origin_key: tuple[float, ...] | None = PrivateAttr(None)
 
     @property
     def effective_lat(self) -> float:
@@ -66,7 +70,9 @@ class Location(BaseModel):
     @property
     def effective_lat_lon(self) -> tuple[float, float]:
         """Shift-corrected lat/lon pair of the location."""
-        if self._cached_lat_lon is None:
+        key = (self.lat, self.lon, self.north_shift, self.east_shift)
+        if self._cached_lat_lon is None or self._cached_lat_lon_key != key:
+            self._cached_lat_lon_key = key
             if self.north_shift == 0.0 and self.east_shift == 0.0:
                 self._cached_lat_lon = self.lat, self.lon
             else:
@@ -171,13 +177,16 @@ class Location(BaseModel):
                 -(self.effective_elevation - other.effective_elevation),
             )
 
+        # The offset is a vector in the frame of `other`, so the bearing is taken
+        # there. Taking it at this location and reversing it rotates the offset
+        # by the meridian convergence (295 m for 83 km at 42.8 N).
         shift_north, shift_east = od.latlon_to_ne_numpy(
-            self.lat, self.lon, other.lat, other.lon
+            other.lat, other.lon, self.lat, self.lon
         )
 
         return (
-            float(self.east_shift - other.east_shift - shift_east[0]),
-            float(self.north_shift - other.north_shift - shift_north[0]),
+            float(self.east_shift - other.east_shift + shift_east[0]),
+            float(self.north_shift - other.north_shift + shift_north[0]),
             -(self.effective_elevation - other.effective_elevation),
         )
 
@@ -217,7 +226,9 @@ class Location(BaseModel):
         Returns:
             Location: The origin location.
         """
-        if self._cached_origin is None:
+        key = (self.lat, self.lon, self.effective_elevation)
+        if self._cached_origin is None or self._cached_origin_key != key:
+            self._cached_origin_key = key
             self._cached_origin = Location.model_construct(
                 lat=self.lat,
                 lon=self.lon,

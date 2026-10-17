@@ -133,3 +133,48 @@ def test_absolute_locations():
     np.testing.assert_almost_equal(
         loc_other.offset_from(loc), (degree_in_m + 4 * KM, 0, -1.5 * KM)
     )
+
+
+def test_location_offset_frame():
+    # The offset from a reference is a vector in the reference's frame
+    from pyrocko import orthodrome as od
+
+    reference = Location(lat=42.8, lon=13.2, east_shift=300.0, north_shift=-200.0)
+    station = Location(lat=43.3, lon=13.9)
+    east, north, _ = station.offset_from(reference)
+    ref_north, ref_east = od.latlon_to_ne_numpy(
+        reference.lat, reference.lon, station.lat, station.lon
+    )
+    np.testing.assert_allclose(east, ref_east[0] - reference.east_shift)
+    np.testing.assert_allclose(north, ref_north[0] - reference.north_shift)
+
+    # Reversing the bearing at the station rotates it by the meridian convergence
+    back_north, back_east = od.latlon_to_ne_numpy(
+        station.lat, station.lon, reference.lat, reference.lon
+    )
+    rotated = np.hypot(
+        -back_east[0] - reference.east_shift - east,
+        -back_north[0] - reference.north_shift - north,
+    )
+    assert rotated > 100.0
+
+
+def test_location_cache_follows_coordinates():
+    location = Location(lat=42.0, lon=13.0, east_shift=1000.0)
+    lat_lon = location.effective_lat_lon
+    origin = location.origin()
+
+    moved = location.shift(east=5 * KM, north=0.0, elevation=200.0)
+    expected = Location(lat=42.0, lon=13.0, east_shift=6 * KM, elevation=200.0)
+    assert moved.effective_lat_lon == expected.effective_lat_lon
+    assert moved.effective_lat_lon != lat_lon
+    assert moved.origin().elevation == 200.0
+    assert location.origin() is origin
+
+    copied = location.model_copy(update={"north_shift": 2 * KM})
+    assert (
+        copied.effective_lat_lon
+        == (
+            Location(lat=42.0, lon=13.0, east_shift=1000.0, north_shift=2 * KM)
+        ).effective_lat_lon
+    )
