@@ -377,7 +377,7 @@ def test_weights_plateau_gaussian_taper_cap():
     distances = np.array([[1.0, 2.0, 3.0, 50.0, 60.0, 70.0, 80.0]]) * KM
     plateau, taper = 3 * KM, 70 * KM
     uncapped = weights_plateau_gaussian(distances, np.ones(7), 3.0, 6.0, taper_cap=None)
-    capped = weights_plateau_gaussian(distances, np.ones(7), 3.0, 6.0)
+    capped = weights_plateau_gaussian(distances, np.ones(7), 3.0, 6.0, taper_cap=1.0)
     # The cap limits sigma to the plateau distance
     for weights, sigma in ((uncapped, taper / 2), (capped, plateau)):
         expected = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
@@ -388,7 +388,7 @@ def test_weights_plateau_gaussian_taper_cap():
     # Without a gap the cap does not bind
     distances = np.arange(1, 21, dtype=float)[np.newaxis, :] * KM
     np.testing.assert_allclose(
-        weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0),
+        weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0, 1.0),
         weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0, None),
     )
 
@@ -575,7 +575,7 @@ def test_station_weights_config():
 
     from qseek.search import Search
 
-    assert isinstance(Search().station_weights, StationDensityWeights)
+    assert isinstance(Search().station_weights, DistanceWeights)
     assert Search.model_validate({"station_weights": None}).station_weights is None
 
     for model in (

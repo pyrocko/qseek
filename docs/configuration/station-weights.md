@@ -10,8 +10,8 @@ Station weights decide how much each station contributes to the stack of a node.
 
 | Station weights | Full weight | Taper |
 | --- | --- | --- |
-| [`StationDensityWeights`](#station-density-weights) (default) | The closest 3 independent stations, up to the plateau distance $d_p$ | Gaussian, standard deviation σ from the distance of the closest 8 independent stations, at most σ = $d_p$ |
-| [`DistanceWeights`](#distance-weights) | The 4 closest stations | Gaussian, full width at half maximum twice the mean interstation distance |
+| [`DistanceWeights`](#distance-weights) (default) | The 4 closest stations | Gaussian, full width at half maximum twice the mean interstation distance |
+| [`StationDensityWeights`](#station-density-weights) | The closest 3 independent stations, up to the plateau distance $d_p$ | Gaussian, standard deviation σ from the distance of the closest 16 independent stations |
 
 `station_weights` takes one of them. With `null`, all stations get the same weight.
 
@@ -22,10 +22,10 @@ Station weights of a node, with the defaults, for two examples of the [playgroun
 
 ## Choose the station weights
 
-- **`StationDensityWeights`**, the default, adapt the plateau and the taper to the station spacing around each node. They suit local and regional networks, clusters of stations, co-located sensors and gaps between local and regional stations.
-- **`DistanceWeights`** give the 4 closest stations full weight and taper with an absolute width, the same for all nodes. Use them to reproduce runs of earlier Qseek versions, or for a network with a dense nodal array: the spacing of the array sets the width of the density kernel of `StationDensityWeights`.
+- **`DistanceWeights`**, the default, give the 4 closest stations full weight and taper over twice the mean interstation distance. They locate best on the examples of the playground and suit most local and regional networks.
+- **`StationDensityWeights`** count the stations of a dense cluster as fewer independent stations and adapt the plateau and the taper to the station spacing around each node. Try them for a network with a dense cluster of stations next to sparse stations. On Norcia, 49 stations with a cluster of 12, they find 6% more well-constrained detections than `DistanceWeights` at the same location accuracy. On Campi Flegrei they locate less consistently.
 
-On the four examples of the playground, `StationDensityWeights` find 15% to 40% more detections than `DistanceWeights`, 94 more well-constrained detections at Mount Spurr; the median epicenter offsets to the catalogs differ by less than 35 m. The [benchmark](../about/benchmark.md#station-weights) has the results on the playground and on synthetic networks.
+The weights change from node to node, and they are normalized per node. A taper that falls off steeply between neighboring nodes therefore moves the locations as well: the stack prefers the nodes where the stations that recorded the event carry most of the weight. Keep the taper smooth. Over the distances where stations still record the events, the weights should decay as the phase confidence decays with distance. On the playground, a narrower taper and more or fewer stations with full weight both locate the detections less consistently than the defaults of `DistanceWeights`. The [benchmark](../about/benchmark.md#station-weights) has the results.
 
 ## Independent stations
 
@@ -41,13 +41,13 @@ On Campi Flegrei, the 18 INGV stations count as 11.1 independent stations: the s
 
 ## Station density weights
 
-The closest stations of a node get full weight until they add up to `plateau_stations` independent stations, 3 by default, at the plateau distance $d_p$. In a dense cluster more stations get full weight than in a sparse network. Beyond $d_p$, a Gaussian taper decays; its standard deviation is half the distance at which the closest stations add up to `taper_stations`, 8 by default. When the network has fewer independent stations than `taper_stations`, the most distant station sets the width.
+The closest stations of a node get full weight until they add up to `plateau_stations` independent stations, 3 by default, at the plateau distance $d_p$. In a dense cluster more stations get full weight than in a sparse network. Beyond $d_p$, a Gaussian taper decays; its standard deviation is half the distance at which the closest stations add up to `taper_stations`, 16 by default. When the network has fewer independent stations than `taper_stations`, the most distant station sets the width.
 
-A gap in the network can put the `taper_stations` far away. At Mount Spurr, the ten local stations within 32 km count as 4.6 independent stations; the closest stations add up to 8 only among the regional stations beyond 79 km. The taper would reach across the gap and keep the regional stations at weights of up to 0.43, although they rarely record the small events of the swarm. `taper_cap` limits the standard deviation of the taper, to 1.0 $d_p$ by default. Without a gap the cap rarely binds: on Campi Flegrei the standard deviation is 0.77 $d_p$ (median over the nodes), and the cap binds at 12% of the nodes. With a standard deviation of $d_p$, the weight is 0.5 at 2.2 $d_p$.
+`taper_cap` limits the standard deviation of the taper, in units of $d_p$. It is off by default. A gap in the network can put the `taper_stations` far away, e.g. between local and regional stations, and the cap shortens the taper to the local stations. A short taper, however, changes the weights steeply between neighboring nodes and moves the locations. With `taper_stations` 8 and `taper_cap` 1.0, the 10-day example of Campi Flegrei shows walls of detections up to 3 km deep, and at Norcia detections move above sea level. Use the cap only if distant stations add more noise than signal, and check the locations.
 
 ![Taper cap](../images/station-weights-taper-cap.webp)
 /// caption
-The cap of the taper on two nodes of the playground examples. Top: the closest stations add up to independent stations; $d_p$ marks 3 independent stations, the plateau, $d_8$ marks 8, which sets the taper width $\sigma = d_8 / 2$. Bottom: the station weights without the cap (orange) and with `taper_cap` 1.0 (green). Left: on Campi Flegrei, without a gap, the cap does not bind. Right: at Mount Spurr, $d_8$ lies beyond the gap between the local and the regional stations; the cap shortens the taper width by 40%, from 41.8 km to 24.8 km, and lowers the weights of the regional stations to 0.09 and less.
+The cap of the taper on two nodes of the playground examples, with `taper_stations` 8. Top: the closest stations add up to independent stations; $d_p$ marks 3 independent stations, the plateau, $d_8$ marks 8, which sets the taper width $\sigma = d_8 / 2$. Bottom: the station weights without the cap (orange) and with `taper_cap` 1.0 (green). Left: on Campi Flegrei, without a gap, the cap does not bind. Right: at Mount Spurr, $d_8$ lies beyond the gap between the local and the regional stations; the cap shortens the taper width by 40%, from 41.8 km to 24.8 km, and lowers the weights of the regional stations to 0.09 and less.
 ///
 
 ```python exec='on'
@@ -69,7 +69,7 @@ print(json_example(StationDensityWeights()))
 
 The `required_closest_stations` closest stations of a node get full weight, 4 by default. More distant stations are tapered with a Gaussian function; `distance_taper` is its full width at half maximum, twice the mean interstation distance by default, `"mean_interstation"`.
 
-`"nearest_neighbor"` sets the taper to 6 times the median distance between neighboring station sites. On networks of similar station spacing it adapts the taper to the spacing: at Mount Spurr, its 74 km taper moves the epicenters 67 m closer to the catalog than the 166 km of `"mean_interstation"`. Do not use it for networks with a dense array: the spacing of the array sets the median.
+`"nearest_neighbor"` sets the taper to 6 times the median distance between neighboring station sites. On networks of similar station spacing it adapts the taper to the spacing: at Mount Spurr, its 74 km taper moves the epicenters 59 m closer to the catalog than the 166 km of `"mean_interstation"`. Do not use it for networks with a dense array: the spacing of the array sets the median.
 
 ```python exec='on'
 from qseek.utils import json_example

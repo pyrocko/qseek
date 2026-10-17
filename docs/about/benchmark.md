@@ -25,39 +25,41 @@ The [performance guide](../guides/performance.md) shows which settings make your
 
 ## Station weights
 
-The [station weights](../configuration/station-weights.md) decide which events the stack detects. Their defaults are calibrated on the examples of the [playground](../getting-started/playground.md) and on a synthetic benchmark of seven networks.
+The [station weights](../configuration/station-weights.md) decide which events the stack detects and where it locates them. Their defaults are chosen on the examples of the [playground](../getting-started/playground.md).
 
 ### Playground
 
-Each example searched with the defaults of the station weights, `MADTrigger` with `mad_factor` 10. A detection is well constrained with at least 8 picks, at Norcia with at least 20:
+Each example searched with `MADTrigger`, `mad_factor` 10, and the defaults of each station weights model. A detection is well constrained with at least 8 picks, at Norcia with at least 20:
 
 | Example | Station weights | Detections | Well constrained | Residual RMS, median | Catalog events matched | Epicenter offset, median |
 | --- | --- | --- | --- | --- | --- | --- |
-| Campi Flegrei, 1 day, 18 stations | `StationDensityWeights` | 954 | 524 | 0.282 s | 45 / 45 | 216 m |
-| | `DistanceWeights` | 732 | 521 | 0.284 s | 45 / 45 | 241 m |
-| | `DistanceWeights`, `"nearest_neighbor"` | 750 | 525 | 0.286 s | 45 / 45 | 238 m |
-| Campi Flegrei, 10 days, 19 stations | `StationDensityWeights` | 8189 | 3799 | 0.278 s | 210 / 211 | 295 m |
-| | `DistanceWeights` | 6379 | 3750 | 0.278 s | 209 / 211 | 280 m |
-| | `DistanceWeights`, `"nearest_neighbor"` | 6614 | 3772 | 0.280 s | 209 / 211 | 293 m |
-| Mount Spurr, 3 days, 10 local and 10 regional stations | `StationDensityWeights` | 2457 | 1140 | 0.338 s | 229 / 234 | 409 m |
-| | `DistanceWeights` | 1758 | 1046 | 0.349 s | 228 / 234 | 416 m |
-| | `DistanceWeights`, `"nearest_neighbor"` | 2210 | 1070 | 0.318 s | 230 / 234 | 348 m |
-| Norcia, 3 days, 49 stations with a cluster of 12 | `StationDensityWeights` | 4279 | 3874 | 0.325 s | 1026 / 1071 | 668 m |
-| | `DistanceWeights` | 3732 | 3602 | 0.310 s | 1013 / 1071 | 635 m |
-| | `DistanceWeights`, `"nearest_neighbor"` | 3972 | 3747 | 0.314 s | 1020 / 1071 | 648 m |
+| Campi Flegrei, 1 day, 18 stations | `DistanceWeights` | 731 | 521 | 0.285 s | 45 / 45 | 242 m |
+| | `StationDensityWeights` | 753 | 512 | 0.281 s | 45 / 45 | 247 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 750 | 523 | 0.284 s | 45 / 45 | 240 m |
+| Campi Flegrei, 10 days, 19 stations | `DistanceWeights` | 6382 | 3760 | 0.278 s | 209 / 211 | 277 m |
+| | `StationDensityWeights` | 6320 | 3711 | 0.279 s | 209 / 211 | 263 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 6623 | 3772 | 0.279 s | 209 / 211 | 288 m |
+| Mount Spurr, 3 days, 10 local and 10 regional stations | `DistanceWeights` | 1756 | 1048 | 0.346 s | 228 / 234 | 419 m |
+| | `StationDensityWeights` | 1774 | 1051 | 0.348 s | 228 / 234 | 440 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 2214 | 1074 | 0.320 s | 230 / 234 | 360 m |
+| Norcia, 3 days, 49 stations with a cluster of 12 | `DistanceWeights` | 3734 | 3603 | 0.309 s | 1013 / 1071 | 644 m |
+| | `StationDensityWeights` | 4036 | 3817 | 0.312 s | 1024 / 1071 | 646 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 3971 | 3746 | 0.313 s | 1020 / 1071 | 651 m |
 
-At Mount Spurr, the `DistanceWeights` taper over twice the mean interstation distance, 166 km, keeps the regional stations 80 km to 130 km away at weights of 0.25 to 0.65. `StationDensityWeights` lower them to 0.09 and less, find 40% more detections and 94 more well-constrained detections. At Norcia, the INGV catalog lists routine locations, 4 km deeper than the relocations of the sequence (Chiaraluce et al., 2017); its epicenter offsets differ by less than 35 m between the station weights.
+The residual RMS grows with the number of picks, and the catalogs list only the larger events with locations of their own. At Norcia, the INGV catalog lists routine locations, 4 km deeper than the relocations of the sequence (Chiaraluce et al., 2017). Neither measures how consistently the detections are located.
 
-The cap of the taper, `taper_cap` 1.0, finds 12% and 14% more detections on Campi Flegrei (1 and 10 days) and 20% more at Mount Spurr than no cap, with 59 more well-constrained detections at Mount Spurr. A cap of 0.75 raises the residuals on Campi Flegrei, caps of 1.25 and 1.5 move the epicenters at Mount Spurr farther from the catalog. At Norcia, without a gap between the stations, the cap finds 14 fewer detections and 46 fewer well-constrained detections than no cap.
+### Relative locations
 
-### Synthetic networks
+HypoDD relocates the detections of the `DistanceWeights` search with catalog and cross-correlation differential times. The double-difference residuals of the cross-correlation data, evaluated at the locations of each search, measure how consistently a search locates neighboring events, independent of its picks. Lower is better. Campi Flegrei, 1 day, 340 detections in all searches; Norcia, 3574 detections:
 
-The synthetic benchmark stacks 6 hours of phase confidences for each of seven networks, two random realizations each: an observatory cluster with co-located sensors and a regional ring; a regional network with a dense sub-array; the station layouts of Campi Flegrei, Mount Spurr and Norcia; a small network of 7 stations; and a nodal line of 40 stations 30 m apart next to 8 permanent stations. Arrivals of synthetic events, Gutenberg-Richter magnitudes, have confidences from their signal-to-noise ratio and travel times through a heterogeneous velocity model; noisy stations add false peaks. The table gives the share of the events with at least 6 picks that each station weights detect at 2 false detections per hour, and the median change of the location error against `DistanceWeights`, paired by event:
+| Station weights | Campi Flegrei, median | Campi Flegrei, 90th percentile | Norcia, median | Norcia, 90th percentile |
+| --- | --- | --- | --- | --- |
+| `DistanceWeights` | 53.6 ms | 168 ms | 42.6 ms | 153 ms |
+| `StationDensityWeights` | 57.6 ms | 187 ms | 41.5 ms | 151 ms |
+| `DistanceWeights`, `"nearest_neighbor"` | 54.0 ms | 173 ms | 41.3 ms | 152 ms |
+| `StationDensityWeights`, `taper_stations` 8, `taper_cap` 1.0 | 56.7 ms | 194 ms | 42.7 ms | 167 ms |
+| `null`, all stations the same weight | 56.9 ms | 190 ms | | |
 
-| Station weights | Observatory | Regional | Campi Flegrei | Mount Spurr | Norcia | Small | Nodal | Location change |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `StationDensityWeights` | 0.86 | 0.38 | 1.00 | 0.86 | 0.34 | 0.74 | 0.69 | −3 m to 5 m |
-| `DistanceWeights` | 0.65 | 0.23 | 1.00 | 0.76 | 0.22 | 0.78 | 0.84 | 0 m |
-| `DistanceWeights`, `"nearest_neighbor"` | 0.60 | 0.38 | 1.00 | 0.78 | 0.27 | 0.76 | 0.52 | −2 m to 1450 m |
+On Campi Flegrei, `DistanceWeights` with 6 and 8 stations of full weight reach 174 ms and 183 ms (90th percentile), with 2 and 3 stations 175 ms and 172 ms, with a taper of 6 km and 16 km instead of the 11 km of `"mean_interstation"` 188 ms and 177 ms. The evaluation favors the search that HypoDD relocated: relocated from `DistanceWeights` with 8 stations of full weight instead, `DistanceWeights` with 4, 6 and 8 stations reach 178 ms, 181 ms and 171 ms, and all other station weights stay above them.
 
-The station weights hardly change the location of an event once it is detected; they change which events the stack detects. On the nodal network, the median distance between neighboring sites is the 60 m spacing of the nodes. It narrows the density kernel of `StationDensityWeights`, and the `"nearest_neighbor"` taper of `DistanceWeights` leaves only the nodal line in the stack, with location errors 1.4 km larger (median).
+A short taper locates the detections least consistently. With `taper_stations` 8 and `taper_cap` 1.0, the 10-day search on Campi Flegrei places detections on walls up to 3 km deep. At Norcia, 14% of the well-constrained detections lie above sea level, 4.5% with `DistanceWeights`, and 382 residuals at their locations exceed the output format of HypoDD. The weights are normalized per node, so a taper that changes steeply between neighboring nodes moves the maximum of the stack. Without any taper, the noise of distant stations degrades the locations as well.
