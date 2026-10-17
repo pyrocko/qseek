@@ -394,8 +394,8 @@ class StaLta(ImageFunction):
 
     phase_map: dict[PhaseName, str] = Field(
         default={
-            "P": "cake:P",
-            "S": "cake:S",
+            "P": "fm:P",
+            "S": "fm:S",
         },
         description="Phase mapping from STA/LTA P and S images to "
         "Qseek travel time phases.",

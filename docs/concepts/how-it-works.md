@@ -21,7 +21,7 @@ flowchart LR
 
 The [image function](../configuration/image-functions.md) transforms the [pre-processed](../configuration/pre-processing.md) waveforms of each station into characteristic functions of the P and S phase arrivals, the *images*. A machine learning picker from SeisBench, e.g. PhaseNet, annotates the probability of a phase arrival. The STA/LTA image function uses the ratio of a short-term to a long-term average instead.
 
-The [`phase_map`][qseek.images.seisbench.SeisBench.phase_map] of the image function assigns each image to a phase of the ray tracers, e.g. the P image of PhaseNet to `cake:P`.
+The [`phase_map`][qseek.images.seisbench.SeisBench.phase_map] of the image function assigns each image to a phase of the ray tracers, e.g. the P image of PhaseNet to `fm:P`.
 
 ## Travel times
 

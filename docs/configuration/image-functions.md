@@ -13,7 +13,7 @@ The image function turns the waveforms of each station into *images* of the P an
 | [`SeisBench`](#seisbench) | Phase arrival probability of a machine learning picker | Most data sets. The default. |
 | [`StaLta`](#stalta) | Logarithm of the STA/LTA ratio | Data where no pre-trained model fits, or without a GPU. |
 
-The `phase_map` assigns the P and S images to the [phase descriptions](conventions.md#phase-descriptions) of the ray tracers, e.g. `{"P": "cake:P", "S": "cake:S"}`. With `weights`, one phase can contribute more to the stack than the other.
+The `phase_map` assigns the P and S images to the [phase descriptions](conventions.md#phase-descriptions) of the ray tracers, e.g. `{"P": "fm:P", "S": "fm:S"}`. With `weights`, one phase can contribute more to the stack than the other.
 
 ## SeisBench
 
