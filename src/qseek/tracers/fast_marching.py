@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence
 
 import eikonalfm
 import numpy as np
@@ -22,7 +22,7 @@ from qseek.models.station import Station, StationInventory, StationList
 from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
-from qseek.tracers.utils import LayeredEarthModel1D, surface_distances_reference
+from qseek.tracers.utils import LayeredEarthModel1D, surface_distances
 from qseek.utils import Range, RangeType, _get_cpu_count, alog_call, datetime_now
 
 if TYPE_CHECKING:
@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 Phase = Literal["fm:P", "fm:S"]
 
 InterpolationMethod = Literal["nearest", "linear", "cubic"]
+
+# Batches of nodes from which the LUT fill shows a progress bar
+PROGRESS_MIN_NODES = 50_000
 FMMImplementation = Literal["pyrocko", "scikit-fmm", "eikonalfm"]
 
 
@@ -86,7 +89,18 @@ class StationTravelTimeTable(BaseModel):
             velocities = self.earth_model.vs_interpolator
         else:
             raise ValueError(f"unknown phase {self.phase}")
-        vels = velocities(self._depths + self.station.effective_depth)
+        depths = self._depths + self.station.effective_depth
+        vels = velocities(depths)
+        if np.any(vels <= 0.0):
+            bad_depths = depths[vels <= 0.0]
+            raise ValueError(
+                f"{self.phase} velocity is zero or negative at depths "
+                f"{bad_depths.min():.0f} to {bad_depths.max():.0f} m (e.g. a water "
+                f"layer) within the travel time table of station "
+                f"{self.station.nsl.pretty}. Fast marching needs positive "
+                "velocities: remove the phase from `phases` or the layer from the "
+                "velocity model."
+            )
         return np.tile(vels, self._distances.size).reshape(
             (self._distances.size, self._depths.size)
         )
@@ -191,7 +205,13 @@ class StationTravelTimeTable(BaseModel):
         source_depth: float,
         method: InterpolationMethod = "linear",
     ) -> float:
+        """Travel time to a source, NaN if the source is outside the table."""
         interpolator = self._get_travel_time_interpolator()
+        if not (
+            0.0 <= source_distance <= self._distances[-1]
+            and self._depths[0] <= source_depth <= self._depths[-1]
+        ):
+            return float("nan")
         traveltime = interpolator([source_distance, source_depth], method=method)
         return float(traveltime.squeeze())
 
@@ -201,10 +221,22 @@ class StationTravelTimeTable(BaseModel):
         depth_offsets: np.ndarray,
         method: InterpolationMethod = "linear",
     ) -> np.ndarray:
+        return await asyncio.to_thread(
+            self.interpolate_travel_times,
+            surface_offsets,
+            depth_offsets,
+            method=method,
+        )
+
+    def interpolate_travel_times(
+        self,
+        surface_offsets: np.ndarray,
+        depth_offsets: np.ndarray,
+        method: InterpolationMethod = "linear",
+    ) -> np.ndarray:
         interpolator = self._get_travel_time_interpolator()
         try:
-            return await asyncio.to_thread(
-                interpolator,
+            return interpolator(
                 np.asarray([surface_offsets, depth_offsets]).T,
                 method=method,
             )
@@ -387,37 +419,51 @@ class FastMarchingTracer(RayTracer):
         ]
         tasks = [asyncio.create_task(work) for work in eikonal_work]
         start_time = time.time()
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            executor.shutdown(wait=False, cancel_futures=True)
         logger.info("calculated travel time tables in %.4f", time.time() - start_time)
 
     async def fill_lut(self, nodes: Sequence[Node], phase: Phase) -> None:
-        travel_times = []
         n_nodes = len(nodes)
 
-        surface_offsets = surface_distances_reference(
-            nodes, self._stations, self._octree.location
-        ).T
+        surface_offsets = surface_distances(nodes, self._stations).T
         node_depths = (
             np.array([n.depth for n in nodes]) + self._octree.location.effective_depth
         )
+        stations = list(self._stations)
+        tables = [self.get_travel_time_table(station, phase) for station in stations]
 
-        with get_progress() as progress:
-            status = progress.add_task(
-                f"interpolating travel times for {n_nodes} nodes",
-                total=self._stations.n_stations,
-            )
-            for idx, station in enumerate(self._stations):
-                table = self.get_travel_time_table(station, phase)
-                travel_times.append(
-                    await table.get_travel_times(
-                        surface_offsets=surface_offsets[idx],
-                        depth_offsets=node_depths - station.effective_depth,
-                        method=self.interpolation_method,
-                    )
+        def interpolate(advance: Callable[[], Any] | None = None) -> np.ndarray:
+            travel_times = np.empty((n_nodes, len(stations)))
+            for idx, (station, table) in enumerate(zip(stations, tables, strict=True)):
+                travel_times[:, idx] = table.interpolate_travel_times(
+                    surface_offsets=surface_offsets[idx],
+                    depth_offsets=node_depths - station.effective_depth,
+                    method=self.interpolation_method,
                 )
-                progress.advance(status)
-            travel_times = np.array(travel_times).T
-            progress.remove_task(status)
+                if advance is not None:
+                    advance()
+            return travel_times
+
+        # One thread for all stations; a thread per station costs more than the
+        # interpolation of a refinement batch. Only large batches get a progress bar.
+        if n_nodes < PROGRESS_MIN_NODES:
+            travel_times = await asyncio.to_thread(interpolate)
+        else:
+            with get_progress() as progress:
+                status = progress.add_task(
+                    f"interpolating travel times for {n_nodes} nodes",
+                    total=len(stations),
+                )
+                travel_times = await asyncio.to_thread(
+                    interpolate, lambda: progress.advance(status)
+                )
+                progress.remove_task(status)
 
         node_lut = self._node_lut
         for node, station_travel_times in zip(nodes, travel_times, strict=True):
@@ -489,7 +535,7 @@ class FastMarchingTracer(RayTracer):
         )
         arrivals = []
         for traveltime, _receiver in zip(traveltimes, receivers, strict=True):
-            if traveltime is None:
+            if np.isnan(traveltime):
                 arrivals.append(None)
                 continue
 

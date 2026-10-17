@@ -53,6 +53,15 @@ def get_node_coordinates(
     system: CoordSystem = "geographic",
 ) -> np.ndarray:
     if system == "geographic":
+        if nodes and all(node.tree is nodes[0].tree for node in nodes):
+            # Same values as Node.as_location(), in one array call per batch
+            reference = nodes[0].tree.location
+            offsets = np.array([(node.north, node.east, node.depth) for node in nodes])
+            north = reference.north_shift + offsets[:, 0]
+            east = reference.east_shift + offsets[:, 1]
+            lat, lon = od.ne_to_latlon(reference.lat, reference.lon, north, east)
+            elevation = reference.elevation - (reference.depth + offsets[:, 2])
+            return np.column_stack((lat, lon, elevation))
         node_locations = (node.as_location() for node in nodes)
         return np.array(
             [
@@ -286,6 +295,8 @@ class Node:
         Returns:
             Location: Location of the node.
         """
+        if self._location:
+            return self._location
         if not self.tree:
             raise AttributeError("parent octree not set")
         if not self._location:
