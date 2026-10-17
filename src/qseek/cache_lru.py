@@ -79,7 +79,11 @@ class ArrayLRUCache(LRU, Generic[_KT]):
 
     @property
     def size_bytes(self) -> int:
-        """Size of the cached arrays in bytes."""
+        """Size of the cached arrays in bytes.
+
+        Like the capacity, it assumes that all entries have the size of the first
+        entry added.
+        """
         return len(self) * self._entry_bytes
 
     def get_size_bytes(self) -> int:
