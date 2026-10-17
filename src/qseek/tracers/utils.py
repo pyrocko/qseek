@@ -19,7 +19,6 @@ from pyrocko.plot.cake_plot import my_model_plot as earthmodel_plot
 
 from qseek.base import Model
 from qseek.models.location import Location, get_coordinates
-from qseek.models.station import StationList
 from qseek.octree import Node, get_node_coordinates
 from qseek.types import FilePath
 from qseek.utils import CACHE_DIR
@@ -175,31 +174,3 @@ def surface_distances(
     return od.distance_accurate50m_numpy(
         node_coords[:, 0], node_coords[:, 1], sta_coords[:, 0], sta_coords[:, 1]
     ).reshape(-1, n_stations)
-
-
-def surface_distances_reference(
-    nodes: Sequence[Node],
-    stations: StationList,
-    reference: Location,
-) -> np.ndarray:
-    """Returns the surface distance from all nodes to all stations.
-
-    Args:
-        nodes (Sequence[Node]): Nodes to calculate distance from.
-        stations (Stations): Stations to calculate distance to.
-        reference (Location): Reference location for the nodes.
-
-    Returns:
-        np.ndarray: Distances in shape (n-nodes, n-stations).
-    """
-    node_offsets = np.asarray([(node.east, node.north) for node in nodes])
-    n_nodes = node_offsets.shape[0]
-    result = np.empty((stations.n_stations, n_nodes), dtype=float)
-
-    for idx, station in enumerate(stations):
-        offset_east, offset_north, _ = station.offset_from(reference)
-        distances = np.linalg.norm(
-            node_offsets - np.array([offset_east, offset_north]), axis=1
-        )
-        result[idx] = distances
-    return result.T.copy()

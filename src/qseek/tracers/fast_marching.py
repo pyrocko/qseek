@@ -22,7 +22,7 @@ from qseek.models.station import Station, StationInventory, StationList
 from qseek.octree import Node
 from qseek.stats import get_progress
 from qseek.tracers.base import ModelledArrival, RayTracer
-from qseek.tracers.utils import LayeredEarthModel1D, surface_distances_reference
+from qseek.tracers.utils import LayeredEarthModel1D, surface_distances
 from qseek.utils import Range, RangeType, _get_cpu_count, alog_call, datetime_now
 
 if TYPE_CHECKING:
@@ -86,7 +86,18 @@ class StationTravelTimeTable(BaseModel):
             velocities = self.earth_model.vs_interpolator
         else:
             raise ValueError(f"unknown phase {self.phase}")
-        vels = velocities(self._depths + self.station.effective_depth)
+        depths = self._depths + self.station.effective_depth
+        vels = velocities(depths)
+        if np.any(vels <= 0.0):
+            bad_depths = depths[vels <= 0.0]
+            raise ValueError(
+                f"{self.phase} velocity is zero or negative at depths "
+                f"{bad_depths.min():.0f} to {bad_depths.max():.0f} m (e.g. a water "
+                f"layer) within the travel time table of station "
+                f"{self.station.nsl.pretty}. Fast marching needs positive "
+                "velocities: remove the phase from `phases` or the layer from the "
+                "velocity model."
+            )
         return np.tile(vels, self._distances.size).reshape(
             (self._distances.size, self._depths.size)
         )
@@ -191,7 +202,13 @@ class StationTravelTimeTable(BaseModel):
         source_depth: float,
         method: InterpolationMethod = "linear",
     ) -> float:
+        """Travel time to a source, NaN if the source is outside the table."""
         interpolator = self._get_travel_time_interpolator()
+        if not (
+            0.0 <= source_distance <= self._distances[-1]
+            and self._depths[0] <= source_depth <= self._depths[-1]
+        ):
+            return float("nan")
         traveltime = interpolator([source_distance, source_depth], method=method)
         return float(traveltime.squeeze())
 
@@ -387,16 +404,20 @@ class FastMarchingTracer(RayTracer):
         ]
         tasks = [asyncio.create_task(work) for work in eikonal_work]
         start_time = time.time()
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            executor.shutdown(wait=False, cancel_futures=True)
         logger.info("calculated travel time tables in %.4f", time.time() - start_time)
 
     async def fill_lut(self, nodes: Sequence[Node], phase: Phase) -> None:
         travel_times = []
         n_nodes = len(nodes)
 
-        surface_offsets = surface_distances_reference(
-            nodes, self._stations, self._octree.location
-        ).T
+        surface_offsets = surface_distances(nodes, self._stations).T
         node_depths = (
             np.array([n.depth for n in nodes]) + self._octree.location.effective_depth
         )
@@ -489,7 +510,7 @@ class FastMarchingTracer(RayTracer):
         )
         arrivals = []
         for traveltime, _receiver in zip(traveltimes, receivers, strict=True):
-            if traveltime is None:
+            if np.isnan(traveltime):
                 arrivals.append(None)
                 continue
 
