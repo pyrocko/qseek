@@ -9,15 +9,21 @@ from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.station_weights import (
     NEAREST_NEIGHBOR_TAPER,
+    DensityPlateauWeights,
+    DensityTaperWeights,
     DistanceWeights,
     StationDensityWeights,
     colocated_sensors,
+    condition_number_radius,
+    density_kernel_radius,
     independent_station_counts,
     independent_stations_distances,
     interstation_distances,
     nearest_neighbor_distance,
     station_density,
     weights_gaussian,
+    weights_gaussian_density,
+    weights_gaussian_independent,
     weights_plateau_gaussian,
 )
 
@@ -402,6 +408,165 @@ def clustered_stations() -> StationInventory:
     return local_stations(sparse + cluster)
 
 
+def test_weights_gaussian_independent():
+    rng = np.random.default_rng(5)
+    distances = rng.uniform(0.5, 40.0, size=(50, 20)) * KM
+    taper = 20 * KM
+    # Every station an independent station: the plateau of the 4 closest stations
+    np.testing.assert_allclose(
+        weights_gaussian_independent(distances, np.ones(20), taper, 4.0),
+        weights_gaussian(distances, taper, 4),
+        rtol=1e-6,
+    )
+    # Stations that count less extend the plateau: the weights only grow
+    counts = rng.uniform(0.2, 1.0, size=20)
+    weights = weights_gaussian_independent(distances, counts, taper, 4.0)
+    assert np.all(weights >= weights_gaussian(distances, taper, 4) - 1e-9)
+    assert np.all(np.sort(weights, axis=1)[:, -4:] == 1.0)
+
+
+def test_weights_gaussian_density():
+    rng = np.random.default_rng(6)
+    distances = rng.uniform(0.5, 40.0, size=(50, 20)) * KM
+    taper = 20 * KM
+    plain = weights_gaussian(distances, taper, 4)
+    # Factors of one: the distance weights
+    np.testing.assert_allclose(
+        weights_gaussian_density(distances, np.ones(20), taper, 4), plain
+    )
+    factors = rng.uniform(0.2, 1.0, size=20)
+    weights = weights_gaussian_density(distances, factors, taper, 4)
+    # The closest stations keep their full weight, the others weigh less
+    plateau = plain == 1.0
+    assert np.all(weights[plateau] == 1.0)
+    assert np.all(weights[~plateau] <= plain[~plateau])
+    # Far away the weight approaches the distance weight times the factor
+    far = plain < 0.01
+    np.testing.assert_allclose(
+        weights[far], (plain * factors[np.newaxis, :])[far], rtol=0.02
+    )
+
+
+def test_density_kernel_radius(clustered_stations: StationInventory):
+    distances = interstation_distances(list(clustered_stations))
+    assert density_kernel_radius(distances, "nearest_neighbor") == (
+        nearest_neighbor_distance(distances)
+    )
+    assert density_kernel_radius(distances, "mean_interstation") == pytest.approx(
+        np.nanmean(distances) / np.sqrt(2.0)
+    )
+    assert density_kernel_radius(distances, 5 * KM) == 5 * KM
+
+    # The widest radius at which the weight ratio is a third of its peak
+    radius = condition_number_radius(distances)
+    squared = np.nan_to_num(distances.astype(np.float64), nan=0.0) ** 2
+
+    def ratio(radius: float) -> float:
+        weights = 1.0 / np.exp(-squared / (2 * radius**2)).sum(axis=1)
+        return float(weights.max() / weights.min())
+
+    peak = max(ratio(r) for r in np.geomspace(100.0, 1000 * KM, 400))
+    assert ratio(radius) == pytest.approx(peak / 3, rel=0.1)
+    assert ratio(radius * 1.2) < peak / 3
+
+    # One site: no radius, all stations count the same
+    single = interstation_distances(local_locations([(0.0, 0.0), (0.0, 0.0)]))
+    assert np.isnan(condition_number_radius(single))
+    np.testing.assert_allclose(
+        independent_station_counts(single, "condition_number"), [0.5, 0.5]
+    )
+
+
+def test_independent_station_counts_radius(clustered_stations: StationInventory):
+    distances = interstation_distances(list(clustered_stations))
+    narrow = independent_station_counts(distances)
+    np.testing.assert_array_equal(
+        narrow, independent_station_counts(distances, "nearest_neighbor")
+    )
+    for radius in ("mean_interstation", "condition_number", 20 * KM):
+        counts = independent_station_counts(distances, radius)
+        assert np.all((counts > 0.0) & (counts <= 1.0))
+        # The cluster counts less than the sparse stations
+        assert np.median(counts[12:]) < np.median(counts[:12])
+    # The condition number radius discounts the cluster less than the nearest
+    # neighbor distance
+    wide = independent_station_counts(distances, "condition_number")
+    assert wide.max() / wide.min() < narrow.max() / narrow.min()
+    assert np.median(wide[12:]) > np.median(narrow[12:])
+
+
+def weights_roughness(weights: np.ndarray, step: float) -> float:
+    """Largest L1 change of the normalized weights between neighboring nodes, per m."""
+    weights = weights / weights.sum(axis=1, keepdims=True)
+    return float(np.abs(np.diff(weights, axis=0)).sum(axis=1).max() / step)
+
+
+def test_station_weights_roughness(clustered_stations: StationInventory):
+    # Weights that change steeply between nodes move the maximum of the stack. The
+    # plateau in independent stations keeps the weights as smooth as the distance
+    # weights; the short taper of the capped density weights does not.
+    locations = list(clustered_stations)
+    counts = independent_station_counts(interstation_distances(locations))
+    counts_wide = independent_station_counts(
+        interstation_distances(locations), "condition_number"
+    )
+    taper = 2 * clustered_stations.mean_interstation_distance()
+
+    step = 50.0
+    sta = np.array([(s.east_shift, s.north_shift) for s in locations])
+    roughness: dict[str, list[float]] = {
+        "distance": [],
+        "plateau": [],
+        "taper": [],
+        "plateau_condition": [],
+        "taper_condition": [],
+        "capped": [],
+    }
+    for angle in np.radians([0.0, 45.0, 90.0, 135.0]):
+        # Profiles at 3 km depth through the network
+        offsets = np.arange(-30 * KM, 30 * KM + step, step)
+        line = np.stack([np.cos(angle) * offsets, np.sin(angle) * offsets], axis=1)
+        horizontal = np.linalg.norm(line[:, np.newaxis] - sta[np.newaxis], axis=2)
+        distances = np.hypot(horizontal, 3 * KM)
+
+        roughness["distance"].append(
+            weights_roughness(weights_gaussian(distances, taper, 4), step)
+        )
+        roughness["plateau"].append(
+            weights_roughness(
+                weights_gaussian_independent(distances, counts, taper, 4.0), step
+            )
+        )
+        roughness["taper"].append(
+            weights_roughness(
+                weights_gaussian_density(distances, counts, taper, 4), step
+            )
+        )
+        roughness["plateau_condition"].append(
+            weights_roughness(
+                weights_gaussian_independent(distances, counts_wide, taper, 3.0), step
+            )
+        )
+        roughness["taper_condition"].append(
+            weights_roughness(
+                weights_gaussian_density(distances, counts_wide, taper, 4), step
+            )
+        )
+        roughness["capped"].append(
+            weights_roughness(
+                weights_plateau_gaussian(distances, counts, 3.0, 8.0, taper_cap=1.0),
+                step,
+            )
+        )
+
+    reference = max(roughness["distance"])
+    assert max(roughness["plateau"]) <= 1.25 * reference
+    assert max(roughness["taper"]) <= 1.5 * reference
+    assert max(roughness["plateau_condition"]) <= 1.25 * reference
+    assert max(roughness["taper_condition"]) <= 1.5 * reference
+    assert max(roughness["capped"]) > 2.0 * reference
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "weights_model",
@@ -409,6 +574,13 @@ def clustered_stations() -> StationInventory:
         DistanceWeights(),
         DistanceWeights(distance_taper="nearest_neighbor"),
         DistanceWeights(distance_taper=5 * KM, waterlevel=0.1),
+        DensityPlateauWeights(),
+        DensityPlateauWeights(distance_taper="nearest_neighbor", waterlevel=0.1),
+        DensityTaperWeights(),
+        DensityTaperWeights(station_density=0.5, waterlevel=0.1),
+        DensityPlateauWeights(plateau_stations=3.0, density_radius="condition_number"),
+        DensityTaperWeights(density_radius="mean_interstation"),
+        DensityTaperWeights(density_radius=10 * KM),
         StationDensityWeights(),
         StationDensityWeights(waterlevel=0.1),
     ],
@@ -495,7 +667,12 @@ async def test_station_density_weights_subset(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "weights_model",
-    [DistanceWeights(), StationDensityWeights()],
+    [
+        DistanceWeights(),
+        StationDensityWeights(),
+        DensityPlateauWeights(),
+        DensityTaperWeights(),
+    ],
 )
 @pytest.mark.parametrize(
     "positions_km",
@@ -516,7 +693,12 @@ async def test_station_weights_single_site(weights_model, positions_km, octree: 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "weights_model",
-    [DistanceWeights(distance_taper="nearest_neighbor"), StationDensityWeights()],
+    [
+        DistanceWeights(distance_taper="nearest_neighbor"),
+        StationDensityWeights(),
+        DensityPlateauWeights(),
+        DensityTaperWeights(),
+    ],
 )
 async def test_station_weights_prepare_again_other_stations(
     weights_model, octree: Octree, clustered_stations: StationInventory
@@ -581,6 +763,9 @@ def test_station_weights_config():
     for model in (
         DistanceWeights(required_closest_stations=6),
         StationDensityWeights(plateau_stations=3.0, taper_cap=None),
+        DensityPlateauWeights(plateau_stations=5.0, distance_taper=8 * KM),
+        DensityTaperWeights(station_density=0.5, required_closest_stations=6),
+        DensityPlateauWeights(density_radius="condition_number"),
     ):
         config = {"station_weights": model.model_dump(mode="json")}
         assert Search.model_validate(config).station_weights == model

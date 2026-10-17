@@ -36,15 +36,23 @@ Each example searched with `MADTrigger`, `mad_factor` 10, and the defaults of ea
 | Campi Flegrei, 1 day, 18 stations | `DistanceWeights` | 731 | 521 | 0.285 s | 45 / 45 | 242 m |
 | | `StationDensityWeights` | 753 | 512 | 0.281 s | 45 / 45 | 247 m |
 | | `DistanceWeights`, `"nearest_neighbor"` | 750 | 523 | 0.284 s | 45 / 45 | 240 m |
+| | `DensityTaperWeights` | 727 | 523 | 0.293 s | 45 / 45 | 244 m |
+| | `DensityPlateauWeights` | 708 | 514 | 0.288 s | 45 / 45 | 238 m |
 | Campi Flegrei, 10 days, 19 stations | `DistanceWeights` | 6382 | 3760 | 0.278 s | 209 / 211 | 277 m |
 | | `StationDensityWeights` | 6320 | 3711 | 0.279 s | 209 / 211 | 263 m |
 | | `DistanceWeights`, `"nearest_neighbor"` | 6623 | 3772 | 0.279 s | 209 / 211 | 288 m |
+| | `DensityTaperWeights` | 6329 | 3754 | 0.281 s | 209 / 211 | 280 m |
+| | `DensityPlateauWeights` | 6021 | 3697 | 0.287 s | 209 / 211 | 273 m |
 | Mount Spurr, 3 days, 10 local and 10 regional stations | `DistanceWeights` | 1756 | 1048 | 0.346 s | 228 / 234 | 419 m |
 | | `StationDensityWeights` | 1774 | 1051 | 0.348 s | 228 / 234 | 440 m |
 | | `DistanceWeights`, `"nearest_neighbor"` | 2214 | 1074 | 0.320 s | 230 / 234 | 360 m |
+| | `DensityTaperWeights` | 1770 | 1051 | 0.346 s | 228 / 234 | 390 m |
+| | `DensityPlateauWeights` | 1656 | 1030 | 0.357 s | 227 / 234 | 449 m |
 | Norcia, 3 days, 49 stations with a cluster of 12 | `DistanceWeights` | 3734 | 3603 | 0.309 s | 1013 / 1071 | 644 m |
 | | `StationDensityWeights` | 4036 | 3817 | 0.312 s | 1024 / 1071 | 646 m |
 | | `DistanceWeights`, `"nearest_neighbor"` | 3971 | 3746 | 0.313 s | 1020 / 1071 | 651 m |
+| | `DensityTaperWeights` | 3841 | 3673 | 0.311 s | 1018 / 1071 | 645 m |
+| | `DensityPlateauWeights` | 3726 | 3609 | 0.309 s | 1016 / 1071 | 654 m |
 
 The residual RMS grows with the number of picks, and the catalogs list only the larger events with locations of their own. At Norcia, the INGV catalog lists routine locations, 4 km deeper than the relocations of the sequence (Chiaraluce et al., 2017). Neither measures how consistently the detections are located.
 
@@ -57,8 +65,12 @@ HypoDD relocates the detections of the `DistanceWeights` search with catalog and
 | `DistanceWeights` | 53.6 ms | 168 ms | 42.6 ms | 153 ms |
 | `StationDensityWeights` | 57.6 ms | 187 ms | 41.5 ms | 151 ms |
 | `DistanceWeights`, `"nearest_neighbor"` | 54.0 ms | 173 ms | 41.3 ms | 152 ms |
+| `DensityTaperWeights` | 53.9 ms | 169 ms | 42.2 ms | 152 ms |
+| `DensityPlateauWeights` | 56.4 ms | 188 ms | 42.8 ms | 154 ms |
 | `StationDensityWeights`, `taper_stations` 8, `taper_cap` 1.0 | 56.7 ms | 194 ms | 42.7 ms | 167 ms |
 | `null`, all stations the same weight | 56.9 ms | 190 ms | | |
+
+The rows of `DensityTaperWeights` and `DensityPlateauWeights` come from evaluations with 340 and 339 detections on Campi Flegrei and 3598 and 3555 at Norcia, in which `DistanceWeights` reach 168 ms and 153 ms (90th percentile). `DensityPlateauWeights` with 2 and 3 independent stations on the plateau reach 185 ms and 182 ms on Campi Flegrei.
 
 On Campi Flegrei, `DistanceWeights` with 6 and 8 stations of full weight reach 174 ms and 183 ms (90th percentile), with 2 and 3 stations 175 ms and 172 ms, with a taper of 6 km and 16 km instead of the 11 km of `"mean_interstation"` 188 ms and 177 ms. The evaluation favors the search that HypoDD relocated: relocated from `DistanceWeights` with 8 stations of full weight instead, `DistanceWeights` with 4, 6 and 8 stations reach 178 ms, 181 ms and 171 ms, and all other station weights stay above them.
 

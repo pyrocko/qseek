@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 COLOCATED_DISTANCE = 50.0
 # Rows of the interstation distances calculated at once
 INTERSTATION_BLOCK = 256
+# Options of the station density kernel radius, see density_kernel_radius
+type DensityRadius = Literal[
+    "nearest_neighbor", "mean_interstation", "condition_number"
+]
 # Taper width of DistanceWeights in units of the nearest neighbor distance; the
 # description of DistanceWeights.distance_taper repeats the value
 NEAREST_NEIGHBOR_TAPER = 6.0
@@ -160,7 +164,70 @@ def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
     return density + 1.0
 
 
-def independent_station_counts(distances: np.ndarray) -> np.ndarray:
+def condition_number_radius(distances: np.ndarray) -> float:
+    """Kernel radius of the station density after Ruan et al. (2019).
+
+    The weights `1 / sum_j K(d_ij)` of a Gaussian kernel `K` (including the station
+    itself) are all equal for a very narrow and a very wide kernel; their ratio of
+    largest to smallest weight peaks in between. The radius is the widest of a scan
+    where the ratio is still a third of its peak.
+
+    Args:
+        distances: Array of shape (n_stations, n_stations) with interstation
+            distances in meters, NaN on the diagonal.
+
+    Returns:
+        Standard deviation of the kernel in meters, NaN with less than two sites.
+    """
+    pairs = distances[np.isfinite(distances) & (distances > COLOCATED_DISTANCE)]
+    if pairs.size == 0:
+        return float("nan")
+    radii = np.geomspace(pairs.min() / 10, pairs.max() * 10, 200)
+    squared = np.nan_to_num(distances.astype(np.float64), nan=0.0) ** 2
+    ratios = np.empty(radii.size)
+    for idx, radius in enumerate(radii):
+        weights = 1.0 / np.exp(-squared / (2 * radius**2)).sum(axis=1)
+        ratios[idx] = weights.max() / weights.min()
+    peak = int(np.argmax(ratios))
+    target = max(ratios[peak] / 3.0, 1.0)
+    wide = peak + int(np.flatnonzero(ratios[peak:] >= target)[-1])
+    return float(radii[wide])
+
+
+def density_kernel_radius(
+    distances: np.ndarray,
+    radius: float | DensityRadius,
+) -> float:
+    """Resolve the radius of the station density kernel.
+
+    Args:
+        distances: Array of shape (n_stations, n_stations) with interstation
+            distances in meters, NaN on the diagonal.
+        radius: Standard deviation of the kernel in meters, `"nearest_neighbor"`
+            for the median distance between neighboring sites,
+            `"mean_interstation"` for the mean interstation distance divided by
+            √2 (the kernel `exp(-d²/c²)` of NonLinLoc with `c` the mean
+            interstation distance) or `"condition_number"` for
+            `condition_number_radius`.
+
+    Returns:
+        Standard deviation of the kernel in meters, NaN with less than two sites.
+    """
+    if radius == "nearest_neighbor":
+        return nearest_neighbor_distance(distances)
+    if radius == "mean_interstation":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            return float(np.nanmean(distances)) / np.sqrt(2.0)
+    if radius == "condition_number":
+        return condition_number_radius(distances)
+    return float(radius)
+
+
+def independent_station_counts(
+    distances: np.ndarray,
+    radius: float | DensityRadius = "nearest_neighbor",
+) -> np.ndarray:
     """Calculate how many independent stations each station counts as.
 
     The count is `1 - (k - k_min) / k_max` with the station density `k` and its
@@ -175,11 +242,16 @@ def independent_station_counts(distances: np.ndarray) -> np.ndarray:
     Args:
         distances: Array of shape (n_stations, n_stations) with interstation
             distances in meters, NaN on the diagonal.
+        radius: Radius of the density kernel, see `density_kernel_radius`.
 
     Returns:
         Array of shape (n_stations,) with values between 0 and 1.
     """
-    density = station_density(distances)
+    kernel_radius = density_kernel_radius(distances, radius)
+    if not np.isfinite(kernel_radius):
+        # Fewer than two sites: station_density counts no neighbors
+        kernel_radius = 0.0
+    density = station_density(distances, kernel_radius)
     counts = 1.0 - (density - density.min()) / density.max()
     return counts / colocated_sensors(distances)
 
@@ -214,6 +286,65 @@ def independent_stations_distances(
         idx[cumulative[:, -1] < n] = distances.shape[1] - 1
         result.append(sorted_distances[rows, idx, np.newaxis])
     return result
+
+
+def weights_gaussian_independent(
+    distances: np.ndarray,
+    counts: np.ndarray,
+    distance_taper: float,
+    plateau_stations: float = 4.0,
+) -> np.ndarray:
+    """Gaussian distance weights with a plateau of the closest independent stations.
+
+    The closest stations get full weight until they add up to `plateau_stations`
+    independent stations; beyond, the same Gaussian taper decays for all nodes.
+
+    Args:
+        distances: Array of shape (n_nodes, n_stations) with node-station distances
+            in meters.
+        counts: Array of shape (n_stations,) with the independent station count of
+            each station.
+        distance_taper: Full width at half maximum of the Gaussian taper in meters.
+        plateau_stations: Independent stations of the plateau.
+
+    Returns:
+        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
+    """
+    (plateau,) = independent_stations_distances(distances, counts, (plateau_stations,))
+    # Full width at half maximum (FWHM) to standard deviation: FWHM = 2.355 sigma
+    weights = np.exp(
+        -((distances - plateau) ** 2) / (2 * (distance_taper / 2.355) ** 2)
+    )
+    weights[distances <= plateau] = 1.0
+    return weights
+
+
+def weights_gaussian_density(
+    distances: np.ndarray,
+    factors: np.ndarray,
+    distance_taper: float,
+    required_stations: int = 4,
+) -> np.ndarray:
+    """Gaussian distance weights that approach a station factor in the taper.
+
+    The weight is `g * (f + (1 - f) * g)` with the Gaussian distance weight `g` and
+    the station factor `f`: 1 on the plateau of the closest stations, `g * f` far
+    away. The weights are continuous where `g` is.
+
+    Args:
+        distances: Array of shape (n_nodes, n_stations) with node-station distances
+            in meters.
+        factors: Array of shape (n_stations,) with the factor of each station
+            between 0 and 1, e.g. the independent station count.
+        distance_taper: Full width at half maximum of the Gaussian taper in meters.
+        required_stations: Number of closest stations with full weight.
+
+    Returns:
+        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
+    """
+    weights = weights_gaussian(distances, distance_taper, required_stations)
+    factors = factors.astype(weights.dtype)[np.newaxis, :]
+    return weights * (factors + (1.0 - factors) * weights)
 
 
 def weights_plateau_gaussian(
@@ -355,7 +486,11 @@ class StationWeights(Model):
             return self._interstation_distances
         return self._interstation_distances[np.ix_(station_indices, station_indices)]
 
-    def get_station_counts(self, station_indices: np.ndarray) -> np.ndarray:
+    def get_station_counts(
+        self,
+        station_indices: np.ndarray,
+        radius: float | DensityRadius = "nearest_neighbor",
+    ) -> np.ndarray:
         """Get the independent station counts of a set of stations.
 
         The counts depend on the available stations, they are cached for each set
@@ -363,6 +498,7 @@ class StationWeights(Model):
 
         Args:
             station_indices: Indices of the available stations.
+            radius: Radius of the density kernel, see `density_kernel_radius`.
 
         Returns:
             Array of shape (n_stations,) with values between 0 and 1.
@@ -370,9 +506,45 @@ class StationWeights(Model):
         key = station_indices.tobytes()
         if key not in self._station_counts:
             self._station_counts[key] = independent_station_counts(
-                self.get_interstation_distances(station_indices)
+                self.get_interstation_distances(station_indices), radius
             )
         return self._station_counts[key]
+
+    def resolve_distance_taper(
+        self,
+        distance_taper: float | Literal["mean_interstation", "nearest_neighbor"],
+        stations: StationInventory,
+    ) -> float:
+        """Resolve the width of a Gaussian distance taper for the stations.
+
+        Args:
+            distance_taper: Full width at half maximum in meters,
+                `"mean_interstation"` for twice the mean interstation distance or
+                `"nearest_neighbor"` for `NEAREST_NEIGHBOR_TAPER` times the median
+                distance between neighboring sites.
+            stations: Stations of the search.
+
+        Returns:
+            Full width at half maximum in meters, infinite with fewer than two
+                station sites.
+        """
+        if distance_taper == "mean_interstation":
+            taper = (
+                2 * stations.mean_interstation_distance()
+                if stations.n_stations > 1
+                else np.inf
+            )
+        elif distance_taper == "nearest_neighbor":
+            all_stations = np.arange(len(self._stations))
+            taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(
+                self.get_interstation_distances(all_stations)
+            )
+        else:
+            taper = float(distance_taper)
+        if not np.isfinite(taper) or taper <= 0.0:
+            # Fewer than two sites: all stations get full weight
+            taper = np.inf
+        return taper
 
     def calculate_weights(
         self,
@@ -524,22 +696,9 @@ class DistanceWeights(StationWeights):
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
         super().prepare(stations, octree)
-        if self.distance_taper == "mean_interstation":
-            self._distance_taper = (
-                2 * stations.mean_interstation_distance()
-                if stations.n_stations > 1
-                else np.inf
-            )
-        elif self.distance_taper == "nearest_neighbor":
-            all_stations = np.arange(len(self._stations))
-            self._distance_taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(
-                self.get_interstation_distances(all_stations)
-            )
-        else:
-            self._distance_taper = float(self.distance_taper)
-        if not np.isfinite(self._distance_taper) or self._distance_taper <= 0.0:
-            # Fewer than two sites: all stations get full weight
-            self._distance_taper = np.inf
+        self._distance_taper = self.resolve_distance_taper(
+            self.distance_taper, stations
+        )
         logger.info(
             "distance weights use %d closest stations and a taper of %g m",
             self.required_closest_stations,
@@ -553,6 +712,172 @@ class DistanceWeights(StationWeights):
     ) -> np.ndarray:
         return weights_gaussian(
             distances,
+            distance_taper=self._distance_taper,
+            required_stations=self.required_closest_stations,
+        )
+
+
+class DensityPlateauWeights(StationWeights):
+    """The closest independent stations get full weight, then a Gaussian taper.
+
+    The plateau of full weight extends until the closest stations add up to
+    `plateau_stations` independent stations: in a dense cluster more stations get
+    full weight than in a sparse network. The taper is the one of `DistanceWeights`,
+    with an absolute width, the same for all nodes.
+    """
+
+    weights: Literal["DensityPlateauWeights"] = "DensityPlateauWeights"
+
+    distance_taper: PositiveFloat | Literal["mean_interstation", "nearest_neighbor"] = (
+        Field(
+            default="mean_interstation",
+            description=(
+                "Full width at half maximum of the Gaussian taper in meters."
+                ' `"mean_interstation"` uses twice the mean interstation distance of'
+                ' the network, `"nearest_neighbor"` 6 times the median distance'
+                " between neighboring station sites."
+            ),
+        )
+    )
+    plateau_stations: PositiveFloat = Field(
+        default=4.0,
+        description="Number of independent stations of a node that get full weight."
+        " The closest stations get full weight until they add up to this number of"
+        " independent stations. An isolated station counts as one independent"
+        " station, a station in a dense cluster as a fraction of one, co-located"
+        " sensors as one together. At least the closest `plateau_stations` stations"
+        " get full weight.",
+    )
+    density_radius: PositiveFloat | DensityRadius = Field(
+        default="nearest_neighbor",
+        description="Radius of the Gaussian kernel that counts the neighboring"
+        " stations of each station: its standard deviation in meters,"
+        ' `"nearest_neighbor"` for the median distance between neighboring sites,'
+        ' `"mean_interstation"` for the mean interstation distance divided by'
+        " √2, the default of NonLinLoc,"
+        ' or `"condition_number"` for the widest radius at which the ratio of the'
+        " largest to the smallest station weight is a third of its peak"
+        " (Ruan et al., 2019).",
+    )
+
+    _distance_taper: float = PrivateAttr()
+
+    def prepare(self, stations: StationInventory, octree: Octree) -> None:
+        super().prepare(stations, octree)
+        self._distance_taper = self.resolve_distance_taper(
+            self.distance_taper, stations
+        )
+        counts = self.get_station_counts(
+            np.arange(len(self._stations)), self.density_radius
+        )
+        logger.info(
+            "the %d stations count as %.1f independent stations (density kernel"
+            " %g m); %g independent"
+            " stations get full weight, then a taper of %g m",
+            counts.size,
+            counts.sum(),
+            density_kernel_radius(
+                self.get_interstation_distances(np.arange(len(self._stations))),
+                self.density_radius,
+            ),
+            self.plateau_stations,
+            self._distance_taper,
+        )
+
+    def calculate_weights(
+        self,
+        distances: np.ndarray,
+        station_indices: np.ndarray,
+    ) -> np.ndarray:
+        return weights_gaussian_independent(
+            distances,
+            self.get_station_counts(station_indices, self.density_radius),
+            distance_taper=self._distance_taper,
+            plateau_stations=self.plateau_stations,
+        )
+
+
+class DensityTaperWeights(StationWeights):
+    """Distance weights that count distant clusters of stations as fewer stations.
+
+    The closest stations get full weight and more distant stations the Gaussian
+    taper of `DistanceWeights`. Seen from a distance, the stations of a dense
+    cluster record the event in nearly the same direction: in the taper, each
+    station's weight approaches its independent station count. The closest
+    stations keep their full weight, also within a cluster.
+    """
+
+    weights: Literal["DensityTaperWeights"] = "DensityTaperWeights"
+
+    distance_taper: PositiveFloat | Literal["mean_interstation", "nearest_neighbor"] = (
+        Field(
+            default="mean_interstation",
+            description=(
+                "Full width at half maximum of the Gaussian taper in meters."
+                ' `"mean_interstation"` uses twice the mean interstation distance of'
+                ' the network, `"nearest_neighbor"` 6 times the median distance'
+                " between neighboring station sites."
+            ),
+        )
+    )
+    required_closest_stations: PositiveInt = Field(
+        default=4,
+        description="Number of closest stations of a node that get full weight.",
+    )
+    station_density: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Exponent of the independent station count in the taper. A"
+        " station in a dense cluster counts as a fraction of an independent"
+        " station; with `1.0` a distant cluster weighs as much as its independent"
+        " stations, with `0.0` these are the `DistanceWeights`.",
+    )
+    density_radius: PositiveFloat | DensityRadius = Field(
+        default="nearest_neighbor",
+        description="Radius of the Gaussian kernel that counts the neighboring"
+        " stations of each station: its standard deviation in meters,"
+        ' `"nearest_neighbor"` for the median distance between neighboring sites,'
+        ' `"mean_interstation"` for the mean interstation distance divided by'
+        " √2, the default of NonLinLoc,"
+        ' or `"condition_number"` for the widest radius at which the ratio of the'
+        " largest to the smallest station weight is a third of its peak"
+        " (Ruan et al., 2019).",
+    )
+
+    _distance_taper: float = PrivateAttr()
+
+    def prepare(self, stations: StationInventory, octree: Octree) -> None:
+        super().prepare(stations, octree)
+        self._distance_taper = self.resolve_distance_taper(
+            self.distance_taper, stations
+        )
+        counts = self.get_station_counts(
+            np.arange(len(self._stations)), self.density_radius
+        )
+        logger.info(
+            "the %d stations count as %.1f independent stations (density kernel"
+            " %g m); %d closest stations"
+            " get full weight, then a taper of %g m",
+            counts.size,
+            counts.sum(),
+            density_kernel_radius(
+                self.get_interstation_distances(np.arange(len(self._stations))),
+                self.density_radius,
+            ),
+            self.required_closest_stations,
+            self._distance_taper,
+        )
+
+    def calculate_weights(
+        self,
+        distances: np.ndarray,
+        station_indices: np.ndarray,
+    ) -> np.ndarray:
+        return weights_gaussian_density(
+            distances,
+            self.get_station_counts(station_indices, self.density_radius)
+            ** self.station_density,
             distance_taper=self._distance_taper,
             required_stations=self.required_closest_stations,
         )
