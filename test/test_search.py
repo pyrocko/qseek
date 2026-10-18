@@ -12,10 +12,7 @@ from qseek.models.location import Location
 from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.search import OctreeSearch
-from qseek.station_weights import (
-    DensityTaperWeights,
-    DistanceWeights,
-)
+from qseek.station_weights import StationWeights
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.tracers.tracers import RayTracers
 from qseek.triggers import ThresholdTrigger
@@ -166,15 +163,10 @@ async def test_search_no_event(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "station_weights",
-    [
-        DistanceWeights(),
-        DensityTaperWeights(),
-    ],
-)
 async def test_search_station_weights(
-    station_weights, small_octree: Octree, surface_stations: StationInventory
+    weights_class: type[StationWeights],
+    small_octree: Octree,
+    surface_stations: StationInventory,
 ) -> None:
     # A dense cluster of stations next to the sparse network
     rng = np.random.default_rng(7)
@@ -195,7 +187,7 @@ async def test_search_station_weights(
         ]
     )
     stations.prepare(small_octree.location)
-    station_weights = station_weights.model_copy(deep=True)
+    station_weights = weights_class()
     station_weights.prepare(stations, small_octree)
 
     source = Location(

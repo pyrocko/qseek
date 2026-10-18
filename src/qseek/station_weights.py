@@ -7,18 +7,16 @@ import warnings
 from typing import TYPE_CHECKING, Annotated, Literal, Sequence, Union
 
 import numpy as np
-import pyrocko.orthodrome as od
 from pydantic import Field, PositiveFloat, PositiveInt, PrivateAttr
 
 from qseek.base import Model
 from qseek.cache_lru import ArrayLRUCache
-from qseek.models.location import get_coordinates
+from qseek.models.location import INTERSTATION_BLOCK, interstation_distances
 from qseek.models.station import StationList
-from qseek.octree import get_node_coordinates
+from qseek.octree import distances_stations
 from qseek.utils import alog_call
 
 if TYPE_CHECKING:
-    from qseek.models.location import Location
     from qseek.models.station import Station, StationInventory
     from qseek.octree import Node, Octree
 
@@ -27,10 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Sensors closer than this share a site, e.g. a broadband and a strong-motion sensor
 COLOCATED_DISTANCE = 50.0
-# Rows of the interstation distances calculated at once
-INTERSTATION_BLOCK = 256
-# Taper width of DistanceWeights in units of the nearest neighbor distance; the
-# description of DistanceWeights.distance_taper repeats the value
+# Taper width of DistanceWeights in units of the median nearest neighbor distance
 NEAREST_NEIGHBOR_TAPER = 6.0
 
 
@@ -64,30 +59,6 @@ def weights_gaussian(
     )
     weights[distances <= threshold_distance] = 1.0
     return weights
-
-
-def interstation_distances(locations: Sequence[Location]) -> np.ndarray:
-    """Calculate the distances between stations.
-
-    Args:
-        locations: Station locations.
-
-    Returns:
-        Array of shape (n_stations, n_stations) with the interstation distances in
-            meters, float32. The diagonal is NaN.
-    """
-    coords = get_coordinates(locations, system="geographic")
-    coords_ecef = np.array(od.geodetic_to_ecef(*coords.T)).T
-    n_stations = coords_ecef.shape[0]
-    distances = np.empty((n_stations, n_stations), dtype=np.float32)
-    # Row blocks keep the temporary differences small for large networks
-    for start in range(0, n_stations, INTERSTATION_BLOCK):
-        block = coords_ecef[start : start + INTERSTATION_BLOCK]
-        distances[start : start + block.shape[0]] = np.linalg.norm(
-            block[:, np.newaxis] - coords_ecef[np.newaxis], axis=2
-        )
-    np.fill_diagonal(distances, np.nan)
-    return distances
 
 
 def colocated_sensors(distances: np.ndarray) -> np.ndarray:
@@ -126,24 +97,21 @@ def nearest_neighbor_distance(distances: np.ndarray) -> float:
         return float(np.nanmedian(nearest))
 
 
-def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
+def site_density(distances: np.ndarray) -> np.ndarray:
     """Calculate the density of station sites around each station.
 
-    A Gaussian kernel sums the neighboring sites; co-located sensors count as one
-    site.
+    A Gaussian kernel, as wide as the median distance between neighboring sites,
+    sums the neighboring sites; co-located sensors count as one site.
 
     Args:
         distances: Array of shape (n_stations, n_stations) with interstation
             distances in meters, NaN on the diagonal.
-        radius: Standard deviation of the kernel in meters. If 0.0, the median
-            nearest neighbor distance between sites.
 
     Returns:
         Array of shape (n_stations,) with the density at each station: 1.0 for a
             station without neighboring sites.
     """
-    if radius <= 0.0:
-        radius = nearest_neighbor_distance(distances)
+    radius = nearest_neighbor_distance(distances)
     if not np.isfinite(radius):
         return np.ones(distances.shape[0])
     n_sensors = colocated_sensors(distances).astype(distances.dtype)
@@ -163,7 +131,7 @@ def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
 def independent_station_counts(distances: np.ndarray) -> np.ndarray:
     """Calculate how many independent stations each station counts as.
 
-    The count is `1 - (k - k_min) / k_max` with the station density `k` and its
+    The count is `1 - (k - k_min) / k_max` with the site density `k` and its
     lowest and highest value in the network, `k_min` and `k_max`. The station with
     the lowest density counts as one independent station, an isolated station
     (`k = 1`) as well. Dividing by `k_max` instead of `k_max - k_min` keeps the
@@ -179,7 +147,7 @@ def independent_station_counts(distances: np.ndarray) -> np.ndarray:
     Returns:
         Array of shape (n_stations,) with values between 0 and 1.
     """
-    density = station_density(distances)
+    density = site_density(distances)
     counts = 1.0 - (density - density.min()) / density.max()
     return counts / colocated_sensors(distances)
 
@@ -232,18 +200,20 @@ class StationWeights(Model):
 
     _node_lut: ArrayLRUCache[bytes] = PrivateAttr()
     _stations: StationList = PrivateAttr()
-    _station_coords_ecef: np.ndarray = PrivateAttr()
     _interstation_distances: np.ndarray | None = PrivateAttr(None)
     _station_counts: dict[bytes, np.ndarray] = PrivateAttr(default_factory=dict)
 
     @classmethod
     def get_subclasses(cls) -> tuple[type[StationWeights], ...]:
-        """Get the subclasses of this class.
+        """Get the subclasses of this class, also of its subclasses.
 
         Returns:
             tuple[type[StationWeights], ...]: The subclasses of this class.
         """
-        return tuple(cls.__subclasses__())
+        subclasses = []
+        for subclass in cls.__subclasses__():
+            subclasses += [subclass, *subclass.get_subclasses()]
+        return tuple(subclasses)
 
     def get_distances(self, nodes: Sequence[Node]) -> np.ndarray:
         """Get the distances between nodes and all stations.
@@ -252,15 +222,9 @@ class StationWeights(Model):
             nodes: Nodes of the octree.
 
         Returns:
-            Array of shape (n_nodes, n_stations) with distances in meters.
+            Array of shape (n_nodes, n_stations) with distances in meters, float32.
         """
-        node_coords = get_node_coordinates(nodes, system="geographic")
-        node_coords = np.array(od.geodetic_to_ecef(*node_coords.T), dtype=np.float32).T
-
-        return np.linalg.norm(
-            self._station_coords_ecef - node_coords[:, np.newaxis],
-            axis=2,
-        )
+        return distances_stations(nodes, self._stations).astype(np.float32)
 
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
         """Prepare the station weights for the stations and the octree.
@@ -273,12 +237,6 @@ class StationWeights(Model):
         self._node_lut = ArrayLRUCache(name="station_weights", short_name="SW")
         self._interstation_distances = None
         self._station_counts = {}
-
-        sta_coords = get_coordinates(self._stations)
-        self._station_coords_ecef = np.array(
-            od.geodetic_to_ecef(*sta_coords.T), dtype=np.float32
-        ).T
-
         self.fill_lut(nodes=octree.nodes)
 
     def fill_lut(self, nodes: Sequence[Node]) -> None:
@@ -329,6 +287,11 @@ class StationWeights(Model):
             self._station_counts[key] = independent_station_counts(
                 self.get_interstation_distances(station_indices)
             )
+            logger.debug(
+                "independent station counts of %d stations, %d station sets cached",
+                station_indices.size,
+                len(self._station_counts),
+            )
         return self._station_counts[key]
 
     def resolve_distance_taper(
@@ -350,11 +313,7 @@ class StationWeights(Model):
                 station sites.
         """
         if distance_taper == "mean_interstation":
-            taper = (
-                2 * stations.mean_interstation_distance()
-                if stations.n_stations > 1
-                else np.inf
-            )
+            taper = 2 * stations.mean_interstation_distance()
         elif distance_taper == "nearest_neighbor":
             all_stations = np.arange(len(self._stations))
             taper = NEAREST_NEIGHBOR_TAPER * nearest_neighbor_distance(
@@ -438,8 +397,8 @@ class DistanceWeights(StationWeights):
             description=(
                 "Full width at half maximum of the Gaussian taper in meters."
                 ' `"mean_interstation"` uses twice the mean interstation distance of'
-                ' the network, `"nearest_neighbor"` 6 times the median distance'
-                " between neighboring station sites. Do not use"
+                f' the network, `"nearest_neighbor"` {NEAREST_NEIGHBOR_TAPER:g} times'
+                " the median distance between neighboring station sites. Do not use"
                 ' `"nearest_neighbor"` for networks with a dense array: its station'
                 " spacing sets the median."
             ),
@@ -479,7 +438,7 @@ class DistanceWeights(StationWeights):
         )
 
 
-class DensityTaperWeights(StationWeights):
+class DensityTaperWeights(DistanceWeights):
     """Distance weights that count distant clusters of stations as fewer stations.
 
     The closest stations get full weight and more distant stations the Gaussian
@@ -491,21 +450,6 @@ class DensityTaperWeights(StationWeights):
 
     weights: Literal["DensityTaperWeights"] = "DensityTaperWeights"
 
-    distance_taper: PositiveFloat | Literal["mean_interstation", "nearest_neighbor"] = (
-        Field(
-            default="mean_interstation",
-            description=(
-                "Full width at half maximum of the Gaussian taper in meters."
-                ' `"mean_interstation"` uses twice the mean interstation distance of'
-                ' the network, `"nearest_neighbor"` 6 times the median distance'
-                " between neighboring station sites."
-            ),
-        )
-    )
-    required_closest_stations: PositiveInt = Field(
-        default=4,
-        description="Number of closest stations of a node that get full weight.",
-    )
     station_density: float = Field(
         default=1.0,
         ge=0.0,
@@ -516,21 +460,13 @@ class DensityTaperWeights(StationWeights):
         " stations, with `0.0` these are the `DistanceWeights`.",
     )
 
-    _distance_taper: float = PrivateAttr()
-
     def prepare(self, stations: StationInventory, octree: Octree) -> None:
         super().prepare(stations, octree)
-        self._distance_taper = self.resolve_distance_taper(
-            self.distance_taper, stations
-        )
         counts = self.get_station_counts(np.arange(len(self._stations)))
         logger.info(
-            "the %d stations count as %.1f independent stations; %d closest stations"
-            " get full weight, then a taper of %g m",
+            "the %d stations count as %.1f independent stations",
             counts.size,
             counts.sum(),
-            self.required_closest_stations,
-            self._distance_taper,
         )
 
     def calculate_weights(

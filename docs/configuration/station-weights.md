@@ -22,8 +22,8 @@ Station weights of a node, with the defaults, for two examples of the [playgroun
 
 ## Choose the station weights
 
-- **`DistanceWeights`**, the default, give the 4 closest stations full weight and taper over twice the mean interstation distance. They locate best on the examples of the playground and suit most local and regional networks.
-- **`DensityTaperWeights`** keep the weights of `DistanceWeights` for the closest stations and count a distant cluster of stations as its independent stations. Try them for a network with a dense cluster next to sparse stations. On Campi Flegrei, where the cluster lies above the seismicity, they locate as consistently as `DistanceWeights`. At Norcia, 49 stations with a cluster of 12 at about 28 km from the seismicity, they find 70 more well-constrained detections at the same location consistency.
+- **`DistanceWeights`**, the default, locate best on the examples of the playground and suit most local and regional networks.
+- **`DensityTaperWeights`** keep the full weight of the closest stations and count a distant cluster of stations as its independent stations. Try them for a network with a dense cluster next to sparse stations. On the playground they locate as consistently as `DistanceWeights` and find slightly more well-constrained detections where a cluster lies away from the seismicity.
 
 The weights change from node to node, and they are normalized per node. A taper that falls off steeply between neighboring nodes therefore moves the locations as well: the stack prefers the nodes where the stations that recorded the event carry most of the weight. Keep the taper smooth. Over the distances where stations still record the events, the weights should decay as the phase confidence decays with distance. On the playground, a narrower taper and more or fewer stations with full weight both locate the detections less consistently than the defaults of `DistanceWeights`. The [benchmark](../about/benchmark.md#station-weights) has the results.
 
@@ -31,7 +31,7 @@ The weights change from node to node, and they are normalized per node. A taper 
 
 The `required_closest_stations` closest stations of a node get full weight, 4 by default. More distant stations are tapered with a Gaussian function; `distance_taper` is its full width at half maximum, twice the mean interstation distance by default, `"mean_interstation"`.
 
-`"nearest_neighbor"` sets the taper to 6 times the median distance between neighboring station sites. On networks of similar station spacing it adapts the taper to the spacing: at Mount Spurr, its 74 km taper moves the epicenters 59 m closer to the catalog than the 166 km of `"mean_interstation"`. Do not use it for networks with a dense array: the spacing of the array sets the median.
+`"nearest_neighbor"` sets the taper to 6 times the median distance between neighboring station sites. On networks of similar station spacing it adapts the taper to the spacing: at Mount Spurr, where the regional stations widen the mean interstation distance, it moves the epicenters closer to the catalog. Do not use it for networks with a dense array: the spacing of the array sets the median.
 
 ```python exec='on'
 from qseek.utils import json_example
@@ -70,7 +70,7 @@ $$
 
 The closest stations keep their full weight ($g = 1$), also within a cluster. Seen from a distance, the stations of a cluster record an event from nearly the same direction; with $g$ falling off, their weight approaches $g\, c^\beta$, so the cluster weighs as much as its independent stations. `station_density` is the exponent $\beta$, 1 by default; with 0 these are the `DistanceWeights`. The weights change between nodes about as smoothly as the `DistanceWeights`.
 
-On Campi Flegrei, the cluster of six stations lies above the seismicity and stays on the plateau for most detections: `DensityTaperWeights` locate as consistently as `DistanceWeights`. At Norcia, the cluster of 12 stations lies at about 28 km from the seismicity, beyond the plateau, where `DistanceWeights` still give it a weight of 0.86 (median); `DensityTaperWeights` find 70 more well-constrained detections. At Mount Spurr, they move the epicenters 29 m closer to the catalog.
+On Campi Flegrei, the cluster of six stations lies above the seismicity and stays on the plateau for most detections: `DensityTaperWeights` locate as consistently as `DistanceWeights`. At Norcia, the cluster of 12 stations lies at about 28 km from the seismicity, beyond the plateau, where `DistanceWeights` give it nearly full weight; `DensityTaperWeights` count it as its independent stations and find more well-constrained detections. The [benchmark](../about/benchmark.md#station-weights) has the numbers.
 
 ```python exec='on'
 from qseek.utils import json_example

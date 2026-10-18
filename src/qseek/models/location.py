@@ -319,3 +319,31 @@ def get_coordinates(
     return np.array(
         [(*sta.effective_lat_lon, sta.effective_elevation) for sta in locations]
     )
+
+
+# Rows of the interstation distances calculated at once
+INTERSTATION_BLOCK = 256
+
+
+def interstation_distances(locations: Sequence[Location]) -> np.ndarray:
+    """Calculate the 3D distances between locations.
+
+    Args:
+        locations: Locations, e.g. stations.
+
+    Returns:
+        Array of shape (n_locations, n_locations) with the distances in meters,
+            float32. The diagonal is NaN.
+    """
+    coords = get_coordinates(locations, system="geographic")
+    coords_ecef = np.array(od.geodetic_to_ecef(*coords.T)).T
+    n_locations = coords_ecef.shape[0]
+    distances = np.empty((n_locations, n_locations), dtype=np.float32)
+    # Row blocks keep the temporary differences small for large networks
+    for start in range(0, n_locations, INTERSTATION_BLOCK):
+        block = coords_ecef[start : start + INTERSTATION_BLOCK]
+        distances[start : start + block.shape[0]] = np.linalg.norm(
+            block[:, np.newaxis] - coords_ecef[np.newaxis], axis=2
+        )
+    np.fill_diagonal(distances, np.nan)
+    return distances
