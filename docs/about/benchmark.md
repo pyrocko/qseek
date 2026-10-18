@@ -22,3 +22,45 @@ Qseek is built for large-N data sets: many stations and long time spans. A 600 G
 - **Adaptive octree:** only the nodes around detected events are refined, see [octree refinement](../concepts/how-it-works.md#octree-refinement).
 
 The [performance guide](../guides/performance.md) shows which settings make your search faster.
+
+## Station weights
+
+The [station weights](../configuration/station-weights.md) decide which events the stack detects and where it locates them. Their defaults are chosen on the examples of the [playground](../getting-started/playground.md).
+
+### Playground
+
+Each example searched with `MADTrigger`, `mad_factor` 10, and the defaults of each station weights model. A detection is well constrained with at least 8 picks, at Norcia with at least 20:
+
+| Example | Station weights | Detections | Well constrained | Residual RMS, median | Catalog events matched | Epicenter offset, median |
+| --- | --- | --- | --- | --- | --- | --- |
+| Campi Flegrei, 1 day, 18 stations | `DistanceWeights` | 731 | 521 | 0.285 s | 45 / 45 | 242 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 750 | 523 | 0.284 s | 45 / 45 | 240 m |
+| | `DensityTaperWeights` | 727 | 523 | 0.293 s | 45 / 45 | 244 m |
+| Campi Flegrei, 10 days, 19 stations | `DistanceWeights` | 6382 | 3760 | 0.278 s | 209 / 211 | 277 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 6623 | 3772 | 0.279 s | 209 / 211 | 288 m |
+| | `DensityTaperWeights` | 6329 | 3754 | 0.281 s | 209 / 211 | 280 m |
+| Mount Spurr, 3 days, 10 local and 10 regional stations | `DistanceWeights` | 1756 | 1048 | 0.346 s | 228 / 234 | 419 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 2214 | 1074 | 0.320 s | 230 / 234 | 360 m |
+| | `DensityTaperWeights` | 1770 | 1051 | 0.346 s | 228 / 234 | 390 m |
+| Norcia, 3 days, 49 stations with a cluster of 12 | `DistanceWeights` | 3734 | 3603 | 0.309 s | 1013 / 1071 | 644 m |
+| | `DistanceWeights`, `"nearest_neighbor"` | 3971 | 3746 | 0.313 s | 1020 / 1071 | 651 m |
+| | `DensityTaperWeights` | 3841 | 3673 | 0.311 s | 1018 / 1071 | 645 m |
+
+The residual RMS grows with the number of picks, and the catalogs list only the larger events with locations of their own. At Norcia, the INGV catalog lists routine locations, 4 km deeper than the relocations of the sequence (Chiaraluce et al., 2017). Neither measures how consistently the detections are located.
+
+### Relative locations
+
+HypoDD relocates the detections of the `DistanceWeights` search with catalog and cross-correlation differential times. The double-difference residuals of the cross-correlation data, evaluated at the locations of each search, measure how consistently a search locates neighboring events, independent of its picks. Lower is better. Campi Flegrei, 1 day, 340 detections in all searches; Norcia, 3574 detections:
+
+| Station weights | Campi Flegrei, median | Campi Flegrei, 90th percentile | Norcia, median | Norcia, 90th percentile |
+| --- | --- | --- | --- | --- |
+| `DistanceWeights` | 53.6 ms | 168 ms | 42.6 ms | 153 ms |
+| `DistanceWeights`, `"nearest_neighbor"` | 54.0 ms | 173 ms | 41.3 ms | 152 ms |
+| `DensityTaperWeights` | 53.9 ms | 169 ms | 42.2 ms | 152 ms |
+| `null`, all stations the same weight | 56.9 ms | 190 ms | | |
+
+The row of `DensityTaperWeights` comes from an evaluation with 340 detections on Campi Flegrei and 3598 at Norcia, in which `DistanceWeights` reach 168 ms and 153 ms (90th percentile).
+
+On Campi Flegrei, `DistanceWeights` with 6 and 8 stations of full weight reach 174 ms and 183 ms (90th percentile), with 2 and 3 stations 175 ms and 172 ms, with a taper of 6 km and 16 km instead of the 11 km of `"mean_interstation"` 188 ms and 177 ms. The evaluation favors the search that HypoDD relocated: relocated from `DistanceWeights` with 8 stations of full weight instead, `DistanceWeights` with 4, 6 and 8 stations reach 178 ms, 181 ms and 171 ms, and all other station weights stay above them.
+
+A short taper locates the detections least consistently. A station density weighting whose taper ended at about twice the distance of the closest 3 independent stations reached 194 ms on Campi Flegrei and 167 ms at Norcia. It placed the detections of the 10-day search on Campi Flegrei on walls up to 3 km deep; at Norcia, 14% of the well-constrained detections lay above sea level, 4.5% with `DistanceWeights`. The weights are normalized per node, so a taper that changes steeply between neighboring nodes moves the maximum of the stack. Two other ways to count the station density located less consistently on Campi Flegrei, where the dense stations lie above the seismicity: scaling all weights by the independent station counts, which takes weight from the closest stations (209 ms), and extending the plateau of full weight to 2 to 4 independent stations (182 ms to 188 ms). Without any taper, the noise of distant stations degrades the locations as well.

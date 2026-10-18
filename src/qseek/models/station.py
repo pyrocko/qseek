@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from pyrocko.trace import Trace
 
 
-from qseek.models.location import CoordSystem, Location
+from qseek.models.location import CoordSystem, Location, interstation_distances
 
 logger = logging.getLogger(__name__)
 
@@ -275,15 +275,13 @@ class StationInventory(Model):
         """Calculate the mean interstation distance.
 
         Returns:
-            float: Mean interstation distance in meters.
+            float: Mean interstation distance in meters, NaN with fewer than two
+                stations.
         """
-        distances = [
-            sta_1.distance_to(sta_2)
-            for sta_1 in self
-            for sta_2 in self
-            if sta_1 is not sta_2
-        ]
-        return float(np.mean(distances))
+        if self.n_stations < 2:
+            return float("nan")
+        distances = interstation_distances(list(self))
+        return float(np.nanmean(distances, dtype=np.float64))
 
     @property
     def n_stations(self) -> int:
