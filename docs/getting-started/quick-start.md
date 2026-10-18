@@ -84,7 +84,7 @@ The model is in the [Pyrocko Cake](https://pyrocko.org/docs/current/apps/cake/ma
 
 ## Configure the search
 
-Write the search configuration:
+Write the search configuration. To start from the defaults instead, print them with `qseek config > my-search.json` (add `--minimal` to leave out the optional modules, such as magnitudes); see the [command line reference](../reference/cli.md#qseek-config).
 
 ```json title="campi-flegrei.json"
 {

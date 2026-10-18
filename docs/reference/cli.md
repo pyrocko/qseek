@@ -12,7 +12,7 @@ qseek --help
 
 ## `qseek config`
 
-Print a configuration with all defaults.
+Print a configuration with all defaults. With `--minimal`, the optional modules (station corrections, magnitudes, features, web server, callbacks) are left out.
 
 ```bash exec='on' result='ansi'
 qseek config --help
