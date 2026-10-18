@@ -29,10 +29,6 @@ logger = logging.getLogger(__name__)
 COLOCATED_DISTANCE = 50.0
 # Rows of the interstation distances calculated at once
 INTERSTATION_BLOCK = 256
-# Options of the station density kernel radius, see density_kernel_radius
-type DensityRadius = Literal[
-    "nearest_neighbor", "mean_interstation", "condition_number"
-]
 # Taper width of DistanceWeights in units of the nearest neighbor distance; the
 # description of DistanceWeights.distance_taper repeats the value
 NEAREST_NEIGHBOR_TAPER = 6.0
@@ -164,70 +160,7 @@ def station_density(distances: np.ndarray, radius: float = 0.0) -> np.ndarray:
     return density + 1.0
 
 
-def condition_number_radius(distances: np.ndarray) -> float:
-    """Kernel radius of the station density after Ruan et al. (2019).
-
-    The weights `1 / sum_j K(d_ij)` of a Gaussian kernel `K` (including the station
-    itself) are all equal for a very narrow and a very wide kernel; their ratio of
-    largest to smallest weight peaks in between. The radius is the widest of a scan
-    where the ratio is still a third of its peak.
-
-    Args:
-        distances: Array of shape (n_stations, n_stations) with interstation
-            distances in meters, NaN on the diagonal.
-
-    Returns:
-        Standard deviation of the kernel in meters, NaN with less than two sites.
-    """
-    pairs = distances[np.isfinite(distances) & (distances > COLOCATED_DISTANCE)]
-    if pairs.size == 0:
-        return float("nan")
-    radii = np.geomspace(pairs.min() / 10, pairs.max() * 10, 200)
-    squared = np.nan_to_num(distances.astype(np.float64), nan=0.0) ** 2
-    ratios = np.empty(radii.size)
-    for idx, radius in enumerate(radii):
-        weights = 1.0 / np.exp(-squared / (2 * radius**2)).sum(axis=1)
-        ratios[idx] = weights.max() / weights.min()
-    peak = int(np.argmax(ratios))
-    target = max(ratios[peak] / 3.0, 1.0)
-    wide = peak + int(np.flatnonzero(ratios[peak:] >= target)[-1])
-    return float(radii[wide])
-
-
-def density_kernel_radius(
-    distances: np.ndarray,
-    radius: float | DensityRadius,
-) -> float:
-    """Resolve the radius of the station density kernel.
-
-    Args:
-        distances: Array of shape (n_stations, n_stations) with interstation
-            distances in meters, NaN on the diagonal.
-        radius: Standard deviation of the kernel in meters, `"nearest_neighbor"`
-            for the median distance between neighboring sites,
-            `"mean_interstation"` for the mean interstation distance divided by
-            √2 (the kernel `exp(-d²/c²)` of NonLinLoc with `c` the mean
-            interstation distance) or `"condition_number"` for
-            `condition_number_radius`.
-
-    Returns:
-        Standard deviation of the kernel in meters, NaN with less than two sites.
-    """
-    if radius == "nearest_neighbor":
-        return nearest_neighbor_distance(distances)
-    if radius == "mean_interstation":
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            return float(np.nanmean(distances)) / np.sqrt(2.0)
-    if radius == "condition_number":
-        return condition_number_radius(distances)
-    return float(radius)
-
-
-def independent_station_counts(
-    distances: np.ndarray,
-    radius: float | DensityRadius = "nearest_neighbor",
-) -> np.ndarray:
+def independent_station_counts(distances: np.ndarray) -> np.ndarray:
     """Calculate how many independent stations each station counts as.
 
     The count is `1 - (k - k_min) / k_max` with the station density `k` and its
@@ -242,16 +175,11 @@ def independent_station_counts(
     Args:
         distances: Array of shape (n_stations, n_stations) with interstation
             distances in meters, NaN on the diagonal.
-        radius: Radius of the density kernel, see `density_kernel_radius`.
 
     Returns:
         Array of shape (n_stations,) with values between 0 and 1.
     """
-    kernel_radius = density_kernel_radius(distances, radius)
-    if not np.isfinite(kernel_radius):
-        # Fewer than two sites: station_density counts no neighbors
-        kernel_radius = 0.0
-    density = station_density(distances, kernel_radius)
+    density = station_density(distances)
     counts = 1.0 - (density - density.min()) / density.max()
     return counts / colocated_sensors(distances)
 
@@ -486,11 +414,7 @@ class StationWeights(Model):
             return self._interstation_distances
         return self._interstation_distances[np.ix_(station_indices, station_indices)]
 
-    def get_station_counts(
-        self,
-        station_indices: np.ndarray,
-        radius: float | DensityRadius = "nearest_neighbor",
-    ) -> np.ndarray:
+    def get_station_counts(self, station_indices: np.ndarray) -> np.ndarray:
         """Get the independent station counts of a set of stations.
 
         The counts depend on the available stations, they are cached for each set
@@ -498,7 +422,6 @@ class StationWeights(Model):
 
         Args:
             station_indices: Indices of the available stations.
-            radius: Radius of the density kernel, see `density_kernel_radius`.
 
         Returns:
             Array of shape (n_stations,) with values between 0 and 1.
@@ -506,7 +429,7 @@ class StationWeights(Model):
         key = station_indices.tobytes()
         if key not in self._station_counts:
             self._station_counts[key] = independent_station_counts(
-                self.get_interstation_distances(station_indices), radius
+                self.get_interstation_distances(station_indices)
             )
         return self._station_counts[key]
 
@@ -748,17 +671,6 @@ class DensityPlateauWeights(StationWeights):
         " sensors as one together. At least the closest `plateau_stations` stations"
         " get full weight.",
     )
-    density_radius: PositiveFloat | DensityRadius = Field(
-        default="nearest_neighbor",
-        description="Radius of the Gaussian kernel that counts the neighboring"
-        " stations of each station: its standard deviation in meters,"
-        ' `"nearest_neighbor"` for the median distance between neighboring sites,'
-        ' `"mean_interstation"` for the mean interstation distance divided by'
-        " √2, the default of NonLinLoc,"
-        ' or `"condition_number"` for the widest radius at which the ratio of the'
-        " largest to the smallest station weight is a third of its peak"
-        " (Ruan et al., 2019).",
-    )
 
     _distance_taper: float = PrivateAttr()
 
@@ -767,19 +679,12 @@ class DensityPlateauWeights(StationWeights):
         self._distance_taper = self.resolve_distance_taper(
             self.distance_taper, stations
         )
-        counts = self.get_station_counts(
-            np.arange(len(self._stations)), self.density_radius
-        )
+        counts = self.get_station_counts(np.arange(len(self._stations)))
         logger.info(
-            "the %d stations count as %.1f independent stations (density kernel"
-            " %g m); %g independent"
+            "the %d stations count as %.1f independent stations; %g independent"
             " stations get full weight, then a taper of %g m",
             counts.size,
             counts.sum(),
-            density_kernel_radius(
-                self.get_interstation_distances(np.arange(len(self._stations))),
-                self.density_radius,
-            ),
             self.plateau_stations,
             self._distance_taper,
         )
@@ -791,7 +696,7 @@ class DensityPlateauWeights(StationWeights):
     ) -> np.ndarray:
         return weights_gaussian_independent(
             distances,
-            self.get_station_counts(station_indices, self.density_radius),
+            self.get_station_counts(station_indices),
             distance_taper=self._distance_taper,
             plateau_stations=self.plateau_stations,
         )
@@ -833,17 +738,6 @@ class DensityTaperWeights(StationWeights):
         " station; with `1.0` a distant cluster weighs as much as its independent"
         " stations, with `0.0` these are the `DistanceWeights`.",
     )
-    density_radius: PositiveFloat | DensityRadius = Field(
-        default="nearest_neighbor",
-        description="Radius of the Gaussian kernel that counts the neighboring"
-        " stations of each station: its standard deviation in meters,"
-        ' `"nearest_neighbor"` for the median distance between neighboring sites,'
-        ' `"mean_interstation"` for the mean interstation distance divided by'
-        " √2, the default of NonLinLoc,"
-        ' or `"condition_number"` for the widest radius at which the ratio of the'
-        " largest to the smallest station weight is a third of its peak"
-        " (Ruan et al., 2019).",
-    )
 
     _distance_taper: float = PrivateAttr()
 
@@ -852,19 +746,12 @@ class DensityTaperWeights(StationWeights):
         self._distance_taper = self.resolve_distance_taper(
             self.distance_taper, stations
         )
-        counts = self.get_station_counts(
-            np.arange(len(self._stations)), self.density_radius
-        )
+        counts = self.get_station_counts(np.arange(len(self._stations)))
         logger.info(
-            "the %d stations count as %.1f independent stations (density kernel"
-            " %g m); %d closest stations"
+            "the %d stations count as %.1f independent stations; %d closest stations"
             " get full weight, then a taper of %g m",
             counts.size,
             counts.sum(),
-            density_kernel_radius(
-                self.get_interstation_distances(np.arange(len(self._stations))),
-                self.density_radius,
-            ),
             self.required_closest_stations,
             self._distance_taper,
         )
@@ -876,8 +763,7 @@ class DensityTaperWeights(StationWeights):
     ) -> np.ndarray:
         return weights_gaussian_density(
             distances,
-            self.get_station_counts(station_indices, self.density_radius)
-            ** self.station_density,
+            self.get_station_counts(station_indices) ** self.station_density,
             distance_taper=self._distance_taper,
             required_stations=self.required_closest_stations,
         )

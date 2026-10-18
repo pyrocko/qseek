@@ -14,8 +14,6 @@ from qseek.station_weights import (
     DistanceWeights,
     StationDensityWeights,
     colocated_sensors,
-    condition_number_radius,
-    density_kernel_radius,
     independent_station_counts,
     independent_stations_distances,
     interstation_distances,
@@ -447,54 +445,6 @@ def test_weights_gaussian_density():
     )
 
 
-def test_density_kernel_radius(clustered_stations: StationInventory):
-    distances = interstation_distances(list(clustered_stations))
-    assert density_kernel_radius(distances, "nearest_neighbor") == (
-        nearest_neighbor_distance(distances)
-    )
-    assert density_kernel_radius(distances, "mean_interstation") == pytest.approx(
-        np.nanmean(distances) / np.sqrt(2.0)
-    )
-    assert density_kernel_radius(distances, 5 * KM) == 5 * KM
-
-    # The widest radius at which the weight ratio is a third of its peak
-    radius = condition_number_radius(distances)
-    squared = np.nan_to_num(distances.astype(np.float64), nan=0.0) ** 2
-
-    def ratio(radius: float) -> float:
-        weights = 1.0 / np.exp(-squared / (2 * radius**2)).sum(axis=1)
-        return float(weights.max() / weights.min())
-
-    peak = max(ratio(r) for r in np.geomspace(100.0, 1000 * KM, 400))
-    assert ratio(radius) == pytest.approx(peak / 3, rel=0.1)
-    assert ratio(radius * 1.2) < peak / 3
-
-    # One site: no radius, all stations count the same
-    single = interstation_distances(local_locations([(0.0, 0.0), (0.0, 0.0)]))
-    assert np.isnan(condition_number_radius(single))
-    np.testing.assert_allclose(
-        independent_station_counts(single, "condition_number"), [0.5, 0.5]
-    )
-
-
-def test_independent_station_counts_radius(clustered_stations: StationInventory):
-    distances = interstation_distances(list(clustered_stations))
-    narrow = independent_station_counts(distances)
-    np.testing.assert_array_equal(
-        narrow, independent_station_counts(distances, "nearest_neighbor")
-    )
-    for radius in ("mean_interstation", "condition_number", 20 * KM):
-        counts = independent_station_counts(distances, radius)
-        assert np.all((counts > 0.0) & (counts <= 1.0))
-        # The cluster counts less than the sparse stations
-        assert np.median(counts[12:]) < np.median(counts[:12])
-    # The condition number radius discounts the cluster less than the nearest
-    # neighbor distance
-    wide = independent_station_counts(distances, "condition_number")
-    assert wide.max() / wide.min() < narrow.max() / narrow.min()
-    assert np.median(wide[12:]) > np.median(narrow[12:])
-
-
 def weights_roughness(weights: np.ndarray, step: float) -> float:
     """Largest L1 change of the normalized weights between neighboring nodes, per m."""
     weights = weights / weights.sum(axis=1, keepdims=True)
@@ -507,9 +457,6 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
     # weights; the short taper of the capped density weights does not.
     locations = list(clustered_stations)
     counts = independent_station_counts(interstation_distances(locations))
-    counts_wide = independent_station_counts(
-        interstation_distances(locations), "condition_number"
-    )
     taper = 2 * clustered_stations.mean_interstation_distance()
 
     step = 50.0
@@ -518,8 +465,6 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
         "distance": [],
         "plateau": [],
         "taper": [],
-        "plateau_condition": [],
-        "taper_condition": [],
         "capped": [],
     }
     for angle in np.radians([0.0, 45.0, 90.0, 135.0]):
@@ -542,16 +487,6 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
                 weights_gaussian_density(distances, counts, taper, 4), step
             )
         )
-        roughness["plateau_condition"].append(
-            weights_roughness(
-                weights_gaussian_independent(distances, counts_wide, taper, 3.0), step
-            )
-        )
-        roughness["taper_condition"].append(
-            weights_roughness(
-                weights_gaussian_density(distances, counts_wide, taper, 4), step
-            )
-        )
         roughness["capped"].append(
             weights_roughness(
                 weights_plateau_gaussian(distances, counts, 3.0, 8.0, taper_cap=1.0),
@@ -562,8 +497,6 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
     reference = max(roughness["distance"])
     assert max(roughness["plateau"]) <= 1.25 * reference
     assert max(roughness["taper"]) <= 1.5 * reference
-    assert max(roughness["plateau_condition"]) <= 1.25 * reference
-    assert max(roughness["taper_condition"]) <= 1.5 * reference
     assert max(roughness["capped"]) > 2.0 * reference
 
 
@@ -578,9 +511,7 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
         DensityPlateauWeights(distance_taper="nearest_neighbor", waterlevel=0.1),
         DensityTaperWeights(),
         DensityTaperWeights(station_density=0.5, waterlevel=0.1),
-        DensityPlateauWeights(plateau_stations=3.0, density_radius="condition_number"),
-        DensityTaperWeights(density_radius="mean_interstation"),
-        DensityTaperWeights(density_radius=10 * KM),
+        DensityPlateauWeights(plateau_stations=3.0),
         StationDensityWeights(),
         StationDensityWeights(waterlevel=0.1),
     ],
@@ -765,7 +696,6 @@ def test_station_weights_config():
         StationDensityWeights(plateau_stations=3.0, taper_cap=None),
         DensityPlateauWeights(plateau_stations=5.0, distance_taper=8 * KM),
         DensityTaperWeights(station_density=0.5, required_closest_stations=6),
-        DensityPlateauWeights(density_radius="condition_number"),
     ):
         config = {"station_weights": model.model_dump(mode="json")}
         assert Search.model_validate(config).station_weights == model

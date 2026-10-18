@@ -39,9 +39,7 @@ $$
 c = 1 - \frac{k - k_\mathrm{min}}{k_\mathrm{max}}
 $$
 
-with the density $k$ of the neighboring stations, summed with a Gaussian kernel, and the lowest and highest density of the network, $k_\mathrm{min}$ and $k_\mathrm{max}$. The densest station keeps $k_\mathrm{min} / k_\mathrm{max}$, so every station counts. Sensors closer than 50 m, e.g. a broadband and a strong-motion sensor of one site, share a site and together count as the site. The counts are relative: they change when stations have no data in a window.
-
-The standard deviation of the kernel is the median distance between neighboring sites. `DensityTaperWeights` and `DensityPlateauWeights` take another radius with `density_radius`: a value in meters, `"mean_interstation"` for the mean interstation distance divided by √2, the default of the station weights of NonLinLoc (`LOCSTAWT`), or `"condition_number"`. The latter scans the radius and takes the widest one at which the ratio of the largest to the smallest weight $1 / \sum_j \exp(-d_{ij}^2 / 2\sigma^2)$ is a third of its peak (Ruan et al., 2019). A wider kernel does not discount a cluster less by itself: on Campi Flegrei the six central stations count 0.16 each with `"mean_interstation"` and 0.39 with `"condition_number"`.
+with the density $k$ of the neighboring stations, a Gaussian kernel as wide as the median distance between neighboring sites, and the lowest and highest density of the network, $k_\mathrm{min}$ and $k_\mathrm{max}$. The densest station keeps $k_\mathrm{min} / k_\mathrm{max}$, so every station counts. Sensors closer than 50 m, e.g. a broadband and a strong-motion sensor of one site, share a site and together count as the site. The counts are relative: they change when stations have no data in a window.
 
 On Campi Flegrei, the 18 INGV stations count as 11.1 independent stations: the six stations in the center of the caldera, 200 m to 500 m apart, count as 0.2 each. At Mount Spurr, the 20 stations count as 13.8 independent stations, the ten local stations as 4.6. Qseek logs the count when the search starts.
 
@@ -102,7 +100,7 @@ print(json_example(DensityTaperWeights()))
 
 `DensityPlateauWeights` extend the plateau of full weight until the closest stations add up to `plateau_stations` independent stations, 4 by default; at least the closest 4 stations get full weight. Beyond the plateau distance $d_p$, the taper of `DistanceWeights` decays, with the same width for all nodes. The weights change between nodes as smoothly as the `DistanceWeights`.
 
-Near a cluster, the plateau holds more stations: on Campi Flegrei 12 instead of 8 near the six central stations. The cluster then weighs more, not less, and the detections are located less consistently than with `DistanceWeights`, with 2, 3 and 4 independent stations on the plateau and with the kernel radius `"condition_number"`.
+Near a cluster, the plateau holds more stations: on Campi Flegrei 12 instead of 8 near the six central stations. The cluster then weighs more, not less, and the detections are located less consistently than with `DistanceWeights`, with 2, 3 and 4 independent stations on the plateau.
 
 ```python exec='on'
 from qseek.utils import json_example
