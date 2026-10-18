@@ -449,7 +449,7 @@ class FastMarching3DTracer(RayTracer):
         if not cache_dir.exists():
             cache_dir.mkdir(parents=True)
         elif use_cached:
-            self._load_cached_tavel_times(cache_dir)
+            self._load_cached_travel_times(cache_dir)
 
         stations_to_calculate = [
             station
@@ -479,13 +479,13 @@ class FastMarching3DTracer(RayTracer):
                     reference=octree.location,
                 )
 
-    def _load_cached_tavel_times(self, cache_dir: Path) -> None:
+    def _load_cached_travel_times(self, cache_dir: Path) -> None:
         logger.debug("loading travel times volumes from cache %s...", cache_dir)
         volumes: dict[str, StationTravelTimeVolume] = {}
         for file in cache_dir.glob("*.3dtt"):
             try:
                 travel_times = StationTravelTimeVolume.load(file)
-            except (zipfile.BadZipFile, ValidationError):
+            except (zipfile.BadZipFile, ValidationError, KeyError, OSError):
                 logger.warning("removing bad travel time file %s", file)
                 file.unlink()
                 continue

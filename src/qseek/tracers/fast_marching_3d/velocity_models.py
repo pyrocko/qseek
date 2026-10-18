@@ -624,6 +624,8 @@ class NonLinLocHeader:
 
         parts = header_text.split()
         n_parts = len(parts)
+        if n_parts not in (10, 11):
+            raise ValueError("Invalid NonLinLoc header format")
         (
             nx,
             ny,
@@ -642,10 +644,8 @@ class NonLinLocHeader:
                 "grid dtype not specified in NonLinLoc header, defaulting to FLOAT"
             )
             grid_dtype = "FLOAT"
-        elif n_parts == 11:
-            grid_dtype = parts[10]
         else:
-            raise ValueError("Invalid NonLinLoc header format")
+            grid_dtype = parts[10]
 
         if not float(delta_x) == float(delta_y) == float(delta_z):
             raise ValueError("NonLinLoc velocity model must have equal spacing.")

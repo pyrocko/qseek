@@ -164,6 +164,7 @@ def test_nll_header_default_dtype(tmp_path: Path) -> None:
     [
         ("3 4 5  0 0 0  0.1 0.2 0.1 SLOW_LEN FLOAT", "equal spacing"),
         ("3 4 5  0 0 0  0.1 0.1 0.1 SLOW_LEN FLOAT EXTRA", "Invalid"),
+        ("3 4 5  0 0 0  0.1 0.1 SLOW_LEN", "Invalid"),
     ],
 )
 def test_nll_header_invalid(tmp_path: Path, header: str, match: str) -> None:

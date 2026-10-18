@@ -35,7 +35,7 @@ CONSTANT_VELOCITY = 5000
 KM = 1e3
 
 
-class TestVelocityModel(NamedTuple):
+class NllTestModel(NamedTuple):
     name: str
     wave_type: Literal["P", "S"]
     header_file: str
@@ -46,7 +46,7 @@ class TestVelocityModel(NamedTuple):
 
 
 TEST_MODELS = [
-    TestVelocityModel(
+    NllTestModel(
         name="FORGE",
         wave_type=wave_type,
         header_file=f"FORGE_3D_5_large.{wave_type}.mod.hdr",
@@ -227,7 +227,7 @@ async def test_fast_marching_phase_tracer(
 async def test_non_lin_loc(
     data_dir: Path,
     octree: Octree,
-    test_model: TestVelocityModel,
+    test_model: NllTestModel,
 ) -> None:
     tracer = FastMarching3DTracer(
         phase="fm:P",
@@ -254,7 +254,7 @@ def test_nll_model_plot(
     data_dir: Path,
     octree: Octree,
     stations: StationInventory,
-    test_model: TestVelocityModel,
+    test_model: NllTestModel,
 ) -> None:
     import matplotlib.pyplot as plt
 
@@ -288,7 +288,7 @@ def test_nll_model_plot(
 async def test_3d_model_plot(
     data_dir: Path,
     octree: Octree,
-    test_model: TestVelocityModel,
+    test_model: NllTestModel,
 ) -> None:
     import matplotlib.pyplot as plt
 
@@ -334,7 +334,7 @@ def test_nll_geometry(
     data_dir: Path,
     tmp_path: Path,
     octree: Octree,
-    test_model: TestVelocityModel,
+    test_model: NllTestModel,
 ):
     tracer = FastMarching3DTracer(
         velocity_model=NonLinLocVelocityModel(
