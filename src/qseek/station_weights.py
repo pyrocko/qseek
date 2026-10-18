@@ -184,69 +184,6 @@ def independent_station_counts(distances: np.ndarray) -> np.ndarray:
     return counts / colocated_sensors(distances)
 
 
-def independent_stations_distances(
-    distances: np.ndarray,
-    counts: np.ndarray,
-    n_stations: Sequence[float],
-) -> list[np.ndarray]:
-    """Distances at which the closest stations add up to independent stations.
-
-    Args:
-        distances: Array of shape (n_nodes, n_stations) with node-station distances
-            in meters.
-        counts: Array of shape (n_stations,) with the independent station count of
-            each station.
-        n_stations: Numbers of independent stations to reach.
-
-    Returns:
-        For each number, an array of shape (n_nodes, 1) with the distance of the
-            station at which the closest stations reach it, or of the most distant
-            station if the network has fewer independent stations.
-    """
-    order = np.argsort(distances, axis=1)
-    sorted_distances = np.take_along_axis(distances, order, axis=1)
-    cumulative = np.cumsum(counts[order], axis=1)
-    rows = np.arange(distances.shape[0])
-
-    result = []
-    for n in n_stations:
-        idx = np.argmax(cumulative >= n, axis=1)
-        idx[cumulative[:, -1] < n] = distances.shape[1] - 1
-        result.append(sorted_distances[rows, idx, np.newaxis])
-    return result
-
-
-def weights_gaussian_independent(
-    distances: np.ndarray,
-    counts: np.ndarray,
-    distance_taper: float,
-    plateau_stations: float = 4.0,
-) -> np.ndarray:
-    """Gaussian distance weights with a plateau of the closest independent stations.
-
-    The closest stations get full weight until they add up to `plateau_stations`
-    independent stations; beyond, the same Gaussian taper decays for all nodes.
-
-    Args:
-        distances: Array of shape (n_nodes, n_stations) with node-station distances
-            in meters.
-        counts: Array of shape (n_stations,) with the independent station count of
-            each station.
-        distance_taper: Full width at half maximum of the Gaussian taper in meters.
-        plateau_stations: Independent stations of the plateau.
-
-    Returns:
-        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
-    """
-    (plateau,) = independent_stations_distances(distances, counts, (plateau_stations,))
-    # Full width at half maximum (FWHM) to standard deviation: FWHM = 2.355 sigma
-    weights = np.exp(
-        -((distances - plateau) ** 2) / (2 * (distance_taper / 2.355) ** 2)
-    )
-    weights[distances <= plateau] = 1.0
-    return weights
-
-
 def weights_gaussian_density(
     distances: np.ndarray,
     factors: np.ndarray,
@@ -273,45 +210,6 @@ def weights_gaussian_density(
     weights = weights_gaussian(distances, distance_taper, required_stations)
     factors = factors.astype(weights.dtype)[np.newaxis, :]
     return weights * (factors + (1.0 - factors) * weights)
-
-
-def weights_plateau_gaussian(
-    distances: np.ndarray,
-    counts: np.ndarray,
-    plateau_stations: float = 3.0,
-    taper_stations: float = 16.0,
-    taper_cap: float | None = None,
-) -> np.ndarray:
-    """Gaussian taper beyond a plateau of the closest independent stations.
-
-    The plateau ends at the distance `d_p` where the closest stations add up to
-    `plateau_stations` independent stations. The Gaussian taper starts there; its
-    standard deviation is half the distance at which they add up to
-    `taper_stations`, at most `taper_cap` times `d_p`.
-
-    Args:
-        distances: Array of shape (n_nodes, n_stations) with node-station distances
-            in meters.
-        counts: Array of shape (n_stations,) with the independent station count of
-            each station.
-        plateau_stations: Independent stations of the plateau.
-        taper_stations: Independent stations that set the taper width.
-        taper_cap: Maximum standard deviation of the taper in units of the plateau
-            distance. If None, the taper width is not limited.
-
-    Returns:
-        Array of shape (n_nodes, n_stations) with weights between 0 and 1.
-    """
-    plateau, taper = independent_stations_distances(
-        distances, counts, (plateau_stations, taper_stations)
-    )
-    sigma = np.maximum(taper / 2, 1.0)
-    if taper_cap is not None:
-        sigma = np.minimum(sigma, taper_cap * np.maximum(plateau, 1.0))
-
-    weights = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
-    weights[distances <= plateau] = 1.0
-    return weights
 
 
 class StationWeights(Model):
@@ -524,65 +422,6 @@ class StationWeights(Model):
         return weights
 
 
-class StationDensityWeights(StationWeights):
-    """The closest independent stations get full weight, then a Gaussian taper.
-
-    Every station counts as a number of independent stations: an isolated station
-    as one, a station in a dense cluster as a fraction of one. The plateau of full
-    weight and the taper are set in independent stations, so they adapt to the
-    station spacing around each node.
-    """
-
-    weights: Literal["StationDensityWeights"] = "StationDensityWeights"
-
-    plateau_stations: PositiveFloat = Field(
-        default=3.0,
-        description="Number of independent stations of a node that get full weight."
-        " The closest stations get full weight until they add up to this number of"
-        " independent stations. An isolated station counts as one independent"
-        " station, a station in a dense cluster as a fraction of one, co-located"
-        " sensors as one together. The counts are relative to the available"
-        " stations of the network.",
-    )
-    taper_stations: PositiveFloat = Field(
-        default=16.0,
-        description="Number of independent stations that sets the width of the"
-        " Gaussian taper: its standard deviation is half the distance at which the"
-        " closest stations add up to this number. If the network has fewer"
-        " independent stations, the most distant station sets the width.",
-    )
-    taper_cap: PositiveFloat | None = Field(
-        default=None,
-        description="Maximum standard deviation of the Gaussian taper, in units of"
-        " the plateau distance of the node. It shortens the taper when a gap in"
-        " the network puts the `taper_stations` far away, e.g. between local and"
-        " regional stations. A short taper changes the weights steeply between"
-        " nodes and moves the locations. If `null`, the taper width is not limited.",
-    )
-
-    def prepare(self, stations: StationInventory, octree: Octree) -> None:
-        super().prepare(stations, octree)
-        counts = self.get_station_counts(np.arange(len(self._stations)))
-        logger.info(
-            "the %d stations count as %.1f independent stations",
-            counts.size,
-            counts.sum(),
-        )
-
-    def calculate_weights(
-        self,
-        distances: np.ndarray,
-        station_indices: np.ndarray,
-    ) -> np.ndarray:
-        return weights_plateau_gaussian(
-            distances,
-            self.get_station_counts(station_indices),
-            plateau_stations=self.plateau_stations,
-            taper_stations=self.taper_stations,
-            taper_cap=self.taper_cap,
-        )
-
-
 class DistanceWeights(StationWeights):
     """The closest stations get full weight, more distant stations a Gaussian taper.
 
@@ -637,68 +476,6 @@ class DistanceWeights(StationWeights):
             distances,
             distance_taper=self._distance_taper,
             required_stations=self.required_closest_stations,
-        )
-
-
-class DensityPlateauWeights(StationWeights):
-    """The closest independent stations get full weight, then a Gaussian taper.
-
-    The plateau of full weight extends until the closest stations add up to
-    `plateau_stations` independent stations: in a dense cluster more stations get
-    full weight than in a sparse network. The taper is the one of `DistanceWeights`,
-    with an absolute width, the same for all nodes.
-    """
-
-    weights: Literal["DensityPlateauWeights"] = "DensityPlateauWeights"
-
-    distance_taper: PositiveFloat | Literal["mean_interstation", "nearest_neighbor"] = (
-        Field(
-            default="mean_interstation",
-            description=(
-                "Full width at half maximum of the Gaussian taper in meters."
-                ' `"mean_interstation"` uses twice the mean interstation distance of'
-                ' the network, `"nearest_neighbor"` 6 times the median distance'
-                " between neighboring station sites."
-            ),
-        )
-    )
-    plateau_stations: PositiveFloat = Field(
-        default=4.0,
-        description="Number of independent stations of a node that get full weight."
-        " The closest stations get full weight until they add up to this number of"
-        " independent stations. An isolated station counts as one independent"
-        " station, a station in a dense cluster as a fraction of one, co-located"
-        " sensors as one together. At least the closest `plateau_stations` stations"
-        " get full weight.",
-    )
-
-    _distance_taper: float = PrivateAttr()
-
-    def prepare(self, stations: StationInventory, octree: Octree) -> None:
-        super().prepare(stations, octree)
-        self._distance_taper = self.resolve_distance_taper(
-            self.distance_taper, stations
-        )
-        counts = self.get_station_counts(np.arange(len(self._stations)))
-        logger.info(
-            "the %d stations count as %.1f independent stations; %g independent"
-            " stations get full weight, then a taper of %g m",
-            counts.size,
-            counts.sum(),
-            self.plateau_stations,
-            self._distance_taper,
-        )
-
-    def calculate_weights(
-        self,
-        distances: np.ndarray,
-        station_indices: np.ndarray,
-    ) -> np.ndarray:
-        return weights_gaussian_independent(
-            distances,
-            self.get_station_counts(station_indices),
-            distance_taper=self._distance_taper,
-            plateau_stations=self.plateau_stations,
         )
 
 

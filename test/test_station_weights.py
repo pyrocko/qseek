@@ -9,20 +9,15 @@ from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.station_weights import (
     NEAREST_NEIGHBOR_TAPER,
-    DensityPlateauWeights,
     DensityTaperWeights,
     DistanceWeights,
-    StationDensityWeights,
     colocated_sensors,
     independent_station_counts,
-    independent_stations_distances,
     interstation_distances,
     nearest_neighbor_distance,
     station_density,
     weights_gaussian,
     weights_gaussian_density,
-    weights_gaussian_independent,
-    weights_plateau_gaussian,
 )
 
 KM = 1e3
@@ -328,75 +323,6 @@ def test_independent_station_counts_range():
         assert independence.max() == pytest.approx(1.0)
 
 
-def test_independent_stations_distances():
-    distances = np.arange(1, 13, dtype=float)[np.newaxis, :] * KM
-    # Stations that count as half: 4 independent stations need 8 of them
-    independence = np.full(12, 0.5)
-    np.testing.assert_equal(
-        independent_stations_distances(distances, independence, (4.0,))[0], [[8 * KM]]
-    )
-    # The network has fewer independent stations: the most distant station
-    np.testing.assert_equal(
-        independent_stations_distances(distances, independence, (20.0,))[0], [[12 * KM]]
-    )
-    # The order of the stations does not matter
-    perm = np.random.default_rng(2).permutation(12)
-    np.testing.assert_equal(
-        independent_stations_distances(distances[:, perm], independence[perm], (4.0,))[
-            0
-        ],
-        [[8 * KM]],
-    )
-
-
-def test_weights_plateau_gaussian():
-    distances = np.arange(1, 21, dtype=float)[np.newaxis, :] * KM
-    weights = weights_plateau_gaussian(
-        distances,
-        np.ones(20),
-        plateau_stations=4.0,
-        taper_stations=12.0,
-        taper_cap=None,
-    )
-    # Gaussian centered at the plateau distance, sigma half the taper distance
-    plateau, sigma = 4 * KM, 12 * KM / 2
-    expected = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
-    expected[distances <= plateau] = 1.0
-    np.testing.assert_allclose(weights, expected, rtol=1e-6)
-
-    # Isolated stations: the plateau holds the N closest stations
-    rng = np.random.default_rng(1)
-    distances = rng.uniform(0, 50 * KM, size=(5, 20))
-    weights = weights_plateau_gaussian(
-        distances, np.ones(20), plateau_stations=4.0, taper_stations=12.0
-    )
-    sorted_weights = np.take_along_axis(weights, np.argsort(distances, axis=1), axis=1)
-    np.testing.assert_equal(sorted_weights[:, :4], 1.0)
-    assert np.all(sorted_weights[:, 4] < 1.0)
-    assert np.all(np.diff(sorted_weights[:, 4:], axis=1) <= 0.0)
-
-
-def test_weights_plateau_gaussian_taper_cap():
-    # A gap: three close stations, then distant stations
-    distances = np.array([[1.0, 2.0, 3.0, 50.0, 60.0, 70.0, 80.0]]) * KM
-    plateau, taper = 3 * KM, 70 * KM
-    uncapped = weights_plateau_gaussian(distances, np.ones(7), 3.0, 6.0, taper_cap=None)
-    capped = weights_plateau_gaussian(distances, np.ones(7), 3.0, 6.0, taper_cap=1.0)
-    # The cap limits sigma to the plateau distance
-    for weights, sigma in ((uncapped, taper / 2), (capped, plateau)):
-        expected = np.exp(-((distances - plateau) ** 2) / (2 * sigma**2))
-        expected[distances <= plateau] = 1.0
-        np.testing.assert_allclose(weights, expected, rtol=1e-6)
-    assert np.all(capped[0, 3:] < uncapped[0, 3:])
-
-    # Without a gap the cap does not bind
-    distances = np.arange(1, 21, dtype=float)[np.newaxis, :] * KM
-    np.testing.assert_allclose(
-        weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0, 1.0),
-        weights_plateau_gaussian(distances, np.ones(20), 4.0, 8.0, None),
-    )
-
-
 @pytest.fixture
 def clustered_stations() -> StationInventory:
     # Sparse network with a dense cluster
@@ -404,23 +330,6 @@ def clustered_stations() -> StationInventory:
     sparse = [tuple(rng.uniform(-30, 30, size=2)) for _ in range(12)]
     cluster = [tuple(5 + rng.normal(0, 0.3, size=2)) for _ in range(8)]
     return local_stations(sparse + cluster)
-
-
-def test_weights_gaussian_independent():
-    rng = np.random.default_rng(5)
-    distances = rng.uniform(0.5, 40.0, size=(50, 20)) * KM
-    taper = 20 * KM
-    # Every station an independent station: the plateau of the 4 closest stations
-    np.testing.assert_allclose(
-        weights_gaussian_independent(distances, np.ones(20), taper, 4.0),
-        weights_gaussian(distances, taper, 4),
-        rtol=1e-6,
-    )
-    # Stations that count less extend the plateau: the weights only grow
-    counts = rng.uniform(0.2, 1.0, size=20)
-    weights = weights_gaussian_independent(distances, counts, taper, 4.0)
-    assert np.all(weights >= weights_gaussian(distances, taper, 4) - 1e-9)
-    assert np.all(np.sort(weights, axis=1)[:, -4:] == 1.0)
 
 
 def test_weights_gaussian_density():
@@ -453,8 +362,8 @@ def weights_roughness(weights: np.ndarray, step: float) -> float:
 
 def test_station_weights_roughness(clustered_stations: StationInventory):
     # Weights that change steeply between nodes move the maximum of the stack. The
-    # plateau in independent stations keeps the weights as smooth as the distance
-    # weights; the short taper of the capped density weights does not.
+    # density factor in the taper keeps the weights about as smooth as the distance
+    # weights; a short taper does not.
     locations = list(clustered_stations)
     counts = independent_station_counts(interstation_distances(locations))
     taper = 2 * clustered_stations.mean_interstation_distance()
@@ -463,9 +372,8 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
     sta = np.array([(s.east_shift, s.north_shift) for s in locations])
     roughness: dict[str, list[float]] = {
         "distance": [],
-        "plateau": [],
-        "taper": [],
-        "capped": [],
+        "density": [],
+        "short": [],
     }
     for angle in np.radians([0.0, 45.0, 90.0, 135.0]):
         # Profiles at 3 km depth through the network
@@ -477,27 +385,18 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
         roughness["distance"].append(
             weights_roughness(weights_gaussian(distances, taper, 4), step)
         )
-        roughness["plateau"].append(
-            weights_roughness(
-                weights_gaussian_independent(distances, counts, taper, 4.0), step
-            )
-        )
-        roughness["taper"].append(
+        roughness["density"].append(
             weights_roughness(
                 weights_gaussian_density(distances, counts, taper, 4), step
             )
         )
-        roughness["capped"].append(
-            weights_roughness(
-                weights_plateau_gaussian(distances, counts, 3.0, 8.0, taper_cap=1.0),
-                step,
-            )
+        roughness["short"].append(
+            weights_roughness(weights_gaussian(distances, taper / 4, 4), step)
         )
 
     reference = max(roughness["distance"])
-    assert max(roughness["plateau"]) <= 1.25 * reference
-    assert max(roughness["taper"]) <= 1.5 * reference
-    assert max(roughness["capped"]) > 2.0 * reference
+    assert max(roughness["density"]) <= 1.5 * reference
+    assert max(roughness["short"]) > 2.0 * reference
 
 
 @pytest.mark.asyncio
@@ -507,13 +406,9 @@ def test_station_weights_roughness(clustered_stations: StationInventory):
         DistanceWeights(),
         DistanceWeights(distance_taper="nearest_neighbor"),
         DistanceWeights(distance_taper=5 * KM, waterlevel=0.1),
-        DensityPlateauWeights(),
-        DensityPlateauWeights(distance_taper="nearest_neighbor", waterlevel=0.1),
         DensityTaperWeights(),
         DensityTaperWeights(station_density=0.5, waterlevel=0.1),
-        DensityPlateauWeights(plateau_stations=3.0),
-        StationDensityWeights(),
-        StationDensityWeights(waterlevel=0.1),
+        DensityTaperWeights(distance_taper="nearest_neighbor"),
     ],
 )
 async def test_station_weights_model(
@@ -571,10 +466,10 @@ async def test_distance_weights_taper(
 
 
 @pytest.mark.asyncio
-async def test_station_density_weights_subset(
+async def test_density_taper_weights_subset(
     octree: Octree, clustered_stations: StationInventory
 ):
-    weights_model = StationDensityWeights()
+    weights_model = DensityTaperWeights()
     weights_model.prepare(clustered_stations, octree)
     stations = list(clustered_stations)
     nodes = octree.nodes[:20]
@@ -582,11 +477,11 @@ async def test_station_density_weights_subset(
     # The independent station counts adapt to the available stations
     subset = stations[::2]
     weights = await weights_model.get_weights(nodes, subset)
-    expected = weights_plateau_gaussian(
+    expected = weights_gaussian_density(
         weights_model.get_distances(nodes)[:, ::2],
         independent_station_counts(interstation_distances(subset)),
-        plateau_stations=weights_model.plateau_stations,
-        taper_stations=weights_model.taper_stations,
+        distance_taper=weights_model._distance_taper,
+        required_stations=weights_model.required_closest_stations,
     )
     np.testing.assert_allclose(weights, expected, rtol=1e-5)
 
@@ -600,8 +495,6 @@ async def test_station_density_weights_subset(
     "weights_model",
     [
         DistanceWeights(),
-        StationDensityWeights(),
-        DensityPlateauWeights(),
         DensityTaperWeights(),
     ],
 )
@@ -626,8 +519,6 @@ async def test_station_weights_single_site(weights_model, positions_km, octree: 
     "weights_model",
     [
         DistanceWeights(distance_taper="nearest_neighbor"),
-        StationDensityWeights(),
-        DensityPlateauWeights(),
         DensityTaperWeights(),
     ],
 )
@@ -693,8 +584,6 @@ def test_station_weights_config():
 
     for model in (
         DistanceWeights(required_closest_stations=6),
-        StationDensityWeights(plateau_stations=3.0, taper_cap=None),
-        DensityPlateauWeights(plateau_stations=5.0, distance_taper=8 * KM),
         DensityTaperWeights(station_density=0.5, required_closest_stations=6),
     ):
         config = {"station_weights": model.model_dump(mode="json")}

@@ -13,10 +13,8 @@ from qseek.models.station import Station, StationInventory
 from qseek.octree import Octree
 from qseek.search import OctreeSearch
 from qseek.station_weights import (
-    DensityPlateauWeights,
     DensityTaperWeights,
     DistanceWeights,
-    StationDensityWeights,
 )
 from qseek.tracers.constant_velocity import ConstantVelocityTracer
 from qseek.tracers.tracers import RayTracers
@@ -172,8 +170,6 @@ async def test_search_no_event(
     "station_weights",
     [
         DistanceWeights(),
-        StationDensityWeights(),
-        DensityPlateauWeights(),
         DensityTaperWeights(),
     ],
 )
