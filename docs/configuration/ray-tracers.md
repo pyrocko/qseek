@@ -125,16 +125,18 @@ The 3D tracer calculates first arrivals with the fast marching method in a 3D ve
 - A 1D layered model, extended to 3D.
 - A constant velocity, mainly for testing.
 
+The [Utah FORGE example](../getting-started/playground.md) of the playground searches in a 3D NonLinLoc model.
+
 ```python exec='on'
 from qseek.utils import json_example
-from qseek_insights.tracers.fast_marching_3d import FastMarching3DTracer
+from qseek.tracers.fast_marching_3d import FastMarching3DTracer
 
 print(json_example(FastMarching3DTracer()))
 ```
 
 <div class="qs-config" markdown>
 
-::: qseek_insights.tracers.fast_marching_3d.FastMarching3DTracer
+::: qseek.tracers.fast_marching_3d.FastMarching3DTracer
     options:
       heading_level: 3
 
@@ -142,7 +144,7 @@ print(json_example(FastMarching3DTracer()))
 
 <div class="qs-config" markdown>
 
-::: qseek_insights.tracers.fast_marching_3d.NonLinLocVelocityModel
+::: qseek.tracers.fast_marching_3d.NonLinLocVelocityModel
     options:
       heading_level: 3
 
