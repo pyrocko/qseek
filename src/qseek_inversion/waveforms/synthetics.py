@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pydantic import Field, PositiveInt, PrivateAttr
 
 from qseek.images.base import WaveformImage, WaveformImages
-from qseek.search import Search
 from qseek.synthetics.synthetics import SyntheticEvent, SyntheticEventCatalog
 from qseek.tracers.fast_marching import FastMarchingTracer
 from qseek.tracers.tracers import RayTracerType
@@ -16,20 +14,21 @@ from qseek.utils import PhaseDescription
 from qseek_inversion.waveforms.base import WaveformSelection
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pyrocko.trace import Trace
 
-    from qseek.models.station import StationInventory
+    from qseek.search import Search
 
 
 class SyntheticEvents(WaveformSelection):
-    """Select synthetic waveforms for a list of synthetic events."""
+    """Synthetic image functions of random events inside the octree.
+
+    The arrivals are modelled with `ray_tracer`, the true velocity model of the
+    synthetic test. Each arrival is a Gaussian peak in the image function.
+    """
 
     waveforms: Literal["SyntheticEvents"] = "SyntheticEvents"
-
-    import_rundir: Path = Field(
-        default=...,
-        description="Import rundir to get search configuration from.",
-    )
 
     ray_tracer: RayTracerType = Field(
         default_factory=FastMarchingTracer.model_construct,
@@ -53,7 +52,7 @@ class SyntheticEvents(WaveformSelection):
     )
     batch_length: timedelta = Field(
         default=timedelta(minutes=10),
-        description="Number of events to include in each waveform batch.",
+        description="Length of each batch of synthetic images.",
     )
     random_seed: int = Field(
         default=42,
@@ -65,15 +64,17 @@ class SyntheticEvents(WaveformSelection):
     )
     _catalog: SyntheticEventCatalog = PrivateAttr()
 
-    async def prepare(self, rundir: Path | None = None) -> None:
-        search = Search.from_config(self.import_rundir)
+    async def prepare(
+        self,
+        search: Search,
+        import_rundir: Path,
+        rundir: Path | None = None,
+    ) -> None:
+        await super().prepare(search, import_rundir, rundir)
         octree = search.octree
+        stations = self.get_stations()
 
-        search.stations.sanitize_stations()
-        search.stations.filter_stations(search.data_provider.available_nsls())
-        self.stations = search.stations
-
-        await self.ray_tracer.prepare(search.octree, search.stations)
+        await self.ray_tracer.prepare(octree, stations)
 
         rnd = np.random.default_rng(self.random_seed)
 
@@ -93,28 +94,31 @@ class SyntheticEvents(WaveformSelection):
             size=self.n_events,
         )
 
-        # for coord in zip(north_shifts, east_shifts, depths, strict=False):
-        #     print(coord)
-
         self._catalog = SyntheticEventCatalog()
 
+        # The same frame as the octree nodes, see Node.as_location
+        reference = octree.location
         for i in range(self.n_events):
             self._catalog.add_event(
                 SyntheticEvent(
                     origin_time=self._start_time + i * self.inter_event_time,
-                    lat=octree.location.lat,
-                    lon=octree.location.lon,
-                    north_shift=north_shifts[i],
-                    east_shift=east_shifts[i],
-                    depth=depths[i] + octree.location.depth,
-                    elevation=octree.location.elevation,
+                    lat=reference.lat,
+                    lon=reference.lon,
+                    elevation=reference.elevation,
+                    north_shift=reference.north_shift + north_shifts[i],
+                    east_shift=reference.east_shift + east_shifts[i],
+                    depth=reference.depth + depths[i],
                 ),
-                stations=search.stations,
+                stations=stations,
                 ray_tracer=self.ray_tracer,
             )
 
         if rundir is not None:
             self._catalog.export_catalog(rundir / "synthetic_catalog")
+
+    def get_catalog(self) -> SyntheticEventCatalog:
+        """The synthetic events."""
+        return self._catalog
 
     def get_traces(
         self,
@@ -123,11 +127,12 @@ class SyntheticEvents(WaveformSelection):
         end_time: datetime,
     ) -> list[Trace]:
         return self._catalog.get_traces(
-            phase=phase, start_time=start_time, end_time=end_time
+            phase=phase,
+            start_time=start_time,
+            end_time=end_time,
+            sampling_rate=self.sampling_rate,
+            sigma_samples=self.sigma_samples,
         )
-
-    def get_stations(self) -> StationInventory:
-        return self.stations
 
     async def get_images(self, window_padding: timedelta) -> list[WaveformImages]:
         catalog = self._catalog
@@ -148,12 +153,10 @@ class SyntheticEvents(WaveformSelection):
                 end_time=current_end,
             )
             for phase in phases:
-                traces = catalog.get_traces(
+                traces = self.get_traces(
                     phase=phase,
                     start_time=current_start - window_padding,
                     end_time=current_end + window_padding,
-                    sampling_rate=self.sampling_rate,
-                    sigma_samples=self.sigma_samples,
                 )
                 if not traces:
                     continue
@@ -165,7 +168,7 @@ class SyntheticEvents(WaveformSelection):
                     weight=1.0,
                     detection_half_width=self.sigma_samples / self.sampling_rate,
                 )
-                img.set_stations(self.stations)
+                img.set_stations(self.get_stations())
                 waveform_images.add_image(img)
 
             images.append(waveform_images)
