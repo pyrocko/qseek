@@ -42,6 +42,10 @@ class WaveformSelection(BaseModel):
         """Stations of the selected waveforms."""
         return self._stations
 
+    def n_selected_events(self) -> int | None:
+        """Number of selected events, None if unknown."""
+        return None
+
     def get_blinding(self) -> timedelta:
         """Blinding of the image function at the edges of the waveforms."""
         return timedelta(seconds=0.0)
