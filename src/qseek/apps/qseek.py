@@ -52,10 +52,17 @@ subparsers = parser.add_subparsers(
     "`qseek <command> --help`.",
 )
 
-subparsers.add_parser(
+config = subparsers.add_parser(
     "config",
     help="print a new config",
     description="Print a new default config configuration file.",
+)
+config.add_argument(
+    "--minimal",
+    "-m",
+    action="store_true",
+    default=False,
+    help="print a minimal config, without the optional modules",
 )
 
 search = subparsers.add_parser(
@@ -369,7 +376,21 @@ def run() -> None:
 
             config = Search()
             console.quiet = False
-            console.print_json(config.model_dump_json(by_alias=False, indent=2))
+            exclude = (
+                {
+                    "station_corrections",
+                    "magnitudes",
+                    "features",
+                    "webserver",
+                    "callbacks",
+                    "callback_scripts",
+                }
+                if args.minimal
+                else None
+            )
+            console.print_json(
+                config.model_dump_json(by_alias=False, indent=2, exclude=exclude)
+            )
 
         case "search":
             from qseek.search import Search
