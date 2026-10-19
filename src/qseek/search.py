@@ -828,8 +828,8 @@ class Search(Model):
         base_dir = filename.absolute().parent
         for name in model.model_fields_set:
             value = getattr(model, name)
-            if isinstance(value, Path) and not value.absolute():
-                setattr(model, name, value.relative_to(base_dir))
+            if isinstance(value, Path) and not value.is_absolute():
+                setattr(model, name, base_dir / value)
         model._config_stem = filename.stem
         return model
 
