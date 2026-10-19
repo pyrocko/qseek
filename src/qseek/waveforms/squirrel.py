@@ -218,7 +218,6 @@ class PyrockoSquirrel(WaveformProvider):
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
-        min_stations: int = 0,
         end_time: datetime | None = None,
     ) -> AsyncGenerator[WaveformBatch]:
         stations = self._stations
@@ -286,7 +285,7 @@ class PyrockoSquirrel(WaveformProvider):
                     stats.time_per_batch = datetime_now() - start
                     stats.bytes_per_seconds = batch.nbytes / load_time.total_seconds()
 
-                    if not batch.is_healthy(min_stations=min_stations):
+                    if not batch.is_healthy():
                         logger.warning(
                             "unhealthy batch %d - %s",
                             batch.i_batch,

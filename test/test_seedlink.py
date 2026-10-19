@@ -77,7 +77,6 @@ async def first_batch_traces(seedlink: SeedLink, start_time) -> int:
             window_padding=timedelta(seconds=5),
             start_time=start_time,
             min_length=timedelta(seconds=5),
-            min_stations=1,
         ):
             assert {tr.station for tr in batch.traces} == {"RUE"}
             return len(batch.traces)

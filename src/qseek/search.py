@@ -335,8 +335,8 @@ class Search(Model):
     min_stations: int = Field(
         default=3,
         ge=0,
-        description="Minimum number of stations required for"
-        " detection and localization.",
+        description="Minimum number of stations with waveform data required in a"
+        " window to search it. Windows with fewer stations are skipped.",
     )
     ignore_boundary: IgnoreBoundary = Field(
         default="without_surface",
@@ -628,7 +628,6 @@ class Search(Model):
             window_padding=window_padding,
             start_time=self._progress.time_progress,
             min_length=2 * window_padding,
-            min_stations=self.min_stations,
         )
         pre_processed_batches = self.pre_processing.iter_batches(batches)
 
@@ -665,9 +664,19 @@ class Search(Model):
         async with self._background_tasks, contextlib.aclosing(images_batches):
             async for images, batch in images_batches:
                 batch_processing_start = datetime_now()
-                await self._run_callbacks("on_batch_start", batch)
-
                 images.set_stations(self.stations)
+
+                if images.n_stations < self.min_stations:
+                    logger.warning(
+                        "skipping batch %d: %d stations, %d required",
+                        batch.i_batch,
+                        images.n_stations,
+                        self.min_stations,
+                    )
+                    self.set_progress(batch.end_time, stats)
+                    continue
+
+                await self._run_callbacks("on_batch_start", batch)
 
                 detections, semblance_trace = await search_octree.search(
                     images=images,
