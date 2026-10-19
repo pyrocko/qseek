@@ -60,15 +60,12 @@ class WaveformBatch:
         """Number of unique networks in the batch."""
         return len({tr.network for tr in self.traces})
 
-    def is_healthy(self, min_stations: int = 0) -> bool:
-        """Check if the batch is empty.
+    def is_healthy(self) -> bool:
+        """Check if the batch contains any traces.
 
         Returns:
-            bool: True if the batch is empty, False otherwise.
+            bool: True if the batch has traces, False if it is empty.
         """
-        if self.n_stations < min_stations:
-            logger.warning("batch has only %d stations", self.n_stations)
-            return False
         if not self.traces:
             logger.warning("batch is empty")
             return False
@@ -128,7 +125,6 @@ class WaveformProvider(Model):
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
-        min_stations: int = 0,
     ) -> AsyncGenerator[WaveformBatch]:
         raise NotImplementedError
 

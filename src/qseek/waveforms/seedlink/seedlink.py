@@ -198,14 +198,12 @@ class SeedLink(WaveformProvider):
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
-        min_stations: int = 0,
     ) -> AsyncGenerator[WaveformBatch]:
         batches = self._stream_batches(
             window_increment=window_increment,
             window_padding=window_padding,
             start_time=start_time,
             min_length=min_length,
-            min_stations=min_stations,
         )
         try:
             async with contextlib.aclosing(batches):
@@ -222,7 +220,6 @@ class SeedLink(WaveformProvider):
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
-        min_stations: int = 0,
     ) -> AsyncGenerator[WaveformBatch]:
         loop = asyncio.get_event_loop()
 
@@ -333,7 +330,7 @@ class SeedLink(WaveformProvider):
 
             start_time += window_increment
 
-            if not batch.is_healthy(min_stations=min_stations):
+            if not batch.is_healthy():
                 logger.warning("batch is not healthy, skipping")
                 continue
             if min_length and batch.duration < min_length:

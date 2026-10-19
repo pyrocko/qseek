@@ -459,7 +459,6 @@ class SDSArchive(WaveformProvider):
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         min_length: timedelta | None = None,
-        min_stations: int = 0,
     ) -> AsyncGenerator[WaveformBatch]:
         if not self._station_selection:
             raise RuntimeError("Station selection not prepared.")
@@ -533,7 +532,7 @@ class SDSArchive(WaveformProvider):
             i_batch += 1
             start_time = batch_end
 
-            if not batch.is_healthy(min_stations=min_stations):
+            if not batch.is_healthy():
                 logger.info(
                     "skipping unhealthy batch %s: %d stations, %d traces",
                     start_time,
@@ -567,7 +566,6 @@ class SDSArchive(WaveformProvider):
         window_padding: timedelta,
         start_time: datetime | None = None,
         min_length: timedelta | None = None,
-        min_stations: int = 0,
     ) -> AsyncGenerator[WaveformBatch]:
         queue: asyncio.Queue[WaveformBatch] = asyncio.Queue(maxsize=self.queue_size)
         self._stats.set_queue(queue)
@@ -577,7 +575,6 @@ class SDSArchive(WaveformProvider):
             start_time=start_time or self.start_time,
             end_time=self.end_time,
             min_length=min_length,
-            min_stations=min_stations,
         )
         return prefetch(batches, queue, name="SDS waveform loading")
 
@@ -678,7 +675,6 @@ if __name__ == "__main__":
         async for batch in sds.iter_batches(
             window_increment=timedelta(minutes=10),
             window_padding=timedelta(seconds=30),
-            min_stations=1,
         ):
             batch.clean_traces()
         p.disable()
