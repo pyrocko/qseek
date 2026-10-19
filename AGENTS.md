@@ -154,10 +154,13 @@ src/qseek/
 ├── plugin_loader.py    # Loads module plugins (entry point group `qseek.modules`)
 ├── plugins/            # Search callbacks (Telegram alerts, callback scripts)
 └── cache_lru.py        # LRU cache management
+src/qseek_inversion/    # Velocity model inversion from a qseek run (`qseek-inversion`)
 test/
 docs/
 .github/workflows/      # CI: tests.yaml, release.yaml, docs.yaml
 ```
+
+`src/qseek_inversion/` has its own [AGENTS.md](src/qseek_inversion/AGENTS.md). Read it before changing the inversion, `qseek.synthetics`, or the APIs it uses (`Search.from_config`, `OctreeSearch`, `FastMarchingTracer.set_layered_model`).
 
 ---
 
