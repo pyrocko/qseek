@@ -15,7 +15,7 @@
 typedef struct {
   int32_t *shifts;
   float *weights;
-  npy_bool masked;
+  int masked;
 } Node;
 
 typedef struct {
@@ -43,18 +43,18 @@ static inline npy_intp imin(npy_intp a, npy_intp b) { return a < b ? a : b; }
 
 // Function to check NumPy array dtype, dimensionality and contiguity.
 //
-// Callers no longer copy/convert inputs via PyArray_ContiguousFromObject
-// (that hid dtype/shape mismatches behind a silent copy, and freeing that
-// copy's reference immediately after use left dangling data pointers once
-// the copy's refcount hit zero). Arrays are used as-is, so this check is
-// the only guard against wrong dtype, wrong rank, or non-contiguous input.
-static inline int check_array_dtype(PyArrayObject *arr, int expected_type,
-                                    int expected_ndim) {
+// Inputs are not copied/converted via PyArray_ContiguousFromObject (that hid
+// dtype/shape mismatches behind a silent copy, and freeing that copy's
+// reference immediately after use left dangling data pointers once the copy's
+// refcount hit zero). Arrays are used as-is, so this check is the only guard
+// against wrong dtype, wrong rank, or non-contiguous input.
+static inline int check_array(PyObject *arr, int expected_type,
+                              int expected_ndim) {
   if (!PyArray_Check(arr)) {
     PyErr_SetString(PyExc_TypeError, "Input must be a NumPy array");
     return 0;
   }
-  if (PyArray_TYPE(arr) != expected_type) {
+  if (PyArray_TYPE((PyArrayObject *)arr) != expected_type) {
     const char *type_name = expected_type == NPY_FLOAT32 ? "float32"
                             : expected_type == NPY_INT32 ? "int32"
                             : expected_type == NPY_BOOL  ? "bool"
@@ -62,118 +62,90 @@ static inline int check_array_dtype(PyArrayObject *arr, int expected_type,
     PyErr_Format(PyExc_TypeError, "Input array must be of type %s", type_name);
     return 0;
   }
-  if (PyArray_NDIM(arr) != expected_ndim) {
+  if (PyArray_NDIM((PyArrayObject *)arr) != expected_ndim) {
     PyErr_Format(PyExc_ValueError,
                  "Input array must have %d dimension(s), got %d", expected_ndim,
-                 PyArray_NDIM(arr));
+                 PyArray_NDIM((PyArrayObject *)arr));
     return 0;
   }
-  if (!PyArray_ISCONTIGUOUS(arr)) {
+  if (!PyArray_ISCONTIGUOUS((PyArrayObject *)arr)) {
     PyErr_SetString(PyExc_ValueError, "Input array must be C-contiguous");
     return 0;
   }
   return 1;
 }
 
-// Prepare function equivalent to Mojo's prepare
-//
-// Inputs are used as-is (no PyArray_ContiguousFromObject conversion): the
-// caller must already pass C-contiguous arrays of the exact dtype checked
-// below. This is enforced by check_array_dtype() rather than silently
-// converted, since a converted copy's data pointer would otherwise be kept
-// around after the copy's only reference is released -- see the note on
-// check_array_dtype() above.
-static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
-                         PyObject *weights, PyObject *node_mask,
-                         Trace **traces_list, Node **nodes_list,
-                         int32_t *min_shift, int32_t *max_shift) {
+static int prepare(PyObject *nodes, PyObject *traces, PyObject *offsets,
+                   Node **nodes_list, Trace **traces_list, int32_t *min_shift,
+                   int32_t *max_shift) {
+  if (!PyList_Check(nodes) || !PyList_Check(traces)) {
+    PyErr_SetString(PyExc_TypeError, "nodes and traces must be lists");
+    return 0;
+  }
+
   Py_ssize_t n_traces = PyList_Size(traces);
-  PyArrayObject *shifts_arr = (PyArrayObject *)shifts;
-  PyArrayObject *weights_arr = (PyArrayObject *)weights;
-  PyArrayObject *offsets_arr = (PyArrayObject *)offsets;
-  PyArrayObject *node_mask_arr = NULL;
-  int node_mask_owned = 0;
+  Py_ssize_t n_nodes = PyList_Size(nodes);
 
-  if (n_traces == 0) {
-    PyErr_SetString(PyExc_ValueError, "Input traces must be a non-empty list");
-    return NULL;
-  }
-
-  if (!check_array_dtype(shifts_arr, NPY_INT32, 2) ||
-      !check_array_dtype(weights_arr, NPY_FLOAT32, 2) ||
-      !check_array_dtype(offsets_arr, NPY_INT32, 1)) {
-    return NULL;
-  }
-
-  npy_intp *shifts_shape = PyArray_SHAPE(shifts_arr);
-  npy_intp n_nodes = shifts_shape[0];
-
-  if (node_mask == Py_None) {
-    node_mask = PyArray_ZEROS(1, &n_nodes, NPY_BOOL, 0);
-    if (!node_mask) {
-      PyErr_SetString(PyExc_MemoryError, "Failed to allocate node activation");
-      return NULL;
-    }
-    node_mask_owned = 1; // We own this reference and must release it below.
-  } else if (!check_array_dtype((PyArrayObject *)node_mask, NPY_BOOL, 1)) {
-    return NULL;
-  }
-  node_mask_arr = (PyArrayObject *)node_mask;
-
-  if (n_nodes == 0) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Number of nodes must be greater than zero");
-    goto cleanup_mask;
-  }
-
-  if (shifts_shape[0] != PyArray_SHAPE(weights_arr)[0] ||
-      shifts_shape[1] != PyArray_SHAPE(weights_arr)[1]) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Shifts and weights must have the same shape");
-    goto cleanup_mask;
-  }
-  if (n_traces != PyArray_SHAPE(offsets_arr)[0]) {
+  if (!check_array(offsets, NPY_INT32, 1) ||
+      PyArray_SHAPE((PyArrayObject *)offsets)[0] != n_traces) {
     PyErr_SetString(PyExc_ValueError,
                     "Number of arrays must match number of offsets");
-    goto cleanup_mask;
+    return 0;
   }
-  if (shifts_shape[1] != n_traces) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Shifts must have the same number of columns as traces");
-    goto cleanup_mask;
-  }
-  if (n_nodes != PyArray_SHAPE(node_mask_arr)[0]) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Number of nodes must match number of activation flags");
-    goto cleanup_mask;
-  }
-
-  int32_t *offsets_data = (int32_t *)PyArray_DATA(offsets_arr);
-  int32_t *shifts_data = (int32_t *)PyArray_DATA(shifts_arr);
-  float *weights_data = (float *)PyArray_DATA(weights_arr);
-  npy_bool *node_mask_data = (npy_bool *)PyArray_DATA(node_mask_arr);
+  int32_t *offsets_data = (int32_t *)PyArray_DATA((PyArrayObject *)offsets);
 
   *traces_list = (Trace *)malloc(n_traces * sizeof(Trace));
   *nodes_list = (Node *)malloc(n_nodes * sizeof(Node));
   if (!*traces_list || !*nodes_list) {
     PyErr_SetString(PyExc_MemoryError, "Failed to allocate memory");
-    goto cleanup_traces;
+    return 0;
   }
 
   for (npy_intp i = 0; i < n_traces; i++) {
-    PyArrayObject *trace = (PyArrayObject *)PyList_GetItem(traces, i);
-    if (!check_array_dtype(trace, NPY_FLOAT32, 1)) {
-      goto cleanup_traces;
+    PyObject *trace = PyList_GET_ITEM(traces, i);
+    if (!check_array(trace, NPY_FLOAT32, 1)) {
+      free(*traces_list);
+      free(*nodes_list);
+      return 0;
     }
-    (*traces_list)[i].data = (float *)PyArray_DATA(trace);
-    (*traces_list)[i].size = PyArray_SIZE(trace);
+    (*traces_list)[i].data = (float *)PyArray_DATA((PyArrayObject *)trace);
+    (*traces_list)[i].size = PyArray_SIZE((PyArrayObject *)trace);
     (*traces_list)[i].offset = offsets_data[i];
   }
 
   for (npy_intp i = 0; i < n_nodes; i++) {
-    (*nodes_list)[i].shifts = shifts_data + i * n_traces;
-    (*nodes_list)[i].weights = weights_data + i * n_traces;
-    (*nodes_list)[i].masked = node_mask_data[i];
+    PyObject *node_tuple = PyList_GET_ITEM(nodes, i);
+    if (!PyTuple_Check(node_tuple) || PyTuple_Size(node_tuple) < 3) {
+      PyErr_SetString(
+          PyExc_TypeError,
+          "Each node must be a tuple of (shifts, weights, masked)");
+      free(*nodes_list);
+      free(*traces_list);
+      return 0;
+    }
+    PyObject *shifts_arr = (PyObject *)PyTuple_GET_ITEM(node_tuple, 0);
+    PyObject *weights_arr = (PyObject *)PyTuple_GET_ITEM(node_tuple, 1);
+    PyObject *masked_obj = (PyObject *)PyTuple_GET_ITEM(node_tuple, 2);
+
+    if (!check_array(shifts_arr, NPY_INT32, 1) ||
+        !check_array(weights_arr, NPY_FLOAT32, 1)) {
+      free(*nodes_list);
+      free(*traces_list);
+      return 0;
+    }
+    if (PyArray_NDIM((PyArrayObject *)shifts_arr) != 1 ||
+        PyArray_NDIM((PyArrayObject *)weights_arr) != 1 ||
+        PyArray_SIZE((PyArrayObject *)shifts_arr) != n_traces ||
+        PyArray_SIZE((PyArrayObject *)weights_arr) != n_traces) {
+      PyErr_SetString(PyExc_ValueError, "Shifts and weights must be 1D arrays");
+      free(*nodes_list);
+      free(*traces_list);
+      return 0;
+    }
+
+    (*nodes_list)[i].shifts = PyArray_DATA((PyArrayObject *)shifts_arr);
+    (*nodes_list)[i].weights = PyArray_DATA((PyArrayObject *)weights_arr);
+    (*nodes_list)[i].masked = PyObject_IsTrue(masked_obj);
   }
 
   *min_shift = INT32_MAX;
@@ -187,49 +159,33 @@ static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
       *max_shift = (*max_shift > idx_end) ? *max_shift : idx_end;
     }
   }
-
-  if (node_mask_owned) {
-    Py_DECREF(node_mask);
-  }
-  return traces;
-
-cleanup_traces:
-  free(*traces_list);
-  free(*nodes_list);
-cleanup_mask:
-  if (node_mask_owned) {
-    Py_DECREF(node_mask);
-  }
-  return NULL;
+  return 1;
 }
 
 static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *traces, *offsets, *shifts, *weights, *stack, *node_mask,
-      *shift_range;
+  PyObject *traces, *offsets, *nodes, *stack, *shift_range;
   stack = Py_None; // Default to None if not provided
-  node_mask = Py_None;
   shift_range = Py_None;
   int n_threads = 1;
 
-  static char *kwlist[] = {"traces",      "offsets",   "shifts",
-                           "weights",     "node_mask", "stack",
+  static char *kwlist[] = {"traces",      "offsets",   "nodes", "stack",
                            "shift_range", "n_threads", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOO|OOOi", kwlist, &traces,
-                                   &offsets, &shifts, &weights, &node_mask,
-                                   &stack, &shift_range, &n_threads)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO|OOi", kwlist, &traces,
+                                   &offsets, &nodes, &stack, &shift_range,
+                                   &n_threads)) {
     return NULL;
   }
 
   Trace *traces_list;
   Node *nodes_list;
   int32_t min_shift, max_shift;
-  if (!prepare(traces, offsets, shifts, weights, node_mask, &traces_list,
-               &nodes_list, &min_shift, &max_shift)) {
+  if (!prepare(nodes, traces, offsets, &nodes_list, &traces_list, &min_shift,
+               &max_shift)) {
     return NULL;
   }
 
   npy_intp n_traces = PyList_Size(traces);
-  npy_intp n_nodes = PyArray_SHAPE((PyArrayObject *)shifts)[0];
+  npy_intp n_nodes = PyList_Size(nodes);
   npy_intp stack_size = max_shift - min_shift;
   if (shift_range != Py_None) {
     if (!PyTuple_Check(shift_range) || PyTuple_Size(shift_range) != 2 ||
@@ -257,7 +213,7 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
   }
 
   if (stack != Py_None) {
-    if (!check_array_dtype((PyArrayObject *)stack, NPY_FLOAT32, 2)) {
+    if (!check_array(stack, NPY_FLOAT32, 2)) {
       free(traces_list);
       free(nodes_list);
       return NULL;
@@ -316,16 +272,10 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
       simde__m256 weight_vec = simde_mm256_set1_ps(weight);
 
       // The loop condition must be `i + LANE_WIDTH <= stack_nsamples` rather
-      // than the usual `i < stack_nsamples - (stack_nsamples % LANE_WIDTH)`:
-      // that form only bounds the loop correctly when `i` starts at 0, but
-      // here it starts at imax(0, min_shift - trace_shift), which is non-zero
-      // whenever an explicit shift_range puts the window above this trace's
-      // shifted start. With a non-zero, non-LANE_WIDTH-aligned start the old
-      // form let the final iteration run up to LANE_WIDTH-1 lanes past
-      // stack_nsamples, reading beyond the trace and writing beyond this
-      // node's stack row (into the next node, or off the array entirely).
-      // It happened to stay in bounds when stack_size % LANE_WIDTH == 0,
-      // which is why it went unnoticed.
+      // than `i < stack_nsamples - (stack_nsamples % LANE_WIDTH)`: that form
+      // only bounds the loop correctly when `i` starts at 0, but `i` starts at
+      // imax(0, min_shift - trace_shift), which is non-zero whenever an
+      // explicit shift_range puts the window above this trace's shifted start.
       for (i = imax(0, min_shift - trace_shift);
            i + LANE_WIDTH <= stack_nsamples; i += LANE_WIDTH) {
         npy_intp i_res = base_idx + i;
@@ -352,23 +302,21 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
 // stack_and_reduce function
 static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
                                   PyObject *kwargs) {
-  PyObject *traces, *offsets, *shifts, *weights, *node_mask, *node_stack_max,
-      *node_stack_max_idx, *shift_range;
-  node_mask = Py_None;
+  PyObject *traces, *offsets, *nodes, *node_stack_max, *node_stack_max_idx,
+      *shift_range;
   node_stack_max = Py_None;
   node_stack_max_idx = Py_None;
   shift_range = Py_None;
 
   int n_threads = 1;
 
-  static char *kwlist[] = {
-      "traces",    "offsets",     "shifts",         "weights",
-      "node_mask", "shift_range", "node_stack_max", "node_stack_max_idx",
-      "n_threads", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOO|OOOOi", kwlist, &traces,
-                                   &offsets, &shifts, &weights, &node_mask,
-                                   &shift_range, &node_stack_max,
-                                   &node_stack_max_idx, &n_threads)) {
+  static char *kwlist[] = {"traces",         "offsets",
+                           "nodes",          "shift_range",
+                           "node_stack_max", "node_stack_max_idx",
+                           "n_threads",      NULL};
+  if (!PyArg_ParseTupleAndKeywords(
+          args, kwargs, "OOO|OOOi", kwlist, &traces, &offsets, &nodes,
+          &shift_range, &node_stack_max, &node_stack_max_idx, &n_threads)) {
     return NULL;
   }
 
@@ -382,12 +330,12 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   Trace *traces_list;
   Node *nodes_list;
   int32_t min_shift, max_shift;
-  if (!prepare(traces, offsets, shifts, weights, node_mask, &traces_list,
-               &nodes_list, &min_shift, &max_shift))
+  if (!prepare(nodes, traces, offsets, &nodes_list, &traces_list, &min_shift,
+               &max_shift))
     return NULL;
 
   npy_intp n_traces = PyList_Size(traces);
-  npy_intp n_nodes = PyArray_SHAPE((PyArrayObject *)shifts)[0];
+  npy_intp n_nodes = PyList_Size(nodes);
   npy_intp stack_size = max_shift - min_shift;
 
   if (shift_range != Py_None) {
@@ -420,8 +368,8 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   int result_arrays_owned = (node_stack_max == Py_None);
 
   if (node_stack_max != Py_None && node_stack_max_idx != Py_None) {
-    if (!check_array_dtype((PyArrayObject *)node_stack_max, NPY_FLOAT32, 1) ||
-        !check_array_dtype((PyArrayObject *)node_stack_max_idx, NPY_INT32, 1) ||
+    if (!check_array(node_stack_max, NPY_FLOAT32, 1) ||
+        !check_array(node_stack_max_idx, NPY_INT32, 1) ||
         PyArray_SHAPE((PyArrayObject *)node_stack_max_idx)[0] != stack_size ||
         PyArray_SHAPE((PyArrayObject *)node_stack_max)[0] != stack_size) {
       PyErr_SetString(
@@ -457,15 +405,8 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   int32_t *stack_max_idx_data =
       (int32_t *)PyArray_DATA((PyArrayObject *)node_stack_max_idx);
 
-  // Per-thread tile buffers are carved out of one allocation instead of each
-  // OpenMP thread calling malloc() for its own tile: the tiles computed below
-  // partition [0, stack_size) contiguously with no gaps or overlap, so a
-  // single buffer can be sliced per-thread via tile_start_idx. This lets the
-  // allocation be checked here, before releasing the GIL, instead of being
-  // an unchecked malloc() deep inside the parallel region (a failure there
-  // -- realistic under memory pressure with large octrees/windows, since
-  // this scales with stack_size -- would previously segfault instead of
-  // raising a clean MemoryError).
+  // Per-thread tiles partition [0, stack_size) contiguously, they are carved
+  // out of one allocation which is checked before releasing the GIL.
   float *tile_stack_buffer =
       (float *)malloc((size_t)stack_size * sizeof(float));
   if (!tile_stack_buffer) {
@@ -545,12 +486,13 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
       // for (; i < tile_size - (tile_size % LANE_WIDTH); i += LANE_WIDTH) {
       //   npy_intp res_idx = tile_start_idx + i;
       //   simde__m256 stack_vec = simde_mm256_loadu_ps(&tile_node_stack[i]);
-      //   simde__m256 max_vec = simde_mm256_loadu_ps(&stack_max_data[res_idx]);
-      //   simde__m256i max_mask = (simde__m256i)simde_mm256_cmp_ps(
+      //   simde__m256 max_vec =
+      //   simde_mm256_loadu_ps(&stack_max_data[res_idx]); simde__m256i
+      //   max_mask = (simde__m256i)simde_mm256_cmp_ps(
       //       stack_vec, max_vec, SIMDE_CMP_GT_OQ);
       //   simde_mm256_maskstore_ps(&stack_max_data[res_idx], max_mask,
-      //   stack_vec); simde_mm256_maskstore_epi32(&stack_max_idx_data[res_idx],
-      //   max_mask,
+      //   stack_vec);
+      //   simde_mm256_maskstore_epi32(&stack_max_idx_data[res_idx], max_mask,
       //                               node_vec);
       // }
       for (; i < tile_size; i++) {
@@ -575,29 +517,27 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
 // stack_snapshot function
 static PyObject *delay_sum_snapshot(PyObject *self, PyObject *args,
                                     PyObject *kwargs) {
-  PyObject *traces, *offsets, *shifts, *weights, *node_mask, *shift_range;
-  node_mask = Py_None;
+  PyObject *traces, *offsets, *nodes, *shift_range;
   shift_range = Py_None;
   int32_t index;
 
-  static char *kwlist[] = {"traces", "offsets",     "shifts",    "weights",
-                           "index",  "shift_range", "node_mask", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOi|OO", kwlist, &traces,
-                                   &offsets, &shifts, &weights, &index,
-                                   &shift_range, &node_mask)) {
+  static char *kwlist[] = {"traces", "offsets",     "nodes",
+                           "index",  "shift_range", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOi|O", kwlist, &traces,
+                                   &offsets, &nodes, &index, &shift_range)) {
     return NULL;
   }
 
   Trace *traces_list;
   Node *nodes_list;
   int32_t min_shift, max_shift;
-  if (!prepare(traces, offsets, shifts, weights, node_mask, &traces_list,
-               &nodes_list, &min_shift, &max_shift)) {
+  if (!prepare(nodes, traces, offsets, &nodes_list, &traces_list, &min_shift,
+               &max_shift)) {
     return NULL;
   }
 
   npy_intp n_traces = PyList_Size(traces);
-  npy_intp n_nodes = PyArray_SHAPE((PyArrayObject *)shifts)[0];
+  npy_intp n_nodes = PyList_Size(nodes);
   npy_intp stack_size = max_shift - min_shift;
 
   if (shift_range != Py_None) {

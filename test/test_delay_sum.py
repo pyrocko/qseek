@@ -8,6 +8,7 @@ import pytest
 from pyrocko import parstack as pyrocko_parstack
 from pytest import fixture
 
+from qseek.delay_sum import NodeStack
 from qseek.ext import array_tools, delay_sum
 
 N_THREADS_TEST = [1, 2, 4]  # GHA Runners have 4 cores
@@ -38,6 +39,16 @@ def data():
     return get_data(n_traces=100)
 
 
+def get_nodes(shifts, weights) -> list[NodeStack]:
+    return [
+        NodeStack(
+            shifts=shift,
+            weights=weight,
+        )
+        for shift, weight in zip(shifts, weights, strict=True)
+    ]
+
+
 @pytest.mark.parametrize("n_threads", N_THREADS_TEST)
 def test_delay_sum_result_length(
     data,
@@ -46,14 +57,14 @@ def test_delay_sum_result_length(
     result_samples: int = 1000,
 ):
     traces, offsets, shifts, weights = data
+    nodes = get_nodes(shifts, weights)
 
     res = None
     for _ in range(rounds):
         res, _ = delay_sum.delay_sum(
             traces,
             offsets,
-            shifts,
-            weights,
+            nodes,
             shift_range=(0, result_samples),
             stack=res,
             n_threads=n_threads,
@@ -90,11 +101,12 @@ def test_delay_sum_result_length(
 @pytest.mark.parametrize("n_threads", N_THREADS_TEST)
 def test_delay_sum_reduce_snapshot(data, n_threads: int):
     traces, offsets, shifts, weights = data
+    nodes = get_nodes(shifts, weights)
+
     max_res, max_node_idx, offset = delay_sum.delay_sum_reduce(
         traces,
         offsets,
-        shifts,
-        weights,
+        nodes,
         n_threads=n_threads,
     )
 
@@ -121,8 +133,7 @@ def test_delay_sum_reduce_snapshot(data, n_threads: int):
         snapshot = delay_sum.delay_sum_snapshot(
             traces,
             offsets,
-            shifts,
-            weights,
+            nodes,
             index=idx,
         )
         pyrocko_max_reduce_snapshot = res_pyrocko[:, idx]
@@ -142,14 +153,15 @@ def test_delay_sum(
 ):
     traces, offsets, shifts, weights = data
 
+    nodes = get_nodes(shifts, weights)
+
     def stack_qseek() -> tuple[np.ndarray, int]:
         res = None
         for _ in range(rounds):
             res, offset = delay_sum.delay_sum(
                 traces,
                 offsets,
-                shifts,
-                weights,
+                nodes,
                 stack=res,
                 n_threads=n_threads,
             )
@@ -195,19 +207,19 @@ def test_delay_sum(
 def test_delay_sum_reduce(
     benchmark, data, n_threads: int, implementation: Implementation
 ):
+    traces, offsets, shifts, weights = data
+    nodes = get_nodes(shifts, weights)
+
     def stack_reduce_qseek():
-        traces, offsets, shifts, weights = data
         max_value, max_idx, offset = delay_sum.delay_sum_reduce(
             traces,
             offsets,
-            shifts,
-            weights,
+            nodes,
             n_threads=n_threads,
         )
         return max_idx, max_value, offset
 
     def stack_reduce_pyrocko():
-        traces, offsets, shifts, weights = data
         res, offset = pyrocko_parstack.parstack(
             traces,
             offsets,
@@ -247,6 +259,7 @@ def test_delay_sum_reduce_mask(
     implementation: Literal["pyrocko", "qseek"],
 ):
     traces, offsets, shifts, weights = data
+    nodes = get_nodes(shifts, weights)
     n_nodes = shifts.shape[0]
 
     # Mask random nodes
@@ -254,13 +267,17 @@ def test_delay_sum_reduce_mask(
     masked_indices = random.sample(range(n_nodes), 50)
     mask[masked_indices] = True
 
+    for idx in range(n_nodes):
+        nodes[idx] = nodes[idx].mask(False)
+
+    for idx in masked_indices:
+        nodes[idx] = nodes[idx].mask(True)
+
     def stack_reduce_qseek():
         return delay_sum.delay_sum_reduce(
             traces,
             offsets,
-            shifts,
-            weights,
-            node_mask=mask,
+            nodes,
             node_stack_max=None,
             node_stack_max_idx=None,
             n_threads=n_threads,
@@ -314,6 +331,8 @@ def test_delay_sum_reduce_mask(
 @pytest.mark.parametrize("n_threads", N_THREADS_TEST)
 def test_delay_sum_reduce_mask_iterative(data, n_threads: int):
     traces, offsets, shifts, weights = data
+    nodes = get_nodes(shifts, weights)
+
     n_nodes = shifts.shape[0]
 
     rng = np.random.default_rng(123)
@@ -327,19 +346,22 @@ def test_delay_sum_reduce_mask_iterative(data, n_threads: int):
     pyr_res, pyr_offset = delay_sum.delay_sum(
         traces,
         offsets,
-        shifts,
-        weights,
+        nodes,
         stack=None,
         n_threads=n_threads,
     )
     pyr_max_idx, pyr_max = array_tools.argmax_masked(pyr_res, n_threads=n_threads)
 
+    for idx in range(n_nodes):
+        nodes[idx] = nodes[idx].mask(False)
+
+    for idx in masked_indices:
+        nodes[idx] = nodes[idx].mask(True)
+
     stack_max, stack_idx, offset = delay_sum.delay_sum_reduce(
         traces,
         offsets,
-        shifts,
-        weights,
-        node_mask=mask,
+        nodes,
         node_stack_max=None,
         node_stack_max_idx=None,
         n_threads=n_threads,
@@ -351,13 +373,15 @@ def test_delay_sum_reduce_mask_iterative(data, n_threads: int):
     with pytest.raises(AssertionError):
         np.testing.assert_equal(pyr_max_idx, stack_idx)
 
+    for idx in range(n_nodes):
+        node = nodes[idx]
+        nodes[idx] = node.mask(not node.masked)
+
     # With reversed mask and results from above
     stack_max, stack_idx, offset = delay_sum.delay_sum_reduce(
         traces,
         offsets,
-        shifts,
-        weights,
-        node_mask=~mask,
+        nodes,
         node_stack_max=stack_max,
         node_stack_max_idx=stack_idx,
         n_threads=n_threads,
