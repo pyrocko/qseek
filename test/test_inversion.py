@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import sys
+from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -214,3 +217,157 @@ async def test_synthetic_closed_loop(import_rundir: Path, tmp_path: Path) -> Non
         layer.vs *= 0.85
     slow_result = await inversion.test_velocity_model(slow_model)
     assert slow_result.cumulative_semblance < result.cumulative_semblance
+
+
+def scaled_velocity_model(factor: float) -> str:
+    """The velocity model with all velocities scaled."""
+    lines = []
+    for line in VELOCITY_MODEL.strip().splitlines():
+        depth, vp, vs, density = line.split()
+        lines.append(
+            f"{depth} {float(vp) * factor:.3f} {float(vs) * factor:.3f} {density}"
+        )
+    return "\n".join(lines)
+
+
+@pytest.fixture
+def cli(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., int]]:
+    """Run `qseek-inversion` with arguments, return the exit code."""
+    from qseek import console as console_module
+    from qseek_inversion.app import qseek_inversion
+
+    monkeypatch.setattr(console_module, "NON_INTERACTIVE", False)
+    monkeypatch.setattr(console_module.console, "quiet", False)
+    handlers = list(logging.root.handlers)
+    level = logging.root.level
+
+    def run(*args: str | Path) -> int:
+        monkeypatch.setattr(sys, "argv", ["qseek-inversion", *map(str, args)])
+        try:
+            qseek_inversion.main()
+        except SystemExit as exc:
+            return int(exc.code or 0)
+        return 0
+
+    yield run
+
+    logging.disable(logging.NOTSET)
+    logging.root.setLevel(level)
+    for handler in set(logging.root.handlers) - set(handlers):
+        logging.root.removeHandler(handler)
+        handler.close()
+
+
+def report_lines(output: str) -> dict[str, str]:
+    pairs = (line.split(": ", 1) for line in output.splitlines() if ": " in line)
+    return {pair[0]: pair[1] for pair in pairs}
+
+
+def test_cli_config_and_modules(
+    cli: Callable[..., int],
+    import_rundir: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli("modules") == 0
+    output = capsys.readouterr().out
+    for name in ("InversionLayered1D", "EventWaveformsSelection", "SyntheticEvents"):
+        assert name in output
+
+    assert cli("modules", "SyntheticEvents") == 0
+    assert '"waveforms": "SyntheticEvents"' in capsys.readouterr().out
+
+    assert (
+        cli(
+            "config",
+            "--import-rundir",
+            import_rundir,
+            "--selection",
+            "EventWaveformsSelection",
+        )
+        == 0
+    )
+    config = InversionLayered1D.model_validate_json(capsys.readouterr().out)
+    assert config.import_rundir == import_rundir
+    assert config.event_selection.waveforms == "EventSelection"
+
+    assert cli("--non-interactive", "modules", "Unknown") == 2
+    assert report_lines(capsys.readouterr().out)["status"] == "failed"
+    assert cli("--non-interactive", "invert", tmp_path / "missing.json") == 2
+
+
+def test_cli_invert(
+    cli: Callable[..., int],
+    import_rundir: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The inversion moves a slow start model towards the true model."""
+    search_file = import_rundir / "search.json"
+    search = Search.model_validate_json(search_file.read_text())
+    search.ray_tracers = RayTracers(
+        root=[
+            FastMarchingTracer(
+                velocity_model=LayeredEarthModel1D(
+                    filename=None, raw_file_data=scaled_velocity_model(0.9)
+                )
+            )
+        ]
+    )
+    search_file.write_text(search.model_dump_json())
+
+    config_file = tmp_path / "inversion.json"
+    inversion = InversionLayered1D(
+        import_rundir=import_rundir,
+        event_selection=SyntheticEvents(
+            ray_tracer=FastMarchingTracer(velocity_model=earth_model()),
+            n_events=N_EVENTS,
+            sigma_samples=5,
+        ),
+        n_iterations=20,
+    )
+    config_file.write_text(inversion.model_dump_json())
+
+    assert cli("--non-interactive", "invert", "--check", config_file) == 0
+    check = report_lines(capsys.readouterr().out)
+    assert check["status"] == "ok"
+    assert check["events"] == str(N_EVENTS)
+
+    assert cli("--non-interactive", "invert", config_file) == 0
+    result = report_lines(capsys.readouterr().out)
+    assert result["status"] == "finished"
+    assert float(result["best_semblance"]) > float(result["start_semblance"])
+
+    rundir = Path(result["rundir"])
+    assert rundir == (tmp_path / "inversion").resolve()
+    assert (rundir / "inversion.log").read_text()
+    iterations = (rundir / "iterations.jsonl").read_text().splitlines()
+    assert len(iterations) == 21
+
+    best_model = LayeredModel.model_validate_json(
+        (rundir / "best_model.json").read_text()
+    )
+    start_model = LayeredModel.from_earth_model(
+        LayeredEarthModel1D(filename=None, raw_file_data=scaled_velocity_model(0.9))
+    )
+    true_model = LayeredModel.from_earth_model(earth_model())
+    misfit_start = sum(
+        abs(start.vp - true.vp)
+        for start, true in zip(start_model.layers, true_model.layers, strict=True)
+    )
+    misfit_best = sum(
+        abs(best.vp - true.vp)
+        for best, true in zip(best_model.layers, true_model.layers, strict=True)
+    )
+    assert misfit_best < misfit_start
+
+    assert cli("--non-interactive", "summary", rundir) == 0
+    summary = report_lines(capsys.readouterr().out)
+    assert summary["status"] == "finished"
+    assert summary["trials"] == "20"
+
+    # An existing rundir is kept, unless forced into a backup
+    assert cli("--non-interactive", "invert", config_file) == 2
+    assert "exists" in report_lines(capsys.readouterr().out)["error"]
+    assert cli("--non-interactive", "invert", "--force", config_file) == 0
+    assert list(tmp_path.glob("inversion.bak-*"))

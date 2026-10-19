@@ -116,6 +116,9 @@ class SyntheticEvents(WaveformSelection):
         if rundir is not None:
             self._catalog.export_catalog(rundir / "synthetic_catalog")
 
+    def n_selected_events(self) -> int:
+        return len(self._catalog.events)
+
     def get_catalog(self) -> SyntheticEventCatalog:
         """The synthetic events."""
         return self._catalog

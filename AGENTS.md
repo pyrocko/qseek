@@ -174,6 +174,8 @@ qseek -q search <config.json>  # Quiet: console errors only, no live view
 qseek snuffler <rundir>   # Open detections in Pyrocko Snuffler
 ```
 
+The velocity model inversion has its own CLI, `qseek-inversion` (`config`, `modules`, `invert`, `summary`), with the same `--non-interactive` mode and exit codes; see [src/qseek_inversion/AGENTS.md](src/qseek_inversion/AGENTS.md).
+
 `--quiet`/`-q` (global, before the subcommand) limits the console to errors and skips the `rich` live statistics view. The `qseek.log` in the rundir still receives INFO messages. Use it for non-interactive and agent runs to save tokens; add `-v` for warnings, `-vv` for INFO.
 
 ---

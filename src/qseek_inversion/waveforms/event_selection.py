@@ -97,6 +97,12 @@ class ConcatenatedTrace:
 
 
 class EventWaveformsSelection(WaveformSelection):
+    """The events of the imported run with the highest semblance.
+
+    The waveforms of the events are cut around their arrivals, tapered and
+    concatenated, so the image functions are computed once for all events.
+    """
+
     waveforms: Literal["EventSelection"] = "EventSelection"
 
     number_events: PositiveInt = Field(
@@ -171,6 +177,9 @@ class EventWaveformsSelection(WaveformSelection):
 
         if rundir is not None:
             await self.export(rundir)
+
+    def n_selected_events(self) -> int:
+        return len(self._events)
 
     def get_blinding(self) -> timedelta:
         return self._image_function.get_blinding()
