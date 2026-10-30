@@ -316,10 +316,7 @@ class SeisBench(ImageFunction):
         self._seisbench_model.eval()
         try:
             logger.info("compiling SeisBench model...")
-            self._seisbench_model = torch.compile(
-                self._seisbench_model,
-                mode="max-autotune",
-            )
+            self._seisbench_model.compile(mode="max-autotune")
         except RuntimeError as exc:
             logger.warning(
                 "failed to compile SeisBench model, using uncompiled model.",
@@ -397,6 +394,7 @@ class SeisBench(ImageFunction):
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,
             stacking=self.stack_method,
+            dtype="float16",
             copy=False,
         )
 
