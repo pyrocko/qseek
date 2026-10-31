@@ -528,7 +528,7 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   // slowed down by other work on its core, or by memory on a remote NUMA
   // node, delayed the whole stack while the other threads were idle.
   int thread_count = get_thread_count(n_threads);
-  npy_intp tile_size = imin(TILE_SIZE, stack_size);
+  npy_intp tile_size = imax(1, imin(TILE_SIZE, stack_size)); // 0 tiles if empty
   npy_intp n_tiles = (stack_size + tile_size - 1) / tile_size;
 
   // One buffer of tile_size samples per thread, allocated here and not in the

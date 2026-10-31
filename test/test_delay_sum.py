@@ -394,3 +394,14 @@ def test_delay_sum_reduce_tiles(data, n_threads: int, n_samples: int):
     )
     np.testing.assert_allclose(stack_max, ref_max, rtol=1e-5)
     np.testing.assert_equal(stack_idx, ref_idx)
+
+
+def test_delay_sum_reduce_empty():
+    stack_max, stack_idx, _ = delay_sum.delay_sum_reduce(
+        [np.zeros(0, dtype=np.float32)],
+        np.zeros(1, dtype=np.int32),
+        np.zeros((1, 1), dtype=np.int32),
+        np.ones((1, 1), dtype=np.float32),
+    )
+    assert stack_max.size == 0
+    assert stack_idx.size == 0
