@@ -6,8 +6,9 @@ import logging
 import shutil
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from hashlib import sha1
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Deque, Literal, Self, Sequence
+from typing import TYPE_CHECKING, Any, Deque, Literal, NamedTuple, Self, Sequence
 
 import numpy as np
 import psutil
@@ -847,6 +848,12 @@ class Search(Model):
     #     )
 
 
+class _RootCache(NamedTuple):
+    key: bytes
+    traveltimes: np.ndarray
+    weights: np.ndarray
+
+
 class OctreeSearch:
     def __init__(
         self,
@@ -911,7 +918,7 @@ class OctreeSearch:
         self.station_corrections = station_corrections
         self.station_weights = station_weights
 
-        self._root_cache: tuple[tuple, np.ndarray, np.ndarray] | None = None
+        self._root_cache: _RootCache | None = None
 
     def set_ray_tracers(self, ray_tracers: RayTracers) -> None:
         self.ray_tracers = ray_tracers
@@ -1025,19 +1032,20 @@ class OctreeSearch:
             tuple[np.ndarray, np.ndarray]: Read-only travel times and weights of
                 shape (n_nodes, n_traces).
         """
-        key = (
-            tuple(node.hash for node in nodes),
-            tuple(
-                (image.phase, image.weight, image.stations.get_nsls())
-                for image in images
-            ),
-        )
-        if self._root_cache is None or self._root_cache[0] != key:
+        # The node hashes are sha1 digests of the same length
+        sha = sha1(b"".join([node.hash for node in nodes]))
+        for image in images:
+            stations = ",".join(nsl.pretty for nsl in image.stations.get_nsls())
+            sha.update(f"{image.phase};{image.weight};{stations};".encode())
+        key = sha.digest()
+
+        cache = self._root_cache
+        if cache is None or cache.key != key:
             traveltimes, weights = await self.get_traveltimes_weights(images, nodes)
             traveltimes.flags.writeable = False
             weights.flags.writeable = False
-            self._root_cache = (key, traveltimes, weights)
-        return self._root_cache[1], self._root_cache[2]
+            cache = self._root_cache = _RootCache(key, traveltimes, weights)
+        return cache.traveltimes, cache.weights
 
     async def search(
         self,
