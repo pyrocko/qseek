@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import random
-from typing import Callable, Literal, get_args
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Callable, Literal, cast, get_args
 
 import numpy as np
 import pytest
 from pyrocko import parstack as pyrocko_parstack
+from pyrocko.trace import Trace
 from pytest import fixture
 
 from qseek.ext import array_tools, delay_sum
+from qseek.reduce import DelaySumReduce
+
+if TYPE_CHECKING:
+    from qseek.octree import Node
 
 N_THREADS_TEST = [1, 2, 4]  # GHA Runners have 4 cores
 ROUNDS = 4
@@ -395,3 +402,45 @@ def test_delay_sum_reduce_mask_iterative(data, n_threads: int):
     np.testing.assert_equal(pyr_max_idx, stack_idx)
 
     assert pyr_offset == offset
+
+
+@pytest.mark.asyncio
+async def test_delay_sum_reduce_add_nodes():
+    """Adding nodes in steps gives the stack of adding them at once."""
+    n_nodes, n_traces = 60, 10
+    rng = np.random.default_rng(42)
+    tmin = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    padding = timedelta(seconds=5)
+    traces = [
+        Trace(tmin=tmin.timestamp(), deltat=0.01, ydata=data)
+        for data in get_data(n_samples=5000, n_traces=n_traces)[0]
+    ]
+    nodes = cast(
+        "list[Node]", [SimpleNamespace(hash=i.to_bytes(4)) for i in range(n_nodes)]
+    )
+    traveltimes = rng.uniform(0.0, 4.0, size=(n_nodes, n_traces))
+    traveltimes[rng.uniform(size=traveltimes.shape) < 0.1] = np.nan
+    weights = rng.uniform(0.0, 1.0, size=(n_nodes, n_traces)).astype(np.float32)
+    # The search reuses the inputs, they must not be modified
+    traveltimes.flags.writeable = False
+    weights.flags.writeable = False
+
+    def new_stack() -> DelaySumReduce:
+        return DelaySumReduce(
+            start_time=tmin + padding,
+            end_time=tmin + timedelta(seconds=45),
+            padding=padding,
+            traces=traces,
+        )
+
+    stack = new_stack()
+    stack.add_nodes(nodes, traveltimes, weights)
+    stack_max, stack_idx = await stack.stack(n_threads=2)
+
+    stack_steps = new_stack()
+    for step in (slice(0, 20), slice(20, 45), slice(45, None)):
+        stack_steps.add_nodes(nodes[step], traveltimes[step], weights[step])
+        steps_max, steps_idx = await stack_steps.stack(n_threads=2)
+
+    np.testing.assert_array_equal(stack_max, steps_max)
+    np.testing.assert_array_equal(stack_idx, steps_idx)

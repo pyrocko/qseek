@@ -90,8 +90,12 @@ class DelaySumReduce:
         self._padding = padding
 
         self._sampling_rate = sr
-        self._node_shifts = np.empty((0, self.n_traces), dtype=np.int32)
-        self._trace_weights = np.empty((0, self.n_traces), dtype=np.float32)
+        # Buffers with room for refined nodes, _node_shifts and _trace_weights
+        # are views of the rows in use
+        self._shifts_buffer = np.empty((0, self.n_traces), dtype=np.int32)
+        self._weights_buffer = np.empty((0, self.n_traces), dtype=np.float32)
+        self._node_shifts = self._shifts_buffer
+        self._trace_weights = self._weights_buffer
 
         self._trace_data = [tr.ydata.astype(np.float32, copy=False) for tr in traces]
 
@@ -160,20 +164,32 @@ class DelaySumReduce:
         if weights.dtype != np.float32:
             raise ValueError("Weights must be of dtype np.float32.")
 
-        # Cleaning traveltimes
-        traveltime_mask = np.isnan(traveltimes)
-        traveltimes[traveltime_mask] = 0.0
-        weights[traveltime_mask] = 0.0
+        n_nodes_old = len(self.nodes)
+        n_nodes = n_nodes_old + n_new_nodes
+        if n_nodes > self._shifts_buffer.shape[0]:
+            # Room for the nodes of the refinement steps
+            capacity = int(n_nodes * 1.5)
+            shifts_buffer = np.empty((capacity, self.n_traces), dtype=np.int32)
+            weights_buffer = np.empty((capacity, self.n_traces), dtype=np.float32)
+            shifts_buffer[:n_nodes_old] = self._node_shifts
+            weights_buffer[:n_nodes_old] = self._trace_weights
+            self._shifts_buffer = shifts_buffer
+            self._weights_buffer = weights_buffer
 
-        shifts = np.round(-traveltimes * self._sampling_rate).astype(np.int32)
-        self._node_shifts = np.vstack((self._node_shifts, shifts))
-        self._trace_weights = np.vstack((self._trace_weights, weights))
+        # The inputs are not modified, the search reuses them
+        traveltime_mask = np.isnan(traveltimes)
+        shifts = np.round(-traveltimes * self._sampling_rate)
+        shifts[traveltime_mask] = 0.0
+        self._shifts_buffer[n_nodes_old:n_nodes] = shifts
+        self._weights_buffer[n_nodes_old:n_nodes] = weights
+        self._weights_buffer[n_nodes_old:n_nodes][traveltime_mask] = 0.0
+        self._node_shifts = self._shifts_buffer[:n_nodes]
+        self._trace_weights = self._weights_buffer[:n_nodes]
 
         self._stacked_nodes = np.concatenate(
             (self._stacked_nodes, np.zeros(n_new_nodes, dtype=bool))
         )
 
-        n_nodes_old = len(self.nodes)
         new_indices = {node.hash: n_nodes_old + i for i, node in enumerate(nodes)}
         self._node_idx.update(new_indices)
 
