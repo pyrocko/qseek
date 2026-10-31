@@ -154,6 +154,38 @@ async def test_get_traces_skips_failing_file(
 
 
 @pytest.mark.asyncio
+async def test_get_traces_caches_file_lookups(sds_archive: Path, monkeypatch) -> None:
+    """The files of a station and day are looked up once."""
+    archive = archive_with_executor(sds_archive)
+    nsls = sorted(archive.available_nsls())
+    scandir = os.scandir
+    n_scans = 0
+
+    def counting_scandir(path):
+        nonlocal n_scans
+        n_scans += 1
+        return scandir(path)
+
+    monkeypatch.setattr(sds.os, "scandir", counting_scandir)
+    start = DAY_START + timedelta(minutes=10)
+    end = start + timedelta(minutes=7)
+
+    traces = await archive.get_traces(nsls, start, end)
+    assert len(traces) == 6
+    assert n_scans > 0
+
+    n_scans_first = n_scans
+    cached_traces = await archive.get_traces(nsls, start, end)
+    assert n_scans == n_scans_first
+    assert {tr.nslc_id for tr in cached_traces} == {tr.nslc_id for tr in traces}
+
+    # Other channels are another lookup
+    traces = await archive.get_traces(nsls, start, end, channel_priorities=["HN"])
+    assert n_scans > n_scans_first
+    assert traces == []
+
+
+@pytest.mark.asyncio
 async def test_get_traces_executor_shut_down(sds_archive: Path, caplog) -> None:
     """When the files cannot be loaded at all, the error is logged."""
     archive = archive_with_executor(sds_archive)

@@ -12,6 +12,7 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
+from lru import LRU
 from pydantic import (
     Field,
     PositiveInt,
@@ -56,6 +57,9 @@ EXCLUDE_BANDS = "LVURPTQ"
 # reach into the next day. A 4096 byte Steim2 record holds at most about 6600
 # samples, 66 s at 100 Hz.
 DAY_FILE_OVERLAP = timedelta(minutes=10)
+
+# Cached file lookups of a station and day, about 24 days of 340 stations
+FILE_CACHE_SIZE = 8192
 
 
 def _load_file(file: Path, start_time: datetime, end_time: datetime) -> list[Trace]:
@@ -229,6 +233,7 @@ class SDSArchive(WaveformProvider):
     _station_selection: StationInventory | None = PrivateAttr(default=None)
 
     _executor: ThreadPoolExecutor | None = PrivateAttr(default=None)
+    _file_cache: LRU = PrivateAttr(default_factory=lambda: LRU(FILE_CACHE_SIZE))
 
     _stats: SDSArchiveStats = PrivateAttr(default_factory=SDSArchiveStats)
 
@@ -370,6 +375,40 @@ class SDSArchive(WaveformProvider):
         remove_duplicate_orientations: bool = True,
         channel_selector: Sequence[str] | None = None,
         channel_orientations: str = "ENZ0123",
+    ) -> frozenset[Path]:
+        """Files of a station and day, cached.
+
+        Like the scan of the archive, the lookups assume that the files of the
+        archive don't change during the run.
+        """
+        key = (
+            nsl,
+            date,
+            remove_duplicate_orientations,
+            tuple(channel_selector or ()),
+            channel_orientations,
+        )
+        files = self._file_cache.get(key)
+        if files is None:
+            files = frozenset(
+                self._find_available_files(
+                    nsl,
+                    date,
+                    remove_duplicate_orientations,
+                    channel_selector,
+                    channel_orientations,
+                )
+            )
+            self._file_cache[key] = files
+        return files
+
+    def _find_available_files(
+        self,
+        nsl: NSL,
+        date: date,
+        remove_duplicate_orientations: bool,
+        channel_selector: Sequence[str] | None,
+        channel_orientations: str,
     ) -> set[Path]:
         julian_day = date.timetuple().tm_yday
         folders: list[os.DirEntry[str]] = []
