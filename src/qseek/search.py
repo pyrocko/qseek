@@ -1078,7 +1078,9 @@ class OctreeSearch:
 
             # This iteration is also slow
             if self.semblance_density_search:
-                snapshot = await stack.get_snapshot(time_idx, leaf_only=True)
+                snapshot = await stack.get_snapshot(
+                    time_idx, leaf_only=True, n_threads=n_threads
+                )
                 octree.map_semblance(snapshot, leaf_only=True)
 
                 densest_node = octree.get_densest_leaf_node(snapshot)
@@ -1114,7 +1116,7 @@ class OctreeSearch:
             ):
                 continue
 
-            semblance_event = await stack.get_snapshot(time_idx)
+            semblance_event = await stack.get_snapshot(time_idx, n_threads=n_threads)
             octree.map_semblance(semblance_event)
             if self.node_interpolation:
                 source_location = await octree.interpolate_max_semblance(source_node)

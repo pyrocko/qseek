@@ -263,7 +263,12 @@ class DelaySumReduce:
             ydata=data,
         )
 
-    async def get_snapshot(self, sample: int, leaf_only: bool = True) -> np.ndarray:
+    async def get_snapshot(
+        self,
+        sample: int,
+        leaf_only: bool = True,
+        n_threads: int = 0,
+    ) -> np.ndarray:
         """Get a snapshot of the delay-sum at a given sample index.
 
         Removed nodes are excluded from the snapshot.
@@ -272,6 +277,8 @@ class DelaySumReduce:
             sample (int): Sample index to get the snapshot at.
             leaf_only (bool, optional): Whether to include only leaf nodes in the
                 snapshot. Defaults to True.
+            n_threads (int, optional): Number of threads to use, 0 for all.
+                Defaults to 0.
 
         Returns:
             np.ndarray: Snapshot of the delay-sum at the given sample index.
@@ -280,14 +287,20 @@ class DelaySumReduce:
         if leaf_only:
             mask_nodes = np.array([bool(n.children) for n in self.nodes], dtype=bool)
 
-        snapshot = delay_sum_snapshot(
-            traces=self._trace_data,
-            offsets=self._trace_offsets,
-            shifts=self._node_shifts,
-            weights=self._trace_weights,
-            index=sample + self._padding_samples,
-            shift_range=(0, self._result_nsamples),
-            node_mask=mask_nodes,
+        # In the stack thread, so that the event loop is not blocked
+        snapshot = await asyncio.get_running_loop().run_in_executor(
+            STACK_EXECUTOR,
+            partial(
+                delay_sum_snapshot,
+                traces=self._trace_data,
+                offsets=self._trace_offsets,
+                shifts=self._node_shifts,
+                weights=self._trace_weights,
+                index=sample + self._padding_samples,
+                shift_range=(0, self._result_nsamples),
+                node_mask=mask_nodes,
+                n_threads=n_threads,
+            ),
         )
         return snapshot[~mask_nodes] if mask_nodes is not None else snapshot
 
