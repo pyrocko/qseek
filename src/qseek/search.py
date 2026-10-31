@@ -6,8 +6,9 @@ import logging
 import shutil
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from hashlib import sha1
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Deque, Literal, Self, Sequence
+from typing import TYPE_CHECKING, Any, Deque, Literal, NamedTuple, Self, Sequence
 
 import numpy as np
 import psutil
@@ -847,6 +848,12 @@ class Search(Model):
     #     )
 
 
+class _RootCache(NamedTuple):
+    key: bytes
+    traveltimes: np.ndarray
+    weights: np.ndarray
+
+
 class OctreeSearch:
     def __init__(
         self,
@@ -911,8 +918,11 @@ class OctreeSearch:
         self.station_corrections = station_corrections
         self.station_weights = station_weights
 
+        self._root_cache: _RootCache | None = None
+
     def set_ray_tracers(self, ray_tracers: RayTracers) -> None:
         self.ray_tracers = ray_tracers
+        self._root_cache = None
 
     async def get_traveltimes(
         self,
@@ -969,6 +979,74 @@ class OctreeSearch:
 
         return weights
 
+    async def get_traveltimes_weights(
+        self,
+        images: WaveformImages,
+        nodes: Sequence[Node],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Get the travel times and weights of the nodes for all image traces.
+
+        Args:
+            images (WaveformImages): The waveform images.
+            nodes (Sequence[Node]): The nodes.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Travel times and weights of shape
+                (n_nodes, n_traces), with the traces in the order of
+                `images.get_traces()`.
+        """
+        traveltimes = []
+        weights = []
+        for image in images:
+            image_traveltimes = await self.get_traveltimes(
+                image.stations,
+                nodes=nodes,
+                phase=image.phase,
+            )
+            image_weights = await self.get_weights(
+                stations=image.stations,
+                nodes=nodes,
+                traveltime_mask=np.isnan(image_traveltimes),
+            )
+            image_weights *= image.weight
+
+            traveltimes.append(image_traveltimes)
+            weights.append(image_weights)
+        return np.hstack(traveltimes), np.hstack(weights)
+
+    async def get_root_traveltimes_weights(
+        self,
+        images: WaveformImages,
+        nodes: Sequence[Node],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Get the travel times and weights of the root nodes, cached.
+
+        The root nodes are the same in every batch, the result is reused while
+        the stations of the images stay the same.
+
+        Args:
+            images (WaveformImages): The waveform images.
+            nodes (Sequence[Node]): The root nodes of the octree.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Read-only travel times and weights of
+                shape (n_nodes, n_traces).
+        """
+        # The node hashes are sha1 digests of the same length
+        sha = sha1(b"".join([node.hash for node in nodes]))
+        for image in images:
+            stations = ",".join(nsl.pretty for nsl in image.stations.get_nsls())
+            sha.update(f"{image.phase};{image.weight};{stations};".encode())
+        key = sha.digest()
+
+        cache = self._root_cache
+        if cache is None or cache.key != key:
+            traveltimes, weights = await self.get_traveltimes_weights(images, nodes)
+            traveltimes.flags.writeable = False
+            weights.flags.writeable = False
+            cache = self._root_cache = _RootCache(key, traveltimes, weights)
+        return cache.traveltimes, cache.weights
+
     async def search(
         self,
         images: WaveformImages,
@@ -1014,32 +1092,14 @@ class OctreeSearch:
                 min(node.size for node in new_nodes + split_nodes),
             )
             stack.remove_nodes(split_nodes)
+            traveltimes, weights = await self.get_traveltimes_weights(images, new_nodes)
         else:
             new_nodes = octree.nodes
-
-        weights = []
-        traveltimes = []
-        for image in images:
-            image_traveltimes = await self.get_traveltimes(
-                image.stations,
-                nodes=new_nodes,
-                phase=image.phase,
+            traveltimes, weights = await self.get_root_traveltimes_weights(
+                images, new_nodes
             )
-            image_weights = await self.get_weights(
-                stations=image.stations,
-                nodes=new_nodes,
-                traveltime_mask=np.isnan(image_traveltimes),
-            )
-            image_weights *= image.weight
 
-            traveltimes.append(image_traveltimes)
-            weights.append(image_weights)
-
-        stack.add_nodes(
-            nodes=new_nodes,
-            traveltimes=np.hstack(traveltimes),
-            weights=np.hstack(weights),
-        )
+        stack.add_nodes(nodes=new_nodes, traveltimes=traveltimes, weights=weights)
         await stack.stack(n_threads=n_threads)
 
         detection_function, _ = stack.get_stack(trim_padding=False)

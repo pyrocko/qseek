@@ -216,3 +216,47 @@ async def test_search_station_weights(
     (detection,) = detections
     assert abs((detection.time - EVENT_TIME).total_seconds()) < 0.05
     assert detection.distance_to(source) < 0.5 * KM
+
+
+@pytest.mark.asyncio
+async def test_search_root_cache(
+    small_octree: Octree,
+    surface_stations: StationInventory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    surface_stations.prepare(small_octree.location)
+    source = Location(lat=10.0, lon=10.0, depth=3 * KM)
+    # No event, the octree is not refined
+    event_time = START_TIME + DURATION + 3 * PADDING
+    search = OctreeSearch(
+        ray_tracers=RayTracers(
+            root=[
+                ConstantVelocityTracer(phase=phase, velocity=velocity)
+                for phase, velocity in VELOCITIES.items()
+            ]
+        ),
+        window_padding=PADDING,
+        trigger=ThresholdTrigger(threshold=1.0),
+        ignore_boundary=False,
+    )
+    calls = 0
+    get_traveltimes_weights = search.get_traveltimes_weights
+
+    async def count_calls(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await get_traveltimes_weights(*args, **kwargs)
+
+    monkeypatch.setattr(search, "get_traveltimes_weights", count_calls)
+
+    images = synthetic_images(surface_stations, source, event_time)
+    for _ in range(2):
+        await search.search(images, octree=small_octree.reset())
+    assert calls == 1
+
+    # Another set of stations
+    stations = StationInventory(stations=list(surface_stations)[1:])
+    stations.prepare(small_octree.location)
+    images = synthetic_images(stations, source, event_time)
+    await search.search(images, octree=small_octree.reset())
+    assert calls == 2
