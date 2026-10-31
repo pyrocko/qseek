@@ -11,6 +11,10 @@
 
 #define LANE_WIDTH 8
 
+// Samples per tile of delay_sum_reduce. Each tile loops over all nodes and
+// traces, smaller tiles balance the load better but add this overhead.
+#define TILE_SIZE 1024
+
 // Structure definitions equivalent to Mojo's structs
 typedef struct {
   int32_t *shifts;
@@ -349,6 +353,68 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
   return Py_BuildValue("Oi", stack, min_shift);
 }
 
+// Stacks the samples [tile_start_idx, tile_end_idx) of all unmasked nodes and
+// updates the maximum and its node index. tile_node_stack holds at least
+// tile_end_idx - tile_start_idx samples.
+static void stack_tile(const Trace *traces_list, const Node *nodes_list,
+                       npy_intp n_traces, npy_intp n_nodes, int32_t min_shift,
+                       npy_intp tile_start_idx, npy_intp tile_end_idx,
+                       float *tile_node_stack, float *stack_max_data,
+                       int32_t *stack_max_idx_data) {
+  npy_intp tile_size = tile_end_idx - tile_start_idx;
+
+  for (npy_intp i_node = 0; i_node < n_nodes; i_node++) {
+    Node node = nodes_list[i_node];
+    if (node.masked)
+      continue;
+
+    for (npy_intp i = 0; i < tile_size; i++) {
+      tile_node_stack[i] = 0.0f;
+    }
+
+    for (npy_intp i_trace = 0; i_trace < n_traces; i_trace++) {
+      float weight = node.weights[i_trace];
+      if (weight == 0.0f)
+        continue;
+      Trace trace = traces_list[i_trace];
+      int32_t trace_shift = trace.offset + node.shifts[i_trace];
+      int32_t base_idx = trace_shift - min_shift;
+      npy_intp tile_base_idx = imax(0, base_idx - tile_start_idx);
+      npy_intp trace_start_idx = imax(0, tile_start_idx - base_idx);
+      npy_intp trace_end_idx = imax(0, tile_end_idx - base_idx);
+
+      trace_start_idx = imin(trace_start_idx, trace.size);
+      trace_end_idx = imin(trace_end_idx, trace.size);
+      npy_intp n_samples = trace_end_idx - trace_start_idx;
+
+      simde__m256 weight_vec = simde_mm256_set1_ps(weight);
+
+      npy_intp i = 0;
+      for (; i < n_samples - (n_samples % LANE_WIDTH); i += LANE_WIDTH) {
+        npy_intp i_res = tile_base_idx + i;
+        simde__m256 trace_vec =
+            simde_mm256_loadu_ps(&trace.data[trace_start_idx + i]);
+        simde__m256 stack_vec = simde_mm256_loadu_ps(&tile_node_stack[i_res]);
+        stack_vec = simde_mm256_fmadd_ps(trace_vec, weight_vec, stack_vec);
+        simde_mm256_storeu_ps(&tile_node_stack[i_res], stack_vec);
+      }
+      for (; i < n_samples; i++) {
+        npy_intp i_res = tile_base_idx + i;
+        tile_node_stack[i_res] += trace.data[trace_start_idx + i] * weight;
+      }
+    }
+
+    for (npy_intp i = 0; i < tile_size; i++) {
+      npy_intp res_idx = tile_start_idx + i;
+
+      if (tile_node_stack[i] > stack_max_data[res_idx]) {
+        stack_max_data[res_idx] = tile_node_stack[i];
+        stack_max_idx_data[res_idx] = (int32_t)i_node;
+      }
+    }
+  }
+}
+
 // stack_and_reduce function
 static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
                                   PyObject *kwargs) {
@@ -457,17 +523,19 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   int32_t *stack_max_idx_data =
       (int32_t *)PyArray_DATA((PyArrayObject *)node_stack_max_idx);
 
-  // Per-thread tile buffers are carved out of one allocation instead of each
-  // OpenMP thread calling malloc() for its own tile: the tiles computed below
-  // partition [0, stack_size) contiguously with no gaps or overlap, so a
-  // single buffer can be sliced per-thread via tile_start_idx. This lets the
-  // allocation be checked here, before releasing the GIL, instead of being
-  // an unchecked malloc() deep inside the parallel region (a failure there
-  // -- realistic under memory pressure with large octrees/windows, since
-  // this scales with stack_size -- would previously segfault instead of
-  // raising a clean MemoryError).
+  // The stack is split into tiles of samples that the threads take one at a
+  // time (dynamic scheduling). With one fixed chunk per thread, a thread
+  // slowed down by other work on its core, or by memory on a remote NUMA
+  // node, delayed the whole stack while the other threads were idle.
+  int thread_count = get_thread_count(n_threads);
+  npy_intp tile_size = imin(TILE_SIZE, stack_size);
+  npy_intp n_tiles = (stack_size + tile_size - 1) / tile_size;
+
+  // One buffer of tile_size samples per thread, allocated here and not in the
+  // parallel region, so that a failure raises a MemoryError instead of
+  // crashing.
   float *tile_stack_buffer =
-      (float *)malloc((size_t)stack_size * sizeof(float));
+      (float *)malloc((size_t)thread_count * tile_size * sizeof(float));
   if (!tile_stack_buffer) {
     PyErr_SetString(PyExc_MemoryError, "Failed to allocate tile stack buffer");
     if (result_arrays_owned) {
@@ -480,87 +548,19 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   }
 
   Py_BEGIN_ALLOW_THREADS;
-#pragma omp parallel num_threads(get_thread_count(n_threads))                  \
+#pragma omp parallel num_threads(thread_count)                                 \
     shared(stack_max_data, stack_max_idx_data, tile_stack_buffer)
   {
-    int num_threads = omp_get_num_threads();
-    int thread_id = omp_get_thread_num();
+    float *tile_node_stack =
+        tile_stack_buffer + (npy_intp)omp_get_thread_num() * tile_size;
 
-    npy_intp chunk_size = stack_size / num_threads;
-    npy_intp remainder = stack_size % num_threads;
-
-    npy_intp tile_start_idx =
-        thread_id * chunk_size + imin(thread_id, remainder);
-    npy_intp tile_end_idx =
-        tile_start_idx + chunk_size + (thread_id < remainder ? 1 : 0);
-    npy_intp tile_size = tile_end_idx - tile_start_idx;
-
-    float *tile_node_stack = tile_stack_buffer + tile_start_idx;
-
-    for (npy_intp i_node = 0; i_node < n_nodes; i_node++) {
-      Node node = nodes_list[i_node];
-      if (node.masked)
-        continue;
-
-      for (npy_intp i = 0; i < tile_size; i++) {
-        tile_node_stack[i] = 0.0f;
-      }
-
-      for (npy_intp i_trace = 0; i_trace < n_traces; i_trace++) {
-        float weight = node.weights[i_trace];
-        if (weight == 0.0f)
-          continue;
-        Trace trace = traces_list[i_trace];
-        int32_t trace_shift = trace.offset + node.shifts[i_trace];
-        int32_t base_idx = trace_shift - min_shift;
-        npy_intp tile_base_idx = imax(0, base_idx - tile_start_idx);
-        npy_intp trace_start_idx = imax(0, tile_start_idx - base_idx);
-        npy_intp trace_end_idx = imax(0, tile_end_idx - base_idx);
-
-        trace_start_idx = imin(trace_start_idx, trace.size);
-        trace_end_idx = imin(trace_end_idx, trace.size);
-        npy_intp n_samples = trace_end_idx - trace_start_idx;
-
-        simde__m256 weight_vec = simde_mm256_set1_ps(weight);
-
-        npy_intp i = 0;
-        for (; i < n_samples - (n_samples % LANE_WIDTH); i += LANE_WIDTH) {
-          npy_intp i_res = tile_base_idx + i;
-          simde__m256 trace_vec =
-              simde_mm256_loadu_ps(&trace.data[trace_start_idx + i]);
-          simde__m256 stack_vec = simde_mm256_loadu_ps(&tile_node_stack[i_res]);
-          stack_vec = simde_mm256_fmadd_ps(trace_vec, weight_vec, stack_vec);
-          simde_mm256_storeu_ps(&tile_node_stack[i_res], stack_vec);
-        }
-        for (; i < n_samples; i++) {
-          npy_intp i_res = tile_base_idx + i;
-          tile_node_stack[i_res] += trace.data[trace_start_idx + i] * weight;
-        }
-      }
-
-      npy_intp i = 0;
-
-      // simde__m256i node_vec = simde_mm256_set1_epi32((int32_t)i_node);
-
-      // for (; i < tile_size - (tile_size % LANE_WIDTH); i += LANE_WIDTH) {
-      //   npy_intp res_idx = tile_start_idx + i;
-      //   simde__m256 stack_vec = simde_mm256_loadu_ps(&tile_node_stack[i]);
-      //   simde__m256 max_vec = simde_mm256_loadu_ps(&stack_max_data[res_idx]);
-      //   simde__m256i max_mask = (simde__m256i)simde_mm256_cmp_ps(
-      //       stack_vec, max_vec, SIMDE_CMP_GT_OQ);
-      //   simde_mm256_maskstore_ps(&stack_max_data[res_idx], max_mask,
-      //   stack_vec); simde_mm256_maskstore_epi32(&stack_max_idx_data[res_idx],
-      //   max_mask,
-      //                               node_vec);
-      // }
-      for (; i < tile_size; i++) {
-        npy_intp res_idx = tile_start_idx + i;
-
-        if (tile_node_stack[i] > stack_max_data[res_idx]) {
-          stack_max_data[res_idx] = tile_node_stack[i];
-          stack_max_idx_data[res_idx] = (int32_t)i_node;
-        }
-      }
+#pragma omp for schedule(dynamic, 1)
+    for (npy_intp i_tile = 0; i_tile < n_tiles; i_tile++) {
+      npy_intp tile_start_idx = i_tile * tile_size;
+      npy_intp tile_end_idx = imin(tile_start_idx + tile_size, stack_size);
+      stack_tile(traces_list, nodes_list, n_traces, n_nodes, min_shift,
+                 tile_start_idx, tile_end_idx, tile_node_stack, stack_max_data,
+                 stack_max_idx_data);
     }
   }
 

@@ -367,3 +367,30 @@ def test_delay_sum_reduce_mask_iterative(data, n_threads: int):
     np.testing.assert_equal(pyr_max_idx, stack_idx)
 
     assert pyr_offset == offset
+
+
+@pytest.mark.parametrize("n_threads", [1, 3, 8])
+@pytest.mark.parametrize("n_samples", [7, 1025, 4100])
+def test_delay_sum_reduce_tiles(data, n_threads: int, n_samples: int):
+    """Stacks shorter than a tile and stacks ending in a partial tile."""
+    traces, offsets, shifts, weights = data
+    stack, _ = delay_sum.delay_sum(
+        traces,
+        offsets,
+        shifts,
+        weights,
+        shift_range=(0, n_samples),
+        n_threads=n_threads,
+    )
+    ref_idx, ref_max = array_tools.argmax_masked(stack, n_threads=n_threads)
+
+    stack_max, stack_idx, _ = delay_sum.delay_sum_reduce(
+        traces,
+        offsets,
+        shifts,
+        weights,
+        shift_range=(0, n_samples),
+        n_threads=n_threads,
+    )
+    np.testing.assert_allclose(stack_max, ref_max, rtol=1e-5)
+    np.testing.assert_equal(stack_idx, ref_idx)
