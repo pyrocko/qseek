@@ -86,7 +86,8 @@ static inline int check_array_dtype(PyArrayObject *arr, int expected_type,
 static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
                          PyObject *weights, PyObject *node_mask,
                          Trace **traces_list, Node **nodes_list,
-                         int32_t *min_shift, int32_t *max_shift) {
+                         int32_t *min_shift, int32_t *max_shift,
+                         int find_shift_range) {
   Py_ssize_t n_traces = PyList_Size(traces);
   PyArrayObject *shifts_arr = (PyArrayObject *)shifts;
   PyArrayObject *weights_arr = (PyArrayObject *)weights;
@@ -176,15 +177,21 @@ static PyObject *prepare(PyObject *traces, PyObject *offsets, PyObject *shifts,
     (*nodes_list)[i].masked = node_mask_data[i];
   }
 
-  *min_shift = INT32_MAX;
-  *max_shift = INT32_MIN;
-  for (npy_intp i = 0; i < n_nodes; i++) {
-    Node node = (*nodes_list)[i];
-    for (npy_intp j = 0; j < n_traces; j++) {
-      int32_t idx_begin = (*traces_list)[j].offset + node.shifts[j];
-      int32_t idx_end = idx_begin + (*traces_list)[j].size;
-      *min_shift = (*min_shift < idx_begin) ? *min_shift : idx_begin;
-      *max_shift = (*max_shift > idx_end) ? *max_shift : idx_end;
+  // Callers passing a shift_range don't need the full range, which is a
+  // serial loop over all nodes and traces.
+  *min_shift = 0;
+  *max_shift = 0;
+  if (find_shift_range) {
+    *min_shift = INT32_MAX;
+    *max_shift = INT32_MIN;
+    for (npy_intp i = 0; i < n_nodes; i++) {
+      Node node = (*nodes_list)[i];
+      for (npy_intp j = 0; j < n_traces; j++) {
+        int32_t idx_begin = (*traces_list)[j].offset + node.shifts[j];
+        int32_t idx_end = idx_begin + (*traces_list)[j].size;
+        *min_shift = (*min_shift < idx_begin) ? *min_shift : idx_begin;
+        *max_shift = (*max_shift > idx_end) ? *max_shift : idx_end;
+      }
     }
   }
 
@@ -224,7 +231,7 @@ static PyObject *delay_sum(PyObject *self, PyObject *args, PyObject *kwargs) {
   Node *nodes_list;
   int32_t min_shift, max_shift;
   if (!prepare(traces, offsets, shifts, weights, node_mask, &traces_list,
-               &nodes_list, &min_shift, &max_shift)) {
+               &nodes_list, &min_shift, &max_shift, shift_range == Py_None)) {
     return NULL;
   }
 
@@ -383,7 +390,7 @@ static PyObject *delay_sum_reduce(PyObject *self, PyObject *args,
   Node *nodes_list;
   int32_t min_shift, max_shift;
   if (!prepare(traces, offsets, shifts, weights, node_mask, &traces_list,
-               &nodes_list, &min_shift, &max_shift))
+               &nodes_list, &min_shift, &max_shift, shift_range == Py_None))
     return NULL;
 
   npy_intp n_traces = PyList_Size(traces);
@@ -579,12 +586,14 @@ static PyObject *delay_sum_snapshot(PyObject *self, PyObject *args,
   node_mask = Py_None;
   shift_range = Py_None;
   int32_t index;
+  int n_threads = 1;
 
-  static char *kwlist[] = {"traces", "offsets",     "shifts",    "weights",
-                           "index",  "shift_range", "node_mask", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOi|OO", kwlist, &traces,
+  static char *kwlist[] = {"traces",    "offsets",   "shifts",
+                           "weights",   "index",     "shift_range",
+                           "node_mask", "n_threads", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOi|OOi", kwlist, &traces,
                                    &offsets, &shifts, &weights, &index,
-                                   &shift_range, &node_mask)) {
+                                   &shift_range, &node_mask, &n_threads)) {
     return NULL;
   }
 
@@ -592,7 +601,7 @@ static PyObject *delay_sum_snapshot(PyObject *self, PyObject *args,
   Node *nodes_list;
   int32_t min_shift, max_shift;
   if (!prepare(traces, offsets, shifts, weights, node_mask, &traces_list,
-               &nodes_list, &min_shift, &max_shift)) {
+               &nodes_list, &min_shift, &max_shift, shift_range == Py_None)) {
     return NULL;
   }
 
@@ -633,20 +642,26 @@ static PyObject *delay_sum_snapshot(PyObject *self, PyObject *args,
   float *snapshot_data = (float *)PyArray_DATA((PyArrayObject *)snapshot);
 
   Py_BEGIN_ALLOW_THREADS;
+#pragma omp parallel for schedule(static)                                      \
+    num_threads(get_thread_count(n_threads))
   for (npy_intp i_node = 0; i_node < n_nodes; i_node++) {
     Node node = nodes_list[i_node];
     if (node.masked)
       continue;
+    float node_sum = 0.0f;
     for (npy_intp i_trace = 0; i_trace < n_traces; i_trace++) {
+      float weight = node.weights[i_trace];
+      if (weight == 0.0f)
+        continue;
       Trace trace = traces_list[i_trace];
       int32_t trace_shift = trace.offset + node.shifts[i_trace];
       int32_t base_idx = trace_shift - min_shift;
       int32_t trace_sample = index - base_idx;
-      float weight = node.weights[i_trace];
-      if (weight != 0.0 && 0 <= trace_sample && trace_sample < trace.size) {
-        snapshot_data[i_node] += trace.data[trace_sample] * weight;
+      if (0 <= trace_sample && trace_sample < trace.size) {
+        node_sum += trace.data[trace_sample] * weight;
       }
     }
+    snapshot_data[i_node] = node_sum;
   }
 
   free(traces_list);

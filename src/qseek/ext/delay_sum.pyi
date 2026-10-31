@@ -93,6 +93,7 @@ def delay_sum_snapshot(
     index: int,
     shift_range: tuple[int, int] | None = None,
     node_mask: np.ndarray | None = None,
+    n_threads: int = 1,
 ) -> np.ndarray:
     """Snapshot of delay and sum in time at a specified sample index.
 
@@ -114,6 +115,7 @@ def delay_sum_snapshot(
             Defaults to `None`.
         node_mask (np.ndarray | None, optional): Node mask to disable nodes of
             size `n_nodes`, dtype is bool. Defaults to `None`.
+        n_threads (int, optional): Number of threads to use. Defaults to 1.
 
     Returns:
         np.ndarray: Snapshot of the delay-sum at the given sample index of size
