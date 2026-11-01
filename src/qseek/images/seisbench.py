@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
@@ -221,12 +220,13 @@ class SeisBench(ImageFunction):
     batch_size: PositiveInt | Literal["auto"] = Field(
         default="auto",
         description=(
-            'Number of windows the model processes at once. `"auto"` measures the '
-            "throughput of the annotation during the search and moves the batch size "
-            "in factors of two, between 32 and 4096 and starting at 256, to the "
-            "fastest one. It probes the neighboring batch sizes again every 100 "
-            "waveform batches, as the load on the machine changes. A number fixes "
-            "the batch size."
+            "Number of windows the model processes at once. On a CUDA GPU, "
+            '`"auto"` times the annotation during the search and moves the batch '
+            "size in factors of two, between 32 and 4096 and starting at 256, to "
+            "the fastest one. It probes the neighboring batch sizes again every 100 "
+            "waveform batches, as the load on the machine changes, and halves the "
+            'batch size when the GPU runs out of memory. Without a GPU, `"auto"` '
+            "uses 128. A number fixes the batch size."
         ),
     )
     stack_method: StackMethod = Field(
@@ -324,6 +324,9 @@ class SeisBench(ImageFunction):
                 )
 
         self._seisbench_model.eval()
+        device = torch.device(self._seisbench_model.device)
+        if self.batch_size == "auto" and device.type == "cuda":
+            self._batch_size_tuner = BatchSizeTuner()
         try:
             logger.info("compiling SeisBench model...")
             self._seisbench_model.compile(mode="max-autotune")
@@ -373,35 +376,16 @@ class SeisBench(ImageFunction):
         # The 0.2 seconds is the default value from SeisBench training
         return 0.2 / self._rescale_input
 
-    def _count_windows(self, traces: list[Trace]) -> int:
-        """Number of windows the model annotates for the traces."""
-        model = self.seisbench_model
-        in_samples: int | None = getattr(model, "in_samples", None)
-        if not in_samples or not traces:
-            return 0
-        stride = max(1, in_samples - self.window_overlap_samples)
-        n_samples: dict[tuple[str, str, str], int] = defaultdict(int)
-        for tr in traces:
-            nsl = tr.nslc_id[:3]
-            n_samples[nsl] = max(n_samples[nsl], tr.ydata.size)
-        # SeisBench resamples the traces to the sampling rate of the model
-        model_rate = getattr(model, "sampling_rate", None)
-        rescale = model_rate * traces[0].deltat if model_rate else 1.0
-        n_windows = 0
-        for n in n_samples.values():
-            n = round(n * rescale)
-            if n >= in_samples:
-                n_windows += -(-(n - in_samples) // stride) + 1
-        return n_windows
-
     async def _annotate(self, traces: list[Trace]) -> Stream:
         """Annotate the traces and time the annotation for the batch size."""
         import torch
 
         tuner = self._batch_size_tuner
-        if tuner is None and self.batch_size == "auto":
-            tuner = self._batch_size_tuner = BatchSizeTuner()
-        batch_size = tuner.next_batch_size() if tuner else int(self.batch_size)
+        if tuner is not None:
+            batch_size = tuner.next_batch_size()
+        else:
+            # Without a GPU, "auto" uses a fixed batch size
+            batch_size = 128 if self.batch_size == "auto" else self.batch_size
         while True:
             stream = Stream(tr.to_obspy_trace() for tr in traces)
             start = time.perf_counter()
@@ -421,26 +405,16 @@ class SeisBench(ImageFunction):
             except torch.cuda.OutOfMemoryError:
                 if tuner is None or not tuner.record_out_of_memory(batch_size):
                     raise
-                torch.cuda.empty_cache()
-                batch_size = tuner.next_batch_size()
-                continue
-            break
+            else:
+                break
+            # Outside of the except block, its traceback holds the GPU tensors
+            torch.cuda.empty_cache()
+            batch_size = tuner.next_batch_size()
         seconds = time.perf_counter() - start
-
-        n_windows = self._count_windows(traces)
-        windows_per_second = n_windows / seconds if seconds > 0.0 else 0.0
+        self._stats.batch_size = batch_size
+        logger.debug("annotated in %.2f s with batch size %d", seconds, batch_size)
         if tuner is not None:
-            tuner.record(batch_size, n_windows, seconds)
-        stats = self._stats
-        stats.batch_size = batch_size
-        stats.windows_per_second = windows_per_second
-        logger.debug(
-            "annotated %d windows in %.2f s with batch size %d, %.0f windows/s",
-            n_windows,
-            seconds,
-            batch_size,
-            windows_per_second,
-        )
+            tuner.record(batch_size, sum(tr.ydata.size for tr in traces), seconds)
         return annotations
 
     @alog_call

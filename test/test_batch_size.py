@@ -12,16 +12,16 @@ from pyrocko.trace import Trace
 from qseek.images.batch_size import BatchSizeTuner
 from qseek.images.seisbench import SeisBench
 
-N_WINDOWS = 10_000
+N_SAMPLES = 1_000_000
 
 
 def run(tuner: BatchSizeTuner, rates: dict[int, float], n_calls: int) -> list[int]:
-    """Run the tuner against fixed throughputs in windows per second."""
+    """Run the tuner against fixed throughputs in samples per second."""
     batch_sizes = []
     for _ in range(n_calls):
         batch_size = tuner.next_batch_size()
         batch_sizes.append(batch_size)
-        tuner.record(batch_size, N_WINDOWS, N_WINDOWS / rates[batch_size])
+        tuner.record(batch_size, N_SAMPLES, N_SAMPLES / rates[batch_size])
     return batch_sizes
 
 
@@ -46,7 +46,7 @@ def test_keeps_batch_size_on_flat_throughput():
     for _ in range(500):
         batch_size = tuner.next_batch_size()
         rate = 1000.0 * rng.uniform(0.98, 1.02)
-        tuner.record(batch_size, N_WINDOWS, N_WINDOWS / rate)
+        tuner.record(batch_size, N_SAMPLES, N_SAMPLES / rate)
     assert tuner.batch_size == 256
 
 
@@ -57,8 +57,8 @@ def test_first_call_is_not_measured():
         batch_size = tuner.next_batch_size()
         # The first call of every batch size is slow, e.g. due to compilation
         warm = batch_size in tuner._warm
-        seconds = N_WINDOWS / rates[batch_size] * (1.0 if warm else 50.0)
-        tuner.record(batch_size, N_WINDOWS, seconds)
+        seconds = N_SAMPLES / rates[batch_size] * (1.0 if warm else 50.0)
+        tuner.record(batch_size, N_SAMPLES, seconds)
     assert tuner.batch_size == 1024
 
 
@@ -88,11 +88,24 @@ def test_out_of_memory_limits_batch_size():
         if batch_size > 512:
             assert tuner.record_out_of_memory(batch_size)
             continue
-        tuner.record(batch_size, N_WINDOWS, N_WINDOWS / rates[batch_size])
+        tuner.record(batch_size, N_SAMPLES, N_SAMPLES / rates[batch_size])
     assert tuner.batch_size == 512
-    assert tuner.max_batch_size == 512
-
     assert not BatchSizeTuner(batch_size=32).record_out_of_memory(32)
+
+
+def test_out_of_memory_limit_is_lifted_at_next_probe():
+    tuner = BatchSizeTuner(probe_interval=5)
+    rates = peaked_rates(4096)
+    # Another process holds GPU memory for a while
+    for _ in range(20):
+        batch_size = tuner.next_batch_size()
+        if batch_size > 512:
+            assert tuner.record_out_of_memory(batch_size)
+            continue
+        tuner.record(batch_size, N_SAMPLES, N_SAMPLES / rates[batch_size])
+    assert tuner.batch_size == 512
+    run(tuner, rates, n_calls=60)
+    assert tuner.batch_size == 4096
 
 
 def make_traces(n_stations: int, n_samples: int) -> list[Trace]:
@@ -108,19 +121,6 @@ def make_traces(n_stations: int, n_samples: int) -> list[Trace]:
         for station in range(n_stations)
         for component in "ZNE"
     ]
-
-
-def test_count_windows():
-    function = SeisBench(window_overlap_samples=2000)
-    function._seisbench_model = SimpleNamespace(in_samples=3001, sampling_rate=100.0)
-    # Starts at 0, 1001, ..., 6006 and a last window at the end of the trace
-    assert function._count_windows(make_traces(3, 10_000)) == 3 * 8
-    assert function._count_windows(make_traces(2, 3001)) == 2
-    assert function._count_windows(make_traces(2, 3000)) == 0
-
-    # SeisBench resamples to the sampling rate of the model
-    function._seisbench_model.sampling_rate = 200.0
-    assert function._count_windows(make_traces(1, 5000)) == 8
 
 
 @pytest.mark.asyncio
@@ -141,18 +141,26 @@ async def test_retry_with_smaller_batch_size_on_out_of_memory():
 
     function = SeisBench(sampling_rate=100.0)
     function._seisbench_model = SimpleNamespace(
-        annotate_async=annotate, sampling_rate=100.0, in_samples=3001
+        annotate_async=annotate, sampling_rate=100.0
     )
+    # Created in `prepare` on a CUDA device
+    function._batch_size_tuner = BatchSizeTuner()
 
     images = await function.process_traces(make_traces(2, 10_000))
     assert batch_sizes == [256, 128, 64]
     assert all(image.n_traces == 6 for image in images)
-    assert function._batch_size_tuner.max_batch_size == 64
+    assert function._batch_size_tuner.batch_size == 64
 
-    # A fixed batch size is not retried
-    function = SeisBench(sampling_rate=100.0, batch_size=128)
-    function._seisbench_model = SimpleNamespace(
-        annotate_async=annotate, sampling_rate=100.0, in_samples=3001
-    )
-    with pytest.raises(torch.cuda.OutOfMemoryError):
-        await function.process_traces(make_traces(1, 10_000))
+    # Without the tuner, "auto" is fixed at 128 and a fixed batch size is used as is
+    for config, expected in (("auto", 128), (32, 32)):
+        batch_sizes.clear()
+        function = SeisBench(sampling_rate=100.0, batch_size=config)
+        function._seisbench_model = SimpleNamespace(
+            annotate_async=annotate, sampling_rate=100.0
+        )
+        if expected > 64:
+            with pytest.raises(torch.cuda.OutOfMemoryError):
+                await function.process_traces(make_traces(1, 10_000))
+        else:
+            await function.process_traces(make_traces(1, 10_000))
+        assert batch_sizes == [expected]

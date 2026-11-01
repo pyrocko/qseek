@@ -21,7 +21,7 @@ The phase annotation with machine learning pickers runs much faster on a GPU. Ru
 }
 ```
 
-With the default [`batch_size`][qseek.images.seisbench.SeisBench.batch_size] `"auto"`, Qseek times the annotation of every waveform batch and moves the batch size to the one with the highest throughput, in factors of two between 32 and 4096. It probes the neighboring batch sizes again every 100 waveform batches, as the load on the machine changes during the search, and steps down when the GPU runs out of memory. The live view and the `qseek.log` show the batch size and the throughput in windows per second. A number fixes the batch size. Without a GPU, [`torch_cpu_threads`][qseek.images.seisbench.SeisBench.torch_cpu_threads] sets the number of CPU threads for the annotation.
+With the default [`batch_size`][qseek.images.seisbench.SeisBench.batch_size] `"auto"` on a CUDA GPU, Qseek times the annotation of every waveform batch and moves the batch size to the one with the highest throughput, in factors of two between 32 and 4096. It probes the neighboring batch sizes again every 100 waveform batches, as the load on the machine changes during the search. When the GPU runs out of memory, Qseek halves the batch size until the next probe. The live view and the `qseek.log` show the batch size. Without a GPU, `"auto"` uses 128. A number fixes the batch size. Without a GPU, [`torch_cpu_threads`][qseek.images.seisbench.SeisBench.torch_cpu_threads] sets the number of CPU threads for the annotation.
 
 ## Stacking and migration
 
