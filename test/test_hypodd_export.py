@@ -531,7 +531,7 @@ async def test_hypodd_export_selection(tmp_path: Path) -> None:
     for receiver in events[0].receivers:
         for arrival in receiver.phase_arrivals.values():
             arrival.observed.detection_value = 0.1
-    for receiver in events[0].receivers.receivers[:2]:
+    for receiver in list(events[0].receivers)[:2]:
         for arrival in receiver.phase_arrivals.values():
             arrival.observed.detection_value = 0.9
     # STA/LTA-like confidences above 1
@@ -539,7 +539,7 @@ async def test_hypodd_export_selection(tmp_path: Path) -> None:
         for arrival in receiver.phase_arrivals.values():
             arrival.observed.detection_value = 4.2
     # picks far from the modeled arrival
-    for receiver in events[2].receivers.receivers[:5]:
+    for receiver in list(events[2].receivers)[:5]:
         arrival = receiver.phase_arrivals["constant:P"]
         arrival.observed.time += timedelta(seconds=3.0)
     # above sea level
@@ -724,7 +724,7 @@ async def test_hypodd_export_cc(tmp_path: Path) -> None:
     catalog, truth = synthetic_rundir(rundir, waveforms=True)
     # weak picks at three stations: correlated around the modeled arrivals
     first = next(iter(catalog))
-    for receiver in first.receivers.receivers[:3]:
+    for receiver in list(first.receivers)[:3]:
         for arrival in receiver.phase_arrivals.values():
             arrival.observed.detection_value = 0.1
     await catalog.save()
@@ -757,7 +757,7 @@ async def test_hypodd_export_cc(tmp_path: Path) -> None:
     # the weak picks of the first event are not in phase.dat, but in dt.cc
     blocks = (outdir / "dt.cc").read_text().split("# 1 ")[1:]
     labels = {line.split()[0] for block in blocks for line in block.splitlines()[1:]}
-    weak = {rcv.station for rcv in first.receivers.receivers[:3]}
+    weak = {rcv.station for rcv in list(first.receivers)[:3]}
     assert weak <= labels
 
     await run_hypodd(outdir_ct)
