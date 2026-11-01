@@ -31,7 +31,7 @@ from qseek.utils import PhaseDescription, alog_call, to_datetime
 
 obspy_compat.plant()
 
-seisbench_logger.setLevel(logging.CRITICAL)
+seisbench_logger.setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -394,7 +394,7 @@ class SeisBench(ImageFunction):
             overlap=self.window_overlap_samples,
             batch_size=self.batch_size,
             stacking=self.stack_method,
-            dtype="float16",
+            autocast="float16",
             copy=False,
         )
 
