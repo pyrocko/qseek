@@ -20,6 +20,7 @@ from pydantic import (
     PositiveFloat,
     PrivateAttr,
     computed_field,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -237,7 +238,19 @@ class Receiver(Station):
 
 class EventReceivers(BaseModel):
     event_uid: UUID | None = None
-    receivers: list[Receiver] = []
+    receivers: dict[NSL, Receiver] = {}
+
+    @field_validator("receivers", mode="before")
+    @classmethod
+    def _receivers_from_list(cls, value: Any) -> Any:
+        # Receivers are stored as a list, keyed by NSL for the lookups
+        if isinstance(value, list):
+            return {(rcv := Receiver.model_validate(item)).nsl: rcv for item in value}
+        return value
+
+    @field_serializer("receivers")
+    def _receivers_as_list(self, receivers: dict[NSL, Receiver]) -> list[Receiver]:
+        return list(receivers.values())
 
     @computed_field
     @cached_property
@@ -258,12 +271,12 @@ class EventReceivers(BaseModel):
         """
         if not self.receivers:
             return 0
-        return sum(receiver.n_picks(phase) for receiver in self.receivers)
+        return sum(receiver.n_picks(phase) for receiver in self.receivers.values())
 
     def get_available_phases(self) -> set[PhaseDescription]:
         """Get the set of available phases in the receiver set."""
         phases = set()
-        for receiver in self.receivers:
+        for receiver in self.receivers.values():
             phases.update(receiver.phase_arrivals.keys())
         return phases
 
@@ -275,10 +288,12 @@ class EventReceivers(BaseModel):
                 picks as values.
         """
         phases = set()
-        for receiver in self.receivers:
+        for receiver in self.receivers.values():
             phases.update(receiver.phase_arrivals.keys())
         return {
-            f"{phase}": sum(receiver.n_picks(phase) for receiver in self.receivers)
+            f"{phase}": sum(
+                receiver.n_picks(phase) for receiver in self.receivers.values()
+            )
             for phase in phases
         }
 
@@ -294,7 +309,7 @@ class EventReceivers(BaseModel):
             None if there are no observed arrivals for the given phase.
         """
         delays = defaultdict(list)
-        for receiver in self.receivers:
+        for receiver in self.receivers.values():
             for arrival_phase, arrival in receiver.phase_arrivals.items():
                 if arrival.traveltime_delay is not None:
                     delays[arrival_phase].append(
@@ -319,7 +334,7 @@ class EventReceivers(BaseModel):
         arrival_time_pairs = defaultdict(list)
         available_phases = self.get_available_phases()
 
-        for receiver in self.receivers:
+        for receiver in self.receivers.values():
             receiver_arrivals = dict.fromkeys(available_phases, None)
             for phase in available_phases:
                 arrival = receiver.phase_arrivals.get(phase, None)
@@ -372,7 +387,7 @@ class EventReceivers(BaseModel):
         Returns:
             list[Trace]: The restituted waveforms.
         """
-        receivers = receivers or list(self.receivers)
+        receivers = receivers or list(self.receivers.values())
         if exclude_nsls:
             exclude_nsls_set = set(exclude_nsls)
             receivers = [
@@ -500,20 +515,21 @@ class EventReceivers(BaseModel):
             start_time=datetime.fromtimestamp(min(tr.tmin for tr in traces), tz=utc),
             end_time=datetime.fromtimestamp(max(tr.tmax for tr in traces), tz=utc),
         )
-
-        def get_response(tr: Trace) -> Any:
-            for response in responses:
-                if response.codes[:4] == tr.nslc_id:
-                    return response
-            raise AttributeError(f"cannot find response for {tr.nslc_id}")
+        # The first response of a channel wins, as several epochs can match
+        nslc_responses: dict[tuple[str, ...], Any] = {}
+        for response in responses:
+            nslc_responses.setdefault(response.codes[:4], response)
 
         def restitute() -> list[Trace]:
             restituted_traces = []
             for tr in traces:
+                response = nslc_responses.get(tr.nslc_id)
+                if response is None:
+                    logger.warning("cannot find response for %s", ".".join(tr.nslc_id))
+                    continue
                 try:
-                    response = get_response(tr)
                     effective_response = response.get_effective(input_quantity=quantity)
-                except (AttributeError, ConversionError):
+                except ConversionError:
                     logger.warning(
                         "cannot get effective response for %s", ".".join(tr.nslc_id)
                     )
@@ -545,10 +561,10 @@ class EventReceivers(BaseModel):
         Raises:
             KeyError: If no receiver is found with the given nsl tuple.
         """
-        for receiver in self:
-            if receiver.nsl == nsl:
-                return receiver
-        raise KeyError(f"cannot find station {nsl.pretty}")
+        try:
+            return self.receivers[nsl]
+        except KeyError:
+            raise KeyError(f"cannot find station {'.'.join(nsl)}") from None
 
     def add(
         self,
@@ -560,37 +576,15 @@ class EventReceivers(BaseModel):
         Args:
             stations: List of stations
             phase_arrivals: List of phase arrivals
-
-        Raises:
-            KeyError: If a station is not found in the receiver set
         """
-        receivers = [Receiver.from_station(sta) for sta in stations]
-        for receiver, arrival in zip(receivers, phase_arrivals, strict=True):
+        for station, arrival in zip(stations, phase_arrivals, strict=True):
             if not arrival:
                 continue
-            try:
-                receiver = self.get_by_nsl(receiver.nsl)
-            except KeyError:
-                self.receivers.append(receiver)
+            nsl = station.nsl
+            receiver = self.receivers.get(nsl)
+            if receiver is None:
+                receiver = self.receivers[nsl] = Receiver.from_station(station)
             receiver.add_phase_detection(arrival)
-
-    def get_by_nsl(self, nsl: NSL) -> Receiver:
-        """Retrieves a receiver object by its NSL (network, station, location) tuple.
-
-        Args:
-            nsl (NSL): The NSL tuple representing
-                the network, station, and location.
-
-        Returns:
-            Receiver: The receiver object matching the NSL tuple.
-
-        Raises:
-            KeyError: If no receiver is found with the specified NSL tuple.
-        """
-        for receiver in self:
-            if receiver.nsl == nsl:
-                return receiver
-        raise KeyError(f"cannot find station {nsl.pretty}")
 
     def get_pyrocko_markers(
         self, modelled: bool = True, observed: bool = True
@@ -612,7 +606,7 @@ class EventReceivers(BaseModel):
 
     # BaseModel.__iter__ yields the fields, this yields the items
     def __iter__(self) -> Iterator[Receiver]:  # ty: ignore[invalid-method-override]
-        return iter(self.receivers)
+        return iter(self.receivers.values())
 
 
 class EventDetection(Location):

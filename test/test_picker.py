@@ -85,7 +85,7 @@ def detection(
 
 
 def observed(event: EventDetection, name: str, phase: str) -> ObservedArrival | None:
-    receiver = event.receivers.get_by_nsl(station(name).nsl)
+    receiver = event.receivers.get_receiver(station(name).nsl)
     return receiver.phase_arrivals[phase].observed
 
 
@@ -135,7 +135,7 @@ def test_add_picks():
     # STC has no P image trace
     assert observed(event, "STC", "cake:P") is None
     # STA has no modelled S arrival
-    sta = event.receivers.get_by_nsl(station("STA").nsl)
+    sta = event.receivers.get_receiver(station("STA").nsl)
     assert "cake:S" not in sta.phase_arrivals
 
 
@@ -191,7 +191,7 @@ def test_add_picks_modelled_arrival_with_station_delay():
         waveform_image("cake:P", [image_trace("STA", {5.0: 0.8, 8.0: 0.9})])
     )
     event = detection({"cake:P": {"STA": 5.0}})
-    arrival = event.receivers.get_by_nsl(station("STA").nsl).phase_arrivals["cake:P"]
+    arrival = event.receivers.get_receiver(station("STA").nsl).phase_arrivals["cake:P"]
     arrival.station_delay = timedelta(seconds=3.0)
     arrival.model.time += arrival.station_delay
 

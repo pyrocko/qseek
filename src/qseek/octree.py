@@ -668,14 +668,16 @@ class Octree(BaseModel, Iterator[Node], Sequence[Node]):
         """
         if leafs_only not in self._cached_geometry:
             nodes = self.leaf_nodes if leafs_only else self.nodes
-            geometry = np.array(
-                [
-                    (node.east, node.north, node.depth, node.size, node.size**3)
-                    for node in nodes
-                ],
-                dtype=float,
-            ).reshape(-1, 5)
-            geometry = geometry.T.copy()
+            geometry = np.empty((5, len(nodes)))
+            geometry[:4] = (
+                np.array(
+                    [(node.east, node.north, node.depth, node.size) for node in nodes],
+                    dtype=float,
+                )
+                .reshape(-1, 4)
+                .T
+            )
+            geometry[4] = geometry[3] ** 3
             geometry.setflags(write=False)
             self._cached_geometry[leafs_only] = geometry
         return self._cached_geometry[leafs_only]
