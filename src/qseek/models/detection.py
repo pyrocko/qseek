@@ -523,10 +523,13 @@ class EventReceivers(BaseModel):
         def restitute() -> list[Trace]:
             restituted_traces = []
             for tr in traces:
+                response = nslc_responses.get(tr.nslc_id)
+                if response is None:
+                    logger.warning("cannot find response for %s", ".".join(tr.nslc_id))
+                    continue
                 try:
-                    response = nslc_responses[tr.nslc_id]
                     effective_response = response.get_effective(input_quantity=quantity)
-                except (KeyError, ConversionError):
+                except ConversionError:
                     logger.warning(
                         "cannot get effective response for %s", ".".join(tr.nslc_id)
                     )
