@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
@@ -26,6 +27,7 @@ from qseek.images.base import (
     Picker,
     WaveformImage,
 )
+from qseek.images.batch_size import BatchSizeTuner
 from qseek.types import FilePath
 from qseek.utils import PhaseDescription, alog_call, to_datetime
 
@@ -215,10 +217,17 @@ class SeisBench(ImageFunction):
         default=4,
         description="Number of CPU threads to use if only CPU is used.",
     )
-    batch_size: int = Field(
-        default=128,
-        ge=64,
-        description="Batch size for inference, larger values can improve performance.",
+    batch_size: PositiveInt | Literal["auto"] = Field(
+        default="auto",
+        description=(
+            "Number of windows the model processes at once. On a CUDA GPU, "
+            '`"auto"` times the annotation during the search and moves the batch '
+            "size in factors of two, between 32 and 4096 and starting at 256, to "
+            "the fastest one. It probes the neighboring batch sizes again every 100 "
+            "waveform batches, as the load on the machine changes, and halves the "
+            'batch size when the GPU runs out of memory. Without a GPU, `"auto"` '
+            "uses 128. A number fixes the batch size."
+        ),
     )
     stack_method: StackMethod = Field(
         default="avg",
@@ -262,6 +271,7 @@ class SeisBench(ImageFunction):
     _native_sampling_rate: PositiveFloat = PrivateAttr(100.0)
     _rescale_input: PositiveFloat = PrivateAttr(1.0)
     _padded_blinding: timedelta | None = PrivateAttr(None)
+    _batch_size_tuner: BatchSizeTuner | None = PrivateAttr(None)
 
     @property
     def seisbench_model(self) -> WaveformModel:
@@ -314,6 +324,9 @@ class SeisBench(ImageFunction):
                 )
 
         self._seisbench_model.eval()
+        device = torch.device(self._seisbench_model.device)
+        if self.batch_size == "auto" and device.type == "cuda":
+            self._batch_size_tuner = BatchSizeTuner()
         try:
             logger.info("compiling SeisBench model...")
             self._seisbench_model.compile(mode="max-autotune")
@@ -363,6 +376,47 @@ class SeisBench(ImageFunction):
         # The 0.2 seconds is the default value from SeisBench training
         return 0.2 / self._rescale_input
 
+    async def _annotate(self, traces: list[Trace]) -> Stream:
+        """Annotate the traces and time the annotation for the batch size."""
+        import torch
+
+        tuner = self._batch_size_tuner
+        if tuner is not None:
+            batch_size = tuner.next_batch_size()
+        else:
+            # Without a GPU, "auto" uses a fixed batch size
+            batch_size = 128 if self.batch_size == "auto" else self.batch_size
+        while True:
+            stream = Stream(tr.to_obspy_trace() for tr in traces)
+            start = time.perf_counter()
+            try:
+                # On the event loop: SeisBench runs the model in threads itself.
+                # Calling the synchronous `annotate` in a thread starts an event
+                # loop and a thread pool for every batch, which is slower and needs
+                # more memory.
+                annotations = await self.seisbench_model.annotate_async(
+                    stream,
+                    overlap=self.window_overlap_samples,
+                    batch_size=batch_size,
+                    stacking=self.stack_method,
+                    autocast="float16",
+                    copy=False,
+                )
+            except torch.cuda.OutOfMemoryError:
+                if tuner is None or not tuner.record_out_of_memory(batch_size):
+                    raise
+            else:
+                break
+            # Outside of the except block, its traceback holds the GPU tensors
+            torch.cuda.empty_cache()
+            batch_size = tuner.next_batch_size()
+        seconds = time.perf_counter() - start
+        self._stats.batch_size = batch_size
+        logger.debug("annotated in %.2f s with batch size %d", seconds, batch_size)
+        if tuner is not None:
+            tuner.record(batch_size, sum(tr.ydata.size for tr in traces), seconds)
+        return annotations
+
     @alog_call
     async def process_traces(self, traces: list[Trace]) -> list[WaveformImage]:
         if self.sampling_rate == "input" and traces:
@@ -384,19 +438,7 @@ class SeisBench(ImageFunction):
                 )
                 self._padded_blinding = blinding
 
-        stream = Stream(tr.to_obspy_trace() for tr in traces)
-
-        # On the event loop: SeisBench runs the model in threads itself. Calling the
-        # synchronous `annotate` in a thread starts an event loop and a thread pool
-        # for every batch, which is slower and needs more memory.
-        annotations = await self.seisbench_model.annotate_async(
-            stream,
-            overlap=self.window_overlap_samples,
-            batch_size=self.batch_size,
-            stacking=self.stack_method,
-            autocast="float16",
-            copy=False,
-        )
+        annotations = await self._annotate(traces)
 
         annotated_traces: list[Trace] = [
             tr.to_pyrocko_trace()

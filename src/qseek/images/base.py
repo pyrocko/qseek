@@ -106,12 +106,15 @@ class Picker(Model):
 class ImageFunctionStats(QueueStats):
     time_per_batch: timedelta = timedelta()
     bytes_per_second: float = 0.0
+    batch_size: int | None = None
 
     _position = 40
     _show_header = False
 
     def _populate_table(self, table: Table) -> None:
         self._add_queue_row(table, "Phase annotation", self.bytes_per_second)
+        if self.batch_size is not None:
+            table.add_row("Batch size", str(self.batch_size), style="dim")
 
 
 class ImageFunction(Model):
