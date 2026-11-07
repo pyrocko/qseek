@@ -250,6 +250,21 @@ summary_rundir = summary.add_argument(
     help="path of existing run",
 )
 
+telemetry_parser = subparsers.add_parser(
+    "telemetry",
+    help="turn the anonymous usage statistics on or off",
+    description="Turn the anonymous usage statistics of searches on or off, "
+    "or show the setting. Setting QSEEK_TELEMETRY=0 or DO_NOT_TRACK=1 "
+    "turns them off too.",
+)
+telemetry_parser.add_argument(
+    "action",
+    choices=["on", "off", "status"],
+    nargs="?",
+    default="status",
+    help="turn on, turn off or show the setting (default: status)",
+)
+
 subparsers.add_parser(
     "clear-cache",
     help="clear the cach directory",
@@ -352,6 +367,7 @@ def _report_failure(error: str, code: int) -> None:
 
 def run() -> None:
     from qseek import console as console_module
+    from qseek import telemetry
     from qseek.console import console
     from qseek.utils import CACHE_DIR, setup_rich_logging
 
@@ -405,6 +421,7 @@ def run() -> None:
                     _report_failure("no stations with waveform data", EXIT_CONFIG)
                 return
 
+            telemetry.init()
             asyncio.run(
                 search.start(
                     force_rundir=args.force,
@@ -412,6 +429,7 @@ def run() -> None:
                 ),
                 debug=loop_debug,
             )
+            telemetry.flush()
 
         case "continue":
             from qseek.search import Search
@@ -437,7 +455,24 @@ def run() -> None:
             else:
                 console.rule("Starting search from scratch")
 
+            telemetry.init()
             asyncio.run(search.start(), debug=loop_debug)
+            telemetry.flush()
+
+        case "telemetry":
+            console.quiet = False
+            if args.action != "status":
+                telemetry.set_enabled(args.action == "on")
+            config = telemetry.load_config()
+            enabled = config.enabled if config else True
+            console.print(f"telemetry: {'on' if enabled else 'off'}")
+            if telemetry.disabled_by_environment():
+                console.print(
+                    "disabled by the environment (CI, pytest, QSEEK_TELEMETRY or DO_NOT_TRACK)"
+                )
+            if config:
+                console.print(f"install id: {config.install_id}")
+            console.print(f"config: {telemetry.CONFIG_FILE}")
 
         case "summary":
             console_module.NON_INTERACTIVE = True

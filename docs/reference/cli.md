@@ -74,6 +74,14 @@ Export detections to other formats.
 qseek export --help
 ```
 
+## `qseek telemetry`
+
+Turn the anonymous [usage statistics](../about/telemetry.md) on or off.
+
+```bash exec='on' result='ansi'
+qseek telemetry --help
+```
+
 ## `qseek clear-cache`
 
 Clear the cache directory.
