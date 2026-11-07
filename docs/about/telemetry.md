@@ -31,6 +31,8 @@ Each search sends two events. Failed or interrupted searches send no `run_finish
 | `gpu` | `cuda`, `mps` or `none` |
 | `n_stations`, `n_networks` | `48`, `3` |
 | `n_nodes` | Number of nodes in the octree, `12000` |
+| `ray_tracers` | Types of the ray tracers, `["CakeTracer", "FastMarchingTracer"]` |
+| `station_corrections` | Type of the station corrections, `SimpleCorrections`, or `null` without corrections |
 | `octree_lat`, `octree_lon` | Center of the search volume, rounded to 0.001°. Left out when the center is at 0°, 0°. |
 
 `run_finished`, after the search completed:

@@ -191,6 +191,12 @@ def capture_run_started(search: Search, continued: bool) -> None:
         "n_stations": search.stations.n_stations,
         "n_networks": search.stations.n_networks,
         "n_nodes": search.octree.n_nodes,
+        "ray_tracers": sorted({type(t).__name__ for t in search.ray_tracers.root}),
+        "station_corrections": (
+            type(search.station_corrections).__name__
+            if search.station_corrections
+            else None
+        ),
     }
     lat, lon = search.octree.location.effective_lat_lon
     if lat != 0.0 or lon != 0.0:

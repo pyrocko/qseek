@@ -8,6 +8,8 @@ import posthog
 import pytest
 
 from qseek import telemetry
+from qseek.tracers.cake import CakeTracer
+from qseek.tracers.constant_velocity import ConstantVelocityTracer
 
 
 class FakePosthog:
@@ -47,6 +49,10 @@ def fake_search(lat: float = 0.0, lon: float = 0.0) -> Any:
             location=SimpleNamespace(effective_lat_lon=(lat, lon)),
         ),
         catalog=SimpleNamespace(n_events=5),
+        ray_tracers=SimpleNamespace(
+            root=[CakeTracer(), CakeTracer(), ConstantVelocityTracer()]
+        ),
+        station_corrections=None,
     )
 
 
@@ -104,6 +110,8 @@ def test_run_events(telemetry_env):
     props = started_kw["properties"]
     assert props["$process_person_profile"] is False
     assert props["n_stations"] == 12
+    assert props["ray_tracers"] == ["CakeTracer", "ConstantVelocityTracer"]
+    assert props["station_corrections"] is None
     assert (props["octree_lat"], props["octree_lon"]) == (50.123, 13.5)
     assert props["run_id"] == finished_kw["properties"]["run_id"]
     assert finished_kw["properties"]["station_days"] == 24.0
