@@ -38,8 +38,7 @@ NOTICE = f"""\
 Qseek sends anonymous usage statistics of your searches: the Qseek, Python and
 library versions, the operating system and hardware, the number of stations,
 the center of the search volume, the processed data duration and the number of
-detections. PostHog derives a coarse location from your IP address.
-No station codes, waveforms, detections or file paths leave your machine.
+detections. No station codes, waveforms, detections or file paths leave your machine.
 
 Turn it off with `qseek telemetry off` or by setting QSEEK_TELEMETRY=0.
 Details: https://pyrocko.github.io/qseek/about/telemetry/
