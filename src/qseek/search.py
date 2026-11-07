@@ -22,6 +22,7 @@ from pydantic import (
     field_validator,
 )
 
+from qseek import telemetry
 from qseek.base import Model
 from qseek.cache_lru import CACHES
 from qseek.console import console, report
@@ -611,6 +612,9 @@ class Search(Model):
         self.write_config()
         report("config", (self._rundir / "search.json").resolve())
 
+        telemetry.capture_run_started(
+            self, continued=self._progress.time_progress is not None
+        )
         if self._progress.time_progress:
             logger.info("continuing search from %s", self._progress.time_progress)
             await self._catalog.check(repair=True)
@@ -717,6 +721,7 @@ class Search(Model):
         results_file = self._rundir / "results.json"
         results_file.write_text(stats.model_dump_json(indent=2))
         report("results", results_file.resolve())
+        telemetry.capture_run_finished(self, stats, datetime_now() - processing_start)
         report("catalog", (self._rundir / "csv" / "detections.csv").resolve())
         report("duration", str(datetime_now() - processing_start).split(".")[0])
         report("detections", self._catalog.n_events)
