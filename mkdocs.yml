@@ -110,6 +110,10 @@ watch:
 
 plugins:
   - search
+  - privacy:
+      assets_exclude:
+        - unpkg.com/mathjax@3/*
+        - cdn.plyr.io/*
   - redirects:
       redirect_maps:
         getting_started.md: getting-started/installation.md
