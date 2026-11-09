@@ -15,6 +15,7 @@
         <link rel="canonical" href="https://pyrocko.github.io/qseek/configuration/image-functions/">
       
       
+      
         <link rel="prev" href="../pre-processing/">
       
       
@@ -25,7 +26,7 @@
       
       
       <link rel="icon" href="../../images/logo-q.png">
-      <meta name="generator" content="zensical-0.0.67">
+      <meta name="generator" content="zensical-0.1.0">
     
     
       
@@ -36,12 +37,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
       
       
 
@@ -54,8 +55,8 @@
       
         
         
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        
+        <link href="../../assets/external/fonts.googleapis.com/css.c788a136.css" rel="stylesheet">
         <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
@@ -83,14 +84,11 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
     <div data-md-component="skip">
-      
-        
-        <a href="#image-functions" class="md-skip">
-          Skip to content
-        </a>
-      
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
     </div>
     <div data-md-component="announce">
       
@@ -122,9 +120,10 @@
       <img class="qs-logo qs-logo--light" src="../../images/logo-dark.svg" alt="Qseek">
 <img class="qs-logo qs-logo--dark" src="../../images/logo-white.webp" alt="Qseek">
     </a>
-    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+    <label class="md-header__button md-icon" for="__drawer">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -186,9 +185,10 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+        <label class="md-header__button md-icon" for="__search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -455,6 +455,8 @@
   
     
       
+      
+        
       
         
       
@@ -1665,7 +1667,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../distance-weighting/" class="md-nav__link">
+      <a href="../station-weights/" class="md-nav__link">
         
   
   
@@ -1674,7 +1676,7 @@
   <span class="md-ellipsis">
     
   
-  Distance weighting
+  Station weights
 
     
   </span>
@@ -2181,6 +2183,8 @@
       
         
       
+        
+      
     
     
     
@@ -2300,6 +2304,35 @@
     
   
   Related projects
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/telemetry/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-chart-no-axes-column" viewBox="0 0 24 24"><path d="M5 21v-6M12 21V3M19 21V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Telemetry
 
     
   </span>
@@ -2483,6 +2516,7 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -2519,7 +2553,7 @@
 </tr>
 </tbody>
 </table>
-<p>The <code>phase_map</code> assigns the P and S images to the <a href="../conventions/#phase-descriptions">phase descriptions</a> of the ray tracers, e.g. <code>{"P": "cake:P", "S": "cake:S"}</code>. With <code>weights</code>, one phase can contribute more to the stack than the other.</p>
+<p>The <code>phase_map</code> assigns the P and S images to the <a href="../conventions/#phase-descriptions">phase descriptions</a> of the ray tracers, e.g. <code>{"P": "fm:P", "S": "fm:S"}</code>. With <code>weights</code>, one phase can contribute more to the stack than the other.</p>
 <h2 id="seisbench">SeisBench<a class="headerlink" href="#seisbench" title="Permanent link">&para;</a></h2>
 <p><a href="https://github.com/seisbench/seisbench">SeisBench</a> provides machine learning phase pickers, pre-trained on different data sets. The image is the probability of a P or S phase arrival.</p>
 <ul>
@@ -2540,12 +2574,12 @@
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">"window_overlap_samples"</span><span class="p">:</span><span class="w"> </span><span class="mi">2000</span><span class="p">,</span>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="nt">"torch_use_cuda"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">"torch_cpu_threads"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">"batch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">"batch_size"</span><span class="p">:</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span>
 </span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="nt">"stack_method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"avg"</span><span class="p">,</span>
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="nt">"sampling_rate"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span>
 </span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span><span class="nt">"phase_map"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">"P"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cake:P"</span><span class="p">,</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="nt">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cake:S"</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">"P"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fm:P"</span><span class="p">,</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="nt">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fm:S"</span>
 </span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span><span class="p">},</span>
 </span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">"weights"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">"P"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
@@ -2644,7 +2678,7 @@ pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.</p>
   
       pydantic-field
    (qseek.images.seisbench.SeisBench.batch_size)" href="./#qseek.images.seisbench.SeisBench.batch_size">batch_size</a></code>
-                (<code><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></code>)
+                (<code><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a> | <a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a>[&#39;auto&#39;]</code>)
             </li>
             <li>
               <code><a class="autorefs autorefs-internal" title="            stack_method
@@ -2842,12 +2876,12 @@ pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.</p>
   </span>
 
 <a href="#qseek.images.seisbench.SeisBench.batch_size" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">batch_size</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#int">int</a></span> <span class="o">=</span> <span class="mi">128</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">batch_size</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveInt" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveInt">PositiveInt</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'auto'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'auto'</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Batch size for inference, larger values can improve performance.</p>
+        <p>Number of windows the model processes at once. On a CUDA GPU, <code>"auto"</code> times the annotation during the search and moves the batch size in factors of two, between 32 and 4096 and starting at 256, to the fastest one. It probes the neighboring batch sizes again every 100 waveform batches, as the load on the machine changes, and halves the batch size when the GPU runs out of memory. Without a GPU, <code>"auto"</code> uses 128. A number fixes the batch size.</p>
 
     </div>
 
@@ -2914,7 +2948,7 @@ pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.</p>
   </span>
 
 <a href="#qseek.images.seisbench.SeisBench.phase_map" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">phase_map</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'P'</span><span class="p">:</span> <span class="s1">'cake:P'</span><span class="p">,</span> <span class="s1">'S'</span><span class="p">:</span> <span class="s1">'cake:S'</span><span class="p">}</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">phase_map</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"P"</span><span class="p">:</span> <span class="s2">"fm:P"</span><span class="p">,</span> <span class="s2">"S"</span><span class="p">:</span> <span class="s2">"fm:S"</span><span class="p">}</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2938,7 +2972,9 @@ pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.</p>
   </span>
 
 <a href="#qseek.images.seisbench.SeisBench.weights" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">weights</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Annotated" href="https://docs.python.org/3/library/typing.html#typing.Annotated">Annotated</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.Field" href="https://docs.pydantic.dev/latest/api/pydantic/fields/#pydantic.fields.Field">Field</a></span><span class="p">(</span><span class="n"><span title="pydantic.Field(strict)">strict</span></span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n"><span title="pydantic.Field(ge)">ge</span></span><span class="o">=</span><span class="mf">0.0</span><span class="p">)]]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'P'</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s1">'S'</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">weights</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Annotated" href="https://docs.python.org/3/library/typing.html#typing.Annotated">Annotated</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.Field" href="https://docs.pydantic.dev/latest/api/pydantic/fields/#pydantic.fields.Field">Field</a></span><span class="p">(</span><span class="n"><span title="pydantic.Field(strict)">strict</span></span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n"><span title="pydantic.Field(ge)">ge</span></span><span class="o">=</span><span class="mf">0.0</span><span class="p">)]</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"P"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"S"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3120,7 +3156,9 @@ pre-trained SeisBench model, e.g. PhaseNet or EQTransformer.</p>
 
 
 <a href="#qseek.images.seisbench.SeisBench.iter_images" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span><span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3484,7 +3522,12 @@ search window. Peaks before the event origin time are rejected.</p>
 
 
 <a href="#qseek.images.seisbench.AnnotationPicker.pick_trace" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">pick_trace</span><span class="p">(</span><span class="n">trace</span><span class="p">:</span> <span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">event_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span> <span class="n">modelled_arrival</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.images.base.ObservedArrival">ObservedArrival</span></span> <span class="o">|</span> <span class="kc">None</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">pick_trace</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">trace</span><span class="p">:</span> <span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">event_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">modelled_arrival</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.images.base.ObservedArrival">ObservedArrival</span></span> <span class="o">|</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3606,12 +3649,15 @@ search window. Peaks before the event origin time are rejected.</p>
 
 
 <a href="#qseek.images.seisbench.AnnotationPicker.add_picks" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_picks</span><span class="p">(</span><span class="n">detections</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_picks</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">detections</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
 
 
   
       pydantic-model
-   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">],</span> <span class="n">images</span><span class="p">:</span> <span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">images</span><span class="p">:</span> <span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3705,8 +3751,8 @@ detection and attached as its observed arrival.</p>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">"min_onset_value"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.4</span><span class="p">,</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">"signal_transform"</span><span class="p">:</span><span class="w"> </span><span class="s2">"energy"</span><span class="p">,</span>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="nt">"phase_map"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">"P"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cake:P"</span><span class="p">,</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cake:S"</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">"P"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fm:P"</span><span class="p">,</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fm:S"</span>
 </span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="p">},</span>
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="nt">"weights"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="nt">"P"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
@@ -3989,7 +4035,7 @@ pick detection values are in log units, noise is at 0.</p>
   </span>
 
 <a href="#qseek.images.sta_lta.StaLta.phase_map" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">phase_map</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'P'</span><span class="p">:</span> <span class="s1">'cake:P'</span><span class="p">,</span> <span class="s1">'S'</span><span class="p">:</span> <span class="s1">'cake:S'</span><span class="p">}</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">phase_map</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"P"</span><span class="p">:</span> <span class="s2">"fm:P"</span><span class="p">,</span> <span class="s2">"S"</span><span class="p">:</span> <span class="s2">"fm:S"</span><span class="p">}</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4013,7 +4059,9 @@ pick detection values are in log units, noise is at 0.</p>
   </span>
 
 <a href="#qseek.images.sta_lta.StaLta.weights" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">weights</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Annotated" href="https://docs.python.org/3/library/typing.html#typing.Annotated">Annotated</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.Field" href="https://docs.pydantic.dev/latest/api/pydantic/fields/#pydantic.fields.Field">Field</a></span><span class="p">(</span><span class="n"><span title="pydantic.Field(strict)">strict</span></span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n"><span title="pydantic.Field(ge)">ge</span></span><span class="o">=</span><span class="mf">0.0</span><span class="p">)]]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'P'</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s1">'S'</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">weights</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n"><span title="qseek.images.base.PhaseName">PhaseName</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Annotated" href="https://docs.python.org/3/library/typing.html#typing.Annotated">Annotated</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.Field" href="https://docs.pydantic.dev/latest/api/pydantic/fields/#pydantic.fields.Field">Field</a></span><span class="p">(</span><span class="n"><span title="pydantic.Field(strict)">strict</span></span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n"><span title="pydantic.Field(ge)">ge</span></span><span class="o">=</span><span class="mf">0.0</span><span class="p">)]</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"P"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"S"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4388,7 +4436,9 @@ pick detection values are in log units, noise is at 0.</p>
 
 
 <a href="#qseek.images.sta_lta.StaLta.iter_images" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span><span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">iter_images</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">batch_iterator</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.AsyncGenerator" href="https://docs.python.org/3/library/typing.html#typing.AsyncGenerator">AsyncGenerator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span> <span class="n"><span title="qseek.waveforms.base.WaveformBatch">WaveformBatch</span></span><span class="p">]]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4602,7 +4652,9 @@ event origin time are rejected.</p>
 
 
 <a href="#qseek.images.sta_lta.StaLtaPicker.get_trigger_thresholds" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_trigger_thresholds</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_trigger_thresholds</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">data</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4676,7 +4728,12 @@ event origin time are rejected.</p>
 
 
 <a href="#qseek.images.sta_lta.StaLtaPicker.pick_trace" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">pick_trace</span><span class="p">(</span><span class="n">trace</span><span class="p">:</span> <span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">event_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span> <span class="n">modelled_arrival</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.images.base.ObservedArrival">ObservedArrival</span></span> <span class="o">|</span> <span class="kc">None</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">pick_trace</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">trace</span><span class="p">:</span> <span class="n"><span title="pyrocko.trace.Trace">Trace</span></span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">event_time</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">modelled_arrival</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="datetime.datetime" href="https://docs.python.org/3/library/datetime.html#datetime.datetime">datetime</a></span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.images.base.ObservedArrival">ObservedArrival</span></span> <span class="o">|</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4798,12 +4855,15 @@ event origin time are rejected.</p>
 
 
 <a href="#qseek.images.sta_lta.StaLtaPicker.add_picks" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_picks</span><span class="p">(</span><span class="n">detections</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_picks</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">detections</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            EventDetection
 
 
   
       pydantic-model
-   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">],</span> <span class="n">images</span><span class="p">:</span> <span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+   (qseek.models.detection.EventDetection)" href="../../reference/api/detections/#qseek.models.detection.EventDetection">EventDetection</a></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">images</span><span class="p">:</span> <span class="n"><span title="qseek.images.base.WaveformImages">WaveformImages</span></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5003,7 +5063,8 @@ detection and attached as its observed arrival.</p>
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+      
+<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
     
     
     
@@ -5015,10 +5076,10 @@ detection and attached as its observed arrival.</p>
         
           
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

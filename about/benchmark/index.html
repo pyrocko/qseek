@@ -15,6 +15,7 @@
         <link rel="canonical" href="https://pyrocko.github.io/qseek/about/benchmark/">
       
       
+      
         <link rel="prev" href="../showcase/">
       
       
@@ -25,7 +26,7 @@
       
       
       <link rel="icon" href="../../images/logo-q.png">
-      <meta name="generator" content="zensical-0.0.67">
+      <meta name="generator" content="zensical-0.1.0">
     
     
       
@@ -36,12 +37,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
       
       
 
@@ -54,8 +55,8 @@
       
         
         
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        
+        <link href="../../assets/external/fonts.googleapis.com/css.c788a136.css" rel="stylesheet">
         <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
@@ -83,14 +84,11 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
     <div data-md-component="skip">
-      
-        
-        <a href="#benchmark" class="md-skip">
-          Skip to content
-        </a>
-      
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
     </div>
     <div data-md-component="announce">
       
@@ -122,9 +120,10 @@
       <img class="qs-logo qs-logo--light" src="../../images/logo-dark.svg" alt="Qseek">
 <img class="qs-logo qs-logo--dark" src="../../images/logo-white.webp" alt="Qseek">
     </a>
-    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+    <label class="md-header__button md-icon" for="__drawer">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -186,9 +185,10 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+        <label class="md-header__button md-icon" for="__search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -455,6 +455,8 @@
   
     
       
+      
+        
       
         
       
@@ -1500,7 +1502,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../configuration/distance-weighting/" class="md-nav__link">
+      <a href="../../configuration/station-weights/" class="md-nav__link">
         
   
   
@@ -1509,7 +1511,7 @@
   <span class="md-ellipsis">
     
   
-  Distance weighting
+  Station weights
 
     
   </span>
@@ -2018,6 +2020,8 @@
       
         
       
+        
+      
     
     
     
@@ -2174,6 +2178,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#station-weights" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Station weights
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Station weights">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#playground" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Playground
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relative-locations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Relative locations
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2200,6 +2243,35 @@
     
   
   Related projects
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-chart-no-axes-column" viewBox="0 0 24 24"><path d="M5 21v-6M12 21V3M19 21V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Telemetry
 
     
   </span>
@@ -2271,6 +2343,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#station-weights" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Station weights
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Station weights">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#playground" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Playground
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relative-locations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Relative locations
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2283,6 +2394,7 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -2330,6 +2442,180 @@
 <li><strong>Adaptive octree:</strong> only the nodes around detected events are refined, see <a href="../../concepts/how-it-works/#octree-refinement">octree refinement</a>.</li>
 </ul>
 <p>The <a href="../../guides/performance/">performance guide</a> shows which settings make your search faster.</p>
+<h2 id="station-weights">Station weights<a class="headerlink" href="#station-weights" title="Permanent link">&para;</a></h2>
+<p>The <a href="../../configuration/station-weights/">station weights</a> decide which events the stack detects and where it locates them. Their defaults are chosen on the examples of the <a href="../../getting-started/playground/">playground</a>.</p>
+<h3 id="playground">Playground<a class="headerlink" href="#playground" title="Permanent link">&para;</a></h3>
+<p>Each example searched with <code>MADTrigger</code>, <code>mad_factor</code> 10, and the defaults of each station weights model. A detection is well constrained with at least 8 picks, at Norcia with at least 20:</p>
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th>Station weights</th>
+<th>Detections</th>
+<th>Well constrained</th>
+<th>Residual RMS, median</th>
+<th>Catalog events matched</th>
+<th>Epicenter offset, median</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Campi Flegrei, 1 day, 18 stations</td>
+<td><code>DistanceWeights</code></td>
+<td>731</td>
+<td>521</td>
+<td>0.285 s</td>
+<td>45 / 45</td>
+<td>242 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DistanceWeights</code>, <code>"nearest_neighbor"</code></td>
+<td>750</td>
+<td>523</td>
+<td>0.284 s</td>
+<td>45 / 45</td>
+<td>240 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DensityTaperWeights</code></td>
+<td>727</td>
+<td>523</td>
+<td>0.293 s</td>
+<td>45 / 45</td>
+<td>244 m</td>
+</tr>
+<tr>
+<td>Campi Flegrei, 10 days, 19 stations</td>
+<td><code>DistanceWeights</code></td>
+<td>6382</td>
+<td>3760</td>
+<td>0.278 s</td>
+<td>209 / 211</td>
+<td>277 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DistanceWeights</code>, <code>"nearest_neighbor"</code></td>
+<td>6623</td>
+<td>3772</td>
+<td>0.279 s</td>
+<td>209 / 211</td>
+<td>288 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DensityTaperWeights</code></td>
+<td>6329</td>
+<td>3754</td>
+<td>0.281 s</td>
+<td>209 / 211</td>
+<td>280 m</td>
+</tr>
+<tr>
+<td>Mount Spurr, 3 days, 10 local and 10 regional stations</td>
+<td><code>DistanceWeights</code></td>
+<td>1756</td>
+<td>1048</td>
+<td>0.346 s</td>
+<td>228 / 234</td>
+<td>419 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DistanceWeights</code>, <code>"nearest_neighbor"</code></td>
+<td>2214</td>
+<td>1074</td>
+<td>0.320 s</td>
+<td>230 / 234</td>
+<td>360 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DensityTaperWeights</code></td>
+<td>1770</td>
+<td>1051</td>
+<td>0.346 s</td>
+<td>228 / 234</td>
+<td>390 m</td>
+</tr>
+<tr>
+<td>Norcia, 3 days, 49 stations with a cluster of 12</td>
+<td><code>DistanceWeights</code></td>
+<td>3734</td>
+<td>3603</td>
+<td>0.309 s</td>
+<td>1013 / 1071</td>
+<td>644 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DistanceWeights</code>, <code>"nearest_neighbor"</code></td>
+<td>3971</td>
+<td>3746</td>
+<td>0.313 s</td>
+<td>1020 / 1071</td>
+<td>651 m</td>
+</tr>
+<tr>
+<td></td>
+<td><code>DensityTaperWeights</code></td>
+<td>3841</td>
+<td>3673</td>
+<td>0.311 s</td>
+<td>1018 / 1071</td>
+<td>645 m</td>
+</tr>
+</tbody>
+</table>
+<p>The residual RMS grows with the number of picks, and the catalogs list only the larger events with locations of their own. At Norcia, the INGV catalog lists routine locations, 4 km deeper than the relocations of the sequence (Chiaraluce et al., 2017). Neither measures how consistently the detections are located.</p>
+<h3 id="relative-locations">Relative locations<a class="headerlink" href="#relative-locations" title="Permanent link">&para;</a></h3>
+<p>HypoDD relocates the detections of the <code>DistanceWeights</code> search with catalog and cross-correlation differential times. The double-difference residuals of the cross-correlation data, evaluated at the locations of each search, measure how consistently a search locates neighboring events, independent of its picks. Lower is better. Campi Flegrei, 1 day, 340 detections in all searches; Norcia, 3574 detections:</p>
+<table>
+<thead>
+<tr>
+<th>Station weights</th>
+<th>Campi Flegrei, median</th>
+<th>Campi Flegrei, 90th percentile</th>
+<th>Norcia, median</th>
+<th>Norcia, 90th percentile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DistanceWeights</code></td>
+<td>53.6 ms</td>
+<td>168 ms</td>
+<td>42.6 ms</td>
+<td>153 ms</td>
+</tr>
+<tr>
+<td><code>DistanceWeights</code>, <code>"nearest_neighbor"</code></td>
+<td>54.0 ms</td>
+<td>173 ms</td>
+<td>41.3 ms</td>
+<td>152 ms</td>
+</tr>
+<tr>
+<td><code>DensityTaperWeights</code></td>
+<td>53.9 ms</td>
+<td>169 ms</td>
+<td>42.2 ms</td>
+<td>152 ms</td>
+</tr>
+<tr>
+<td><code>null</code>, all stations the same weight</td>
+<td>56.9 ms</td>
+<td>190 ms</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The row of <code>DensityTaperWeights</code> comes from an evaluation with 340 detections on Campi Flegrei and 3598 at Norcia, in which <code>DistanceWeights</code> reach 168 ms and 153 ms (90th percentile).</p>
+<p>On Campi Flegrei, <code>DistanceWeights</code> with 6 and 8 stations of full weight reach 174 ms and 183 ms (90th percentile), with 2 and 3 stations 175 ms and 172 ms, with a taper of 6 km and 16 km instead of the 11 km of <code>"mean_interstation"</code> 188 ms and 177 ms. The evaluation favors the search that HypoDD relocated: relocated from <code>DistanceWeights</code> with 8 stations of full weight instead, <code>DistanceWeights</code> with 4, 6 and 8 stations reach 178 ms, 181 ms and 171 ms, and all other station weights stay above them.</p>
+<p>A short taper locates the detections least consistently. A station density weighting whose taper ended at about twice the distance of the closest 3 independent stations reached 194 ms on Campi Flegrei and 167 ms at Norcia. It placed the detections of the 10-day search on Campi Flegrei on walls up to 3 km deep; at Norcia, 14% of the well-constrained detections lay above sea level, 4.5% with <code>DistanceWeights</code>. The weights are normalized per node, so a taper that changes steeply between neighboring nodes moves the maximum of the stack. Two other ways to count the station density located less consistently on Campi Flegrei, where the dense stations lie above the seismicity: scaling all weights by the independent station counts, which takes weight from the closest stations (209 ms), and extending the plateau of full weight to 2 to 4 independent stations (182 ms to 188 ms). Without any taper, the noise of distant stations degrades the locations as well.</p>
 
 
 
@@ -2453,7 +2739,8 @@
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+      
+<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
     
     
     
@@ -2465,10 +2752,10 @@
         
           
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

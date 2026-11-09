@@ -15,6 +15,7 @@
         <link rel="canonical" href="https://pyrocko.github.io/qseek/getting-started/quick-start/">
       
       
+      
         <link rel="prev" href="../installation/">
       
       
@@ -25,7 +26,7 @@
       
       
       <link rel="icon" href="../../images/logo-q.png">
-      <meta name="generator" content="zensical-0.0.67">
+      <meta name="generator" content="zensical-0.1.0">
     
     
       
@@ -36,12 +37,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
       
       
 
@@ -54,8 +55,8 @@
       
         
         
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        
+        <link href="../../assets/external/fonts.googleapis.com/css.c788a136.css" rel="stylesheet">
         <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
@@ -83,14 +84,11 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
     <div data-md-component="skip">
-      
-        
-        <a href="#quick-start-campi-flegrei" class="md-skip">
-          Skip to content
-        </a>
-      
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
     </div>
     <div data-md-component="announce">
       
@@ -122,9 +120,10 @@
       <img class="qs-logo qs-logo--light" src="../../images/logo-dark.svg" alt="Qseek">
 <img class="qs-logo qs-logo--dark" src="../../images/logo-white.webp" alt="Qseek">
     </a>
-    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+    <label class="md-header__button md-icon" for="__drawer">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -186,9 +185,10 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+        <label class="md-header__button md-icon" for="__search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -455,6 +455,8 @@
   
     
       
+      
+        
       
         
       
@@ -1670,7 +1672,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../configuration/distance-weighting/" class="md-nav__link">
+      <a href="../../configuration/station-weights/" class="md-nav__link">
         
   
   
@@ -1679,7 +1681,7 @@
   <span class="md-ellipsis">
     
   
-  Distance weighting
+  Station weights
 
     
   </span>
@@ -2186,6 +2188,8 @@
       
         
       
+        
+      
     
     
     
@@ -2305,6 +2309,35 @@
     
   
   Related projects
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/telemetry/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-chart-no-axes-column" viewBox="0 0 24 24"><path d="M5 21v-6M12 21V3M19 21V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Telemetry
 
     
   </span>
@@ -2493,6 +2526,7 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -2557,7 +2591,7 @@
 <p>The download takes a few minutes and ends with <code>All downloads completed successfully.</code> The <code>StationSelection</code> lists the stations by their network and station codes; FDSN Rush can also <a href="https://miili.github.io/FDSN-rush/guides/selecting-data/">select the stations in a bounding box or a radius</a>. FDSN Rush prefers the broadband <code>HH</code> channels, falls back to the short-period <code>EH</code> and the strong-motion <code>HN</code> channels, and takes a station only with all three components.</p>
 <p>Of the 19 stations, 18 recorded on that day: <code>IV.CAWE</code> had no channels in May 2024, so FDSN Rush skips it. The archive holds about 1 GB of waveforms.</p>
 <h2 id="get-the-velocity-model">Get the velocity model<a class="headerlink" href="#get-the-velocity-model" title="Permanent link">&para;</a></h2>
-<p>Download the 1D velocity model of Campi Flegrei into the project directory: <a download="download" href="../campi-flegrei.nd"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-download" viewBox="0 0 24 24"><path d="M12 15V3M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg></span> campi-flegrei.nd</a></p>
+<p>Download the 1D velocity model of Campi Flegrei into the project directory: <a download href="../campi-flegrei.nd"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-download" viewBox="0 0 24 24"><path d="M12 15V3M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg></span> campi-flegrei.nd</a></p>
 <p>The model is in the <a href="https://pyrocko.org/docs/current/apps/cake/manual.html">Pyrocko Cake</a> <code>.nd</code> format. Each line is a depth in km, the P and S velocity in km/s and the density in g/cm³:</p>
 <div class="language-text highlight"><span class="filename">campi-flegrei.nd</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>    -1.0    1.700  0.950   2.8
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>     0.0    1.700  0.950   2.8
@@ -2570,7 +2604,7 @@
 </span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    37.0    8.200  4.600   2.8
 </span></code></pre></div>
 <h2 id="configure-the-search">Configure the search<a class="headerlink" href="#configure-the-search" title="Permanent link">&para;</a></h2>
-<p>Write the search configuration:</p>
+<p>Write the search configuration. To start from the defaults instead, print them with <code>qseek config &gt; my-search.json</code> (add <code>--minimal</code> to leave out the optional modules, such as magnitudes); see the <a href="../../reference/cli/#qseek-config">command line reference</a>.</p>
 <div class="language-json highlight"><span class="filename">campi-flegrei.json</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">"stations"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">"station_xmls"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"metadata/"</span><span class="p">]</span>
@@ -2791,7 +2825,8 @@
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+      
+<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
     
     
     
@@ -2803,10 +2838,10 @@
         
           
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

@@ -13,6 +13,9 @@
         <loc>https://pyrocko.github.io/qseek/about/showcase/</loc>
       </url>
       <url>
+        <loc>https://pyrocko.github.io/qseek/about/telemetry/</loc>
+      </url>
+      <url>
         <loc>https://pyrocko.github.io/qseek/concepts/how-it-works/</loc>
       </url>
       <url>
@@ -23,9 +26,6 @@
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/configuration/conventions/</loc>
-      </url>
-      <url>
-        <loc>https://pyrocko.github.io/qseek/configuration/distance-weighting/</loc>
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/configuration/features/</loc>
@@ -47,6 +47,9 @@
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/configuration/station-corrections/</loc>
+      </url>
+      <url>
+        <loc>https://pyrocko.github.io/qseek/configuration/station-weights/</loc>
       </url>
       <url>
         <loc>https://pyrocko.github.io/qseek/configuration/stations/</loc>

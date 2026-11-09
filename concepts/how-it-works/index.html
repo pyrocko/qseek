@@ -15,6 +15,7 @@
         <link rel="canonical" href="https://pyrocko.github.io/qseek/concepts/how-it-works/">
       
       
+      
         <link rel="prev" href="../../getting-started/first-search/">
       
       
@@ -25,7 +26,7 @@
       
       
       <link rel="icon" href="../../images/logo-q.png">
-      <meta name="generator" content="zensical-0.0.67">
+      <meta name="generator" content="zensical-0.1.0">
     
     
       
@@ -36,12 +37,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
       
       
 
@@ -54,8 +55,8 @@
       
         
         
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        
+        <link href="../../assets/external/fonts.googleapis.com/css.c788a136.css" rel="stylesheet">
         <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
@@ -83,14 +84,11 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
     <div data-md-component="skip">
-      
-        
-        <a href="#how-qseek-works" class="md-skip">
-          Skip to content
-        </a>
-      
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
     </div>
     <div data-md-component="announce">
       
@@ -122,9 +120,10 @@
       <img class="qs-logo qs-logo--light" src="../../images/logo-dark.svg" alt="Qseek">
 <img class="qs-logo qs-logo--dark" src="../../images/logo-white.webp" alt="Qseek">
     </a>
-    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+    <label class="md-header__button md-icon" for="__drawer">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -186,9 +185,10 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+        <label class="md-header__button md-icon" for="__search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -455,6 +455,8 @@
   
     
       
+      
+        
       
         
       
@@ -1642,7 +1644,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../configuration/distance-weighting/" class="md-nav__link">
+      <a href="../../configuration/station-weights/" class="md-nav__link">
         
   
   
@@ -1651,7 +1653,7 @@
   <span class="md-ellipsis">
     
   
-  Distance weighting
+  Station weights
 
     
   </span>
@@ -2158,6 +2160,8 @@
       
         
       
+        
+      
     
     
     
@@ -2277,6 +2281,35 @@
     
   
   Related projects
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/telemetry/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-chart-no-axes-column" viewBox="0 0 24 24"><path d="M5 21v-6M12 21V3M19 21V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Telemetry
 
     
   </span>
@@ -2437,6 +2470,7 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -2465,7 +2499,7 @@
 
   
       pydantic-field
-  " href="../../configuration/image-functions/#qseek.images.seisbench.SeisBench.phase_map"><code>phase_map</code></a> of the image function assigns each image to a phase of the ray tracers, e.g. the P image of PhaseNet to <code>cake:P</code>.</p>
+  " href="../../configuration/image-functions/#qseek.images.seisbench.SeisBench.phase_map"><code>phase_map</code></a> of the image function assigns each image to a phase of the ray tracers, e.g. the P image of PhaseNet to <code>fm:P</code>.</p>
 <h2 id="travel-times">Travel times<a class="headerlink" href="#travel-times" title="Permanent link">&para;</a></h2>
 <p>For every phase, a <a href="../../configuration/ray-tracers/">ray tracer</a> calculates the travel times from every node of the search volume to every station: for a constant velocity, a 1D layered velocity model or a 3D velocity model. <a href="../../configuration/station-corrections/">Station corrections</a> add a delay per station and phase, or per station, phase and source location.</p>
 <h2 id="stacking-and-migration">Stacking and migration<a class="headerlink" href="#stacking-and-migration" title="Permanent link">&para;</a></h2>
@@ -2473,7 +2507,7 @@
 <div class="arithmatex">\[
 S(x, t) = \sum_{p} w_p \sum_{s} w_s(x) \, I_{s,p}\big(t + \tau_{s,p}(x)\big)
 \]</div>
-<p>The station weights <span class="arithmatex">\(w_s(x)\)</span> come from the <a href="../../configuration/distance-weighting/">distance weighting</a>: close stations of a node get full weight, distant stations less. For every node and phase the station weights are normalized to a sum of one, and multiplied by the phase weight <span class="arithmatex">\(w_p\)</span> of the image function.</p>
+<p>The station weights <span class="arithmatex">\(w_s(x)\)</span> come from the <a href="../../configuration/station-weights/">station weights</a>: close stations of a node get full weight, distant stations less. For every node and phase the station weights are normalized to a sum of one, and multiplied by the phase weight <span class="arithmatex">\(w_p\)</span> of the image function.</p>
 <p>Qseek calls the stack <span class="arithmatex">\(S\)</span> the <em>semblance</em>. The maximum semblance over all nodes, <span class="arithmatex">\(\max_x S(x, t)\)</span>, is the detection function of the search.</p>
 <h2 id="detection">Detection<a class="headerlink" href="#detection" title="Permanent link">&para;</a></h2>
 <p>A detection is a peak of the detection function whose height and prominence exceed the threshold of the <a href="../../configuration/triggers/">trigger</a>. The default <code>ThresholdTrigger</code> applies a fixed semblance of 0.3 to all windows; the adaptive triggers set the threshold in each processed window from the median absolute deviation of the detection function. Peaks closer than the <code>blinding</code> of the trigger, 1 s by default, count as one detection.</p>
@@ -2639,7 +2673,8 @@ S(x, t) = \sum_{p} w_p \sum_{s} w_s(x) \, I_{s,p}\big(t + \tau_{s,p}(x)\big)
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+      
+<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
     
     
     
@@ -2651,10 +2686,10 @@ S(x, t) = \sum_{p} w_p \sum_{s} w_s(x) \, I_{s,p}\big(t + \tau_{s,p}(x)\big)
         
           
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       
