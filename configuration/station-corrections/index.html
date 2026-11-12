@@ -15,7 +15,6 @@
         <link rel="canonical" href="https://pyrocko.github.io/qseek/configuration/station-corrections/">
       
       
-      
         <link rel="prev" href="../station-weights/">
       
       
@@ -26,7 +25,7 @@
       
       
       <link rel="icon" href="../../images/logo-q.png">
-      <meta name="generator" content="zensical-0.1.0">
+      <meta name="generator" content="zensical-0.0.67">
     
     
       
@@ -37,12 +36,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
       
       
 
@@ -55,8 +54,8 @@
       
         
         
-        
-        <link href="../../assets/external/fonts.googleapis.com/css.c788a136.css" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
         <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
@@ -84,11 +83,14 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
     <div data-md-component="skip">
-      <a href="#__skip" class="md-skip">
-        Skip to content
-      </a>
+      
+        
+        <a href="#station-corrections" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -120,10 +122,9 @@
       <img class="qs-logo qs-logo--light" src="../../images/logo-dark.svg" alt="Qseek">
 <img class="qs-logo qs-logo--dark" src="../../images/logo-white.webp" alt="Qseek">
     </a>
-    <label class="md-header__button md-icon" for="__drawer">
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
-      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -185,10 +186,9 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search">
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -2484,7 +2484,6 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
-                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -2705,22 +2704,17 @@ locations.</p>
   </span>
 
 <a href="#qseek.corrections.simple.SimpleCorrections.prepare" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">prepare</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">prepare</span><span class="p">(</span><span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
 
 
   
       pydantic-model
-   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
+   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span> <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
 
 
   
       pydantic-model
-   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">phases</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Iterable" href="https://docs.python.org/3/library/typing.html#typing.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">rundir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span> <span class="n">phases</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Iterable" href="https://docs.python.org/3/library/typing.html#typing.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">],</span> <span class="n">rundir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2875,6 +2869,10 @@ locations.</p>
         <p>Static station travel time corrections.</p>
 
     
+      <p>Config:</p>
+      <ul>
+          <li><code>extra</code>: <code class="highlight language-python"><span class="n">forbid</span></code></li>
+      </ul>
 
         <p>Fields:</p>
         <ul>
@@ -3227,11 +3225,7 @@ locations.</p>
 
 
 <a href="#qseek_insights.StationCorrections.get_delay" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delay</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">node</span><span class="p">:</span> <span class="n"><span title="qseek.octree.Node">Node</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delay</span><span class="p">(</span><span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">node</span><span class="p">:</span> <span class="n"><span title="qseek.octree.Node">Node</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3343,11 +3337,7 @@ delays.</p>
   </span>
 
 <a href="#qseek_insights.StationCorrections.get_delays" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delays</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">station_nsls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">],</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delays</span><span class="p">(</span><span class="n">station_nsls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">],</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">]</span> <span class="o">=</span> <span class="p">())</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3458,17 +3448,12 @@ average delays.</p>
   </span>
 
 <a href="#qseek_insights.StationCorrections.prepare" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">prepare</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><span title="qseek.models.station.Stations">Stations</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">prepare</span><span class="p">(</span><span class="n">stations</span><span class="p">:</span> <span class="n"><span title="qseek.models.station.Stations">Stations</span></span><span class="p">,</span> <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
 
 
   
       pydantic-model
-   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">phases</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Iterable" href="https://docs.python.org/3/library/typing.html#typing.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">rundir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span> <span class="n">phases</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Iterable" href="https://docs.python.org/3/library/typing.html#typing.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">],</span> <span class="n">rundir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3545,10 +3530,6 @@ average delays.</p>
         <p>Source specific station corrections, spatial travel time corrections.</p>
 
     
-      <p>Config:</p>
-      <ul>
-          <li><code>extra</code>: <code class="highlight language-python"><span class="n">forbid</span></code></li>
-      </ul>
 
         <p>Fields:</p>
         <ul>
@@ -4216,21 +4197,17 @@ average delays.</p>
 
 
 <a href="#qseek_insights.SourceSpecificStationCorrections.create_volumes" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_volumes</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Station
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_volumes</span><span class="p">(</span><span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Station
 
 
   
       pydantic-model
-   (qseek.models.station.Station)" href="../../reference/api/stations/#qseek.models.station.Station">Station</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">]],</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
+   (qseek.models.station.Station)" href="../../reference/api/stations/#qseek.models.station.Station">Station</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">]],</span> <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
 
 
   
       pydantic-model
-   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">export_dir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="qseek_insights.corrections.source_specific_corrections.StationCorrectionVolume">StationCorrectionVolume</span></span><span class="p">]</span>
+   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span> <span class="n">export_dir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><span title="qseek_insights.corrections.source_specific_corrections.StationCorrectionVolume">StationCorrectionVolume</span></span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4397,9 +4374,7 @@ average delays.</p>
 
 
 <a href="#qseek_insights.SourceSpecificStationCorrections.get_volume" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_volume</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek_insights.corrections.source_specific_corrections.StationCorrectionVolume">StationCorrectionVolume</span></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_volume</span><span class="p">(</span><span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek_insights.corrections.source_specific_corrections.StationCorrectionVolume">StationCorrectionVolume</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4488,14 +4463,12 @@ average delays.</p>
 
 
 <a href="#qseek_insights.SourceSpecificStationCorrections.has_volume" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">has_volume</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            Station
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">has_volume</span><span class="p">(</span><span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            Station
 
 
   
       pydantic-model
-   (qseek.models.station.Station)" href="../../reference/api/stations/#qseek.models.station.Station">Station</a></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span>
+   (qseek.models.station.Station)" href="../../reference/api/stations/#qseek.models.station.Station">Station</a></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4584,9 +4557,7 @@ average delays.</p>
 
 
 <a href="#qseek_insights.SourceSpecificStationCorrections.interpolate_delays" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">interpolate_delays</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">],</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">interpolate_delays</span><span class="p">(</span><span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">],</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4677,9 +4648,7 @@ without a volume.</p>
 
 
 <a href="#qseek_insights.SourceSpecificStationCorrections.get_delay" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delay</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">node</span><span class="p">:</span> <span class="n"><span title="qseek.octree.Node">Node</span></span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delay</span><span class="p">(</span><span class="n">station_nsl</span><span class="p">:</span> <span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">node</span><span class="p">:</span> <span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4774,11 +4743,7 @@ without a volume.</p>
   </span>
 
 <a href="#qseek_insights.SourceSpecificStationCorrections.get_delays" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delays</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">station_nsls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">],</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_delays</span><span class="p">(</span><span class="n">station_nsls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.utils.NSL">NSL</span></span><span class="p">],</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5006,8 +4971,7 @@ of shape is n_nodes X n_stations</p>
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      
-<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
     
     
     
@@ -5019,10 +4983,10 @@ of shape is n_nodes X n_stations</p>
         
           
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
+      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       

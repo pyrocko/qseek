@@ -15,7 +15,6 @@
         <link rel="canonical" href="https://pyrocko.github.io/qseek/configuration/ray-tracers/">
       
       
-      
         <link rel="prev" href="../image-functions/">
       
       
@@ -26,7 +25,7 @@
       
       
       <link rel="icon" href="../../images/logo-q.png">
-      <meta name="generator" content="zensical-0.1.0">
+      <meta name="generator" content="zensical-0.0.67">
     
     
       
@@ -37,12 +36,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ae390e2.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.96d1a7e4.min.css">
       
       
 
@@ -55,8 +54,8 @@
       
         
         
-        
-        <link href="../../assets/external/fonts.googleapis.com/css.c788a136.css" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
         <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
@@ -84,11 +83,14 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
     <div data-md-component="skip">
-      <a href="#__skip" class="md-skip">
-        Skip to content
-      </a>
+      
+        
+        <a href="#ray-tracers" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -120,10 +122,9 @@
       <img class="qs-logo qs-logo--light" src="../../images/logo-dark.svg" alt="Qseek">
 <img class="qs-logo qs-logo--dark" src="../../images/logo-white.webp" alt="Qseek">
     </a>
-    <label class="md-header__button md-icon" for="__drawer">
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
-      <span class="md-visually-hidden">Navigation</span>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -185,10 +186,9 @@
     
       
       
-        <label class="md-header__button md-icon" for="__search">
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
           
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-          <span class="md-visually-hidden">Search</span>
         </label>
         <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
   <button type="button" class="md-search__button">
@@ -2594,7 +2594,6 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
-                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -2940,10 +2939,7 @@ t = \frac{d}{v}
   </span>
 
 <a href="#qseek.tracers.utils.LayeredEarthModel1D.crust2_profile" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">crust2_profile</span><span class="p">:</span> <span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n"><a class="autorefs autorefs-external" title="typing.Annotated" href="https://docs.python.org/3/library/typing.html#typing.Annotated">Annotated</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.StringConstraints" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.StringConstraints">StringConstraints</a></span><span class="p">(</span><span class="n"><span title="pydantic.StringConstraints(to_upper)">to_upper</span></span><span class="o">=</span><span class="kc">True</span><span class="p">)]</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">]</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span> <span class="o">=</span> <span class="s2">""</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">crust2_profile</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Annotated" href="https://docs.python.org/3/library/typing.html#typing.Annotated">Annotated</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.StringConstraints" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.StringConstraints">StringConstraints</a></span><span class="p">(</span><span class="n"><span title="pydantic.StringConstraints(to_upper)">to_upper</span></span><span class="o">=</span><span class="kc">True</span><span class="p">)]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#float">float</a></span><span class="p">]</span> <span class="o">=</span> <span class="s1">''</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3320,14 +3316,12 @@ and nodes.</p>
 
 
 <a href="#qseek.tracers.fast_marching.FastMarchingTracer.get_travel_time_table" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_travel_time_table</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">location</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Location
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_travel_time_table</span><span class="p">(</span><span class="n">location</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Location
 
 
   
       pydantic-model
-   (qseek.models.location.Location)" href="../conventions/#qseek.models.location.Location">Location</a></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.tracers.fast_marching.StationTravelTimeTable">StationTravelTimeTable</span></span>
+   (qseek.models.location.Location)" href="../conventions/#qseek.models.location.Location">Location</a></span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="qseek.tracers.fast_marching.StationTravelTimeTable">StationTravelTimeTable</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3351,21 +3345,17 @@ and nodes.</p>
   </span>
 
 <a href="#qseek.tracers.fast_marching.FastMarchingTracer.prepare" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">prepare</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">prepare</span><span class="p">(</span><span class="n">octree</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Octree
 
 
   
       pydantic-model
-   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
+   (qseek.octree.Octree)" href="../search-volume/#qseek.octree.Octree">Octree</a></span><span class="p">,</span> <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            StationInventory
 
 
   
       pydantic-model
-   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">rundir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+   (qseek.models.station.StationInventory)" href="../stations/#qseek.models.station.StationInventory">StationInventory</a></span><span class="p">,</span> <span class="n">rundir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3385,9 +3375,7 @@ and nodes.</p>
 
 
 <a href="#qseek.tracers.fast_marching.FastMarchingTracer.add_travel_time_table" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_travel_time_table</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">table</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.fast_marching.StationTravelTimeTable">StationTravelTimeTable</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_travel_time_table</span><span class="p">(</span><span class="n">table</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.fast_marching.StationTravelTimeTable">StationTravelTimeTable</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3411,16 +3399,12 @@ and nodes.</p>
   </span>
 
 <a href="#qseek.tracers.fast_marching.FastMarchingTracer.get_travel_times" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_travel_times</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">phase</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.fast_marching.Phase">Phase</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Station
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_travel_times</span><span class="p">(</span><span class="n">phase</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.fast_marching.Phase">Phase</span></span><span class="p">,</span> <span class="n">nodes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><span title="qseek.octree.Node">Node</span></span><span class="p">],</span> <span class="n">stations</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Sequence" href="https://docs.python.org/3/library/typing.html#typing.Sequence">Sequence</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Station
 
 
   
       pydantic-model
-   (qseek.models.station.Station)" href="../../reference/api/stations/#qseek.models.station.Station">Station</a></span><span class="p">],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
+   (qseek.models.station.Station)" href="../../reference/api/stations/#qseek.models.station.Station">Station</a></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="numpy.ndarray" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray">ndarray</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3534,7 +3518,7 @@ seconds.</p>
 <h3 id="pyrocko-cake">Pyrocko Cake<a class="headerlink" href="#pyrocko-cake" title="Permanent link">&para;</a></h3>
 <p>The <a href="https://pyrocko.org/docs/current/apps/cake/manual.html#command-line-examples">Pyrocko Cake</a> ray tracer calculates the arrivals of phases given by Pyrocko phase definitions. <code>"P,p"</code> is the first P arrival, either the down-going <code>P</code> or the up-going <code>p</code>. The keys of <code>phases</code> are the phase descriptions, e.g. <code>"cake:P"</code>.</p>
 <figure>
-<p><img alt="Pyrocko Cake Ray Tracer" src="../../assets/external/pyrocko.org/docs/current/_images/cake_plot_example_2.png" /></p>
+<p><img alt="Pyrocko Cake Ray Tracer" src="https://pyrocko.org/docs/current/_images/cake_plot_example_2.png" /></p>
 <figcaption>
 <p>Rays of the Pyrocko Cake ray tracer in a 1D layered model.</p>
 </figcaption>
@@ -3642,10 +3626,7 @@ seconds.</p>
   </span>
 
 <a href="#qseek.tracers.cake.CakeTracer.phases" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">phases</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n"><span title="qseek.tracers.cake.Timing">Timing</span></span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s2">"cake:P"</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.cake.Timing">Timing</span></span><span class="p">(</span><span class="n"><span title="qseek.tracers.cake.Timing(definition)">definition</span></span><span class="o">=</span><span class="s2">"P,p"</span><span class="p">),</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="s2">"cake:S"</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.cake.Timing">Timing</span></span><span class="p">(</span><span class="n"><span title="qseek.tracers.cake.Timing(definition)">definition</span></span><span class="o">=</span><span class="s2">"S,s"</span><span class="p">),</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">phases</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="Phase descriptions (qseek.utils.PhaseDescription)" href="../conventions/#phase-descriptions">PhaseDescription</a></span><span class="p">,</span> <span class="n"><span title="qseek.tracers.cake.Timing">Timing</span></span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'cake:P'</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.cake.Timing">Timing</span></span><span class="p">(</span><span class="n"><span title="qseek.tracers.cake.Timing(definition)">definition</span></span><span class="o">=</span><span class="s1">'P,p'</span><span class="p">),</span> <span class="s1">'cake:S'</span><span class="p">:</span> <span class="n"><span title="qseek.tracers.cake.Timing">Timing</span></span><span class="p">(</span><span class="n"><span title="qseek.tracers.cake.Timing(definition)">definition</span></span><span class="o">=</span><span class="s1">'S,s'</span><span class="p">)}</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4053,9 +4034,7 @@ seconds.</p>
   </span>
 
 <a href="#qseek.tracers.fast_marching_3d.NonLinLocVelocityModel.grid_spacing" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">grid_spacing</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveFloat" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveFloat">PositiveFloat</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"octree"</span><span class="p">,</span> <span class="s2">"input"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s2">"input"</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">grid_spacing</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="pydantic.PositiveFloat" href="https://docs.pydantic.dev/latest/api/pydantic/types/#pydantic.types.PositiveFloat">PositiveFloat</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'octree'</span><span class="p">,</span> <span class="s1">'input'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'input'</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4079,9 +4058,7 @@ seconds.</p>
   </span>
 
 <a href="#qseek.tracers.fast_marching_3d.NonLinLocVelocityModel.interpolation" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">interpolation</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"nearest"</span><span class="p">,</span> <span class="s2">"linear"</span><span class="p">,</span> <span class="s2">"cubic"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s2">"cubic"</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">interpolation</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'nearest'</span><span class="p">,</span> <span class="s1">'linear'</span><span class="p">,</span> <span class="s1">'cubic'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'cubic'</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4262,8 +4239,7 @@ seconds.</p>
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      
-<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
     
     
     
@@ -4275,10 +4251,10 @@ seconds.</p>
         
           
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.tabs.link","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.progress","navigation.sections","navigation.tabs","navigation.top","search.highlight","search.suggest","toc.follow"],"redirect":"../../redirect.json","search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
+      <script src="../../assets/javascripts/bundle.67a597eb.min.js"></script>
       
         <script src="../../javascripts/mathjax.js"></script>
       
