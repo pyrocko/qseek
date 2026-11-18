@@ -13,16 +13,15 @@ from pyrocko.trace import Trace
 from scipy import signal
 
 from qseek.images.base import ImageFunction, WaveformImages
+from qseek.models.catalog import EventCatalog
 from qseek.pre_processing.module import PreProcessing
-from qseek.search import Search
 from qseek.utils import NSLC
 from qseek.waveforms.base import WaveformBatch, WaveformProvider
 from qseek_inversion.waveforms.base import WaveformSelection
 
 if TYPE_CHECKING:
-    from pyrocko.squirrel import Squirrel
-
     from qseek.models.detection import EventDetection
+    from qseek.search import Search
 
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
@@ -88,7 +87,7 @@ class ConcatenatedTrace:
     def get_trace(self) -> Trace:
         return Trace(
             tmin=datetime(2000, 1, 1, tzinfo=timezone.utc).timestamp(),
-            ydata=self.data.astype(np.int32),
+            ydata=self.data.astype(np.float32),
             deltat=1.0 / self.sampling_rate,
             network=self.nslc.network,
             station=self.nslc.station,
@@ -99,11 +98,6 @@ class ConcatenatedTrace:
 
 class EventWaveformsSelection(WaveformSelection):
     waveforms: Literal["EventSelection"] = "EventSelection"
-
-    import_rundir: Path = Field(
-        ...,
-        description="Path to the qseek run directory to import events from.",
-    )
 
     number_events: PositiveInt = Field(
         default=200,
@@ -138,10 +132,11 @@ class EventWaveformsSelection(WaveformSelection):
     _pre_processing: PreProcessing = PrivateAttr()
     _image_function: ImageFunction = PrivateAttr()
     _data_provider: WaveformProvider = PrivateAttr()
-    _squirrel: Squirrel = PrivateAttr()
 
     async def prepare(
         self,
+        search: Search,
+        import_rundir: Path,
         rundir: Path | None = None,
     ) -> None:
         # TODO: This is the simplest selection process. Improve this.
@@ -150,49 +145,47 @@ class EventWaveformsSelection(WaveformSelection):
         # Or select events based on magnitude.
         # Or select events based on location uncertainty.
 
-        search = Search.load_rundir(self.import_rundir)
+        await search.data_provider.prepare(search.stations)
+        search.stations.filter_stations(search.data_provider.available_nsls())
+        await super().prepare(search, import_rundir, rundir)
+
         await search.pre_processing.prepare()
         await search.image_function.prepare()
 
         self._pre_processing = search.pre_processing
         self._image_function = search.image_function
-        self._squirrel = search.data_provider.get_squirrel()
         self._data_provider = search.data_provider
 
-        search.stations.sanitize_stations()
-        search.stations.filter_stations(search.data_provider.available_nsls())
-        self.stations = search.stations
-
+        catalog = EventCatalog.load_rundir(import_rundir)
         events_sorted = sorted(
-            search.catalog.events,
+            (ev for ev in catalog.events if ev.in_bounds),
             key=lambda ev: ev.semblance,
             reverse=True,
         )
+        self._events = events_sorted[: self.number_events]
         logger.info(
             "selected %d events out of %d available events",
-            min(self.number_events, len(events_sorted)),
-            search.catalog.n_events,
+            len(self._events),
+            catalog.n_events,
         )
-        events_sorted = [ev for ev in events_sorted if ev.in_bounds]
-        self._events = events_sorted[: self.number_events]
 
         if rundir is not None:
-            await self.export(rundir, self._squirrel)
+            await self.export(rundir)
 
-    async def export(self, outpath: Path, squirrel: Squirrel) -> None:
+    def get_blinding(self) -> timedelta:
+        return self._image_function.get_blinding()
+
+    async def export(self, outpath: Path) -> None:
         logger.info("exporting selected events and traces to %s", outpath)
         self.export_event_csv(outpath / "selected_events.csv")
-        await self.export_mseed(
-            squirrel,
-            outpath / "concatenated_traces",
-        )
+        await self.export_mseed(outpath / "concatenated_traces")
 
-    async def export_mseed(self, squirrel: Squirrel, outdir: Path) -> None:
+    async def export_mseed(self, outdir: Path) -> None:
         outdir.mkdir(parents=True, exist_ok=True)
         traces = await self._get_contatenated_traces(self._events)
         save(
             traces,
-            str(outdir / "%(station)s.%(station)s.%(location)s-concatenated.mseed"),
+            str(outdir / "%(network)s.%(station)s.%(location)s-concatenated.mseed"),
         )
         logger.info("exported concatenated event traces to %s", outdir)
 
@@ -202,20 +195,19 @@ class EventWaveformsSelection(WaveformSelection):
         Args:
             outpath (Path): Path to output CSV file.
         """
+        outpath.unlink(missing_ok=True)
         for ev in self._events:
             ev.write_csv_line(outpath)
         logger.info("exported selected events to %s", outpath)
 
     async def get_images(self, window_padding: timedelta) -> list[WaveformImages]:
-        batches = await self.get_batches(
-            edge_padding=window_padding,  # Why 2x?
-        )
+        batches = await self.get_batches(edge_padding=window_padding)
         batch_images = []
 
         for batch in batches:
             batch = await self._pre_processing.process_batch(batch)
             images = await self._image_function.get_images(batch)
-            images.set_stations(self.stations)
+            images.set_stations(self.get_stations())
             batch_images.append(images)
         return batch_images
 
