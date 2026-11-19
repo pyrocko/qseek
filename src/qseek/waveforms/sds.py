@@ -160,9 +160,6 @@ class StationCovarage:
 
     def add_file(self, file: Path):
         *_, channel, _ = file.parts
-        band = channel[0]
-        if band in EXCLUDE_BANDS:
-            return
         file_date = _get_date_from_filename(file)
         self.file_dates.append(file_date)
         self.channels.add(channel.removesuffix(".D"))
@@ -277,6 +274,8 @@ class SDSArchive(WaveformProvider):
                 total=None,
             )
             for file in sds_iter:
+                if file.parent.name[0] in EXCLUDE_BANDS:
+                    continue
                 try:
                     file_date = _get_date_from_filename(file)
                 except ValueError:

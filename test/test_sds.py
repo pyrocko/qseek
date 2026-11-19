@@ -397,3 +397,24 @@ def test_archives_config(sds_archive: Path) -> None:
         archive = SDSArchive.model_validate(config)
         assert archive.archives == [sds_archive]
         assert archive.model_dump()["archives"] == [sds_archive]
+
+
+def test_excluded_bands(sds_archive: Path) -> None:
+    """A station with only excluded bands, e.g. LHZ, is not part of the archive."""
+    trace = Trace(
+        "XX",
+        "STC",
+        "",
+        "LHZ",
+        tmin=DAY_START.timestamp(),
+        deltat=1.0,
+        ydata=np.arange(3600, dtype=np.int32),
+    )
+    folder = sds_archive / "2024" / "XX" / "STC" / "LHZ.D"
+    folder.mkdir(parents=True)
+    save([trace], str(folder / "XX.STC..LHZ.D.2024.141"))
+
+    archive = SDSArchive(archives=[sds_archive])
+    archive.scan_sds_archives()
+    assert NSL("XX", "STC", "") not in archive.available_nsls()
+    assert archive.available_time_span() == (DAY_START, DAY_START + timedelta(days=1))
