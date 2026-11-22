@@ -27,7 +27,7 @@ from qseek.models.detection import (
     logger,
 )
 from qseek.stats import Stats
-from qseek.utils import Symbols, time_to_path
+from qseek.utils import Symbols, paused_gc, time_to_path
 
 if TYPE_CHECKING:
     from pyrocko.gui.marker import EventMarker, PhaseMarker
@@ -331,6 +331,7 @@ class EventCatalog(BaseModel):
         with (
             console.status(f"loading detections from {rundir}..."),
             open(detection_file) as f,
+            paused_gc(),
         ):
             for idx, line in enumerate(f):
                 try:
@@ -361,23 +362,25 @@ class EventCatalog(BaseModel):
             logger.warning("removing event %s", detection)
             self.events.remove(detection)
 
-        for detection in track(
-            self.events.copy(),
-            description=f"checking {self.n_events} events...",
-        ):
-            try:
-                _ = detection.receivers
-            except ValueError:
-                found_bad += 1
-                if repair:
-                    remove_event(detection)
+        # Loading the receivers of all events creates many long-lived objects
+        with paused_gc():
+            for detection in track(
+                self.events.copy(),
+                description=f"checking {self.n_events} events...",
+            ):
+                try:
+                    _ = detection.receivers
+                except ValueError:
+                    found_bad += 1
+                    if repair:
+                        remove_event(detection)
 
-            if detection.uid in event_uids:
-                found_duplicates += 1
-                if repair:
-                    remove_event(detection)
+                if detection.uid in event_uids:
+                    found_duplicates += 1
+                    if repair:
+                        remove_event(detection)
 
-            event_uids.add(detection.uid)
+                event_uids.add(detection.uid)
 
         if found_bad or found_duplicates:
             logger.info("found %d detections with invalid receivers", found_bad)

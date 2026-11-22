@@ -1,3 +1,4 @@
+import gc
 import platform
 import warnings
 
@@ -151,3 +152,27 @@ def test_get_cpu_features():
         assert "sse2" in features
     if features is not None:
         assert all(feature == feature.lower() for feature in features)
+
+
+def test_paused_gc():
+    assert gc.isenabled()
+    with utils.paused_gc():
+        assert not gc.isenabled()
+        with utils.paused_gc():
+            assert not gc.isenabled()
+        # The inner block keeps the outer pause
+        assert not gc.isenabled()
+    assert gc.isenabled()
+
+    with pytest.raises(RuntimeError), utils.paused_gc():
+        raise RuntimeError
+    assert gc.isenabled()
+
+    # A disabled collector stays disabled
+    gc.disable()
+    try:
+        with utils.paused_gc():
+            pass
+        assert not gc.isenabled()
+    finally:
+        gc.enable()

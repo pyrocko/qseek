@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import contextvars
 import functools
+import gc
 import logging
 import os
 import platform
@@ -27,6 +28,7 @@ from typing import (
     Awaitable,
     Callable,
     Coroutine,
+    Generator,
     Iterable,
     Literal,
     NamedTuple,
@@ -623,6 +625,27 @@ def alog_call(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         return ret
 
     return wrapper
+
+
+@contextlib.contextmanager
+def paused_gc() -> Generator[None]:
+    """Pause the cyclic garbage collector while creating many objects.
+
+    While many long-lived objects are created, e.g. when loading a catalog, the
+    collector runs repeatedly and scans all of them each time. Reference counting
+    still frees objects that are not part of cycles. The collector is enabled again
+    on exit, if it was enabled before.
+
+    Do not await inside the block: the collector stays paused for all tasks of the
+    event loop.
+    """
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if enabled:
+            gc.enable()
 
 
 def human_readable_bytes(size: int | float, decimal: bool = False) -> str:
