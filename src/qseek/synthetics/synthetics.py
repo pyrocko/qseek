@@ -19,11 +19,11 @@ from qseek.utils import NSL, NSLType, PhaseDescription
 logger = logging.getLogger(__name__)
 
 
-def _gaussian_function(sigma: int = 10):
-    length = sigma * 10
-    onset = length // 2
-    x = np.arange(length)
-    return np.exp(-np.power(x - onset, 2.0) / (2 * np.power(sigma, 2.0)))
+def _gaussian_function(sigma: int = 10) -> np.ndarray:
+    # Odd length, so that np.convolve(mode="same") keeps the peak on the arrival
+    half_length = sigma * 5
+    x = np.arange(-half_length, half_length + 1)
+    return np.exp(-np.power(x, 2.0) / (2 * np.power(sigma, 2.0)))
 
 
 class Receiver(Station):
@@ -121,17 +121,21 @@ class SyntheticEvent(Location):
         """
         arrivals = chain(*((rcv.arrivals.values()) for rcv in self.receivers.values()))
         first_arrival = min(arrivals, default=None)
-        return self.origin_time + timedelta(seconds=first_arrival or 0.0)
+        if first_arrival is None:
+            return None
+        return self.origin_time + timedelta(seconds=first_arrival)
 
     def last_arrival(self) -> datetime | None:
-        """Get the time of the first arrival across all receivers and phases.
+        """Get the time of the last arrival across all receivers and phases.
 
         Returns:
-            datetime | None: Time of the first arrival, or None if no arrivals exist.
+            datetime | None: Time of the last arrival, or None if no arrivals exist.
         """
         arrivals = chain(*((rcv.arrivals.values()) for rcv in self.receivers.values()))
-        last_arrival = min(arrivals, default=None)
-        return self.origin_time + timedelta(seconds=last_arrival or 0.0)
+        last_arrival = max(arrivals, default=None)
+        if last_arrival is None:
+            return None
+        return self.origin_time + timedelta(seconds=last_arrival)
 
     def available_phases(self) -> set[PhaseDescription]:
         """Get the set of available phases for this event.
@@ -211,9 +215,11 @@ class SyntheticEventCatalog(BaseModel):
         if not self.events:
             raise ValueError("No events in the catalog.")
 
-        events = [ev for ev in self.events if start_time <= ev.origin_time <= end_time]
+        # Events that originate before the window can have arrivals inside it
+        events = self.events
         nsls = {rcv.nsl for ev in events for rcv in ev.get_receivers()}
         n_samples = int((end_time - start_time).total_seconds() * sampling_rate)
+        gaussian = _gaussian_function(sigma=sigma_samples)
 
         traces = []
         for nsl in nsls:
@@ -228,11 +234,11 @@ class SyntheticEventCatalog(BaseModel):
 
             data = np.zeros(n_samples, dtype=np.float32)
             arrival_time_idx = [
-                int((arrival - start_time).total_seconds() * sampling_rate)
+                round((arrival - start_time).total_seconds() * sampling_rate)
                 for arrival in arrival_times
             ]
+            arrival_time_idx = [idx for idx in arrival_time_idx if idx < n_samples]
             data[arrival_time_idx] = 1.0  # Simple spike for arrivals
-            gaussian = _gaussian_function(sigma=sigma_samples)
             data = np.convolve(data, gaussian, mode="same")
             trace = Trace(
                 network=nsl.network,
@@ -315,7 +321,7 @@ class SyntheticEventCatalog(BaseModel):
         dump_events(pyrocko_events, str(path / "pyrocko_events.yaml"), format="yaml")
 
         stations = self.get_stations()
-        stations.export_pyrocko_stations(path.parent / "stations.yaml")
+        stations.export_pyrocko_stations(path / "stations.yaml")
         logger.info("exported Pyrocko models to %s", path)
 
     def export_traces(
@@ -340,14 +346,14 @@ class SyntheticEventCatalog(BaseModel):
                 start_time=current_start,
                 end_time=current_end,
             )
-            if not traces:
-                continue
-            save(
-                traces,
-                str(directory / "traces_%(network)s.%(station)s.%(location)s.mseed"),
-                append=True,
-            )
-
+            if traces:
+                save(
+                    traces,
+                    str(
+                        directory / "traces_%(network)s.%(station)s.%(location)s.mseed"
+                    ),
+                    append=True,
+                )
             current_start = current_end
 
     def export_catalog(self, directory: Path) -> None:
@@ -373,10 +379,12 @@ class SyntheticEventCatalog(BaseModel):
         """
         if not self.events:
             raise ValueError("No events in the catalog.")
-        last_arrivals = [event.last_arrival() for event in self.events]
+        last_arrivals = [
+            event.last_arrival() or event.origin_time for event in self.events
+        ]
 
         start_time = min(event.origin_time for event in self.events)
-        end_time = max(arr for arr in last_arrivals if arr is not None)
+        end_time = max(last_arrivals)
         return start_time, end_time
 
     def get_stations(self) -> StationInventory:
